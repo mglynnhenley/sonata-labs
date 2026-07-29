@@ -7,6 +7,11 @@ SDK can drive by just overriding `rootUrl`. Every mutation (send/label/archive/
 trash/delete) hits only the local DB, is recorded in an audit log, and can be
 undone with one reset. Nothing is ever written back to Google.
 
+## Docs
+
+- **[AGENTS.md](AGENTS.md)** — working in this repo: commands, layout, conventions, how to add an endpoint.
+- **[ARCHITECTURE.md](ARCHITECTURE.md)** — how it fits together: the three DBs, request lifecycle, shaping, audit atomicity, send pipeline.
+
 ## What's here
 
 - **Gmail-compatible API** at `/gmail/v1/users/{me|email}/…` — profile, messages
