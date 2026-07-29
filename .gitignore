@@ -1,0 +1,21 @@
+# dependencies
+/node_modules
+
+# next.js
+/.next/
+/out/
+next-env.d.ts
+
+# data: databases + real Google credentials — never commit
+/data/
+*.db
+*.db-wal
+*.db-shm
+google-token.json
+
+# misc
+.DS_Store
+*.log
+.env*.local
+/coverage
+.gstack/
