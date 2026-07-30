@@ -20,12 +20,12 @@
     "eval:check": "tsx scripts/eval-offline-check.ts"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.115.0",
     "@google-cloud/local-auth": "^3.0.1",
     "better-sqlite3": "^11.8.1",
     "googleapis": "^144.0.0",
     "mailparser": "^3.7.1",
     "next": "^15.1.6",
+    "openai": "^7.1.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },

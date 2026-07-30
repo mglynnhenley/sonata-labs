@@ -100,7 +100,7 @@ export interface ActionRow {
 
 export function listActions(
   db: Database,
-  opts: { sessionId?: string; sinceId?: number; limit?: number } = {},
+  opts: { sessionId?: string; sinceId?: number; beforeId?: number; limit?: number } = {},
 ): ActionRow[] {
   const clauses: string[] = [];
   const params: unknown[] = [];
@@ -111,6 +111,11 @@ export function listActions(
   if (opts.sinceId) {
     clauses.push("id > ?");
     params.push(opts.sinceId);
+  }
+  // Rows come back newest-first, so paging further back uses a descending cursor.
+  if (opts.beforeId) {
+    clauses.push("id < ?");
+    params.push(opts.beforeId);
   }
   const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
   return db

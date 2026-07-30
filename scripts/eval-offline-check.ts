@@ -6,7 +6,7 @@
 //   PORT=3100 npx tsx scripts/eval-offline-check.ts
 //
 // The LLM stages (profile, generate, judge) are covered by `npm run eval`, which
-// needs ANTHROPIC_API_KEY.
+// needs OPENROUTER_API_KEY.
 
 import {
   connectGmail,

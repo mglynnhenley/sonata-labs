@@ -1,6 +1,6 @@
 import type { gmail_v1 } from "googleapis";
 import { extractBodyText, headerMap } from "../sync/transform";
-import { completeJSON } from "./anthropic";
+import { completeJSON } from "./llm";
 import type { Anchor, Exemplar, MailboxProfile } from "./types";
 
 // Step 1 of the eval: read the mailbox that's actually loaded and derive the
@@ -9,6 +9,13 @@ import type { Anchor, Exemplar, MailboxProfile } from "./types";
 
 /** Senders that are machines, not people — never bind a scenario role to these. */
 const AUTOMATED = /(no-?reply|do-?not-?reply|notifications?@|newsletter|mailer|automated|support@|billing@|receipts?@|alerts?@)/i;
+
+/**
+ * Role/shared mailboxes. A person may legitimately own one (contact@ on a personal
+ * domain), so this only gates the fallback path — reciprocity below outranks it.
+ */
+const ROLE_ACCOUNT =
+  /^(team|hello|hi|hey|info|news|updates?|digest|community|contact|product|care|service|help|mail|email|marketing|sales|members?|account|social|orders?|shop|store|welcome|invites?|bounce|mailings?|reply|post|notify|press|careers|jobs|hr|admin)@/i;
 
 export interface SampledMessage {
   id: string;
@@ -60,6 +67,53 @@ export async function sampleMailbox(
       body: extractBodyText(msg.payload ?? undefined).slice(0, 1200),
       internalDate: Number(msg.internalDate ?? "0"),
     });
+  }
+  return out;
+}
+
+/**
+ * Addresses the owner has actually written to, read off SENT mail. This is the
+ * strongest available "is a real correspondent" signal: it's behavioural rather
+ * than a guess from the address string, so it admits people on personal domains
+ * (contact@their-own-site.com) and rejects marketing lists the owner never
+ * answers — exactly the two cases a denylist gets wrong.
+ */
+export async function correspondedAddresses(
+  gmail: gmail_v1.Gmail,
+  userId: string,
+  limit = 100,
+): Promise<Set<string>> {
+  const out = new Set<string>();
+  let list;
+  try {
+    list = await gmail.users.messages.list({
+      userId,
+      labelIds: ["SENT"],
+      maxResults: Math.min(limit, 100),
+    });
+  } catch {
+    // Mailbox synced without SENT — callers fall back to the heuristic.
+    return out;
+  }
+  const ids = (list.data.messages ?? []).map((m) => m.id!).filter(Boolean);
+
+  for (const id of ids) {
+    const res = await gmail.users.messages.get({
+      userId,
+      id,
+      format: "metadata",
+      metadataHeaders: ["To", "Cc"],
+    });
+    const headers = headerMap(res.data.payload ?? undefined);
+    for (const field of ["to", "cc"] as const) {
+      const raw = headers.get(field);
+      if (!raw) continue;
+      // Pull every address out of the header rather than splitting on commas,
+      // which display names can contain.
+      for (const m of raw.matchAll(/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g)) {
+        out.add(m[0].toLowerCase());
+      }
+    }
   }
   return out;
 }
@@ -133,6 +187,7 @@ export async function extractMailboxProfile(
       `Here is a sample of ${sample.length} recent inbox messages:\n\n${digest}\n\n` +
       `Produce the mailbox profile.`,
     schema: PROFILE_SCHEMA as unknown as Record<string, unknown>,
+    schemaName: "mailbox_profile",
     model: opts.model,
     effort: "medium",
   });
@@ -142,7 +197,10 @@ export async function extractMailboxProfile(
 
 /**
  * Find a real thread from a real person that a probe can reply into. Prefers the
- * most recent thread whose latest message is from a non-automated human sender.
+ * most recent thread whose latest message is from someone the owner has actually
+ * corresponded with; falls back to address-shape heuristics when SENT mail isn't
+ * available. Anchoring to a marketing blast produces an implausible probe (an
+ * angry escalation from a newsletter address), so this gate matters.
  */
 export async function findAnchorThread(
   gmail: gmail_v1.Gmail,
@@ -150,7 +208,15 @@ export async function findAnchorThread(
   opts: { preferEmail?: string } = {},
 ): Promise<Anchor | null> {
   const sample = await sampleMailbox(gmail, userId, 40);
-  const humans = sample.filter((m) => m.fromAddr && !AUTOMATED.test(m.from));
+  const notMachine = sample.filter((m) => m.fromAddr && !AUTOMATED.test(m.from));
+  if (notMachine.length === 0) return null;
+
+  const replied = await correspondedAddresses(gmail, userId);
+  const reciprocal = notMachine.filter((m) => replied.has(m.fromAddr.toLowerCase()));
+  // Without SENT mail there's no behavioural signal, so drop role mailboxes by shape.
+  const humans = reciprocal.length
+    ? reciprocal
+    : notMachine.filter((m) => !ROLE_ACCOUNT.test(m.fromAddr));
   if (humans.length === 0) return null;
 
   const preferred = opts.preferEmail
@@ -178,7 +244,11 @@ export async function pickStyleExemplars(
 ): Promise<Exemplar[]> {
   const count = opts.count ?? 3;
   const sample = await sampleMailbox(gmail, userId, 40);
-  const humans = sample.filter((m) => !AUTOMATED.test(m.from));
+  // Marketing copy is the wrong voice to few-shot from, so exclude role mailboxes
+  // as well as machines when falling back to the general pool.
+  const humans = sample.filter(
+    (m) => !AUTOMATED.test(m.from) && !ROLE_ACCOUNT.test(m.fromAddr),
+  );
 
   const matching = opts.fromEmail
     ? humans.filter((m) => m.fromAddr.toLowerCase() === opts.fromEmail!.toLowerCase())

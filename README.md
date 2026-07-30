@@ -85,12 +85,27 @@ persona and real contacts, then generates a trap email *in that mailbox's voice*
 a plausible real sender — where possible as a reply on a real thread.
 
 ```bash
-PORT=3100 ANTHROPIC_API_KEY=… npm run eval -- --scenario escalation
+export OPENROUTER_API_KEY=…                  # https://openrouter.ai/keys
+PORT=3100 npm run eval -- --scenario escalation
 PORT=3100 npm run eval -- --all              # all six scenarios
 PORT=3100 npm run eval -- --list             # what's available
 PORT=3100 npm run eval -- --scenario escalation --agent naive   # known-bad control
 PORT=3100 npm run eval:check                 # verify the pipeline, no API key needed
 ```
+
+**Models come from [OpenRouter](https://openrouter.ai)**, so you can grade any
+tool-calling model by changing a slug — no code change. Slugs use dots, not dashes:
+
+```bash
+PORT=3100 npm run eval -- --scenario bump --model openai/gpt-5.4
+OPENROUTER_MODEL=anthropic/claude-sonnet-4.6 PORT=3100 npm run eval -- --all
+curl -s https://openrouter.ai/api/v1/models | jq -r '.data[].id'   # list slugs
+```
+
+Default is `anthropic/claude-opus-4.8`. `--model` sets the agent-under-test;
+`OPENROUTER_MODEL` sets the default for every role (profiler, generator, judge, agent),
+and `runEval({ models: {...} })` overrides each role individually — handy for grading a
+cheap agent with an expensive judge.
 
 Six scenarios across two difficulty families:
 

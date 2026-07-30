@@ -53,18 +53,45 @@ export interface ActivitySnapshot {
   sessions: SessionRow[];
   currentSessionId: string | null;
   actions: ActionRow[];
+  hasMore?: boolean;
   outbox: Array<{ id: string; messageId: string; envelopeTo: string[]; createdAt: number }>;
 }
 
+const ACTIVITY_PAGE = 1000;
+/** Backstop against an unbounded log; far above any plausible triage run. */
+const MAX_ACTIVITY_PAGES = 50;
+
+/**
+ * Drains every page of the activity feed. Grading and the judge both read this,
+ * and an agent working a real mailbox can easily exceed one page — a partial log
+ * silently understates what the agent did, so we never stop at the first page.
+ */
 export async function fetchActivity(
   opts: { sinceId?: number } = {},
   rootUrl = defaultRootUrl(),
 ): Promise<ActivitySnapshot> {
-  const url = new URL(`${rootUrl}/api/activity`);
-  if (opts.sinceId != null) url.searchParams.set("sinceId", String(opts.sinceId));
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`GET /api/activity failed (${res.status})`);
-  return (await res.json()) as ActivitySnapshot;
+  let snapshot: ActivitySnapshot | null = null;
+  const actions: ActionRow[] = [];
+  let beforeId: number | undefined;
+
+  for (let page = 0; page < MAX_ACTIVITY_PAGES; page++) {
+    const url = new URL(`${rootUrl}/api/activity`);
+    if (opts.sinceId != null) url.searchParams.set("sinceId", String(opts.sinceId));
+    if (beforeId != null) url.searchParams.set("beforeId", String(beforeId));
+    url.searchParams.set("limit", String(ACTIVITY_PAGE));
+
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`GET /api/activity failed (${res.status})`);
+    const body = (await res.json()) as ActivitySnapshot;
+    snapshot ??= body;
+    actions.push(...body.actions);
+
+    if (!body.hasMore || body.actions.length === 0) break;
+    // Rows are newest-first, so the oldest id on this page is the next cursor.
+    beforeId = body.actions.reduce((min, a) => (a.id < min ? a.id : min), Infinity);
+  }
+
+  return { ...(snapshot as ActivitySnapshot), actions };
 }
 
 /** Highest action id currently in the log — the watermark taken before triage. */

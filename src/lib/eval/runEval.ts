@@ -1,4 +1,4 @@
-import { referenceClaudeTriageAgent, TRIAGE_BRIEF } from "./agents";
+import { referenceTriageAgent, TRIAGE_BRIEF } from "./agents";
 import {
   connectGmail,
   defaultRootUrl,
@@ -41,7 +41,7 @@ export async function runEval(opts: RunEvalOptions): Promise<EvalReport> {
     typeof opts.scenario === "string" ? getScenario(opts.scenario) : opts.scenario;
   const rootUrl = opts.rootUrl ?? defaultRootUrl();
   const token = opts.token ?? defaultToken();
-  const agent = opts.agent ?? referenceClaudeTriageAgent({ model: opts.models?.agent });
+  const agent = opts.agent ?? referenceTriageAgent({ model: opts.models?.agent });
   const say = opts.onProgress ?? (() => {});
 
   if (!(await sandboxIsUp(rootUrl))) {

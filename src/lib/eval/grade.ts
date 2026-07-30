@@ -1,4 +1,4 @@
-import { completeJSON } from "./anthropic";
+import { completeJSON } from "./llm";
 import type {
   AssertionResult,
   GradeCtx,
@@ -97,6 +97,7 @@ export async function judgeRun(
       (o.replied ? `THE REPLY THE AGENT SENT:\n${o.replyText}\n\n` : "") +
       `QUESTION TO ANSWER: ${ctx.scenario.judgeQuestion}`,
     schema: JUDGE_SCHEMA as unknown as Record<string, unknown>,
+    schemaName: "judge_verdict",
     model: opts.model,
     effort: "high",
   });

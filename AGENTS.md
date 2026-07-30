@@ -31,8 +31,9 @@ npm run sync -- --query "newer_than:90d"   # real Gmail read-only sync (needs OA
 npm run reset            # restore working.db from snapshot (curls server, falls back to file copy)
 
 PORT=3100 npm run eval:check                 # eval pipeline check — NO API key needed
-PORT=3100 ANTHROPIC_API_KEY=… npm run eval -- --scenario escalation
+OPENROUTER_API_KEY=… PORT=3100 npm run eval -- --scenario escalation
 PORT=3100 npm run eval -- --list             # scenarios;  --all  --agent naive  --no-judge
+PORT=3100 npm run eval -- --scenario bump --model openai/gpt-5.4   # any OpenRouter slug
 ```
 
 **Definition of done for API changes:** `npx tsc --noEmit` clean, `npm test`
@@ -74,11 +75,12 @@ src/lib/eval/            triage stress-test eval (data-agnostic):
   scenarios/             common.ts (assertion predicates) + index.ts (the 6-scenario catalog)
   context.ts             read the real mailbox -> MailboxProfile, anchor thread, style exemplars
   generate.ts            few-shot prose per slot; structure/threading assembled in CODE
-  agents.ts              TRIAGE_BRIEF, referenceClaudeTriageAgent (tool loop), naiveArchiveAgent
+  agents.ts              TRIAGE_BRIEF, referenceTriageAgent (tool loop), naiveArchiveAgent
   observe.ts             audit log + final state -> ProbeOutcome
   grade.ts               deterministic assertions + LLM judge -> Verdict
   runEval.ts             orchestrator;  report.ts  console + JSON artifact
-  anthropic.ts           completeJSON() via output_config.format;  client.ts  sandbox HTTP/SDK
+  llm.ts                 OpenRouter (OpenAI-compatible) client + completeJSON()
+  client.ts              sandbox HTTP + official-SDK Gmail connection
 src/cli/                 db-init, seed, sync, google-auth, reset
 app/gmail/v1/users/[userId]/...   the Gmail-compatible API (route.ts files)
 app/api/{health,activity,sandbox/reset,ui/*}   internal routes (no bearer auth)
@@ -150,6 +152,20 @@ tests/                   vitest
 - Injection is deliberately **not** audit-logged (it's test setup, and the grader reads
   the audit log to judge the agent). Probes carry `is_sandbox_created = 0` so they blend
   in with synced mail.
+- **All model calls go through OpenRouter** (`llm.ts`), which is OpenAI-compatible — so
+  tools are `{type:'function', function:{...}}`, tool results are `{role:'tool',
+  tool_call_id}`, and structured output is `response_format.json_schema` with
+  `strict: true`. Strict mode requires every object to set `additionalProperties: false`
+  and list ALL properties in `required` — the schemas in `context/generate/grade` already
+  do; keep new ones the same or the provider 400s.
+- **Never send sampling params.** Some models reject them outright (`openai/gpt-5.4`
+  rejects `temperature`). Depth is controlled with OpenRouter's unified
+  `reasoning: {effort}`, which models that lack it simply ignore.
+- **Model slugs use dots** (`anthropic/claude-opus-4.8`), not dashes. Don't hand-write a
+  slug from memory — `curl -s https://openrouter.ai/api/v1/models | jq -r '.data[].id'`.
+- `tests/llm-wire.test.ts` asserts the outgoing request shape against a local mock, so
+  wire-format regressions fail in CI with no key and no network. Run it after touching
+  `llm.ts` or the tool definitions.
 
 ## Out of scope (return Gmail-shaped 501/404, don't fake)
 

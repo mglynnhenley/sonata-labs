@@ -1,4 +1,4 @@
-import { completeJSON } from "./anthropic";
+import { completeJSON } from "./llm";
 import type {
   Anchor,
   Contact,
@@ -163,6 +163,7 @@ export async function generateFixture(args: {
       `same people in the same conversation.\n\n${slotSpec}\n\n` +
       `Return one entry per slot, with the matching id.`,
     schema: FIXTURE_SCHEMA as unknown as Record<string, unknown>,
+    schemaName: "fixture_slots",
     model: args.options?.model,
     effort: "high",
   });

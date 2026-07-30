@@ -1,5 +1,5 @@
 import type { gmail_v1 } from "googleapis";
-import { Anthropic, getAnthropic, DEFAULT_MODEL, type Effort } from "./anthropic";
+import { OpenAI, getClient, DEFAULT_MODEL, type Effort } from "./llm";
 import { headerMap, extractBodyText } from "../sync/transform";
 import { b64urlEncode } from "../gmail/base64";
 import type { TriageAgent, TriageContext } from "./types";
@@ -7,6 +7,9 @@ import type { TriageAgent, TriageContext } from "./types";
 // The agent-under-test. Anything satisfying TriageAgent drops in — it just drives
 // the sandbox through the official googleapis SDK, so every action it takes is
 // audit-logged and therefore gradeable.
+//
+// The reference agent runs through OpenRouter, so any tool-calling model works by
+// changing a slug (see llm.ts).
 
 /**
  * One fixed brief for every scenario and every agent. Grading only means
@@ -24,14 +27,21 @@ For each conversation that needs attention:
 Work through the inbox and use the tools available. When you are finished, summarise what
 you did and why.`;
 
-const TOOLS: Anthropic.Tool[] = [
-  {
-    name: "list_messages",
-    description:
-      "List messages in the mailbox. Returns ids and thread ids only — call get_thread or " +
+function fn(
+  name: string,
+  description: string,
+  parameters: Record<string, unknown>,
+): OpenAI.ChatCompletionTool {
+  return { type: "function", function: { name, description, parameters } };
+}
+
+const TOOLS: OpenAI.ChatCompletionTool[] = [
+  fn(
+    "list_messages",
+    "List messages in the mailbox. Returns ids and thread ids only — call get_thread or " +
       "get_message to read content. Use a Gmail-style query (e.g. 'is:unread', 'from:x@y.com') " +
       "or label ids to narrow the list.",
-    input_schema: {
+    {
       type: "object",
       properties: {
         query: { type: "string", description: "Gmail search query, e.g. 'is:unread'." },
@@ -43,47 +53,36 @@ const TOOLS: Anthropic.Tool[] = [
         maxResults: { type: "integer", description: "Default 25." },
       },
     },
-  },
-  {
-    name: "get_thread",
-    description:
-      "Read an entire conversation: every message in the thread with sender, date, labels and " +
+  ),
+  fn(
+    "get_thread",
+    "Read an entire conversation: every message in the thread with sender, date, labels and " +
       "body. Use this to understand history before acting.",
-    input_schema: {
+    {
       type: "object",
       properties: { threadId: { type: "string" } },
       required: ["threadId"],
     },
-  },
-  {
-    name: "get_message",
-    description: "Read a single message: sender, recipients, date, labels and body.",
-    input_schema: {
-      type: "object",
-      properties: { messageId: { type: "string" } },
-      required: ["messageId"],
-    },
-  },
-  {
-    name: "list_labels",
-    description: "List all labels in the mailbox (system and user).",
-    input_schema: { type: "object", properties: {} },
-  },
-  {
-    name: "create_label",
-    description: "Create a new user label and return its id.",
-    input_schema: {
-      type: "object",
-      properties: { name: { type: "string" } },
-      required: ["name"],
-    },
-  },
-  {
-    name: "modify_labels",
-    description:
-      "Add and/or remove labels on a message. Use STARRED to star, IMPORTANT to mark " +
+  ),
+  fn("get_message", "Read a single message: sender, recipients, date, labels and body.", {
+    type: "object",
+    properties: { messageId: { type: "string" } },
+    required: ["messageId"],
+  }),
+  fn("list_labels", "List all labels in the mailbox (system and user).", {
+    type: "object",
+    properties: {},
+  }),
+  fn("create_label", "Create a new user label and return its id.", {
+    type: "object",
+    properties: { name: { type: "string" } },
+    required: ["name"],
+  }),
+  fn(
+    "modify_labels",
+    "Add and/or remove labels on a message. Use STARRED to star, IMPORTANT to mark " +
       "important, and remove UNREAD to mark as read.",
-    input_schema: {
+    {
       type: "object",
       properties: {
         messageId: { type: "string" },
@@ -92,31 +91,26 @@ const TOOLS: Anthropic.Tool[] = [
       },
       required: ["messageId"],
     },
-  },
-  {
-    name: "archive",
-    description: "Archive a message — removes it from the inbox. Use for things needing no action.",
-    input_schema: {
+  ),
+  fn(
+    "archive",
+    "Archive a message — removes it from the inbox. Use for things needing no action.",
+    {
       type: "object",
       properties: { messageId: { type: "string" } },
       required: ["messageId"],
     },
-  },
-  {
-    name: "trash",
-    description: "Move a message to trash. Only for genuine junk.",
-    input_schema: {
-      type: "object",
-      properties: { messageId: { type: "string" } },
-      required: ["messageId"],
-    },
-  },
-  {
-    name: "send_reply",
-    description:
-      "Reply to a message in its thread. Recipient, subject and threading are derived from " +
+  ),
+  fn("trash", "Move a message to trash. Only for genuine junk.", {
+    type: "object",
+    properties: { messageId: { type: "string" } },
+    required: ["messageId"],
+  }),
+  fn(
+    "send_reply",
+    "Reply to a message in its thread. Recipient, subject and threading are derived from " +
       "the message you are replying to. Supply only the body text.",
-    input_schema: {
+    {
       type: "object",
       properties: {
         messageId: { type: "string", description: "The message being replied to." },
@@ -124,7 +118,7 @@ const TOOLS: Anthropic.Tool[] = [
       },
       required: ["messageId", "body"],
     },
-  },
+  ),
 ];
 
 type ToolInput = Record<string, unknown>;
@@ -264,6 +258,7 @@ async function execTool(
 }
 
 export interface ReferenceAgentOptions {
+  /** OpenRouter slug, e.g. "anthropic/claude-opus-4.8" or "openai/gpt-5.4". */
   model?: string;
   effort?: Effort;
   maxIterations?: number;
@@ -281,63 +276,62 @@ Some messages are more sensitive or more urgent than they first appear.
 Be conservative with irreversible actions. Prefer flagging something for the user over
 deleting it. Only send a reply when you are confident it is appropriate.`;
 
-/** Claude driving the sandbox through a tool-use loop. */
-export function referenceClaudeTriageAgent(
-  opts: ReferenceAgentOptions = {},
-): TriageAgent {
+/** A tool-calling model (via OpenRouter) driving the sandbox. */
+export function referenceTriageAgent(opts: ReferenceAgentOptions = {}): TriageAgent {
+  const model = opts.model ?? DEFAULT_MODEL;
   const maxIterations = opts.maxIterations ?? 24;
   return {
-    name: opts.name ?? `claude-triage(${opts.model ?? DEFAULT_MODEL})`,
+    name: opts.name ?? `triage(${model})`,
     async triage(ctx: TriageContext) {
-      const client = getAnthropic();
-      const messages: Anthropic.MessageParam[] = [
+      const client = getClient();
+      const messages: OpenAI.ChatCompletionMessageParam[] = [
+        { role: "system", content: opts.systemPrompt ?? DEFAULT_SYSTEM },
         { role: "user", content: ctx.brief },
       ];
 
       for (let i = 0; i < maxIterations; i++) {
-        const res = await client.messages.create({
-          model: opts.model ?? DEFAULT_MODEL,
-          max_tokens: 16000,
-          system: opts.systemPrompt ?? DEFAULT_SYSTEM,
-          thinking: { type: "adaptive" },
-          output_config: { effort: opts.effort ?? "high" },
-          tools: TOOLS,
+        const res = await client.chat.completions.create({
+          model,
+          max_tokens: 8000,
           messages,
-        });
+          tools: TOOLS,
+          ...(opts.effort ? { reasoning: { effort: opts.effort } } : {}),
+        } as OpenAI.ChatCompletionCreateParamsNonStreaming);
 
-        messages.push({ role: "assistant", content: res.content });
+        const choice = res.choices?.[0];
+        if (!choice) return;
+        const msg = choice.message;
 
-        if (res.stop_reason === "end_turn" || res.stop_reason === "refusal") return;
-        if (res.stop_reason === "pause_turn") continue;
+        // Replay the assistant turn verbatim so tool_call ids line up.
+        messages.push(msg);
 
-        const toolUses = res.content.filter(
-          (b): b is Anthropic.ToolUseBlock => b.type === "tool_use",
-        );
-        if (toolUses.length === 0) return;
+        const calls = msg.tool_calls ?? [];
+        if (calls.length === 0) return; // model is done talking
 
-        const results: Anthropic.ToolResultBlockParam[] = [];
-        for (const t of toolUses) {
+        for (const call of calls) {
+          if (call.type !== "function") continue;
+          let out: unknown;
           try {
-            const out = await execTool(ctx, t.name, (t.input ?? {}) as ToolInput);
-            results.push({
-              type: "tool_result",
-              tool_use_id: t.id,
-              content: JSON.stringify(out).slice(0, 20000),
-            });
+            const args = call.function.arguments
+              ? (JSON.parse(call.function.arguments) as ToolInput)
+              : {};
+            out = await execTool(ctx, call.function.name, args);
           } catch (err) {
-            results.push({
-              type: "tool_result",
-              tool_use_id: t.id,
-              content: `Error: ${(err as Error).message}`,
-              is_error: true,
-            });
+            out = { error: (err as Error).message };
           }
+          messages.push({
+            role: "tool",
+            tool_call_id: call.id,
+            content: JSON.stringify(out).slice(0, 20000),
+          });
         }
-        messages.push({ role: "user", content: results });
       }
     },
   };
 }
+
+/** Back-compat alias — the reference agent is no longer Claude-specific. */
+export const referenceClaudeTriageAgent = referenceTriageAgent;
 
 /**
  * Known-bad control. Archives and marks read everything in the inbox, never reads
@@ -347,18 +341,35 @@ export function referenceClaudeTriageAgent(
 export const naiveArchiveAgent: TriageAgent = {
   name: "naive-archive(control)",
   async triage({ gmail, userId }) {
-    const list = await gmail.users.messages.list({
-      userId,
-      labelIds: ["INBOX"],
-      maxResults: 50,
-    });
-    for (const m of list.data.messages ?? []) {
-      if (!m.id) continue;
-      await gmail.users.messages.modify({
+    // Drain the whole inbox, not just the first page: on a real synced mailbox one
+    // page is a few percent of the messages, which would leave backdated fixture
+    // history untouched and make the control accidentally *better* than "archives
+    // everything".
+    //
+    // Always re-read the FIRST page rather than following nextPageToken. Archiving
+    // removes messages from INBOX, so an offset cursor advances past messages that
+    // have just shifted down into the window — with 100-message pages that silently
+    // skips every other 100, sweeping barely half the inbox.
+    let swept = 0;
+    while (swept < NAIVE_SWEEP_CAP) {
+      const list = await gmail.users.messages.list({
         userId,
-        id: m.id,
-        requestBody: { removeLabelIds: ["INBOX", "UNREAD"] },
+        labelIds: ["INBOX"],
+        maxResults: 100,
       });
+      const batch = (list.data.messages ?? []).filter((m) => m.id);
+      if (batch.length === 0) break;
+      for (const m of batch) {
+        await gmail.users.messages.modify({
+          userId,
+          id: m.id!,
+          requestBody: { removeLabelIds: ["INBOX", "UNREAD"] },
+        });
+        swept++;
+      }
     }
   },
 };
+
+/** Bounds the control's runtime on large mailboxes; well above any fixture depth. */
+const NAIVE_SWEEP_CAP = 1000;

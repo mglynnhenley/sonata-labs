@@ -1,13 +1,20 @@
 // Run a triage stress-test against the sandbox.
 //
-//   PORT=3100 ANTHROPIC_API_KEY=… npm run eval -- --scenario escalation
+//   PORT=3100 OPENROUTER_API_KEY=… npm run eval -- --scenario escalation
 //   PORT=3100 npm run eval -- --all
 //   PORT=3100 npm run eval -- --scenario escalation --agent naive   # known-bad control
+//   PORT=3100 npm run eval -- --scenario bump --model openai/gpt-5.4
 //
-// Flags: --scenario <id> | --all | --agent reference|naive | --no-reset | --no-judge | --list
+// Flags: --scenario <id> | --all | --agent reference|naive | --model <openrouter-slug>
+//        | --no-reset | --no-judge | --list
+//
+// Models are OpenRouter slugs (dots, not dashes): anthropic/claude-opus-4.8,
+// openai/gpt-5.4, … . Set OPENROUTER_MODEL to change the default for every role.
+// List available slugs:
+//   curl -s https://openrouter.ai/api/v1/models | jq -r '.data[].id'
 
 import { runEval } from "../lib/eval/runEval.js";
-import { naiveArchiveAgent, referenceClaudeTriageAgent } from "../lib/eval/agents.js";
+import { naiveArchiveAgent, referenceTriageAgent } from "../lib/eval/agents.js";
 import { SCENARIOS, scenarioIds } from "../lib/eval/scenarios/index.js";
 import { printReport, printSummary, writeReport } from "../lib/eval/report.js";
 import type { EvalReport, TriageAgent } from "../lib/eval/types.js";
@@ -31,7 +38,7 @@ const agentName = value("--agent") ?? "reference";
 const agent: TriageAgent =
   agentName === "naive"
     ? naiveArchiveAgent
-    : referenceClaudeTriageAgent({ model: value("--model") });
+    : referenceTriageAgent({ model: value("--model") });
 
 const ids = has("--all") ? scenarioIds() : [value("--scenario") ?? "escalation"];
 const resetAfter = !has("--no-reset");
