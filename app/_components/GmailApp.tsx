@@ -5,8 +5,12 @@ import type { RailLabel, ListView, ThreadView, ActivityData } from "./types";
 import { MessageList } from "./MessageList";
 import { ThreadPane } from "./ThreadView";
 import { ActivityPanel } from "./ActivityPanel";
+import { TracePanel } from "./TracePanel";
 
 type View = { kind: "list"; labelId: string; labelName: string } | { kind: "thread"; threadId: string };
+
+/** Right-hand panel, or none. Only one is useful at a time in 340px. */
+type Panel = "activity" | "trace" | null;
 
 const DEFAULT_VIEW: View = { kind: "list", labelId: "INBOX", labelName: "Inbox" };
 
@@ -30,7 +34,7 @@ export function GmailApp() {
   const [query, setQuery] = useState("");
   const [searchInput, setSearchInput] = useState("");
   const [activity, setActivity] = useState<ActivityData | null>(null);
-  const [showActivity, setShowActivity] = useState(true);
+  const [panel, setPanel] = useState<Panel>("activity");
   const [page, setPage] = useState(0);
 
   const refreshLabels = useCallback(async () => {
@@ -48,12 +52,24 @@ export function GmailApp() {
     setList(r);
   }, [view, page, query]);
 
-  const openThread = useCallback(async (threadId: string) => {
-    const r = await fetch(`/api/ui/thread/${threadId}?markRead=1`).then((r) => r.json());
-    setThread(r);
-    setView({ kind: "thread", threadId });
-    refreshLabels();
-  }, [refreshLabels]);
+  // markRead mirrors Gmail, but it is a real mutation *and* it is audit-logged —
+  // so anything that opens a thread for inspection (replaying a trace) must pass
+  // markRead: false, or browsing pollutes the log it is showing.
+  const openThread = useCallback(
+    async (threadId: string, { markRead = true }: { markRead?: boolean } = {}) => {
+      const url = `/api/ui/thread/${threadId}${markRead ? "?markRead=1" : ""}`;
+      const r = await fetch(url).then((r) => r.json());
+      setThread(r);
+      setView({ kind: "thread", threadId });
+      if (markRead) refreshLabels();
+    },
+    [refreshLabels],
+  );
+
+  const inspectThread = useCallback(
+    (threadId: string) => openThread(threadId, { markRead: false }),
+    [openThread],
+  );
 
   const refreshActivity = useCallback(async () => {
     const r = await fetch("/api/activity").then((r) => r.json());
@@ -138,14 +154,20 @@ export function GmailApp() {
         </form>
 
         <div className="flex items-center gap-1">
-          <button
-            onClick={() => setShowActivity((s) => !s)}
-            className={`flex items-center gap-1.5 rounded-full px-3 py-2 text-sm font-medium ${showActivity ? "bg-[#d3e3fd] text-[#041e49]" : "text-[#5f6368] hover:bg-[#e9eef6]"}`}
-            title="Agent activity panel"
-          >
-            <span className="material-symbols-outlined text-[20px]">monitoring</span>
-            Activity
-          </button>
+          <PanelToggle
+            active={panel === "activity"}
+            icon="monitoring"
+            label="Activity"
+            title="Live agent action feed"
+            onClick={() => setPanel((p) => (p === "activity" ? null : "activity"))}
+          />
+          <PanelToggle
+            active={panel === "trace"}
+            icon="route"
+            label="Traces"
+            title="Replay a recorded eval run"
+            onClick={() => setPanel((p) => (p === "trace" ? null : "trace"))}
+          />
           <button className="rounded-full p-2.5 hover:bg-[#e9eef6]" aria-label="Support">
             <span className="material-symbols-outlined text-[#5f6368]">help</span>
           </button>
@@ -232,14 +254,42 @@ export function GmailApp() {
           </div>
         </main>
 
-        {showActivity && (
+        {panel === "activity" && (
           <ActivityPanel data={activity} onReset={async () => {
             await fetch("/api/sandbox/reset", { method: "POST" });
             refreshLabels(); refreshActivity(); refreshList();
           }} />
         )}
+        {panel === "trace" && <TracePanel onOpenThread={inspectThread} />}
       </div>
     </div>
+  );
+}
+
+function PanelToggle({
+  active,
+  icon,
+  label,
+  title,
+  onClick,
+}: {
+  active: boolean;
+  icon: string;
+  label: string;
+  title: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      title={title}
+      className={`flex items-center gap-1.5 rounded-full px-3 py-2 text-sm font-medium ${
+        active ? "bg-[#d3e3fd] text-[#041e49]" : "text-[#5f6368] hover:bg-[#e9eef6]"
+      }`}
+    >
+      <span className="material-symbols-outlined text-[20px]">{icon}</span>
+      {label}
+    </button>
   );
 }
 

@@ -34,7 +34,14 @@ PORT=3100 npm run eval:check                 # eval pipeline check — NO API ke
 OPENROUTER_API_KEY=… PORT=3100 npm run eval -- --scenario escalation
 PORT=3100 npm run eval -- --list             # scenarios;  --all  --agent naive  --no-judge
 PORT=3100 npm run eval -- --scenario bump --model openai/gpt-5.4   # any OpenRouter slug
+PORT=3100 npm run eval -- --scenario escalation --no-reset   # keep the mailbox to inspect
 ```
+
+Every run writes a report and a trace to `data/eval-runs/`. Open the sandbox and hit
+**Traces** in the header to replay one step by step (↑/↓ or j/k); selecting a step jumps
+the mailbox to the thread it touched, read-only. Pass `--no-reset` when you want the
+mailbox left in its post-run state — the default reset restores the snapshot, so the
+probe messages a trace refers to will be gone.
 
 **Definition of done for API changes:** `npx tsc --noEmit` clean, `npm test`
 green, and `PORT=3100 npm run smoke` at 48/48. The smoke harness uses the real
@@ -80,10 +87,12 @@ src/lib/eval/            triage stress-test eval (data-agnostic):
   grade.ts               deterministic assertions + LLM judge -> Verdict
   runEval.ts             orchestrator;  report.ts  console + JSON artifact
   llm.ts                 OpenRouter (OpenAI-compatible) client + completeJSON()
+  trace.ts               ambient capture of model calls + agent tool calls
+  runs.ts                read side of data/eval-runs/ for the API routes
   client.ts              sandbox HTTP + official-SDK Gmail connection
 src/cli/                 db-init, seed, sync, google-auth, reset
 app/gmail/v1/users/[userId]/...   the Gmail-compatible API (route.ts files)
-app/api/{health,activity,sandbox/reset,ui/*}   internal routes (no bearer auth)
+app/api/{health,activity,sandbox/reset,ui/*,eval/*}   internal routes (no bearer auth)
 app/_components/*         Gmail-replica UI (client components)
 scripts/                 smoke-sdk(+writes), demo-agent (all use the official SDK)
 tests/                   vitest
@@ -143,6 +152,15 @@ tests/                   vitest
   what the agent *did*. `surfacedPrior` (label-adding) is the history signal, not
   `touchedPrior` (any action) — a bulk-archiving agent touches everything and must not
   earn credit for engaging with history.
+- **Traces are how reads become visible.** `trace.ts` captures every model call and agent
+  tool call via `AsyncLocalStorage`, so nothing changes signature to opt in and capture is
+  inert outside `withTrace`. The judge sees the read log; assertions deliberately do not,
+  so the deterministic rubric stays behaviour-only. Pass a `trace` to `runEval` and persist
+  it with `writeTrace` — the CLI does both, and the Traces panel replays the artifact.
+- **Attribution of audit rows to tool calls is ordinal, not timestamped.** The Nth
+  successful mutating call wrote the Nth row; a local archive finishes inside a
+  millisecond, so no timestamp rule can separate adjacent calls. That is why `ToolCall`
+  carries `error` — a rejected call writes no row and must not consume one.
 - **Adding a scenario:** add it to `SCENARIOS` in `scenarios/index.ts` with ≥1 `must`
   assertion and a `judgeQuestion`; the catalog tests enforce slot/threading validity.
   Then confirm `--agent naive` still fails the ones it should.

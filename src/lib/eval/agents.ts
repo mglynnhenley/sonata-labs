@@ -2,6 +2,7 @@ import type { gmail_v1 } from "googleapis";
 import { OpenAI, getClient, DEFAULT_MODEL, type Effort } from "./llm";
 import { headerMap, extractBodyText } from "../sync/transform";
 import { b64urlEncode } from "../gmail/base64";
+import { recordAgentSummary, recordToolCall } from "./trace";
 import type { TriageAgent, TriageContext } from "./types";
 
 // The agent-under-test. Anything satisfying TriageAgent drops in — it just drives
@@ -123,8 +124,29 @@ const TOOLS: OpenAI.ChatCompletionTool[] = [
 
 type ToolInput = Record<string, unknown>;
 
+/**
+ * The tools that write. Everything else is a read, which the sandbox does not
+ * audit-log — so for reads the trace is the only record they happened at all.
+ */
+const MUTATING_TOOLS = new Set([
+  "create_label",
+  "modify_labels",
+  "archive",
+  "trash",
+  "send_reply",
+]);
+
 function str(v: unknown): string {
   return typeof v === "string" ? v : String(v ?? "");
+}
+
+/** What a tool call acted on, so the viewer can jump the mailbox to it. */
+function targetsOf(args: ToolInput, result: unknown): { threadId?: string; messageId?: string } {
+  const out = (result ?? {}) as Record<string, unknown>;
+  return {
+    threadId: str(args.threadId) || str(out.threadId) || undefined,
+    messageId: str(args.messageId) || str(out.id) || undefined,
+  };
 }
 
 async function describeMessage(
@@ -306,19 +328,40 @@ export function referenceTriageAgent(opts: ReferenceAgentOptions = {}): TriageAg
         messages.push(msg);
 
         const calls = msg.tool_calls ?? [];
-        if (calls.length === 0) return; // model is done talking
+        if (calls.length === 0) {
+          // The model is done. Its closing message is the agent's own account of
+          // what it did — the brief explicitly asks for one, so keep it.
+          if (typeof msg.content === "string" && msg.content.trim()) {
+            recordAgentSummary(msg.content.trim());
+          }
+          return;
+        }
 
         for (const call of calls) {
           if (call.type !== "function") continue;
+          const startedAt = Date.now();
+          let args: ToolInput = {};
           let out: unknown;
+          let error: string | undefined;
           try {
-            const args = call.function.arguments
+            args = call.function.arguments
               ? (JSON.parse(call.function.arguments) as ToolInput)
               : {};
             out = await execTool(ctx, call.function.name, args);
           } catch (err) {
-            out = { error: (err as Error).message };
+            error = (err as Error).message;
+            out = { error };
           }
+          recordToolCall({
+            name: call.function.name,
+            args,
+            result: out,
+            isMutation: MUTATING_TOOLS.has(call.function.name),
+            startedAt,
+            endedAt: Date.now(),
+            ...(error ? { error } : {}),
+            ...targetsOf(args, out),
+          });
           messages.push({
             role: "tool",
             tool_call_id: call.id,

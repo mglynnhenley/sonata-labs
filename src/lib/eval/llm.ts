@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+import { currentTrace, recordLlmCall } from "./trace";
 
 // Model access for the eval's own calls (profiling, generation, judging) and for
 // the reference agent's tool loop. Everything goes through OpenRouter, which
@@ -17,6 +18,58 @@ export const DEFAULT_MODEL =
 
 let client: OpenAI | null = null;
 
+function parseJson(text: string | undefined): unknown {
+  if (!text) return undefined;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
+  }
+}
+
+/**
+ * Transport that copies every request/response into the active trace. Recording
+ * here rather than around `chat.completions.create` means all four harness roles
+ * are covered at one seam, the bodies are captured verbatim (so `usage`,
+ * `finish_reason` and any provider-specific reasoning field survive), and nothing
+ * breaks when the SDK reshapes its methods.
+ */
+const tracingFetch: typeof globalThis.fetch = async (input, init) => {
+  if (!currentTrace()) return globalThis.fetch(input, init);
+
+  const request = parseJson(typeof init?.body === "string" ? init.body : undefined);
+  const model =
+    request && typeof request === "object" && "model" in request
+      ? String((request as { model: unknown }).model)
+      : "";
+  const startedAt = Date.now();
+
+  try {
+    const res = await globalThis.fetch(input, init);
+    // Clone before reading: the SDK still needs to consume the original body.
+    const body = await res.clone().text();
+    recordLlmCall({
+      model,
+      request,
+      response: parseJson(body),
+      startedAt,
+      endedAt: Date.now(),
+      ...(res.ok ? {} : { error: `HTTP ${res.status}` }),
+    });
+    return res;
+  } catch (err) {
+    recordLlmCall({
+      model,
+      request,
+      response: undefined,
+      startedAt,
+      endedAt: Date.now(),
+      error: (err as Error).message,
+    });
+    throw err;
+  }
+};
+
 export function getClient(): OpenAI {
   if (!client) {
     const apiKey = process.env.OPENROUTER_API_KEY;
@@ -28,6 +81,7 @@ export function getClient(): OpenAI {
     client = new OpenAI({
       apiKey,
       baseURL: OPENROUTER_BASE_URL,
+      fetch: tracingFetch,
       // Optional OpenRouter attribution headers.
       defaultHeaders: {
         "HTTP-Referer": "https://github.com/mglynnhenley/gmail-clone",
@@ -36,6 +90,11 @@ export function getClient(): OpenAI {
     });
   }
   return client;
+}
+
+/** Drop the memoized client. Tests use this to re-read env between cases. */
+export function resetClient(): void {
+  client = null;
 }
 
 export type Effort = "low" | "medium" | "high";

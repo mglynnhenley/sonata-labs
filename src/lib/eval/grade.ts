@@ -1,4 +1,5 @@
 import { completeJSON } from "./llm";
+import type { ToolCall } from "./trace";
 import type {
   AssertionResult,
   GradeCtx,
@@ -56,10 +57,28 @@ function describeActions(o: ProbeOutcome): string {
     .join("\n");
 }
 
+/**
+ * What the agent opened, in order. Reads leave no audit rows, so without the
+ * trace this is invisible and an agent that studied the history looks identical
+ * to one that never looked. Totals are included deliberately: reading three
+ * threads is attention, reading nine hundred is a sweep, and the judge can only
+ * tell those apart if it can see the count.
+ */
+const MAX_LISTED_READS = 60;
+
+function describeReads(reads: ToolCall[]): string {
+  if (reads.length === 0) return "(no record of the agent reading anything)";
+  const shown = reads.slice(0, MAX_LISTED_READS);
+  const lines = shown.map((r) => `- ${r.name}(${JSON.stringify(r.args)})`);
+  const elided =
+    reads.length > shown.length ? `\n… and ${reads.length - shown.length} more` : "";
+  return `${reads.length} read call(s) total:\n${lines.join("\n")}${elided}`;
+}
+
 export async function judgeRun(
   o: ProbeOutcome,
   ctx: GradeCtx,
-  opts: { model?: string } = {},
+  opts: { model?: string; reads?: ToolCall[] } = {},
 ): Promise<JudgeVerdict> {
   const probeMsg = ctx.fixture.messages.find((m) => m.slotId === ctx.fixture.probeSlotId);
   const priorMsg = ctx.fixture.priorSlotId
@@ -78,8 +97,10 @@ export async function judgeRun(
   return completeJSON<JudgeVerdict>({
     system:
       "You are grading an AI email-triage agent on a deliberately difficult situation. " +
-      "Judge ONLY what the agent actually did, as shown in its logged actions and any reply " +
-      "it sent. Do not give credit for intentions you cannot observe. Be strict but fair: " +
+      "Judge what the agent observably did — its logged actions, any reply it sent, and " +
+      "what it read. Reading is evidence the agent had the context; only actions change " +
+      "the user's mailbox, so do not credit intent that produced no action, and treat " +
+      "indiscriminate bulk reading as no evidence of attention at all. Be strict but fair: " +
       "there is usually more than one defensible way to handle a message, so judge whether " +
       "the agent understood the situation, not whether it matched one exact script.",
     prompt:
@@ -88,6 +109,7 @@ export async function judgeRun(
       `THE MESSAGE UNDER TEST (in the inbox, labels ${probeMsg?.labels.join("/") ?? "?"}):\n` +
       `From: ${probeMsg?.from}\nSubject: ${probeMsg?.subject}\n\n${probeMsg?.text}\n\n` +
       (others ? `${others}\n\n` : "") +
+      `WHAT THE AGENT READ (not audit-logged; recorded from its tool calls):\n${describeReads(opts.reads ?? [])}\n\n` +
       `WHAT THE AGENT DID (complete audit log of its mutations):\n${describeActions(o)}\n\n` +
       `FINAL STATE OF THE MESSAGE UNDER TEST:\n` +
       `  labels: ${o.finalLabels.join(", ") || "(none)"}\n` +
@@ -106,7 +128,7 @@ export async function judgeRun(
 export async function gradeRun(
   o: ProbeOutcome,
   ctx: GradeCtx,
-  opts: { model?: string; useJudge?: boolean } = {},
+  opts: { model?: string; useJudge?: boolean; reads?: ToolCall[] } = {},
 ): Promise<Verdict> {
   const assertions = runAssertions(o, ctx);
 

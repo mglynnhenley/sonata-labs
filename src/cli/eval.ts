@@ -16,7 +16,14 @@
 import { runEval } from "../lib/eval/runEval.js";
 import { naiveArchiveAgent, referenceTriageAgent } from "../lib/eval/agents.js";
 import { SCENARIOS, scenarioIds } from "../lib/eval/scenarios/index.js";
-import { printReport, printSummary, writeReport } from "../lib/eval/report.js";
+import {
+  printReport,
+  printSummary,
+  runIdFor,
+  writeReport,
+  writeTrace,
+} from "../lib/eval/report.js";
+import { newTrace } from "../lib/eval/trace.js";
 import type { EvalReport, TriageAgent } from "../lib/eval/types.js";
 
 const argv = process.argv.slice(2);
@@ -50,16 +57,20 @@ let failures = 0;
 
 for (const id of ids) {
   try {
+    const trace = newTrace(runIdFor(stamp, id));
     const report = await runEval({
       scenario: id,
       agent,
       resetAfter,
       useJudge,
+      trace,
       onProgress: (step) => console.log(`  \x1b[2m→ ${step}\x1b[0m`),
     });
     printReport(report);
     const file = writeReport(report, stamp);
+    const traceFile = writeTrace(trace);
     console.log(`\x1b[2m  report: ${file}\x1b[0m`);
+    console.log(`\x1b[2m  trace:  ${traceFile}\x1b[0m`);
     reports.push(report);
     if (report.verdict.outcome === "fail") failures++;
   } catch (err) {

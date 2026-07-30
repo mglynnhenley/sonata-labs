@@ -13,6 +13,7 @@ import { generateFixture, bindContact } from "./generate";
 import { gradeRun } from "./grade";
 import { buildProbeOutcome } from "./observe";
 import { getScenario } from "./scenarios";
+import { attributeActions, readCalls, withRole, withTrace, type RunTrace } from "./trace";
 import type { Anchor, EvalReport, GradeCtx, StressScenario, TriageAgent } from "./types";
 
 // The data-agnostic entry point. Everything about the probe is derived from
@@ -33,9 +34,18 @@ export interface RunEvalOptions {
   resetAfter?: boolean;
   useJudge?: boolean;
   onProgress?: (step: string) => void;
+  /**
+   * Pass a trace to capture every model call and agent tool call. The caller keeps
+   * the reference and persists it; omit it and capture is inert.
+   */
+  trace?: RunTrace;
 }
 
-export async function runEval(opts: RunEvalOptions): Promise<EvalReport> {
+export function runEval(opts: RunEvalOptions): Promise<EvalReport> {
+  return withTrace(opts.trace, () => runTracedEval(opts));
+}
+
+async function runTracedEval(opts: RunEvalOptions): Promise<EvalReport> {
   const started = Date.now();
   const scenario =
     typeof opts.scenario === "string" ? getScenario(opts.scenario) : opts.scenario;
@@ -55,10 +65,12 @@ export async function runEval(opts: RunEvalOptions): Promise<EvalReport> {
 
   // 1. Context — who this mailbox belongs to and who they talk to.
   say("reading mailbox and building profile");
-  const profile = await extractMailboxProfile(gmail, userId, {
-    sampleSize: opts.corpusSampleSize,
-    model: opts.models?.profiler,
-  });
+  const profile = await withRole("profiler", () =>
+    extractMailboxProfile(gmail, userId, {
+      sampleSize: opts.corpusSampleSize,
+      model: opts.models?.profiler,
+    }),
+  );
 
   // 2. Anchor — a real thread to continue, so the agent works with real history.
   let anchor: Anchor | null = null;
@@ -74,13 +86,15 @@ export async function runEval(opts: RunEvalOptions): Promise<EvalReport> {
     count: opts.exemplarCount ?? 3,
   });
   say(`generating "${scenario.id}" fixture as ${contact.name} <${contact.email}>`);
-  const { fixture } = await generateFixture({
-    scenario,
-    profile,
-    anchor,
-    exemplars,
-    options: { model: opts.models?.generator },
-  });
+  const { fixture } = await withRole("generator", () =>
+    generateFixture({
+      scenario,
+      profile,
+      anchor,
+      exemplars,
+      options: { model: opts.models?.generator },
+    }),
+  );
 
   // 4. Inject.
   say(`injecting ${fixture.messages.length} message(s)`);
@@ -111,12 +125,18 @@ export async function runEval(opts: RunEvalOptions): Promise<EvalReport> {
     rootUrl,
   });
 
+  // Link the agent's mutations back to the tool calls that made them.
+  if (opts.trace) attributeActions(opts.trace, outcome.allActions);
+
   say("grading");
   const ctx: GradeCtx = { scenario, fixture, injected, probe, prior, anchor };
-  const verdict = await gradeRun(outcome, ctx, {
-    model: opts.models?.judge,
-    useJudge: opts.useJudge,
-  });
+  const verdict = await withRole("judge", () =>
+    gradeRun(outcome, ctx, {
+      model: opts.models?.judge,
+      useJudge: opts.useJudge,
+      reads: opts.trace ? readCalls(opts.trace) : undefined,
+    }),
+  );
 
   // 7. Reset so runs are isolated (audit.db survives).
   if (opts.resetAfter !== false) {
