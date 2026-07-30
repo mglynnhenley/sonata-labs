@@ -14,10 +14,13 @@
     "reset": "tsx src/cli/reset.ts",
     "smoke": "tsx scripts/smoke-sdk.ts",
     "demo": "tsx scripts/demo-agent.ts",
+    "eval": "tsx src/cli/eval.ts",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "eval:check": "tsx scripts/eval-offline-check.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.115.0",
     "@google-cloud/local-auth": "^3.0.1",
     "better-sqlite3": "^11.8.1",
     "googleapis": "^144.0.0",

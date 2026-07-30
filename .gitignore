@@ -19,3 +19,6 @@ google-token.json
 .env*.local
 /coverage
 .gstack/
+
+# build artifacts
+*.tsbuildinfo

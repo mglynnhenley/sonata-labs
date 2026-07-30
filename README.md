@@ -73,6 +73,51 @@ await gmail.users.messages.list({ userId: "me", labelIds: ["INBOX"] });
 > Pass an `OAuth2Client` (not a string) so the token becomes an
 > `Authorization: Bearer` header rather than a `?key=` query param.
 
+## Triage stress-test eval
+
+Measures whether a triage agent handles *genuinely hard* situations — not whether it
+can be tricked. The classic case: an angry email from someone who already sent one.
+Correct triage requires context the single message doesn't carry, so a naive agent
+treats the escalation like a first complaint.
+
+It's **data-agnostic**: it reads whatever mailbox is loaded, derives the owner's
+persona and real contacts, then generates a trap email *in that mailbox's voice* from
+a plausible real sender — where possible as a reply on a real thread.
+
+```bash
+PORT=3100 ANTHROPIC_API_KEY=… npm run eval -- --scenario escalation
+PORT=3100 npm run eval -- --all              # all six scenarios
+PORT=3100 npm run eval -- --list             # what's available
+PORT=3100 npm run eval -- --scenario escalation --agent naive   # known-bad control
+PORT=3100 npm run eval:check                 # verify the pipeline, no API key needed
+```
+
+Six scenarios across two difficulty families:
+
+| id | The hard part |
+|---|---|
+| `escalation` | 2nd angry email, 1st unanswered |
+| `bump` | "per my last email" — the original request is still open |
+| `stale-urgency` | screams URGENT about a deadline already passed |
+| `already-resolved` | a request withdrawn later in the same thread |
+| `passive-aggressive` | polite surface, complaint underneath |
+| `sensitive-personal` | private personal mail amid work triage |
+
+**Grading is hybrid.** Deterministic assertions over the audit log and final mailbox
+state carry it ("did it archive the escalation?" is a fact, not a judgment); an LLM
+judge covers only the qualitative residue (was the reply tone appropriate?). `must`
+violations fail the run; `should` violations cost score.
+
+**The rubric is checked against a known-bad control.** `--agent naive` archives
+everything and never reads history, so it *must* fail `escalation` and `bump`. If it
+passes, the rubric is broken rather than the agent being good. `npm run eval:check`
+verifies exactly that, plus injection/threading/observation, with no model calls.
+
+Bring your own agent by implementing `TriageAgent` (`src/lib/eval/types.ts`) — anything
+that drives the same `gmail` client is gradeable, because every mutation is audit-logged.
+Runs are isolated: each resets to the pristine snapshot afterwards, and `audit.db`
+survives. Reports land in `data/eval-runs/` (gitignored).
+
 ## Reset
 
 ```bash

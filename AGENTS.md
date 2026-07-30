@@ -29,6 +29,10 @@ PORT=3100 npm run smoke -- reads   # part 1 only
 PORT=3100 npm run demo   # mini agent: list unread -> read -> label -> archive -> reply
 npm run sync -- --query "newer_than:90d"   # real Gmail read-only sync (needs OAuth creds)
 npm run reset            # restore working.db from snapshot (curls server, falls back to file copy)
+
+PORT=3100 npm run eval:check                 # eval pipeline check — NO API key needed
+PORT=3100 ANTHROPIC_API_KEY=… npm run eval -- --scenario escalation
+PORT=3100 npm run eval -- --list             # scenarios;  --all  --agent naive  --no-judge
 ```
 
 **Definition of done for API changes:** `npx tsc --noEmit` clean, `npm test`
@@ -65,6 +69,16 @@ src/lib/audit.ts         sessions + action_log (writes via ATTACHed audit schema
 src/lib/reset.ts         close working -> swap files -> reopen -> new session
 src/lib/sync/transform.ts   real Gmail Message -> sandbox row
 src/lib/ui/views.ts      view models for the UI JSON routes
+src/lib/eval/            triage stress-test eval (data-agnostic):
+  types.ts               StressScenario, Fixture/MessageSlot, ProbeOutcome, Assertion, TriageAgent
+  scenarios/             common.ts (assertion predicates) + index.ts (the 6-scenario catalog)
+  context.ts             read the real mailbox -> MailboxProfile, anchor thread, style exemplars
+  generate.ts            few-shot prose per slot; structure/threading assembled in CODE
+  agents.ts              TRIAGE_BRIEF, referenceClaudeTriageAgent (tool loop), naiveArchiveAgent
+  observe.ts             audit log + final state -> ProbeOutcome
+  grade.ts               deterministic assertions + LLM judge -> Verdict
+  runEval.ts             orchestrator;  report.ts  console + JSON artifact
+  anthropic.ts           completeJSON() via output_config.format;  client.ts  sandbox HTTP/SDK
 src/cli/                 db-init, seed, sync, google-auth, reset
 app/gmail/v1/users/[userId]/...   the Gmail-compatible API (route.ts files)
 app/api/{health,activity,sandbox/reset,ui/*}   internal routes (no bearer auth)
@@ -113,6 +127,29 @@ tests/                   vitest
 4. Add a check to `scripts/smoke-sdk.ts` (or `-writes.ts`) exercising it via the
    SDK, and a `tests/` case if there's pure logic (search, mime, pagination).
 5. `npx tsc --noEmit`, `npm test`, `PORT=3100 npm run smoke` — all green.
+
+## Working on the eval harness
+
+- **Scenarios declare structure; the model only writes prose.** A scenario lists
+  `MessageSlot`s (labels, backdating, threading) and a `brief` per slot. `generate.ts`
+  asks the model for subject+body only, then assembles the fixture in code. Keep it
+  that way — it's why fixtures are deterministic and testable.
+- **Prefer deterministic assertions over the judge.** If a claim is checkable from the
+  audit log or final labels, write it as an `Assertion` in `scenarios/common.ts`. Reserve
+  `judgeQuestion` for things only prose can settle (tone, whether it understood).
+- **Only mutations are audit-logged** — reads aren't. So an assertion can only observe
+  what the agent *did*. `surfacedPrior` (label-adding) is the history signal, not
+  `touchedPrior` (any action) — a bulk-archiving agent touches everything and must not
+  earn credit for engaging with history.
+- **Adding a scenario:** add it to `SCENARIOS` in `scenarios/index.ts` with ≥1 `must`
+  assertion and a `judgeQuestion`; the catalog tests enforce slot/threading validity.
+  Then confirm `--agent naive` still fails the ones it should.
+- **`npm run eval:check` is the cheap gate** — it exercises inject/observe/grade and the
+  known-bad-control discrimination with zero model calls. Run it after touching
+  `observe.ts`, `grade.ts`, or the inject route.
+- Injection is deliberately **not** audit-logged (it's test setup, and the grader reads
+  the audit log to judge the agent). Probes carry `is_sandbox_created = 0` so they blend
+  in with synced mail.
 
 ## Out of scope (return Gmail-shaped 501/404, don't fake)
 
