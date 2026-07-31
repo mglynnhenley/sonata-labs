@@ -1,0 +1,30 @@
+@import "tailwindcss";
+
+@theme {
+  /* Slack ships Lato as its product face; keep the system stack as fallback. */
+  --font-sans: var(--font-lato), -apple-system, BlinkMacSystemFont, "Segoe UI",
+    Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: Monaco, Menlo, Consolas, "Courier New", monospace;
+}
+
+/* Slack's scrollbars are thin and only visible over their track. */
+* {
+  scrollbar-width: thin;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgb(0 0 0 / 0.2);
+  border: 2px solid transparent;
+  border-radius: 6px;
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgb(0 0 0 / 0.35);
+  background-clip: content-box;
+}

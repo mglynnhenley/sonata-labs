@@ -1,0 +1,24 @@
+# dependencies
+/node_modules
+
+# next.js
+/.next/
+/out/
+next-env.d.ts
+
+# typescript incremental build cache
+*.tsbuildinfo
+
+# data: databases + real Slack credentials — never commit
+/data/
+*.db
+*.db-wal
+*.db-shm
+slack-token.json
+
+# misc
+.DS_Store
+*.log
+.env*.local
+/coverage
+.gstack/
