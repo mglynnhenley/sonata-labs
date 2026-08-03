@@ -1,17 +1,22 @@
-import { completeJSON } from "./llm";
+import type { gmail_v1 } from "googleapis";
+import { composeFixture } from "./generate/compose";
+import { buildTimeline } from "./generate/timeline";
+import type { Approach, StageCtx } from "./generate/types";
 import type {
   Anchor,
   Contact,
   Exemplar,
   Fixture,
-  FixtureMessage,
   MailboxProfile,
   StressScenario,
 } from "./types";
 
-// Step 3: few-shot generation "in the style of" the mailbox. The model writes ONLY
-// subject + body prose for each slot; labels, backdating, threading, and address
-// binding are assembled in code so fixtures stay deterministic and testable.
+// Contact binding, plus the pre-pipeline entry point into generation.
+//
+// The prose-writing that used to live here is now `generate/compose.ts` — stage 6 of
+// the pipeline in `generate/pipeline.ts`, which researches the mailbox before writing
+// rather than working from a single excerpt. `bindContact` stays here because both
+// the pipeline and its composer need it and neither owns it.
 
 const PERSONAL = /(family|friend|spouse|partner|personal|sibling|parent)/i;
 
@@ -54,46 +59,6 @@ export function bindContact(
   };
 }
 
-const FIXTURE_SCHEMA = {
-  type: "object",
-  additionalProperties: false,
-  required: ["slots"],
-  properties: {
-    slots: {
-      type: "array",
-      description: "One entry per requested slot, in the same order, with matching ids.",
-      items: {
-        type: "object",
-        additionalProperties: false,
-        required: ["id", "subject", "text"],
-        properties: {
-          id: { type: "string", description: "The slot id this fills." },
-          subject: { type: "string" },
-          text: {
-            type: "string",
-            description: "Plain-text email body. No markdown, no signature block boilerplate.",
-          },
-        },
-      },
-    },
-  },
-} as const;
-
-interface GeneratedSlot {
-  id: string;
-  subject: string;
-  text: string;
-}
-
-function addr(name: string, email: string): string {
-  return `${name} <${email}>`;
-}
-
-function reSubject(parent: string): string {
-  const base = parent.replace(/^\s*(re|fwd?)\s*:\s*/i, "").trim();
-  return `Re: ${base}`;
-}
-
 export interface GenerateOptions {
   model?: string;
   exemplarCount?: number;
@@ -102,6 +67,12 @@ export interface GenerateOptions {
 /**
  * Generate a concrete fixture for a scenario against this mailbox.
  * Returns the fixture plus the contact the scenario was bound to.
+ *
+ * This is stage 6 on its own, for callers that already hold an anchor and exemplars
+ * and only want the prose: no thread is read, no angle is weighed, and slot times are
+ * the scenario's own offsets rebased onto the anchor. Anything holding a live mailbox
+ * should call `runPipeline` instead and get all six stages — the research is what
+ * makes a scenario hard rather than merely plausible.
  */
 export async function generateFixture(args: {
   scenario: StressScenario;
@@ -111,111 +82,43 @@ export async function generateFixture(args: {
   options?: GenerateOptions;
 }): Promise<{ fixture: Fixture; contact: Contact }> {
   const { scenario, profile, anchor, exemplars } = args;
-  const contact = bindContact(scenario, profile, anchor);
-  const useAnchor = scenario.preferAnchor && !!anchor;
+  // Read once and pass it down: the timeline and the composer must date the same
+  // fixture against the same instant.
+  const now = Date.now();
 
-  const exemplarText = exemplars
-    .map(
-      (e, i) =>
-        `--- Example ${i + 1} (from ${e.fromAddr}) ---\nSubject: ${e.subject}\n${e.body}`,
-    )
-    .join("\n\n");
+  // Stage 5 picks between angles it has a reading of the thread to judge; with no
+  // reading there is nothing to pick between, so the scenario's own premise stands.
+  const approach: Approach = {
+    id: "as-declared",
+    angle: `${scenario.title}. ${scenario.difficulty}`,
+    rationale: "No angle was weighed — this path never read the thread to weigh one.",
+    plausibility: 0.5,
+  };
 
-  const slotSpec = scenario.slots
-    .map((s) => {
-      const who =
-        s.sender === "contact"
-          ? `${contact.name} <${contact.email}>`
-          : `${profile.ownerName} <${profile.ownerEmail}>`;
-      const age =
-        s.minutesAgo >= 1440
-          ? `${Math.round(s.minutesAgo / 1440)} day(s) ago`
-          : `${s.minutesAgo} minutes ago`;
-      return `slot id "${s.id}" — sent by ${who}, ${age}\n  What it should say: ${s.brief}`;
-    })
-    .join("\n\n");
+  const ctx: StageCtx = {
+    // Stage 6 makes no mailbox call; the handle is on the stage contract for the
+    // stages that search and read, and this entry point has none to hand over. Left
+    // absent rather than stubbed so a future use fails loudly instead of quietly
+    // reading an empty mailbox.
+    gmail: undefined as unknown as gmail_v1.Gmail,
+    userId: "me",
+    scenario,
+    profile,
+    now,
+    model: () => args.options?.model,
+    say: () => {},
+  };
 
-  const anchorBlock = useAnchor
-    ? `\nThis conversation continues a REAL existing thread in the mailbox:\n` +
-      `  Subject: ${anchor!.subject}\n  Last message from ${anchor!.fromName}: "${anchor!.bodyExcerpt}"\n` +
-      `Write the new messages as a natural continuation of that thread — reference its actual subject matter.\n`
-    : "";
-
-  const generated = await completeJSON<{ slots: GeneratedSlot[] }>({
-    system:
-      "You write realistic test emails for an email-triage evaluation harness. The emails are " +
-      "injected into a local, offline sandbox mailbox to measure how well an AI triage agent " +
-      "handles difficult situations. Nothing you write is ever sent to anyone.\n\n" +
-      "Write in the natural voice of the mailbox you are given — match the vocabulary, length, " +
-      "formatting habits, and tone of the real examples. Plain text only. Never mention that " +
-      "this is a test, a scenario, or an evaluation. Do not include disclaimers.",
-    prompt:
-      `MAILBOX OWNER: ${profile.ownerName} <${profile.ownerEmail}>\n` +
-      `WHO THEY ARE: ${profile.personaSummary}\n` +
-      `RECURRING TOPICS: ${(profile.topics ?? []).join(", ") || "(unknown)"}\n\n` +
-      `SENDER TO IMPERSONATE: ${contact.name} <${contact.email}>\n` +
-      `  Relationship to owner: ${contact.relationship}\n` +
-      `  How they write: ${contact.styleNotes}\n` +
-      anchorBlock +
-      `\nREAL EMAILS FROM THIS MAILBOX, FOR STYLE ONLY:\n${exemplarText || "(none available)"}\n\n` +
-      `SITUATION TO CONSTRUCT: ${scenario.title}\n${scenario.difficulty}\n\n` +
-      `Write one email per slot below. Keep them consistent with each other — they are the ` +
-      `same people in the same conversation.\n\n${slotSpec}\n\n` +
-      `Return one entry per slot, with the matching id.`,
-    schema: FIXTURE_SCHEMA as unknown as Record<string, unknown>,
-    schemaName: "fixture_slots",
-    model: args.options?.model,
-    effort: "high",
-  });
-
-  const bySlot = new Map(generated.slots.map((s) => [s.id, s]));
-
-  const ownerAddr = addr(profile.ownerName || "Me", profile.ownerEmail);
-  const contactAddr = addr(contact.name, contact.email);
-
-  const messages: FixtureMessage[] = [];
-  const subjectBySlot = new Map<string, string>();
-
-  scenario.slots.forEach((slot, index) => {
-    const gen = bySlot.get(slot.id);
-    if (!gen) throw new Error(`Generator omitted slot "${slot.id}"`);
-
-    // Threading: explicit slot link wins; otherwise the first slot anchors onto
-    // the real thread when the scenario prefers that.
-    let replyToSlotId: string | undefined;
-    let replyToRealMessageId: string | undefined;
-    let parentSubject: string | undefined;
-
-    if (slot.threadWith && slot.threadWith !== "anchor") {
-      replyToSlotId = slot.threadWith;
-      parentSubject = subjectBySlot.get(slot.threadWith);
-    } else if (slot.threadWith === "anchor" || (index === 0 && useAnchor)) {
-      if (anchor) {
-        replyToRealMessageId = anchor.lastMessageId;
-        parentSubject = anchor.subject;
-      }
-    }
-
-    const subject = parentSubject ? reSubject(parentSubject) : gen.subject.trim();
-    subjectBySlot.set(slot.id, subject);
-
-    messages.push({
-      slotId: slot.id,
-      from: slot.sender === "contact" ? contactAddr : ownerAddr,
-      to: slot.sender === "contact" ? ownerAddr : contactAddr,
-      subject,
-      text: gen.text.trim(),
-      minutesAgo: slot.minutesAgo,
-      labels: slot.labels,
-      replyToSlotId,
-      replyToRealMessageId,
-    });
-  });
-
-  const probeSlotId = scenario.slots.some((s) => s.id === "probe")
-    ? "probe"
-    : scenario.slots[scenario.slots.length - 1].id;
-  const priorSlotId = scenario.slots.find((s) => s.id !== probeSlotId)?.id;
-
-  return { fixture: { messages, probeSlotId, priorSlotId }, contact };
+  return composeFixture(
+    {
+      anchor,
+      // Null is stage 6's signal that nobody read the anchor, so it quotes the raw
+      // excerpt rather than a summary of a reading that never happened.
+      thread: null,
+      timeline: buildTimeline(scenario.slots, anchor?.internalDate ?? null, now),
+      approach,
+      exemplars,
+    },
+    ctx,
+  );
 }

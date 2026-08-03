@@ -1,20 +1,20 @@
 import type { gmail_v1 } from "googleapis";
 import { extractBodyText, headerMap } from "../sync/transform";
 import { completeJSON } from "./llm";
-import type { Anchor, Exemplar, MailboxProfile } from "./types";
+import type { Exemplar, MailboxProfile } from "./types";
 
 // Step 1 of the eval: read the mailbox that's actually loaded and derive the
 // context that makes a probe plausible — who the owner is, who they correspond
 // with, how those people write. Nothing here is specific to any one mailbox.
 
 /** Senders that are machines, not people — never bind a scenario role to these. */
-const AUTOMATED = /(no-?reply|do-?not-?reply|notifications?@|newsletter|mailer|automated|support@|billing@|receipts?@|alerts?@)/i;
+export const AUTOMATED = /(no-?reply|do-?not-?reply|notifications?@|newsletter|mailer|automated|support@|billing@|receipts?@|alerts?@)/i;
 
 /**
  * Role/shared mailboxes. A person may legitimately own one (contact@ on a personal
  * domain), so this only gates the fallback path — reciprocity below outranks it.
  */
-const ROLE_ACCOUNT =
+export const ROLE_ACCOUNT =
   /^(team|hello|hi|hey|info|news|updates?|digest|community|contact|product|care|service|help|mail|email|marketing|sales|members?|account|social|orders?|shop|store|welcome|invites?|bounce|mailings?|reply|post|notify|press|careers|jobs|hr|admin)@/i;
 
 export interface SampledMessage {
@@ -195,46 +195,11 @@ export async function extractMailboxProfile(
   return { ...parsed, ownerEmail };
 }
 
-/**
- * Find a real thread from a real person that a probe can reply into. Prefers the
- * most recent thread whose latest message is from someone the owner has actually
- * corresponded with; falls back to address-shape heuristics when SENT mail isn't
- * available. Anchoring to a marketing blast produces an implausible probe (an
- * angry escalation from a newsletter address), so this gate matters.
- */
-export async function findAnchorThread(
-  gmail: gmail_v1.Gmail,
-  userId: string,
-  opts: { preferEmail?: string } = {},
-): Promise<Anchor | null> {
-  const sample = await sampleMailbox(gmail, userId, 40);
-  const notMachine = sample.filter((m) => m.fromAddr && !AUTOMATED.test(m.from));
-  if (notMachine.length === 0) return null;
-
-  const replied = await correspondedAddresses(gmail, userId);
-  const reciprocal = notMachine.filter((m) => replied.has(m.fromAddr.toLowerCase()));
-  // Without SENT mail there's no behavioural signal, so drop role mailboxes by shape.
-  const humans = reciprocal.length
-    ? reciprocal
-    : notMachine.filter((m) => !ROLE_ACCOUNT.test(m.fromAddr));
-  if (humans.length === 0) return null;
-
-  const preferred = opts.preferEmail
-    ? humans.filter((m) => m.fromAddr.toLowerCase() === opts.preferEmail!.toLowerCase())
-    : [];
-  const pool = preferred.length ? preferred : humans;
-
-  // Latest human message wins; use its thread as the anchor.
-  const pick = pool.reduce((a, b) => (b.internalDate > a.internalDate ? b : a));
-  return {
-    threadId: pick.threadId,
-    lastMessageId: pick.id,
-    subject: pick.subject,
-    fromAddr: pick.fromAddr,
-    fromName: pick.fromName,
-    bodyExcerpt: pick.body.replace(/\s+/g, " ").slice(0, 500),
-  };
-}
+// Anchor selection used to live here as `findAnchorThread`: newest human thread,
+// same pick for every scenario, and no thread date or depth on the result. The
+// recall/rank stages (`generate/recall.ts`, `generate/rank.ts`) replaced it with a
+// per-scenario search that hydrates whole threads, so it is gone rather than left
+// to rot as a second, worse answer to the same question.
 
 /** Few-shot style exemplars: real emails, preferring the bound contact's own mail. */
 export async function pickStyleExemplars(

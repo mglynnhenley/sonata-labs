@@ -254,6 +254,8 @@ describe("contact binding", () => {
       fromAddr: "work@corp.com",
       fromName: "Work Person",
       bodyExcerpt: "x",
+      internalDate: Date.UTC(2025, 3, 14),
+      messageCount: 3,
     };
     const c = bindContact(getScenario("escalation"), profile, anchor);
     expect(c.email).toBe("work@corp.com");

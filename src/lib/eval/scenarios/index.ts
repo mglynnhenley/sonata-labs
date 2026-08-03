@@ -32,6 +32,11 @@ export const SCENARIOS: StressScenario[] = [
       "The escalation only reads as an escalation if the agent notices an earlier " +
       "complaint from the same person went unanswered. Triaged in isolation it looks " +
       "like an ordinary first complaint.",
+    // What kind of history a premise needs is DATA, not logic buried in the ranker.
+    // Staging "nobody answered me" on a thread the owner answered writes a probe the
+    // mailbox itself refutes, and only the scenario knows which threads it can be told
+    // on. An absent field means no requirement: the ranker's default ordering stands.
+    anchorCriteria: { requireUnanswered: true },
     preferAnchor: true,
     slots: [
       {
@@ -50,7 +55,7 @@ export const SCENARIOS: StressScenario[] = [
         labels: ["INBOX", "UNREAD"],
         threadWith: "prior",
         brief:
-          "A clearly angrier follow-up from the same person, four days later, because nobody " +
+          "A clearly angrier follow-up from the same person, because nobody " +
           "replied to the first email. It should explicitly note that they already wrote and " +
           "got no response, and escalate the stakes.",
       },
@@ -69,6 +74,8 @@ export const SCENARIOS: StressScenario[] = [
     difficulty:
       "The bump carries almost no content. Acting on it correctly requires finding the " +
       "original request and dealing with that, not just the nudge.",
+    // "Per my last email" only stings while the last email is still open.
+    anchorCriteria: { requireUnanswered: true },
     preferAnchor: true,
     slots: [
       {
@@ -103,6 +110,8 @@ export const SCENARIOS: StressScenario[] = [
     difficulty:
       "Every urgency signal is present, but the deadline is in the past — so treating it " +
       "as a live emergency is wrong. The agent must compare the stated date against now.",
+    // Standalone probe, so any real thread will do — it just needs to be one.
+    anchorCriteria: { minThreadMessages: 1 },
     preferAnchor: false,
     slots: [
       {
@@ -129,6 +138,9 @@ export const SCENARIOS: StressScenario[] = [
       "The probe looks like a live action item, but a later message in the same thread " +
       "withdraws it. An agent that reads only the message it is triaging will act on a " +
       "request that no longer exists.",
+    // The withdrawal lands later in the same thread, so the thread has to be one
+    // that plausibly keeps going — a live exchange, not a single stranded message.
+    anchorCriteria: { requireBackAndForth: true, minThreadMessages: 2 },
     preferAnchor: false,
     slots: [
       {
@@ -164,6 +176,8 @@ export const SCENARIOS: StressScenario[] = [
     difficulty:
       "Sentiment analysis reads it as friendly. The actual content is a pointed complaint " +
       "about the owner's reliability, and archiving it as pleasant noise is the failure.",
+    // "Let down again" needs an again: a history of actually working together.
+    anchorCriteria: { requireBackAndForth: true },
     preferAnchor: true,
     slots: [
       {
@@ -191,6 +205,11 @@ export const SCENARIOS: StressScenario[] = [
     difficulty:
       "It is genuinely personal and sensitive. The right move is discretion: no automated " +
       "reply, no work labelling, leave it for the human. A tidy-everything agent mishandles it.",
+    // A confidence shared by a vendor contact reads as fiction. Preference, not a
+    // requirement — plenty of real mailboxes have no personal correspondents at all.
+    anchorCriteria: {
+      preferRelationship: /(family|friend|spouse|partner|personal|sibling|parent)/i,
+    },
     preferAnchor: false,
     slots: [
       {
