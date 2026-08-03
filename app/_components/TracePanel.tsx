@@ -1,11 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { FAILURE_MODES } from "@/lib/eval/judge/failureModes";
+import type { JudgeReport } from "@/lib/eval/judge/types";
 import type { RunSummary } from "@/lib/eval/runs";
 import type { LlmCall, RunTrace, ToolCall } from "@/lib/eval/trace";
 
 // Replay of a finished eval run: every model call and every tool call, in the
-// order they happened.
+// order they happened, with the judge's read of it on top.
 //
 // Unlike ActivityPanel this component fetches its own data. Trace artifacts are
 // immutable once written, so they don't belong in GmailApp's 3s poll — keeping
@@ -27,6 +29,21 @@ const ROLE_STYLE: Record<string, string> = {
   judge: "bg-[#e6f4ea] text-[#137333]",
   agent: "bg-[#f3e8fd] text-[#7b1fa2]",
 };
+
+/** Three distinct weights, so severity is legible without reading the word. */
+const SEVERITY_STYLE: Record<string, string> = {
+  critical: "bg-[#fce8e6] text-[#c5221f]",
+  major: "bg-[#fef7e0] text-[#b06000]",
+  minor: "bg-[#f1f3f4] text-[#5f6368]",
+};
+
+/** Worst first — used both to sort findings and to colour the header chip. */
+const SEVERITY_ORDER = ["critical", "major", "minor"] as const;
+
+/** Catalog id → human label, so a finding reads as English rather than a slug. */
+const MODE_LABEL: Record<string, string> = Object.fromEntries(
+  FAILURE_MODES.map((m) => [m.id, m.label] as const),
+);
 
 function stepsOf(trace: RunTrace): Step[] {
   return [
@@ -59,10 +76,47 @@ function stepLabel(step: Step): string {
   return text ? "final message" : "(empty turn)";
 }
 
+/** One rendered finding. Catalogued and uncatalogued share a row shape on purpose. */
+interface FindingRow {
+  label: string;
+  severity: "critical" | "major" | "minor";
+  evidence: string[];
+  /** Trace steps this finding points at; empty for uncatalogued ones. */
+  seq: number[];
+  uncatalogued: boolean;
+}
+
+// `otherFindings` are folded into the same list rather than exiled to their own
+// section: the judge found them, they simply have no catalog id yet, and burying
+// them is how a taxonomy stops growing. The badge is the whole distinction.
+function findingRows(report: JudgeReport): FindingRow[] {
+  const rows: FindingRow[] = [
+    ...report.findings.map((f) => ({
+      // An id off disk can predate a catalog rename, so fall back to the raw id.
+      label: MODE_LABEL[f.mode] ?? f.mode,
+      severity: f.severity,
+      evidence: f.evidence,
+      seq: f.seq ?? [],
+      uncatalogued: false,
+    })),
+    ...report.otherFindings.map((f) => ({
+      label: f.label,
+      severity: f.severity,
+      evidence: f.evidence,
+      seq: [] as number[],
+      uncatalogued: true,
+    })),
+  ];
+  return rows.sort(
+    (a, b) => SEVERITY_ORDER.indexOf(a.severity) - SEVERITY_ORDER.indexOf(b.severity),
+  );
+}
+
 export function TracePanel({ onOpenThread }: { onOpenThread: (threadId: string) => void }) {
   const [runs, setRuns] = useState<RunSummary[]>([]);
   const [runId, setRunId] = useState<string>("");
   const [trace, setTrace] = useState<RunTrace | null>(null);
+  const [judge, setJudge] = useState<JudgeReport | null>(null);
   const [selected, setSelected] = useState(0);
   const [error, setError] = useState("");
 
@@ -80,14 +134,23 @@ export function TracePanel({ onOpenThread }: { onOpenThread: (threadId: string) 
   useEffect(() => {
     if (!runId) return;
     setTrace(null);
+    setJudge(null);
     setSelected(0);
+    setError("");
     fetch(`/api/eval/runs/${runId}/trace`)
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error("not found"))))
       .then(setTrace)
       .catch(() => setError("could not load trace"));
+    // The judge is a separate pass over the same artifacts, so most runs simply
+    // have no judge file. A 404 is the normal case, not an error worth showing.
+    fetch(`/api/eval/runs/${runId}/judge`)
+      .then((r) => (r.ok ? (r.json() as Promise<JudgeReport>) : null))
+      .then(setJudge)
+      .catch(() => setJudge(null));
   }, [runId]);
 
   const steps = trace ? stepsOf(trace) : [];
+  const stepSeqs = new Set(steps.map((s) => s.seq));
 
   // Selecting a step jumps the mailbox to whatever it touched. Read-only: opening
   // a thread the normal way marks it read, which would write to the audit log the
@@ -99,6 +162,17 @@ export function TracePanel({ onOpenThread }: { onOpenThread: (threadId: string) 
       if (step?.kind === "tool" && step.threadId) onOpenThread(step.threadId);
     },
     [steps, onOpenThread],
+  );
+
+  // A finding names trace steps by seq. Resolving that to an index and going through
+  // `select` means a finding click lands in exactly the same state as pressing j —
+  // same highlight, same scroll, same thread jump — instead of a second way to move.
+  const selectSeq = useCallback(
+    (seq: number) => {
+      const index = steps.findIndex((s) => s.seq === seq);
+      if (index >= 0) select(index);
+    },
+    [steps, select],
   );
 
   const move = useCallback(
@@ -180,6 +254,14 @@ export function TracePanel({ onOpenThread }: { onOpenThread: (threadId: string) 
         {!error && runId && !trace && (
           <div className="px-4 py-3 text-[12px] text-[#5f6368]">Loading…</div>
         )}
+        {judge && (
+          <JudgeBlock
+            report={judge}
+            stepSeqs={stepSeqs}
+            activeSeq={steps[selected]?.seq}
+            onJump={selectSeq}
+          />
+        )}
         {trace && steps.length === 0 && (
           <div className="px-4 py-3 text-[12px] text-[#5f6368]">
             This run made no model calls — the control agent takes no trace.
@@ -200,6 +282,171 @@ export function TracePanel({ onOpenThread }: { onOpenThread: (threadId: string) 
   );
 }
 
+/**
+ * The judge's read of the run, above the steps it is talking about.
+ *
+ * Collapsible because a bad run can produce a dozen findings and the steps must
+ * stay reachable — but open by default: the whole point is that you see the
+ * diagnosis before you go hunting through the transcript for it.
+ */
+function JudgeBlock({
+  report,
+  stepSeqs,
+  activeSeq,
+  onJump,
+}: {
+  report: JudgeReport;
+  stepSeqs: Set<number>;
+  activeSeq?: number;
+  onJump: (seq: number) => void;
+}) {
+  const [open, setOpen] = useState(true);
+  const rows = findingRows(report);
+  const worst = SEVERITY_ORDER.find((s) => rows.some((r) => r.severity === s));
+
+  return (
+    <div className="border-b border-[#e0e3e7] bg-white">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="flex w-full items-center gap-2 px-4 py-2.5 text-left hover:bg-[#f6f8fc]"
+      >
+        <span className="material-symbols-outlined text-[18px] text-[#5f6368]">gavel</span>
+        <span className="text-[13px] text-[#202124]">Judge</span>
+        <span
+          className={`shrink-0 rounded px-1 text-[10px] font-medium ${
+            worst ? SEVERITY_STYLE[worst] : ROLE_STYLE.judge
+          }`}
+        >
+          {rows.length === 0 ? "no findings" : `${rows.length} finding${rows.length === 1 ? "" : "s"}`}
+        </span>
+        <span className="material-symbols-outlined ml-auto text-[16px] text-[#5f6368]">
+          {open ? "expand_less" : "expand_more"}
+        </span>
+      </button>
+
+      {open && (
+        <>
+          {/* First, and deliberately: if this restatement is not the task, the brief
+              is ambiguous — and that ambiguity is the finding, not the run's score. */}
+          <div className="px-4 pb-2">
+            <div className="text-[11px] font-medium text-[#202124]">
+              What the judge thinks the task was
+            </div>
+            <div className="mt-1 whitespace-pre-wrap rounded bg-[#f6f8fc] p-2 text-[11px] text-[#3c4043]">
+              {report.taskUnderstanding}
+            </div>
+            <div className="mt-1 text-[10px] text-[#5f6368]">
+              If that isn&apos;t the task, the brief is ambiguous — that&apos;s the finding.
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 px-4 pb-2">
+            <span
+              className={`shrink-0 rounded px-1 text-[10px] font-medium ${
+                report.actionsMakeSense
+                  ? "bg-[#e6f4ea] text-[#137333]"
+                  : "bg-[#fce8e6] text-[#c5221f]"
+              }`}
+            >
+              {report.actionsMakeSense ? "actions make sense" : "actions don't add up"}
+            </span>
+            <span className="truncate text-[10px] text-[#5f6368]" title={report.model}>
+              {report.model}
+            </span>
+          </div>
+
+          {report.summary && (
+            <div className="px-4 pb-2 text-[11px] text-[#3c4043]">{report.summary}</div>
+          )}
+
+          {rows.length === 0 && (
+            <div className="px-4 pb-2 text-[11px] text-[#5f6368]">
+              No failure modes found — the judge returns only what it saw.
+            </div>
+          )}
+          {rows.map((row, i) => (
+            <FindingItem
+              key={`${row.label}-${i}`}
+              row={row}
+              stepSeqs={stepSeqs}
+              activeSeq={activeSeq}
+              onJump={onJump}
+            />
+          ))}
+        </>
+      )}
+    </div>
+  );
+}
+
+function FindingItem({
+  row,
+  stepSeqs,
+  activeSeq,
+  onJump,
+}: {
+  row: FindingRow;
+  stepSeqs: Set<number>;
+  activeSeq?: number;
+  onJump: (seq: number) => void;
+}) {
+  // A judge can name a seq that isn't in this trace — it reads a projection, and old
+  // reports outlive the run they describe. Only offer jumps that actually resolve.
+  const jumps = row.seq.filter((s) => stepSeqs.has(s));
+
+  return (
+    <div className="border-t border-[#f1f3f4] px-4 py-2">
+      <button
+        onClick={() => onJump(jumps[0])}
+        disabled={jumps.length === 0}
+        className="w-full text-left disabled:cursor-default"
+      >
+        <div className="flex items-center gap-2">
+          <span
+            className={`shrink-0 rounded px-1 text-[10px] font-medium ${SEVERITY_STYLE[row.severity]}`}
+          >
+            {row.severity}
+          </span>
+          <span className="truncate text-[12px] text-[#202124]">{row.label}</span>
+          {row.uncatalogued && (
+            <span
+              className="ml-auto shrink-0 rounded border border-dashed border-[#dadce0] px-1 text-[10px] text-[#5f6368]"
+              title="Not in the failure-mode catalog — the judge named this one itself"
+            >
+              uncatalogued
+            </span>
+          )}
+        </div>
+        <ul className="mt-1 space-y-0.5">
+          {row.evidence.map((e, i) => (
+            <li key={i} className="flex gap-1.5 text-[11px] text-[#3c4043]">
+              <span className="text-[#9aa0a6]">•</span>
+              <span className="min-w-0 flex-1">{e}</span>
+            </li>
+          ))}
+        </ul>
+      </button>
+      {jumps.length > 0 && (
+        <div className="mt-1.5 flex flex-wrap gap-1">
+          {jumps.map((s) => (
+            <button
+              key={s}
+              onClick={() => onJump(s)}
+              className={`rounded px-1 text-[10px] font-medium ${
+                s === activeSeq
+                  ? "bg-[#1a73e8] text-white"
+                  : "bg-[#f1f3f4] text-[#5f6368] hover:bg-[#e8f0fe] hover:text-[#1967d2]"
+              }`}
+            >
+              step {s}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function StepItem({
   step,
   active,
@@ -212,9 +459,18 @@ function StepItem({
   const isTool = step.kind === "tool";
   const icon = isTool ? (step.isMutation ? "edit_note" : "visibility") : "smart_toy";
   const badge = isTool ? (step.isMutation ? "write" : "read") : step.role;
+  const ref = useRef<HTMLDivElement>(null);
+
+  // Selection can come from far away — j/k walking off the bottom, or a finding
+  // clicked from the block above a hundred steps up. Without this the highlight
+  // moves somewhere off screen and the click looks like it did nothing.
+  useEffect(() => {
+    if (active) ref.current?.scrollIntoView({ block: "nearest" });
+  }, [active]);
 
   return (
     <div
+      ref={ref}
       className={`border-b border-[#f1f3f4] px-4 py-2.5 ${active ? "bg-[#e8f0fe]" : "hover:bg-[#f6f8fc]"}`}
     >
       <button onClick={onSelect} className="flex w-full items-start gap-2 text-left">

@@ -16,7 +16,10 @@ google-token.json
 # misc
 .DS_Store
 *.log
+# secrets: OPENROUTER_API_KEY etc. `.env*.local` alone does NOT cover a plain `.env`
+.env
 .env*.local
+!.env.example
 /coverage
 .gstack/
 

@@ -100,12 +100,42 @@ export function resetClient(): void {
 export type Effort = "low" | "medium" | "high";
 
 /**
- * OpenRouter's unified reasoning control. Models that don't support it ignore the
- * field, so it's safe to send. Not all providers accept `temperature` (e.g.
- * openai/gpt-5.4 rejects it), so we never send sampling params.
+ * OpenRouter's unified reasoning control. Not all providers accept `temperature`
+ * (e.g. openai/gpt-5.4 rejects it), so we never send sampling params.
+ *
+ * `reasoning` is NOT universally safe to send alongside `response_format:
+ * json_schema`: on some models it routes to a provider variant without structured
+ * output support, and OpenRouter answers 200 with an `error` body and no choices —
+ * e.g. anthropic/claude-haiku-4.5 returns "structured_outputs not supported in your
+ * workspace." with reasoning set, and works perfectly without it. `completeJSON`
+ * therefore retries once without reasoning rather than failing the run.
  */
+const EFFORT_RANK: Record<Effort, number> = { low: 0, medium: 1, high: 2 };
+
+/**
+ * Ceiling on reasoning effort, from EVAL_MAX_EFFORT. High effort is most of the
+ * wall clock on a run — the generator's compose call and the judge both ask for it —
+ * so a cheap smoke pass wants to cap it without editing every stage. Unset means
+ * each call keeps whatever it asked for. `none` drops reasoning entirely.
+ */
+function cappedEffort(effort?: Effort): Effort | undefined {
+  const cap = process.env.EVAL_MAX_EFFORT?.trim().toLowerCase();
+  if (!cap) return effort;
+  if (cap === "none") return undefined;
+  if (!(cap in EFFORT_RANK)) return effort; // ignore a typo rather than fail the run
+  if (!effort) return effort;
+  return EFFORT_RANK[effort] <= EFFORT_RANK[cap as Effort] ? effort : (cap as Effort);
+}
+
 function reasoningFor(effort?: Effort): Record<string, unknown> {
-  return effort ? { reasoning: { effort } } : {};
+  const capped = cappedEffort(effort);
+  return capped ? { reasoning: { effort: capped } } : {};
+}
+
+/** OpenRouter can answer 200 with an error body instead of choices. */
+function providerError(res: unknown): string | undefined {
+  const e = (res as { error?: { message?: unknown } } | null)?.error?.message;
+  return typeof e === "string" ? e : undefined;
 }
 
 /** Strip markdown fences some models wrap JSON in, then parse. */
@@ -154,26 +184,42 @@ export async function completeJSON<T>(opts: CompleteJSONOptions): Promise<T> {
   if (opts.system) messages.push({ role: "system", content: opts.system });
   messages.push({ role: "user", content: opts.prompt });
 
-  const res = await openai.chat.completions.create({
-    model: opts.model ?? DEFAULT_MODEL,
-    max_tokens: opts.maxTokens ?? 16000,
-    messages,
-    response_format: {
-      type: "json_schema",
-      json_schema: {
-        name: opts.schemaName ?? "result",
-        strict: true,
-        schema: opts.schema,
+  const model = opts.model ?? DEFAULT_MODEL;
+  const call = (effort?: Effort) =>
+    openai.chat.completions.create({
+      model,
+      max_tokens: opts.maxTokens ?? 16000,
+      messages,
+      response_format: {
+        type: "json_schema",
+        json_schema: {
+          name: opts.schemaName ?? "result",
+          strict: true,
+          schema: opts.schema,
+        },
       },
-    },
-    ...reasoningFor(opts.effort),
-  } as OpenAI.ChatCompletionCreateParamsNonStreaming);
+      ...reasoningFor(effort),
+    } as OpenAI.ChatCompletionCreateParamsNonStreaming);
 
-  const choice = res.choices?.[0];
-  const text = choice?.message?.content ?? "";
+  let res = await call(opts.effort);
+  let text = res.choices?.[0]?.message?.content ?? "";
+
+  // Retry without reasoning when it produced nothing: on several cheaper models the
+  // reasoning+json_schema combination is what fails, not the request itself. Without
+  // this the whole harness is unusable on anything but the priciest tier.
+  if (!text.trim() && opts.effort) {
+    res = await call(undefined);
+    text = res.choices?.[0]?.message?.content ?? "";
+  }
+
   if (!text.trim()) {
+    const choice = res.choices?.[0];
+    // Surface the provider's own message — otherwise a real cause like
+    // "structured_outputs not supported" is lost behind a bare finish_reason.
     throw new Error(
-      `Empty response from ${opts.model ?? DEFAULT_MODEL} (finish_reason=${choice?.finish_reason}).`,
+      `Empty response from ${model}` +
+        `${providerError(res) ? `: ${providerError(res)}` : ""}` +
+        ` (finish_reason=${choice?.finish_reason}).`,
     );
   }
   return parseJsonLoose<T>(text);

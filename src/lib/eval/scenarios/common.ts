@@ -3,9 +3,16 @@ import type { Assertion, ProbeOutcome } from "../types";
 // Reusable assertion predicates. Each is a pure function over a ProbeOutcome, so
 // they're unit-testable without a live sandbox or any model calls.
 
-/** Words an agent uses when it has actually registered prior/ignored history. */
+/**
+ * Words an agent uses when it has actually registered prior/ignored history.
+ *
+ * `apolog`/`delay` are stems and need an explicit `\w*`: the group's trailing `\b`
+ * otherwise requires a word boundary right after the stem, so "Apologies for the
+ * delayed response" — the single most common way an agent acknowledges a late
+ * reply — failed to match and `acknowledged-history` scored a false negative.
+ */
 const HISTORY_LANGUAGE =
-  /\b(previous|earlier|last (email|message|note)|prior|already|again|follow[- ]?up|apolog|sorry (for|about)|delay|didn'?t (get|reply|respond)|no (reply|response))\b/i;
+  /\b(previous|earlier|last (email|message|note)|prior|already|again|follow[- ]?up|apolog\w*|sorry (for|about)|delay\w*|didn'?t (get|reply|respond)|no (reply|response))\b/i;
 
 export const notArchived: Assertion = {
   id: "not-archived",

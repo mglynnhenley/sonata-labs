@@ -1,5 +1,6 @@
 import type { gmail_v1 } from "googleapis";
 import type { ActionRow } from "../audit";
+import type { MailboxSnapshot } from "./judge/types";
 
 // ---------------------------------------------------------------------------
 // Triage stress-test eval. A scenario is an abstract, data-agnostic template;
@@ -30,6 +31,15 @@ export interface Anchor {
   fromAddr: string;
   fromName: string;
   bodyExcerpt: string;
+  /**
+   * Epoch ms of the anchor's last message, and how many messages the thread holds.
+   * Both required: slot times are offsets from "now", so without the anchor's real
+   * date nothing stops a probe saying "as I mentioned yesterday" on a three-month-old
+   * thread, and depth is what tells a scenario the exchange is real rather than a
+   * single unanswered ping.
+   */
+  internalDate: number;
+  messageCount: number;
 }
 
 /** A real message used as a few-shot style exemplar. */
@@ -85,6 +95,21 @@ export interface InjectedMessage {
   id: string;
   threadId: string;
   rfc822MessageId: string;
+}
+
+/**
+ * What each stage of the generator produced on the way to a fixture. Kept whole so
+ * a weak probe can be traced to the stage that weakened it — a fixture alone never
+ * shows whether the anchor was badly ranked or the prose was badly written.
+ */
+export interface GenerationTrace {
+  stages: Array<{
+    name: string;
+    durationMs: number;
+    output: unknown;
+    /** Human-readable reason this stage degraded to its fallback, if it did. */
+    fellBack?: string;
+  }>;
 }
 
 // ---------------------------------------------------------------------------
@@ -157,6 +182,22 @@ export interface Verdict {
 
 export type ScenarioFamily = "requires-history" | "interpersonal";
 
+/**
+ * What a scenario needs from its anchor thread, declared rather than coded — the
+ * ranking logic stays in one place and each scenario just states its requirements.
+ * An escalation premise lands on mail that disproves it if the owner already
+ * replied, so the criteria have to be per-scenario.
+ *
+ * Every field is optional and an absent field means today's behaviour: the most
+ * recent human thread, unfiltered.
+ */
+export interface AnchorCriteria {
+  requireUnanswered?: boolean; // owner never replied on this thread
+  requireBackAndForth?: boolean; // thread has real two-way exchange
+  preferRelationship?: RegExp; // match against Contact.relationship
+  minThreadMessages?: number;
+}
+
 export interface StressScenario {
   id: string;
   title: string;
@@ -165,6 +206,8 @@ export interface StressScenario {
   difficulty: string;
   /** Prefer threading the probe onto a real thread when one is available. */
   preferAnchor: boolean;
+  /** Which real thread this scenario can honestly be built on. */
+  anchorCriteria?: AnchorCriteria;
   slots: MessageSlot[];
   assertions: Assertion[];
   /** Qualitative question for the LLM judge (the residue assertions can't cover). */
@@ -201,4 +244,22 @@ export interface EvalReport {
   outcome: ProbeOutcome;
   verdict: Verdict;
   durationMs: number;
+  /**
+   * Everything below is optional because artifacts already written to
+   * data/eval-runs/ predate these fields, and `getReport` reads them with a blind
+   * cast (`runs.ts:80`). A required field would make every old run a lie the type
+   * system vouches for; readers must handle absence and say so.
+   */
+  runId?: string;
+  /**
+   * Mailbox state either side of the agent, captured so the standalone judge is a
+   * pure function of the artifact and needs nothing live.
+   */
+  snapshots?: { before: MailboxSnapshot; after: MailboxSnapshot };
+  generation?: GenerationTrace;
+  /**
+   * The profile this run used. A batch reuses it for later scenarios rather than
+   * paying the profiler again — the mailbox resets to the same snapshot each time.
+   */
+  profile?: MailboxProfile;
 }
