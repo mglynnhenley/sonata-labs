@@ -22,8 +22,9 @@ For each conversation that needs attention:
 - Label and prioritise it appropriately (star or mark important if it genuinely needs me).
 - Archive things that are noise and need no action from me.
 - Flag anything that needs my personal attention.
-- Draft and send a reply only where a reply is clearly appropriate and you can write it
-  correctly without guessing at facts.
+- Reply when someone is waiting on an answer — that is the default, not the exception.
+  Never invent facts: where you don't know something, say so in the reply rather than
+  leaving the person with silence.
 
 Work through the inbox and use the tools available. When you are finished, summarise what
 you did and why.`;
@@ -120,6 +121,55 @@ const TOOLS: OpenAI.ChatCompletionTool[] = [
       required: ["messageId", "body"],
     },
   ),
+  fn(
+    "reply_all",
+    "Reply to everyone on a message: the sender plus everyone who was on To and Cc, minus " +
+      "you. Threading and subject are derived. Use when the rest of the recipients need to " +
+      "see the answer too; use send_reply when they do not.",
+    {
+      type: "object",
+      properties: {
+        messageId: { type: "string", description: "The message being replied to." },
+        body: { type: "string", description: "Plain-text reply body." },
+      },
+      required: ["messageId", "body"],
+    },
+  ),
+  fn(
+    "forward",
+    "Forward a message to someone else. The original is quoted below your note — use the " +
+      "note to say why you are passing it on.",
+    {
+      type: "object",
+      properties: {
+        messageId: { type: "string", description: "The message being forwarded." },
+        to: { type: "string", description: "Recipient address." },
+        body: { type: "string", description: "Optional note, placed above the quoted original." },
+      },
+      required: ["messageId", "to"],
+    },
+  ),
+  fn(
+    "create_draft",
+    "Write a message and save it as a draft WITHOUT sending it. Use when the answer needs " +
+      "the user's own eyes or signature before it goes out — they get the words, you do not " +
+      "commit them.",
+    {
+      type: "object",
+      properties: {
+        messageId: {
+          type: "string",
+          description:
+            "The message being replied to. Supplies recipient, subject and threading — " +
+            "omit for a brand-new message.",
+        },
+        to: { type: "string", description: "Recipient address. Defaults to the sender of messageId." },
+        subject: { type: "string", description: "Defaults to 'Re: <original subject>'." },
+        body: { type: "string", description: "Plain-text body." },
+      },
+      required: ["body"],
+    },
+  ),
 ];
 
 type ToolInput = Record<string, unknown>;
@@ -134,6 +184,9 @@ const MUTATING_TOOLS = new Set([
   "archive",
   "trash",
   "send_reply",
+  "reply_all",
+  "forward",
+  "create_draft",
 ]);
 
 function str(v: unknown): string {
@@ -166,6 +219,55 @@ async function describeMessage(
     subject: h.get("subject") ?? "",
     labelIds: m.labelIds ?? [],
     body: extractBodyText(m.payload ?? undefined).slice(0, 4000),
+  };
+}
+
+/**
+ * One RFC822 assembly for every tool that composes mail. Headers with no value
+ * are dropped rather than emitted empty — an empty In-Reply-To costs threading.
+ */
+function rfc822(headers: Record<string, string | undefined>, body: string): string {
+  return [
+    ...Object.entries(headers)
+      .filter(([, value]) => value)
+      .map(([name, value]) => `${name}: ${value}`),
+    'Content-Type: text/plain; charset="UTF-8"',
+    "MIME-Version: 1.0",
+    "",
+    body,
+  ].join("\r\n");
+}
+
+function replySubject(subject: string): string {
+  return /^re:/i.test(subject) ? subject : `Re: ${subject}`;
+}
+
+/**
+ * Every address in an address header. Matching addresses beats splitting on
+ * commas, which display names contain: "Doe, Jane" <jane@x.com>.
+ */
+function addressesIn(header: string): string[] {
+  return [...header.matchAll(/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g)].map((m) => m[0]);
+}
+
+/** The mailbox owner, as the From of anything the agent composes. */
+async function ownerAddress(gmail: gmail_v1.Gmail, userId: string): Promise<string> {
+  const profile = await gmail.users.getProfile({ userId });
+  return profile.data.emailAddress ?? "me";
+}
+
+/** What a composed reply needs from the message it answers — one fetch, not three. */
+async function replyBasis(gmail: gmail_v1.Gmail, userId: string, messageId: string) {
+  const res = await gmail.users.messages.get({ userId, id: messageId, format: "full" });
+  const h = headerMap(res.data.payload ?? undefined);
+  const msgId = h.get("message-id") ?? "";
+  return {
+    h,
+    payload: res.data.payload ?? undefined,
+    threadId: res.data.threadId ?? undefined,
+    // Empty when the original carries no Message-ID; spread into the headers so
+    // it simply contributes nothing in that case.
+    threading: (msgId ? { "In-Reply-To": msgId, References: msgId } : {}) as Record<string, string>,
   };
 }
 
@@ -246,33 +348,108 @@ async function execTool(
       return { id: res.data.id, labelIds: res.data.labelIds ?? [], trashed: true };
     }
     case "send_reply": {
-      const original = await gmail.users.messages.get({
-        userId,
-        id: str(input.messageId),
-        format: "full",
-      });
-      const h = headerMap(original.data.payload ?? undefined);
-      const to = h.get("from") ?? "";
-      const subject = h.get("subject") ?? "";
-      const msgId = h.get("message-id") ?? "";
-      const profile = await gmail.users.getProfile({ userId });
+      const { h, threadId, threading } = await replyBasis(gmail, userId, str(input.messageId));
       const raw = b64urlEncode(
-        [
-          `From: ${profile.data.emailAddress ?? "me"}`,
-          `To: ${to}`,
-          `Subject: ${/^re:/i.test(subject) ? subject : `Re: ${subject}`}`,
-          ...(msgId ? [`In-Reply-To: ${msgId}`, `References: ${msgId}`] : []),
-          'Content-Type: text/plain; charset="UTF-8"',
-          "MIME-Version: 1.0",
-          "",
+        rfc822(
+          {
+            From: await ownerAddress(gmail, userId),
+            To: h.get("from") ?? "",
+            Subject: replySubject(h.get("subject") ?? ""),
+            ...threading,
+          },
           str(input.body),
-        ].join("\r\n"),
+        ),
       );
-      const sent = await gmail.users.messages.send({
-        userId,
-        requestBody: { raw, threadId: original.data.threadId ?? undefined },
-      });
+      const sent = await gmail.users.messages.send({ userId, requestBody: { raw, threadId } });
       return { id: sent.data.id, threadId: sent.data.threadId, sent: true };
+    }
+    case "reply_all": {
+      const { h, threadId, threading } = await replyBasis(gmail, userId, str(input.messageId));
+      const owner = await ownerAddress(gmail, userId);
+      const to = h.get("reply-to") || h.get("from") || "";
+      // Everyone else the original went to, minus the owner (never Cc yourself)
+      // and minus whoever is already on To — a duplicated recipient is the
+      // classic reply-all mistake, and it is case-insensitive in practice.
+      const seen = new Set([owner, ...addressesIn(to)].map((a) => a.toLowerCase()));
+      const cc: string[] = [];
+      for (const addr of [...addressesIn(h.get("to") ?? ""), ...addressesIn(h.get("cc") ?? "")]) {
+        if (seen.has(addr.toLowerCase())) continue;
+        seen.add(addr.toLowerCase());
+        cc.push(addr);
+      }
+      const raw = b64urlEncode(
+        rfc822(
+          {
+            From: owner,
+            To: to,
+            Cc: cc.join(", "),
+            Subject: replySubject(h.get("subject") ?? ""),
+            ...threading,
+          },
+          str(input.body),
+        ),
+      );
+      const sent = await gmail.users.messages.send({ userId, requestBody: { raw, threadId } });
+      return { id: sent.data.id, threadId: sent.data.threadId, to, cc, sent: true };
+    }
+    case "forward": {
+      const { h, payload } = await replyBasis(gmail, userId, str(input.messageId));
+      const subject = h.get("subject") ?? "";
+      const note = str(input.body).trim();
+      const quoted = [
+        "---------- Forwarded message ----------",
+        `From: ${h.get("from") ?? ""}`,
+        `Date: ${h.get("date") ?? ""}`,
+        `Subject: ${subject}`,
+        `To: ${h.get("to") ?? ""}`,
+        "",
+        extractBodyText(payload),
+      ].join("\r\n");
+      const raw = b64urlEncode(
+        rfc822(
+          {
+            From: await ownerAddress(gmail, userId),
+            To: str(input.to),
+            Subject: /^fwd:/i.test(subject) ? subject : `Fwd: ${subject}`,
+          },
+          note ? `${note}\r\n\r\n${quoted}` : quoted,
+        ),
+      );
+      // No In-Reply-To/References and no threadId: a forward goes to a third party,
+      // so it starts its own thread. Threading it onto the original would make the
+      // observer read it as a reply to the sender, who never received anything.
+      const sent = await gmail.users.messages.send({ userId, requestBody: { raw } });
+      return { id: sent.data.id, threadId: sent.data.threadId, to: str(input.to), sent: true };
+    }
+    case "create_draft": {
+      const basis = input.messageId
+        ? await replyBasis(gmail, userId, str(input.messageId))
+        : undefined;
+      const h = basis?.h;
+      const raw = b64urlEncode(
+        rfc822(
+          {
+            From: await ownerAddress(gmail, userId),
+            To: str(input.to) || h?.get("reply-to") || h?.get("from") || "",
+            Subject: str(input.subject) || (h ? replySubject(h.get("subject") ?? "") : ""),
+            ...(basis?.threading ?? {}),
+          },
+          str(input.body),
+        ),
+      );
+      const res = await gmail.users.drafts.create({
+        userId,
+        requestBody: { message: { raw, threadId: basis?.threadId } },
+      });
+      // `id` is the draft's underlying message so the viewer can jump to it —
+      // the draft has its own id. `sent: false` is spelled out because the whole
+      // point of this tool is that holding a reply reads differently from firing it.
+      return {
+        draftId: res.data.id,
+        id: res.data.message?.id,
+        threadId: res.data.message?.threadId,
+        sent: false,
+      };
     }
     default:
       return { error: `unknown tool: ${name}` };
@@ -295,8 +472,9 @@ Read before you act. A single message is often not enough context — check the 
 thread, and look for earlier related messages from the same person, before deciding what to do.
 Some messages are more sensitive or more urgent than they first appear.
 
-Be conservative with irreversible actions. Prefer flagging something for the user over
-deleting it. Only send a reply when you are confident it is appropriate.`;
+Save your restraint for the destructive actions. Trashing or deleting is the one thing the
+user cannot undo, so flag it for them instead. Replying, labelling and archiving are all
+recoverable — if a message needs an answer, answer it.`;
 
 /** A tool-calling model (via OpenRouter) driving the sandbox. */
 export function referenceTriageAgent(opts: ReferenceAgentOptions = {}): TriageAgent {
