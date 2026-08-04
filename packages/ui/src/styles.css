@@ -1,0 +1,294 @@
+/**
+ * Sonata design system stylesheet.
+ *
+ * Usage in an app's globals.css:
+ *
+ *   @import "tailwindcss";
+ *   @import "@sonata/ui/styles.css";
+ *   @source "../../../packages/ui/src";
+ *
+ * The `@source` line belongs in the *app's* CSS: Tailwind resolves this file
+ * through the node_modules symlink, and its scanner honours .gitignore, so a
+ * relative `@source` from here can silently miss the components. Pointing at the
+ * real workspace path from the app is the reliable form.
+ *
+ * Values mirror src/tokens.ts — edit both together.
+ */
+
+@theme {
+  /* Surfaces */
+  --color-sn-bg: #f2f1ec;
+  --color-sn-bg-subtle: #e9e7df;
+  --color-sn-surface: #fbfaf8;
+  --color-sn-surface-hover: #f5f3ee;
+
+  /* Ink + rules */
+  --color-sn-ink: #1b1a17;
+  --color-sn-muted: #5f5b52;
+  --color-sn-subtle: #8c8779;
+  --color-sn-line: #e3e0d7;
+  --color-sn-line-strong: #d2cec1;
+
+  /* Slate-blue primary */
+  --color-sn-primary: #5b7089;
+  --color-sn-primary-hover: #4d6178;
+  --color-sn-primary-active: #3f5065;
+  --color-sn-primary-soft: #e7ecf2;
+  --color-sn-primary-ink: #3c5170;
+  --color-sn-on-primary: #fbfaf8;
+
+  /* Gold / tan accent */
+  --color-sn-gold: #c9a227;
+  --color-sn-gold-soft: #f2e8cd;
+  --color-sn-gold-ink: #87681a;
+
+  /* Semantic */
+  --color-sn-success: #3f7d53;
+  --color-sn-success-soft: #e4eee7;
+  --color-sn-success-ink: #2f6340;
+  --color-sn-danger: #b04236;
+  --color-sn-danger-hover: #98392e;
+  --color-sn-danger-soft: #f7e6e2;
+  --color-sn-danger-ink: #8c3327;
+  --color-sn-warning: #b3801f;
+  --color-sn-warning-soft: #f6ecd6;
+  --color-sn-warning-ink: #7f5c14;
+  --color-sn-info: #4a6fa5;
+  --color-sn-info-soft: #e6ecf5;
+  --color-sn-info-ink: #3a5a8a;
+  --color-sn-neutral: #6f6a5e;
+  --color-sn-neutral-soft: #ece9e1;
+  --color-sn-neutral-ink: #4f4b42;
+  --color-sn-focus: #5b7089;
+
+  /* Service hues */
+  --color-sn-gmail-ink: #b23f2f;
+  --color-sn-gmail-soft: #f8e7e3;
+  --color-sn-gmail-line: #eed4cd;
+  --color-sn-slack-ink: #6b3f77;
+  --color-sn-slack-soft: #f1e8f3;
+  --color-sn-slack-line: #e3d4e7;
+  --color-sn-calendar-ink: #2f6497;
+  --color-sn-calendar-soft: #e5edf6;
+  --color-sn-calendar-line: #cfdcea;
+
+  /* Status hues */
+  --color-sn-running-ink: #4a6fa5;
+  --color-sn-running-soft: #e6ecf5;
+  --color-sn-running-line: #cfdcea;
+  --color-sn-passed-ink: #2f6340;
+  --color-sn-passed-soft: #e4eee7;
+  --color-sn-passed-line: #cfe0d4;
+  --color-sn-failed-ink: #8c3327;
+  --color-sn-failed-soft: #f7e6e2;
+  --color-sn-failed-line: #eed4cd;
+  --color-sn-pending-ink: #4f4b42;
+  --color-sn-pending-soft: #ece9e1;
+  --color-sn-pending-line: #ddd9cd;
+
+  /* Radii */
+  --radius-sn-sm: 6px;
+  --radius-sn-md: 10px;
+  --radius-sn-lg: 14px;
+  --radius-sn-xl: 20px;
+  --radius-sn-2xl: 24px;
+  --radius-sn-3xl: 32px;
+
+  /* Warm-tinted shadows; grey ones go muddy on cream. */
+  --shadow-sn-xs: 0 1px 2px rgba(27, 26, 23, 0.05);
+  --shadow-sn-sm: 0 1px 3px rgba(27, 26, 23, 0.06), 0 1px 2px rgba(27, 26, 23, 0.04);
+  --shadow-sn-md: 0 4px 14px -3px rgba(27, 26, 23, 0.1), 0 2px 5px -3px rgba(27, 26, 23, 0.06);
+  --shadow-sn-lg: 0 18px 44px -14px rgba(27, 26, 23, 0.2), 0 4px 12px -6px rgba(27, 26, 23, 0.1);
+
+  /* Type. --font-sn-* are set by next/font in src/fonts.ts; the stacks below
+     keep the page legible if a consumer skips it. */
+  --font-sans: var(--font-sn-sans), ui-sans-serif, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", Inter, Helvetica, Arial, sans-serif;
+  --font-display: var(--font-sn-display), "Instrument Serif", ui-serif, Georgia,
+    "Times New Roman", serif;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+
+  /* Motion. 150ms is the house transition; anything slower reads as lag. */
+  --ease-sn: cubic-bezier(0.2, 0, 0, 1);
+  --ease-sn-out: cubic-bezier(0.16, 1, 0.3, 1);
+
+  --animate-sn-fade-in: sn-fade-in 150ms var(--ease-sn) both;
+  --animate-sn-slide-in: sn-slide-in 180ms var(--ease-sn-out) both;
+  --animate-sn-rise: sn-rise 220ms var(--ease-sn-out) both;
+  --animate-sn-pop: sn-pop 160ms var(--ease-sn-out) both;
+  --animate-sn-pulse: sn-pulse 1.8s var(--ease-sn) infinite;
+  --animate-sn-shimmer: sn-shimmer 1.4s linear infinite;
+  --animate-sn-indeterminate: sn-indeterminate 1.5s var(--ease-sn) infinite;
+
+  @keyframes sn-fade-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+  @keyframes sn-slide-in {
+    from {
+      opacity: 0;
+      transform: translateY(-4px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  @keyframes sn-rise {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  @keyframes sn-pop {
+    from {
+      opacity: 0;
+      transform: scale(0.97) translateY(4px);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1) translateY(0);
+    }
+  }
+  @keyframes sn-pulse {
+    0%,
+    100% {
+      opacity: 1;
+      box-shadow: 0 0 0 0 currentColor;
+    }
+    50% {
+      opacity: 0.75;
+      box-shadow: 0 0 0 4px transparent;
+    }
+  }
+  @keyframes sn-shimmer {
+    from {
+      background-position: -160% 0;
+    }
+    to {
+      background-position: 160% 0;
+    }
+  }
+  /* Work with no known length: a stripe sweeps instead of a bar pretending to
+     know how far along it is. */
+  @keyframes sn-indeterminate {
+    from {
+      transform: translateX(-120%);
+    }
+    to {
+      transform: translateX(340%);
+    }
+  }
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
+  body {
+    background-color: var(--color-sn-bg);
+    color: var(--color-sn-ink);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 20px;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    font-synthesis-weight: none;
+  }
+
+  ::selection {
+    background-color: var(--color-sn-gold-soft);
+    color: var(--color-sn-ink);
+  }
+
+  /* One ring, everywhere, on keyboard focus only. */
+  :where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+    outline: 2px solid var(--color-sn-focus);
+    outline-offset: 2px;
+  }
+  :where(a, button, input, select, textarea, summary, [tabindex]):focus:not(:focus-visible) {
+    outline: none;
+  }
+
+  /* Numbers must not jitter as they tick. */
+  :where(table, [data-numeric]) {
+    font-variant-numeric: tabular-nums;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+/* The signature: serif italic, tight, slightly optically reduced tracking. */
+.font-display {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  line-height: 1.08;
+}
+
+/* Same face, upright — for numerals inside a display heading. */
+.font-display-upright {
+  font-family: var(--font-display);
+  font-style: normal;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+}
+
+/* Quiet scrollbars; the default macOS ones fight the cream. */
+.sn-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-sn-line-strong) transparent;
+}
+.sn-scroll::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+.sn-scroll::-webkit-scrollbar-thumb {
+  background: var(--color-sn-line-strong);
+  border: 3px solid transparent;
+  background-clip: content-box;
+  border-radius: 999px;
+}
+.sn-scroll::-webkit-scrollbar-thumb:hover {
+  background: var(--color-sn-subtle);
+  background-clip: content-box;
+}
+
+/* Timeline rail: every item draws the vertical line, the last one must not —
+   otherwise the story trails off into empty space. */
+.sn-timeline > li:last-child [data-rail] {
+  border-color: transparent;
+}
+
+/* Loading placeholder for values that are still being fetched. */
+.sn-skeleton {
+  background-image: linear-gradient(
+    90deg,
+    var(--color-sn-bg-subtle) 0%,
+    var(--color-sn-surface-hover) 40%,
+    var(--color-sn-bg-subtle) 80%
+  );
+  background-size: 200% 100%;
+  animation: var(--animate-sn-shimmer);
+  border-radius: var(--radius-sn-sm);
+}

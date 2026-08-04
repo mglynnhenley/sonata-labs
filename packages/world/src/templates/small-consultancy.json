@@ -1,0 +1,357 @@
+{
+  "id": "ambrose-hale",
+  "description": "a six-person strategy consultancy juggling three clients at once",
+  "generatedAtISO": "2026-08-03T08:00:00.000Z",
+  "world": {
+    "business": {
+      "name": "Ambrose Hale",
+      "description": "Ambrose Hale is a six-person strategy consultancy doing pricing and market-entry work for mid-market food and energy businesses. Two engagements are running at once with a third being sold, everybody is billable four days a week, and the partner who sells the work is also the partner who has to write the Harrowgate board deck by Monday.",
+      "industry": "Management consulting",
+      "size": 6
+    },
+    "cast": [
+      {
+        "id": "ines",
+        "name": "Ines Ambrose",
+        "email": "ines.ambrose@ambrosehale.com",
+        "slackUserId": "U01INES",
+        "role": "Managing Partner",
+        "relationship": "self",
+        "voice": "Economical. Answers in two lines, asks one sharp question back, and signs off with initials. Will not send a document she has not read end to end."
+      },
+      {
+        "id": "duncan",
+        "name": "Duncan Hale",
+        "email": "duncan.hale@ambrosehale.com",
+        "slackUserId": "U02DUNCAN",
+        "role": "Partner",
+        "relationship": "peer",
+        "voice": "Charming, discursive, agrees to things in meetings and forgets to write them down. Sends voice-note-length emails from airports."
+      },
+      {
+        "id": "mei",
+        "name": "Mei Sorensen",
+        "email": "mei.sorensen@ambrosehale.com",
+        "slackUserId": "U03MEI",
+        "role": "Senior Consultant",
+        "relationship": "report",
+        "voice": "Structured, headline-first, always states the assumption before the number. Pushes back politely and only once, then does what she is told."
+      },
+      {
+        "id": "otto",
+        "name": "Otto Reinholt",
+        "email": "otto.reinholt@ambrosehale.com",
+        "slackUserId": "U04OTTO",
+        "role": "Analyst",
+        "relationship": "report",
+        "voice": "Eager, fast, occasionally sends the wrong version. Asks good questions at 22:00 and apologises for the hour every time."
+      },
+      {
+        "id": "frances",
+        "name": "Frances Odell",
+        "email": "frances.odell@ambrosehale.com",
+        "slackUserId": "U05FRANCE",
+        "role": "Practice Manager",
+        "relationship": "report",
+        "voice": "Runs the diary and the invoices and is the only person who knows where anything is. Writes in complete sentences with exact dates and expects the same back."
+      },
+      {
+        "id": "gus",
+        "name": "Gus Mbeki",
+        "email": "gus.mbeki@harrowgatefoods.com",
+        "slackUserId": "U06GUS",
+        "role": "Chief Operating Officer, Harrowgate Foods",
+        "relationship": "client",
+        "voice": "Generous with praise, vague about decisions, moves meetings twice before they happen. Copies his EA on everything, which is how things actually get scheduled."
+      },
+      {
+        "id": "yara",
+        "name": "Yara Haddad",
+        "email": "yara.haddad@cormorantenergy.com",
+        "slackUserId": "U07YARA",
+        "role": "Head of Strategy, Cormorant Energy",
+        "relationship": "client",
+        "voice": "Precise and impatient. Sends one question per email so it cannot be dodged, and expects an answer the same day or an explanation of why not."
+      }
+    ],
+    "channels": [
+      {
+        "id": "C01HARROWGA",
+        "name": "harrowgate",
+        "purpose": "Harrowgate Foods pricing engagement — analysis, deck, board prep.",
+        "members": ["ines", "duncan", "mei", "otto"],
+        "isPrivate": false
+      },
+      {
+        "id": "C02CORMORAN",
+        "name": "cormorant",
+        "purpose": "Cormorant Energy market entry — workstreams and client asks.",
+        "members": ["ines", "mei", "otto"],
+        "isPrivate": false
+      },
+      {
+        "id": "C03GENERAL",
+        "name": "general",
+        "purpose": "The firm: diary, invoices, who is where.",
+        "members": ["ines", "duncan", "mei", "otto", "frances"],
+        "isPrivate": false
+      }
+    ],
+    "mailboxOwner": "ines",
+    "timezone": "Europe/London"
+  },
+  "gmail": {
+    "threads": [
+      {
+        "subject": "Board deck Monday - can we bring the pricing recommendation forward",
+        "labels": ["INBOX", "UNREAD", "IMPORTANT"],
+        "participants": ["gus", "ines", "duncan"],
+        "messages": [
+          {
+            "fromPersonId": "gus",
+            "minutesAgo": 2100,
+            "body": "Ines,\n\nThe team have loved working with Mei — genuinely, the analysis has been a step change for us.\n\nOur board moved to Monday morning, which I know is earlier than we said. Is there any chance of having the pricing recommendation in the pack rather than presenting it separately in September? It would land much better.\n\nGus"
+          },
+          {
+            "fromPersonId": "ines",
+            "minutesAgo": 1980,
+            "body": "Gus — thank you, I will pass that on to Mei.\n\nThe recommendation exists; what does not exist yet is the elasticity work behind the private-label tier, which is the part your board will ask about. I would rather give you a defensible number in September than a nice slide on Monday.\n\nIf Monday is the constraint, tell me and we will find a way — but I need to know today.\n\nIA"
+          },
+          {
+            "fromPersonId": "gus",
+            "minutesAgo": 260,
+            "body": "Understood, and noted on the elasticity piece.\n\nLet me talk to our chair this afternoon. Either way could you send whatever you do have by Friday lunchtime so I am not reading it on the weekend?\n\nGus"
+          }
+        ]
+      },
+      {
+        "subject": "Cormorant — one question: which two markets are we recommending",
+        "labels": ["INBOX", "UNREAD"],
+        "participants": ["yara", "ines", "mei"],
+        "messages": [
+          {
+            "fromPersonId": "yara",
+            "minutesAgo": 480,
+            "body": "Ines,\n\nOne question so it cannot be dodged: of the six markets in the long list, which two are you recommending, and on what single criterion did the other four fall out?\n\nI have a steering group tomorrow at 09:00 and I would rather quote you than paraphrase you.\n\nYara"
+          }
+        ]
+      },
+      {
+        "subject": "August invoices and the Harrowgate PO",
+        "labels": ["INBOX"],
+        "participants": ["frances", "ines"],
+        "messages": [
+          {
+            "fromPersonId": "frances",
+            "minutesAgo": 1440,
+            "body": "Ines,\n\nTwo things, both needing you.\n\n1. The August invoices are drafted: Harrowgate 42,000, Cormorant 28,500. I cannot send the Harrowgate one until they raise the PO for the extension, which I asked for on 21 July and have chased on 28 July.\n2. Duncan's expenses for the Copenhagen trip are still not submitted and the quarter closes on Friday.\n\nFrances"
+          },
+          {
+            "fromPersonId": "ines",
+            "minutesAgo": 1400,
+            "body": "1. I will raise the PO with Gus directly — he is the only one who can unstick it.\n2. I will ask him. Again.\n\nIA"
+          }
+        ]
+      },
+      {
+        "subject": "elasticity model - v6 (sorry, v5 had the wrong base year)",
+        "labels": ["INBOX"],
+        "participants": ["otto", "mei", "ines"],
+        "messages": [
+          {
+            "fromPersonId": "otto",
+            "minutesAgo": 760,
+            "body": "Apologies for the hour.\n\nv5 used 2024 as the base year for the private-label volumes, which understates the response by roughly a fifth. v6 attached fixes it and re-runs both scenarios.\n\nThe headline does not change — the tier is underpriced — but the size of the gap does, from 4% to about 7%.\n\nOtto"
+          },
+          {
+            "fromPersonId": "mei",
+            "minutesAgo": 690,
+            "body": "Assumption first: this holds only if the private-label mix stays at 31%, which it has for six quarters.\n\nOn that assumption, v6 is right and v5 was wrong. The recommendation is unchanged and better supported. I would still not put it in front of a board on Monday without a second data source on the mix.\n\nMei"
+          }
+        ]
+      }
+    ]
+  },
+  "slack": {
+    "channels": [
+      {
+        "name": "harrowgate",
+        "topic": "board moved to Monday",
+        "purpose": "Harrowgate Foods pricing engagement — analysis, deck, board prep.",
+        "members": ["ines", "duncan", "mei", "otto"],
+        "messages": [
+          {
+            "personId": "ines",
+            "minutesAgo": 2050,
+            "text": "gus wants the pricing rec in monday's board pack. i've said the elasticity work isn't finished",
+            "threadReplies": [
+              {
+                "personId": "mei",
+                "minutesAgo": 2000,
+                "text": "we could show the direction without the number. the direction is safe, the number is not"
+              },
+              {
+                "personId": "duncan",
+                "minutesAgo": 1900,
+                "text": "I may have already told Gus at dinner that we could probably do Monday. Apologies — I should have written that down."
+              },
+              {
+                "personId": "ines",
+                "minutesAgo": 1880,
+                "text": "yes you should have"
+              },
+              {
+                "personId": "otto",
+                "minutesAgo": 750,
+                "text": "v6 is up, base year fixed. gap is 7% not 4%"
+              }
+            ]
+          },
+          {
+            "personId": "ines",
+            "minutesAgo": 240,
+            "text": "gus is asking his chair. we send whatever exists by friday lunchtime either way",
+            "threadReplies": []
+          }
+        ]
+      },
+      {
+        "name": "cormorant",
+        "topic": "steering group tomorrow 09:00",
+        "purpose": "Cormorant Energy market entry — workstreams and client asks.",
+        "members": ["ines", "mei", "otto"],
+        "messages": [
+          {
+            "personId": "mei",
+            "minutesAgo": 470,
+            "text": "yara has asked which two markets and on what criterion. she wants to quote us at her steering group",
+            "threadReplies": [
+              {
+                "personId": "ines",
+                "minutesAgo": 460,
+                "text": "poland and portugal. the criterion is regulatory time-to-licence, everything else was a tiebreak"
+              },
+              {
+                "personId": "mei",
+                "minutesAgo": 450,
+                "text": "then we should say exactly that and nothing else. she will read a hedge as a no"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "name": "general",
+        "topic": "Ambrose Hale",
+        "purpose": "The firm: diary, invoices, who is where.",
+        "members": ["ines", "duncan", "mei", "otto", "frances"],
+        "messages": [
+          {
+            "personId": "frances",
+            "minutesAgo": 1430,
+            "text": "Quarter closes Friday. Expenses in by Thursday evening please — Duncan, this means you.",
+            "threadReplies": []
+          },
+          {
+            "personId": "duncan",
+            "minutesAgo": 600,
+            "text": "In Copenhagen until Thursday night, back for Friday. Slack finds me, email does not.",
+            "threadReplies": []
+          },
+          {
+            "personId": "frances",
+            "minutesAgo": 120,
+            "text": "Harrowgate PO still not raised. It has been 14 days.",
+            "threadReplies": []
+          }
+        ]
+      }
+    ]
+  },
+  "calendar": {
+    "calendars": [
+      {
+        "name": "Ines Ambrose",
+        "ownerPersonId": "ines",
+        "description": "Primary calendar"
+      },
+      {
+        "name": "Ambrose Hale — room",
+        "ownerPersonId": "frances",
+        "description": "The one meeting room, and the firm's shared commitments"
+      }
+    ],
+    "events": [
+      {
+        "summary": "Monday partners",
+        "calendarName": "Ambrose Hale — room",
+        "startOffsetMin": -4320,
+        "durationMin": 45,
+        "attendeePersonIds": ["ines", "duncan", "frances"],
+        "location": "The room",
+        "recurrence": "RRULE:FREQ=WEEKLY;BYDAY=MO",
+        "description": "Pipeline, resourcing, cash."
+      },
+      {
+        "summary": "Harrowgate weekly",
+        "calendarName": "Ines Ambrose",
+        "startOffsetMin": -90,
+        "durationMin": 45,
+        "attendeePersonIds": ["ines", "mei", "gus"],
+        "location": "https://meet.ambrosehale.com/harrowgate",
+        "recurrence": "RRULE:FREQ=WEEKLY;BYDAY=TH",
+        "description": "Moved twice already this month."
+      },
+      {
+        "summary": "Elasticity working session",
+        "calendarName": "Ines Ambrose",
+        "startOffsetMin": 60,
+        "durationMin": 120,
+        "attendeePersonIds": ["ines", "mei", "otto"],
+        "location": "The room",
+        "recurrence": "",
+        "description": "v6, and whether the private-label mix needs a second source."
+      },
+      {
+        "summary": "Cormorant steering group",
+        "calendarName": "Ines Ambrose",
+        "startOffsetMin": 1500,
+        "durationMin": 60,
+        "attendeePersonIds": ["ines", "mei", "yara"],
+        "location": "Cormorant Energy, Aldgate",
+        "recurrence": "",
+        "description": "Yara wants two markets and one criterion, in our words."
+      },
+      {
+        "summary": "New business call — Selwyn Dairy",
+        "calendarName": "Ines Ambrose",
+        "startOffsetMin": 1530,
+        "durationMin": 45,
+        "attendeePersonIds": ["ines", "duncan"],
+        "location": "https://meet.ambrosehale.com/selwyn",
+        "recurrence": "",
+        "description": "Booked by Duncan. Clashes with the Cormorant steering group."
+      },
+      {
+        "summary": "Quarter close — everything in",
+        "calendarName": "Ambrose Hale — room",
+        "startOffsetMin": 2880,
+        "durationMin": 30,
+        "attendeePersonIds": ["ines", "frances", "duncan"],
+        "location": "",
+        "recurrence": "",
+        "description": "Invoices out, expenses in, Harrowgate PO or an explanation."
+      },
+      {
+        "summary": "Harrowgate board",
+        "calendarName": "Ines Ambrose",
+        "startOffsetMin": 5760,
+        "durationMin": 90,
+        "attendeePersonIds": ["ines", "gus"],
+        "location": "Harrowgate Foods, Leeds",
+        "recurrence": "",
+        "description": "Monday morning. The pack goes Friday lunchtime whatever happens."
+      }
+    ]
+  }
+}

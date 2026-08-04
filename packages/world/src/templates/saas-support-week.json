@@ -1,0 +1,342 @@
+{
+  "id": "tessera-analytics",
+  "description": "a 30-person B2B SaaS company having a bad support week",
+  "generatedAtISO": "2026-08-03T08:00:00.000Z",
+  "world": {
+    "business": {
+      "name": "Tessera Analytics",
+      "description": "Tessera Analytics sells clinical operations dashboards to hospital networks — thirty people, about ninety accounts, two of which are more than half the revenue. A schema migration shipped on Monday broke saved reports for roughly a fifth of customers, the queue has not been under fifty tickets since, and the largest account has a renewal review on Friday.",
+      "industry": "B2B SaaS, healthcare analytics",
+      "size": 30
+    },
+    "cast": [
+      {
+        "id": "owen",
+        "name": "Owen Baptiste",
+        "email": "owen.baptiste@tesseraanalytics.com",
+        "slackUserId": "U01OWEN",
+        "role": "Head of Support",
+        "relationship": "self",
+        "voice": "Writes short, owns problems out loud, and always gives a next checkpoint time even when he has no answer. Gets terser as the queue grows."
+      },
+      {
+        "id": "rina",
+        "name": "Rina Kovac",
+        "email": "rina.kovac@tesseraanalytics.com",
+        "slackUserId": "U02RINA",
+        "role": "VP Engineering",
+        "relationship": "peer",
+        "voice": "Blunt, technically exact, defends her team hard and admits fault faster than anyone expects. Refuses to give an ETA she does not believe."
+      },
+      {
+        "id": "sam",
+        "name": "Sam Whitlock",
+        "email": "sam.whitlock@tesseraanalytics.com",
+        "slackUserId": "U03SAM",
+        "role": "Senior Support Engineer",
+        "relationship": "report",
+        "voice": "Detailed to the point of exhausting, pastes full stack traces into Slack, and is right about the root cause more often than the engineers like."
+      },
+      {
+        "id": "delia",
+        "name": "Delia Voss",
+        "email": "delia.voss@tesseraanalytics.com",
+        "slackUserId": "U04DELIA",
+        "role": "Customer Success Manager",
+        "relationship": "report",
+        "voice": "Warm, fast, over-apologises to customers and then quietly asks for exactly what she needs internally. Uses the customer's own words back at you."
+      },
+      {
+        "id": "hugo",
+        "name": "Hugo Zhang",
+        "email": "hugo.zhang@tesseraanalytics.com",
+        "slackUserId": "U05HUGO",
+        "role": "Chief Executive",
+        "relationship": "manager",
+        "voice": "One-line emails with no greeting, usually a question with no context, usually the right question. Forwards customer complaints with 'thoughts?'"
+      },
+      {
+        "id": "elena",
+        "name": "Elena Petrova",
+        "email": "elena.petrova@brightpathhealth.org",
+        "slackUserId": "U06ELENA",
+        "role": "Director of Clinical Ops, Brightpath Health",
+        "relationship": "client",
+        "voice": "Formal, evidence-led, keeps her own log of every incident with dates and quotes it back. Never raises her voice and never forgets."
+      },
+      {
+        "id": "karl",
+        "name": "Karl Osei",
+        "email": "karl.osei@tesseraanalytics.com",
+        "slackUserId": "U07KARL",
+        "role": "Site Reliability Engineer",
+        "relationship": "peer",
+        "voice": "Writes like a pager: timestamps, facts, no adjectives. Says 'ack' and 'mitigated' and disappears back into the terminal."
+      }
+    ],
+    "channels": [
+      {
+        "id": "C01INCIDENT",
+        "name": "incidents",
+        "purpose": "Live incidents, pager traffic, mitigation and comms.",
+        "members": ["owen", "rina", "karl", "sam", "hugo"],
+        "isPrivate": false
+      },
+      {
+        "id": "C02SUPPORT",
+        "name": "support",
+        "purpose": "Queue health, escalations, and who is covering what.",
+        "members": ["owen", "sam", "delia", "rina"],
+        "isPrivate": false
+      },
+      {
+        "id": "C03GENERAL",
+        "name": "general",
+        "purpose": "Company-wide announcements.",
+        "members": ["owen", "rina", "sam", "delia", "hugo", "karl"],
+        "isPrivate": false
+      }
+    ],
+    "mailboxOwner": "owen",
+    "timezone": "America/Chicago"
+  },
+  "gmail": {
+    "threads": [
+      {
+        "subject": "Saved reports still failing - fourth day",
+        "labels": ["INBOX", "UNREAD", "IMPORTANT"],
+        "participants": ["elena", "owen", "delia"],
+        "messages": [
+          {
+            "fromPersonId": "elena",
+            "minutesAgo": 4200,
+            "body": "Owen,\n\nAs of this morning eleven of our saved reports return an error. Two of them feed the Monday capacity meeting, which is how our charge nurses plan the week.\n\nI have logged: Monday 09:40 first failure, Monday 14:10 ticket 8841 raised, Tuesday 11:00 told a fix was 'in testing'.\n\nWhat is the actual status?\n\nElena Petrova\nDirector of Clinical Operations, Brightpath Health"
+          },
+          {
+            "fromPersonId": "owen",
+            "minutesAgo": 4020,
+            "body": "Elena — you are right on all three timestamps. The cause is a column rename in Monday's migration that our saved-report layer did not follow. Engineering has the fix; I do not yet have a date I trust, and I would rather say that than give you a Tuesday answer again.\n\nNext update from me by 16:00 today whether or not anything has changed.\n\nOwen"
+          },
+          {
+            "fromPersonId": "elena",
+            "minutesAgo": 130,
+            "body": "It is Thursday and my log now has two more entries.\n\nWe have a renewal review Friday at 11:00. I would like to be able to tell my CFO that this is fixed, or at minimum when it will be. Please do not let me walk in with nothing."
+          }
+        ]
+      },
+      {
+        "subject": "thoughts?",
+        "labels": ["INBOX", "UNREAD"],
+        "participants": ["hugo", "owen"],
+        "messages": [
+          {
+            "fromPersonId": "hugo",
+            "minutesAgo": 220,
+            "body": "Forwarding below — Brightpath's CFO mentioned this to me directly at the conference.\n\nAre we going to lose them? One line is fine.\n\nHugo"
+          }
+        ]
+      },
+      {
+        "subject": "Migration rollback options",
+        "labels": ["INBOX"],
+        "participants": ["rina", "owen", "karl", "sam"],
+        "messages": [
+          {
+            "fromPersonId": "sam",
+            "minutesAgo": 1500,
+            "body": "The failing reports all reference encounter_ts, which Monday's migration renamed to encounter_started_at. The saved-report layer stores raw SQL, so nothing rewrote them.\n\nThere are 1,140 saved reports across 19 accounts using the old name. A rewrite script is straightforward but it edits customer-authored SQL, which I do not think we can do without telling them.\n\nSam"
+          },
+          {
+            "fromPersonId": "rina",
+            "minutesAgo": 1380,
+            "body": "Sam is right about the cause and right about the consent problem. Options:\n\n1. Add a compatibility view for the old column name. Two hours, no customer SQL touched, slightly gross forever.\n2. Rewrite the stored SQL. Cleaner, needs customer sign-off, days.\n3. Roll back the migration. Breaks the three accounts already on the new scheduling module.\n\nI want option 1 today and option 2 properly next month. I am not giving a date for 2.\n\nRina"
+          },
+          {
+            "fromPersonId": "karl",
+            "minutesAgo": 1310,
+            "body": "Ack. Compatibility view is safe from my side, no read amplification worth worrying about. Can deploy in the 13:00 window."
+          }
+        ]
+      },
+      {
+        "subject": "Queue is at 63",
+        "labels": ["INBOX"],
+        "participants": ["delia", "owen", "sam"],
+        "messages": [
+          {
+            "fromPersonId": "delia",
+            "minutesAgo": 300,
+            "body": "Owen — 63 open, 41 of them the same saved-reports error, 9 waiting on us more than 48 hours.\n\nI can send one honest update to all 19 affected accounts this morning if you give me the words. That collapses most of the queue and stops us writing 41 slightly different versions of the truth.\n\nDelia"
+          }
+        ]
+      }
+    ]
+  },
+  "slack": {
+    "channels": [
+      {
+        "name": "incidents",
+        "topic": "INC-204 saved reports — mitigation in the 13:00 window",
+        "purpose": "Live incidents, pager traffic, mitigation and comms.",
+        "members": ["owen", "rina", "karl", "sam", "hugo"],
+        "messages": [
+          {
+            "personId": "karl",
+            "minutesAgo": 5700,
+            "text": "INC-204 opened. saved report execution errors, 19 accounts, started 09:38 mon after migration 2026-07-27-01",
+            "threadReplies": [
+              {
+                "personId": "sam",
+                "minutesAgo": 5600,
+                "text": "column rename. encounter_ts -> encounter_started_at. stored SQL not rewritten. 1140 reports affected"
+              },
+              {
+                "personId": "rina",
+                "minutesAgo": 1370,
+                "text": "going with a compatibility view today. karl deploying 13:00. i am not promising the proper fix this week"
+              },
+              {
+                "personId": "karl",
+                "minutesAgo": 60,
+                "text": "deploy window in 40m. rollback plan is drop the view"
+              }
+            ]
+          },
+          {
+            "personId": "hugo",
+            "minutesAgo": 210,
+            "text": "brightpath CFO raised this to me at the conference. do we have a number for how many of their reports are down",
+            "threadReplies": []
+          }
+        ]
+      },
+      {
+        "name": "support",
+        "topic": "queue 63, 41 are INC-204",
+        "purpose": "Queue health, escalations, and who is covering what.",
+        "members": ["owen", "sam", "delia", "rina"],
+        "messages": [
+          {
+            "personId": "delia",
+            "minutesAgo": 310,
+            "text": "63 open. 41 same error. 9 breached 48h :grimacing:",
+            "threadReplies": [
+              {
+                "personId": "owen",
+                "minutesAgo": 305,
+                "text": "one update to all 19 accounts. i'll write it after i know what karl is actually deploying"
+              },
+              {
+                "personId": "delia",
+                "minutesAgo": 290,
+                "text": "elena has a renewal review friday 11:00. she is keeping a log and she will read it out"
+              }
+            ]
+          },
+          {
+            "personId": "sam",
+            "minutesAgo": 100,
+            "text": "reminder that the view fixes execution but any report someone edits after today gets the new name. we will see this again in a month",
+            "threadReplies": []
+          }
+        ]
+      },
+      {
+        "name": "general",
+        "topic": "Tessera Analytics",
+        "purpose": "Company-wide announcements.",
+        "members": ["owen", "rina", "sam", "delia", "hugo", "karl"],
+        "messages": [
+          {
+            "personId": "hugo",
+            "minutesAgo": 2900,
+            "text": "I'm at the health systems conference Wed-Thu. Slack is faster than email for me this week.",
+            "threadReplies": []
+          },
+          {
+            "personId": "rina",
+            "minutesAgo": 480,
+            "text": "migration freeze until INC-204 is closed. nothing touching schema until then",
+            "threadReplies": []
+          }
+        ]
+      }
+    ]
+  },
+  "calendar": {
+    "calendars": [
+      {
+        "name": "Owen Baptiste",
+        "ownerPersonId": "owen",
+        "description": "Primary calendar"
+      },
+      {
+        "name": "Incident bridge",
+        "ownerPersonId": "karl",
+        "description": "Standing bridge, used only while an incident is open"
+      }
+    ],
+    "events": [
+      {
+        "summary": "Support standup",
+        "calendarName": "Owen Baptiste",
+        "startOffsetMin": -120,
+        "durationMin": 15,
+        "attendeePersonIds": ["owen", "sam", "delia"],
+        "location": "https://meet.tesseraanalytics.com/support",
+        "recurrence": "RRULE:FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR",
+        "description": ""
+      },
+      {
+        "summary": "INC-204 bridge",
+        "calendarName": "Incident bridge",
+        "startOffsetMin": -60,
+        "durationMin": 30,
+        "attendeePersonIds": ["owen", "rina", "karl", "sam"],
+        "location": "https://meet.tesseraanalytics.com/bridge",
+        "recurrence": "RRULE:FREQ=DAILY;COUNT=5",
+        "description": "Runs until the incident is closed."
+      },
+      {
+        "summary": "Deploy window — compatibility view",
+        "calendarName": "Incident bridge",
+        "startOffsetMin": 40,
+        "durationMin": 60,
+        "attendeePersonIds": ["karl", "rina", "owen"],
+        "location": "",
+        "recurrence": "",
+        "description": "Rollback plan is to drop the view."
+      },
+      {
+        "summary": "Brightpath check-in",
+        "calendarName": "Owen Baptiste",
+        "startOffsetMin": 45,
+        "durationMin": 30,
+        "attendeePersonIds": ["owen", "delia", "elena"],
+        "location": "https://meet.brightpathhealth.org/ops",
+        "recurrence": "RRULE:FREQ=WEEKLY;BYDAY=TH",
+        "description": "Clashes with the deploy window this week."
+      },
+      {
+        "summary": "1:1 Owen / Hugo",
+        "calendarName": "Owen Baptiste",
+        "startOffsetMin": 360,
+        "durationMin": 25,
+        "attendeePersonIds": ["owen", "hugo"],
+        "location": "",
+        "recurrence": "RRULE:FREQ=WEEKLY;BYDAY=TH",
+        "description": ""
+      },
+      {
+        "summary": "Brightpath renewal review",
+        "calendarName": "Owen Baptiste",
+        "startOffsetMin": 1620,
+        "durationMin": 60,
+        "attendeePersonIds": ["owen", "delia", "elena", "hugo"],
+        "location": "Brightpath Health, 4th floor",
+        "recurrence": "",
+        "description": "Friday 11:00. Elena will bring her log."
+      }
+    ]
+  }
+}

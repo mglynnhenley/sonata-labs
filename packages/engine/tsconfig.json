@@ -1,0 +1,25 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "isolatedModules": true,
+    "skipLibCheck": true,
+    "verbatimModuleSyntax": false,
+    "resolveJsonModule": true,
+    // Resolve the workspace sibling by path as well as by name: the packages are
+    // new enough that `node_modules/@sonata` may not be linked yet, and a
+    // typecheck that only passes after an install is a typecheck nobody runs.
+    "baseUrl": ".",
+    "paths": {
+      "@sonata/core": ["../core/src/index.ts"],
+      "@sonata/core/*": ["../core/src/*.ts"]
+    }
+  },
+  "include": ["src/**/*.ts", "tests/**/*.ts"],
+  "exclude": ["node_modules"]
+}

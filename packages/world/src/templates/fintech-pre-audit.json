@@ -1,0 +1,595 @@
+{
+  "id": "northwind-ledger",
+  "description": "a 12-person fintech, the week before an audit",
+  "generatedAtISO": "2026-08-03T08:00:00.000Z",
+  "world": {
+    "business": {
+      "name": "Northwind Ledger",
+      "description": "Northwind Ledger sells embedded treasury and reconciliation to mid-market logistics and freight companies — about 40 customers, all on annual contracts. Their first SOC 2 Type II audit starts fieldwork on Monday, three quarters of the evidence is still half-collected, and the two people who know where everything lives are also the two people carrying the Vantage Freight escalation.",
+      "industry": "Financial technology",
+      "size": 12
+    },
+    "cast": [
+      {
+        "id": "priya",
+        "name": "Priya Raman",
+        "email": "priya.raman@northwindledger.com",
+        "slackUserId": "U01PRIYA",
+        "role": "Chief of Staff",
+        "relationship": "self",
+        "voice": "Writes in tight, decisive paragraphs and always ends with who is doing what by when. Drops greetings entirely when she is behind, which this week she is."
+      },
+      {
+        "id": "marcus",
+        "name": "Marcus Bell",
+        "email": "marcus.bell@northwindledger.com",
+        "slackUserId": "U02MARCUS",
+        "role": "Chief Executive",
+        "relationship": "manager",
+        "voice": "Long, warm, slightly rambling emails sent between 22:00 and midnight. Buries the actual ask in the fourth paragraph and signs off 'M'."
+      },
+      {
+        "id": "dana",
+        "name": "Dana Okafor",
+        "email": "dana.okafor@northwindledger.com",
+        "slackUserId": "U03DANA",
+        "role": "Head of Finance",
+        "relationship": "peer",
+        "voice": "Numbers first, no adjectives. Answers in bullet points and will say 'that number is wrong' without softening it. Unfailingly reliable on dates."
+      },
+      {
+        "id": "tomas",
+        "name": "Tomas Ruiz",
+        "email": "tomas.ruiz@northwindledger.com",
+        "slackUserId": "U04TOMAS",
+        "role": "Staff Engineer",
+        "relationship": "peer",
+        "voice": "Three-word fragments in Slack, careful and thorough in email. Says 'looking' and then vanishes for two hours. Hates being volunteered for meetings."
+      },
+      {
+        "id": "aisha",
+        "name": "Aisha Nkemdirim",
+        "email": "aisha.nkemdirim@northwindledger.com",
+        "slackUserId": "U05AISHA",
+        "role": "Compliance Lead",
+        "relationship": "report",
+        "voice": "Precise and slightly formal, numbers every point, apologises for length and then writes more. Flags risk early and repeats it until someone answers."
+      },
+      {
+        "id": "gerald",
+        "name": "Gerald Pike",
+        "email": "gerald.pike@halloranpike.com",
+        "slackUserId": "U06GERALD",
+        "role": "Lead auditor, Halloran & Pike",
+        "relationship": "auditor",
+        "voice": "Polite, clipped, entirely immovable on deadlines. Uses 'kindly' and numbered lists, and never acknowledges an excuse — he simply restates the request."
+      },
+      {
+        "id": "sofie",
+        "name": "Sofie Lind",
+        "email": "sofie.lind@vantagefreight.com",
+        "slackUserId": "U07SOFIE",
+        "role": "VP Operations, Vantage Freight",
+        "relationship": "client",
+        "voice": "Direct, a little clipped when annoyed, which is now. Short paragraphs, concrete amounts and times, and an explicit deadline in every message."
+      },
+      {
+        "id": "ravi",
+        "name": "Ravi Chandra",
+        "email": "ravi.chandra@ledgerlink.io",
+        "slackUserId": "U08RAVI",
+        "role": "Account Executive, Ledgerlink",
+        "relationship": "vendor",
+        "voice": "Relentlessly upbeat, three exclamation marks per email, always 'circling back'. Never answers the pricing question directly."
+      }
+    ],
+    "channels": [
+      {
+        "id": "C01AUDITPRE",
+        "name": "audit-prep",
+        "purpose": "Everything for the SOC 2 Type II fieldwork: evidence, gaps, and who owns which control.",
+        "members": [
+          "priya",
+          "aisha",
+          "dana",
+          "tomas"
+        ],
+        "isPrivate": false
+      },
+      {
+        "id": "C02CLIENTS",
+        "name": "clients",
+        "purpose": "Live customer situations that need more than one person.",
+        "members": [
+          "priya",
+          "dana",
+          "marcus",
+          "aisha"
+        ],
+        "isPrivate": false
+      },
+      {
+        "id": "C03ENG",
+        "name": "eng",
+        "purpose": "Engineering standup, deploys and incidents.",
+        "members": [
+          "priya",
+          "tomas",
+          "marcus"
+        ],
+        "isPrivate": false
+      },
+      {
+        "id": "C04GENERAL",
+        "name": "general",
+        "purpose": "Company-wide announcements and anything that does not have a better home.",
+        "members": [
+          "priya",
+          "marcus",
+          "dana",
+          "tomas",
+          "aisha"
+        ],
+        "isPrivate": false
+      }
+    ],
+    "mailboxOwner": "priya",
+    "timezone": "America/New_York"
+  },
+  "gmail": {
+    "threads": [
+      {
+        "subject": "Vantage Freight — settlement timing, need an answer today",
+        "labels": [
+          "INBOX",
+          "UNREAD",
+          "IMPORTANT"
+        ],
+        "participants": [
+          "sofie",
+          "priya",
+          "dana"
+        ],
+        "messages": [
+          {
+            "fromPersonId": "sofie",
+            "minutesAgo": 1490,
+            "body": "Priya,\n\nOur Tuesday settlement landed 31 hours late again. That is the third time in six weeks and this one held up 214 driver payments. I have our board asking me directly whether Northwind is the right partner.\n\nI need two things: what happened, and what changes so it does not happen a fourth time. Not a status page link.\n\nSofie"
+          },
+          {
+            "fromPersonId": "priya",
+            "minutesAgo": 1380,
+            "body": "Sofie — acknowledged, and I am sorry. Tomas is pulling the timeline on the Tuesday batch now. I will have you a written answer with the actual cause and the fix by Thursday morning, not a status page.\n\nPriya"
+          },
+          {
+            "fromPersonId": "sofie",
+            "minutesAgo": 95,
+            "body": "It is Thursday. I have a 3pm with our CFO and I would rather walk in with your explanation than without it.\n\nIf the answer is that you do not know yet, tell me that and I will manage it — but tell me something by 2."
+          }
+        ]
+      },
+      {
+        "subject": "SOC 2 evidence request - round 2 (outstanding items)",
+        "labels": [
+          "INBOX",
+          "UNREAD",
+          "IMPORTANT"
+        ],
+        "participants": [
+          "gerald",
+          "priya",
+          "aisha"
+        ],
+        "messages": [
+          {
+            "fromPersonId": "gerald",
+            "minutesAgo": 2830,
+            "body": "Priya, Aisha,\n\nFollowing the walkthrough, the following remain outstanding:\n\n1. Q2 user access review, signed\n2. Change management tickets for the June release, with approver\n3. Vendor risk assessments for the four subprocessors listed in the SOC description\n4. Evidence of quarterly backup restoration testing\n\nKindly have these in the portal before fieldwork opens Monday.\n\nGerald Pike\nHalloran & Pike"
+          },
+          {
+            "fromPersonId": "aisha",
+            "minutesAgo": 1610,
+            "body": "Gerald, Priya,\n\nStatus, in his numbering:\n\n1. Done — uploaded, needs Priya's signature, that is the only blocker.\n2. Partially. Eleven of the fourteen June tickets have a named approver. Three do not and Tomas is the only person who can reconstruct them.\n3. Three of four. Ledgerlink has not returned their questionnaire despite two chases.\n4. Not started. I am sorry to raise it this late — the restore test was scheduled for July and did not happen.\n\nItem 4 is the one that worries me. Aisha"
+          },
+          {
+            "fromPersonId": "gerald",
+            "minutesAgo": 205,
+            "body": "Thank you. To be clear: item 4 cannot be remediated retrospectively. If no restoration test was performed in the period, we will record it as a deficiency and I would rather you hear that now than on Monday.\n\nItems 1 to 3 kindly land before end of day Friday.\n\nGerald"
+          }
+        ]
+      },
+      {
+        "subject": "Ledgerlink renewal — the number moved again",
+        "labels": [
+          "INBOX",
+          "IMPORTANT"
+        ],
+        "participants": [
+          "ravi",
+          "priya",
+          "dana"
+        ],
+        "messages": [
+          {
+            "fromPersonId": "ravi",
+            "minutesAgo": 5760,
+            "body": "Hi Priya!!\n\nGreat catching up last week! Circling back on the renewal — I have the paperwork ready to go whenever you are. Excited to keep building together!!\n\nRavi"
+          },
+          {
+            "fromPersonId": "priya",
+            "minutesAgo": 5580,
+            "body": "Ravi — before anything gets signed I need the annual number in writing, and I need your security questionnaire back. Aisha has chased it twice. Both of those before we talk paperwork.\n\nPriya"
+          },
+          {
+            "fromPersonId": "ravi",
+            "minutesAgo": 430,
+            "body": "Totally hear you!! Working on the questionnaire with our security team — should be days not weeks.\n\nOn commercials, the renewal comes in at 68k which is a small uplift on last year but reflects the added volume. Happy to jump on a call!! Ravi"
+          }
+        ]
+      },
+      {
+        "subject": "Board pack, draft 3 — the churn slide",
+        "labels": [
+          "INBOX"
+        ],
+        "participants": [
+          "marcus",
+          "priya",
+          "dana"
+        ],
+        "messages": [
+          {
+            "fromPersonId": "marcus",
+            "minutesAgo": 1210,
+            "body": "Hi both,\n\nHope the week is being kind. I have been going back and forth on the board pack and I think draft 3 is close — the narrative on the treasury attach rate is much stronger, and the roadmap slide finally reads like a plan rather than a wish list.\n\nOne thing that has been nagging at me is that we present net retention at 104% while the churn slide shows two logos leaving in the same quarter. I do not think it is wrong, exactly, but I think Elena will ask, and I would rather we answer it than get asked.\n\nCould one of you sanity check that pairing before Friday? M"
+          },
+          {
+            "fromPersonId": "dana",
+            "minutesAgo": 1120,
+            "body": "104% is right. It is expansion on the top ten covering the two departures, both of which were sub-15k. The slides are not wrong, they are just next to each other.\n\nI will add a footnote. Dana"
+          }
+        ]
+      },
+      {
+        "subject": "Restore test — can we still do one this week",
+        "labels": [
+          "INBOX",
+          "UNREAD"
+        ],
+        "participants": [
+          "aisha",
+          "tomas",
+          "priya"
+        ],
+        "messages": [
+          {
+            "fromPersonId": "aisha",
+            "minutesAgo": 180,
+            "body": "Tomas — Gerald has told us a missed restore test in the period is a deficiency and cannot be fixed after the fact. I want to be sure that is true for our case before we accept it.\n\nQuestion: did anyone restore from backup during an incident between April and June? An unplanned restore that we can evidence counts. I have a memory of the May 14 database rollback but no ticket.\n\n1. If yes, we need the ticket or the pager log.\n2. If no, we run one today anyway so the next period is clean.\n\nAisha"
+          }
+        ]
+      }
+    ]
+  },
+  "slack": {
+    "channels": [
+      {
+        "name": "audit-prep",
+        "topic": "SOC 2 Type II — fieldwork opens Monday",
+        "purpose": "Everything for the SOC 2 Type II fieldwork: evidence, gaps, and who owns which control.",
+        "members": [
+          "priya",
+          "aisha",
+          "dana",
+          "tomas"
+        ],
+        "messages": [
+          {
+            "personId": "aisha",
+            "minutesAgo": 2760,
+            "text": "gerald's round 2 list is in email. 4 items. 2 of them are on us today",
+            "threadReplies": []
+          },
+          {
+            "personId": "priya",
+            "minutesAgo": 2700,
+            "text": "access review i can sign this morning. the change tickets need tomas",
+            "threadReplies": [
+              {
+                "personId": "tomas",
+                "minutesAgo": 2680,
+                "text": "which tickets"
+              },
+              {
+                "personId": "aisha",
+                "minutesAgo": 2650,
+                "text": "june release, three with no approver: NW-1841, NW-1847, NW-1862"
+              },
+              {
+                "personId": "tomas",
+                "minutesAgo": 1200,
+                "text": "1841 and 1847 were mine, i can attest. 1862 was deployed by the old CI service account, no human approver exists"
+              },
+              {
+                "personId": "aisha",
+                "minutesAgo": 1180,
+                "text": "that is the one he will find then"
+              }
+            ]
+          },
+          {
+            "personId": "aisha",
+            "minutesAgo": 200,
+            "text": "gerald just replied. missed restore test = deficiency, cannot be remediated. i am not accepting that until we check the may 14 rollback",
+            "threadReplies": []
+          },
+          {
+            "personId": "dana",
+            "minutesAgo": 190,
+            "text": "a deficiency in the report changes nothing for vantage but it will be the first question in the renewal call with anyone new",
+            "threadReplies": []
+          },
+          {
+            "personId": "priya",
+            "minutesAgo": 120,
+            "text": "parking this until vantage has an answer. sofie needs something by 2",
+            "threadReplies": []
+          }
+        ]
+      },
+      {
+        "name": "clients",
+        "topic": "Vantage: third late settlement in six weeks",
+        "purpose": "Live customer situations that need more than one person.",
+        "members": [
+          "priya",
+          "dana",
+          "marcus",
+          "aisha"
+        ],
+        "messages": [
+          {
+            "personId": "priya",
+            "minutesAgo": 1470,
+            "text": "vantage settlement was 31h late again. sofie is escalating to her board. i've promised her a written cause + fix",
+            "threadReplies": [
+              {
+                "personId": "dana",
+                "minutesAgo": 1440,
+                "text": "214 driver payments held. that is the number she will use"
+              },
+              {
+                "personId": "marcus",
+                "minutesAgo": 1390,
+                "text": "Do we know the cause yet? Happy to call Sofie directly if it helps — I have known her since the pilot."
+              },
+              {
+                "personId": "priya",
+                "minutesAgo": 1360,
+                "text": "not yet. give me tomas' timeline first, a call with no answer makes it worse"
+              }
+            ]
+          },
+          {
+            "personId": "priya",
+            "minutesAgo": 90,
+            "text": "she's moved the deadline to 2pm, she has her CFO at 3",
+            "threadReplies": []
+          }
+        ]
+      },
+      {
+        "name": "eng",
+        "topic": "deploys, incidents, the settlement batch",
+        "purpose": "Engineering standup, deploys and incidents.",
+        "members": [
+          "priya",
+          "tomas",
+          "marcus"
+        ],
+        "messages": [
+          {
+            "personId": "priya",
+            "minutesAgo": 1450,
+            "text": "tomas can you pull the timeline on tuesday's settlement batch. vantage, 31h late",
+            "threadReplies": [
+              {
+                "personId": "tomas",
+                "minutesAgo": 1445,
+                "text": "looking"
+              },
+              {
+                "personId": "tomas",
+                "minutesAgo": 640,
+                "text": "batch queued at 02:14 as normal. blocked on a lock held by the reconciliation job that started at 01:58 and ran 29h. same root cause as june 3 and july 11"
+              },
+              {
+                "personId": "tomas",
+                "minutesAgo": 635,
+                "text": "the fix is a queue split. two days of work. it has been in the backlog since june 4"
+              },
+              {
+                "personId": "priya",
+                "minutesAgo": 300,
+                "text": "so it is the same cause all three times and we knew"
+              },
+              {
+                "personId": "tomas",
+                "minutesAgo": 290,
+                "text": "yes"
+              }
+            ]
+          },
+          {
+            "personId": "tomas",
+            "minutesAgo": 60,
+            "text": "starting the queue split today regardless. do not volunteer me for the 3pm",
+            "threadReplies": []
+          }
+        ]
+      },
+      {
+        "name": "general",
+        "topic": "Northwind Ledger",
+        "purpose": "Company-wide announcements and anything that does not have a better home.",
+        "members": [
+          "priya",
+          "marcus",
+          "dana",
+          "tomas",
+          "aisha"
+        ],
+        "messages": [
+          {
+            "personId": "marcus",
+            "minutesAgo": 4300,
+            "text": "Auditors on site Monday through Wednesday next week. They will use the small room. Please be findable :pray:",
+            "threadReplies": []
+          },
+          {
+            "personId": "dana",
+            "minutesAgo": 2900,
+            "text": "reminder: july expenses close friday. i will not chase twice",
+            "threadReplies": []
+          },
+          {
+            "personId": "aisha",
+            "minutesAgo": 420,
+            "text": "if gerald asks you anything directly, answer honestly and then tell me what he asked :eyes:",
+            "threadReplies": []
+          }
+        ]
+      }
+    ]
+  },
+  "calendar": {
+    "calendars": [
+      {
+        "name": "Priya Raman",
+        "ownerPersonId": "priya",
+        "description": "Primary calendar"
+      },
+      {
+        "name": "Audit Room",
+        "ownerPersonId": "dana",
+        "description": "The small room, booked out for fieldwork week"
+      }
+    ],
+    "events": [
+      {
+        "summary": "Standup",
+        "calendarName": "Priya Raman",
+        "startOffsetMin": -1470,
+        "durationMin": 15,
+        "attendeePersonIds": [
+          "priya",
+          "tomas",
+          "dana",
+          "aisha"
+        ],
+        "location": "Huddle",
+        "recurrence": "RRULE:FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR",
+        "description": "Fifteen minutes, standing up, no laptops."
+      },
+      {
+        "summary": "SOC 2 walkthrough — Halloran & Pike",
+        "calendarName": "Audit Room",
+        "startOffsetMin": -2820,
+        "durationMin": 90,
+        "attendeePersonIds": [
+          "priya",
+          "aisha",
+          "gerald",
+          "dana"
+        ],
+        "location": "Small room",
+        "recurrence": "",
+        "description": "Control walkthrough ahead of fieldwork. Gerald leads."
+      },
+      {
+        "summary": "1:1 Priya / Marcus",
+        "calendarName": "Priya Raman",
+        "startOffsetMin": -60,
+        "durationMin": 30,
+        "attendeePersonIds": [
+          "priya",
+          "marcus"
+        ],
+        "location": "Marcus' desk",
+        "recurrence": "RRULE:FREQ=WEEKLY;BYDAY=TH",
+        "description": ""
+      },
+      {
+        "summary": "Vantage Freight — incident review",
+        "calendarName": "Priya Raman",
+        "startOffsetMin": 120,
+        "durationMin": 45,
+        "attendeePersonIds": [
+          "priya",
+          "sofie",
+          "tomas"
+        ],
+        "location": "https://meet.northwindledger.com/vantage",
+        "recurrence": "",
+        "description": "Written cause and fix, promised for Thursday morning."
+      },
+      {
+        "summary": "Board pack review",
+        "calendarName": "Priya Raman",
+        "startOffsetMin": 150,
+        "durationMin": 60,
+        "attendeePersonIds": [
+          "priya",
+          "marcus",
+          "dana"
+        ],
+        "location": "Small room",
+        "recurrence": "",
+        "description": "Draft 3. Churn slide and net retention footnote."
+      },
+      {
+        "summary": "Evidence upload cutoff",
+        "calendarName": "Audit Room",
+        "startOffsetMin": 480,
+        "durationMin": 30,
+        "attendeePersonIds": [
+          "priya",
+          "aisha"
+        ],
+        "location": "",
+        "recurrence": "",
+        "description": "Items 1 to 3 in the portal before Gerald's Friday deadline."
+      },
+      {
+        "summary": "Ledgerlink renewal call",
+        "calendarName": "Priya Raman",
+        "startOffsetMin": 1560,
+        "durationMin": 30,
+        "attendeePersonIds": [
+          "priya",
+          "ravi",
+          "dana"
+        ],
+        "location": "https://meet.ledgerlink.io/ravi",
+        "recurrence": "",
+        "description": "Do not agree to 68k without the questionnaire back."
+      },
+      {
+        "summary": "Fieldwork — day 1",
+        "calendarName": "Audit Room",
+        "startOffsetMin": 5760,
+        "durationMin": 480,
+        "attendeePersonIds": [
+          "priya",
+          "aisha",
+          "gerald",
+          "dana",
+          "tomas"
+        ],
+        "location": "Small room",
+        "recurrence": "",
+        "description": "Halloran & Pike on site Monday through Wednesday."
+      }
+    ]
+  }
+}

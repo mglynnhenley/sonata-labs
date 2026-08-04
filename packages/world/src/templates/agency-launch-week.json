@@ -1,0 +1,448 @@
+{
+  "id": "halfmoon-and-co",
+  "description": "a 20-person brand agency in launch week for its biggest client",
+  "generatedAtISO": "2026-08-03T08:00:00.000Z",
+  "world": {
+    "business": {
+      "name": "Halfmoon and Co",
+      "description": "Halfmoon and Co is a twenty-person brand and film agency working with challenger sports and outdoor brands. Kestrel Athletic is forty percent of their revenue, the spring campaign goes live on Friday at 06:00 under press embargo, and the client has asked for a change to the hero film four days out with the colour grade already locked.",
+      "industry": "Advertising and brand",
+      "size": 20
+    },
+    "cast": [
+      {
+        "id": "nadia",
+        "name": "Nadia Farrow",
+        "email": "nadia.farrow@halfmoonandco.com",
+        "slackUserId": "U01NADIA",
+        "role": "Executive Producer",
+        "relationship": "self",
+        "voice": "Calm, specific, allergic to vagueness. Restates what she has just been told in one sentence to check it, then names the decision and the owner."
+      },
+      {
+        "id": "theo",
+        "name": "Theo Lindqvist",
+        "email": "theo.lindqvist@halfmoonandco.com",
+        "slackUserId": "U02THEO",
+        "role": "Creative Director",
+        "relationship": "peer",
+        "voice": "Writes in fragments and images, no capital letters in Slack, and takes any note on the work personally for about ninety minutes before agreeing with it."
+      },
+      {
+        "id": "bea",
+        "name": "Bea Ofori",
+        "email": "bea.ofori@halfmoonandco.com",
+        "slackUserId": "U03BEA",
+        "role": "Account Director",
+        "relationship": "peer",
+        "voice": "Diplomatic to a fault. Every email has a warm opener, a soft ask and a hard deadline hidden in the last line. Copies people in early."
+      },
+      {
+        "id": "jonah",
+        "name": "Jonah Weiss",
+        "email": "jonah.weiss@halfmoonandco.com",
+        "slackUserId": "U04JONAH",
+        "role": "Motion Designer",
+        "relationship": "report",
+        "voice": "Cheerful, over-promises on turnaround, then works until 3am to make it true. Sends render links with no context and one emoji."
+      },
+      {
+        "id": "lucia",
+        "name": "Lucia Marrone",
+        "email": "lucia.marrone@halfmoonandco.com",
+        "slackUserId": "U05LUCIA",
+        "role": "Producer",
+        "relationship": "report",
+        "voice": "Schedules and money. Writes numbered lists, chases twice and then escalates without drama. Never uses an exclamation mark."
+      },
+      {
+        "id": "clive",
+        "name": "Clive Barrow",
+        "email": "clive.barrow@kestrelathletic.com",
+        "slackUserId": "U06CLIVE",
+        "role": "VP Marketing, Kestrel Athletic",
+        "relationship": "client",
+        "voice": "Friendly and completely immovable. Frames every late change as a small favour, uses 'quick' about things that take two days, and cc's his CMO when he means it."
+      },
+      {
+        "id": "moira",
+        "name": "Moira Deng",
+        "email": "moira.deng@dengpr.com",
+        "slackUserId": "U07MOIRA",
+        "role": "PR lead (freelance)",
+        "relationship": "vendor",
+        "voice": "Terse, deadline-driven, everything in bold-sounding capitals about embargo times. Assumes you have read the last three emails."
+      }
+    ],
+    "channels": [
+      {
+        "id": "C01LAUNCHKE",
+        "name": "launch-kestrel",
+        "purpose": "Everything shipping for the Kestrel spring campaign, up to embargo lift.",
+        "members": [
+          "nadia",
+          "theo",
+          "bea",
+          "jonah",
+          "lucia",
+          "moira"
+        ],
+        "isPrivate": false
+      },
+      {
+        "id": "C02STUDIO",
+        "name": "studio",
+        "purpose": "Edit, grade, render queue and who is on which machine.",
+        "members": [
+          "nadia",
+          "theo",
+          "jonah"
+        ],
+        "isPrivate": false
+      },
+      {
+        "id": "C03GENERAL",
+        "name": "general",
+        "purpose": "Studio-wide notices, deliveries, the coffee machine.",
+        "members": [
+          "nadia",
+          "theo",
+          "bea",
+          "jonah",
+          "lucia"
+        ],
+        "isPrivate": false
+      }
+    ],
+    "mailboxOwner": "nadia",
+    "timezone": "Europe/London"
+  },
+  "gmail": {
+    "threads": [
+      {
+        "subject": "Hero film - one small change before Friday",
+        "labels": [
+          "INBOX",
+          "UNREAD",
+          "IMPORTANT"
+        ],
+        "participants": [
+          "clive",
+          "nadia",
+          "bea"
+        ],
+        "messages": [
+          {
+            "fromPersonId": "clive",
+            "minutesAgo": 1080,
+            "body": "Nadia,\n\nWe showed the cut internally this morning and it went down very well. One small thing: our CMO would like the new logo lockup at the end rather than the one in the cut, and ideally the last line of VO changed from 'built for the long way round' to 'made for the long way round'.\n\nI know it is late. Should be quick? We are still good for Friday 06:00.\n\nClive"
+          },
+          {
+            "fromPersonId": "nadia",
+            "minutesAgo": 900,
+            "body": "Clive — to be clear on what that is: the lockup swap re-opens the grade on the last eleven seconds, and a VO change is a re-record with Ilse plus a new mix. That is two days, not two hours, and delivery to the platforms is Thursday 18:00.\n\nI can do one of the two by Friday. Which is it?\n\nNadia"
+          },
+          {
+            "fromPersonId": "clive",
+            "minutesAgo": 190,
+            "body": "Understood, and thank you for being straight with me. Let me come back to you after my 4pm — cc'ing our CMO so she has the context.\n\nIf it helps, the logo is the one she actually cares about.\n\nClive"
+          }
+        ]
+      },
+      {
+        "subject": "EMBARGO — Friday 06:00 BST, assets to press list",
+        "labels": [
+          "INBOX",
+          "UNREAD"
+        ],
+        "participants": [
+          "moira",
+          "nadia",
+          "bea"
+        ],
+        "messages": [
+          {
+            "fromPersonId": "moira",
+            "minutesAgo": 2600,
+            "body": "Embargo lifts Friday 06:00 BST. Press list is 41 outlets, four have exclusives and one of those is print with a Wednesday night print deadline.\n\nI need final stills and the 30 second cut in the press kit by Thursday 12:00 or the exclusives go without assets.\n\nMoira"
+          },
+          {
+            "fromPersonId": "moira",
+            "minutesAgo": 175,
+            "body": "Nothing in the kit yet. Thursday 12:00 is tomorrow.\n\nIf the film is moving, tell me now — I can hold two of the four, I cannot hold print."
+          }
+        ]
+      },
+      {
+        "subject": "Freelance invoices - motion team, June and July",
+        "labels": [
+          "INBOX"
+        ],
+        "participants": [
+          "lucia",
+          "nadia"
+        ],
+        "messages": [
+          {
+            "fromPersonId": "lucia",
+            "minutesAgo": 1500,
+            "body": "Nadia,\n\n1. Three freelance motion invoices are sitting unapproved: 4,200, 2,800 and 6,150.\n2. Two of them are now 45 days out and one of those people is Ilse, who we need on Thursday for a possible VO re-record.\n3. I have chased twice.\n\nApprove them and I will get them paid this week.\n\nLucia"
+          }
+        ]
+      },
+      {
+        "subject": "colour grade - last eleven seconds",
+        "labels": [
+          "INBOX"
+        ],
+        "participants": [
+          "theo",
+          "jonah",
+          "nadia"
+        ],
+        "messages": [
+          {
+            "fromPersonId": "theo",
+            "minutesAgo": 720,
+            "body": "the grade is locked and i would like it to stay locked. the last eleven seconds are the only part of this film anyone will remember and they took four days.\n\nif the lockup changes we are not swapping a layer, we are re-lighting the end of the film. i will do it if we decide to do it, but nobody should say the word quick.\n\nt"
+          },
+          {
+            "fromPersonId": "jonah",
+            "minutesAgo": 640,
+            "body": "for what it's worth i can prep both versions overnight so we're not deciding under time pressure tomorrow. render farm is free after 20:00 :)"
+          },
+          {
+            "fromPersonId": "nadia",
+            "minutesAgo": 600,
+            "body": "Jonah — yes, prep both, but do not start the re-grade until we have Clive's answer in writing. Theo, you are right and nobody is calling it quick.\n\nDecision by 10:00 tomorrow at the latest, from me.\n\nNadia"
+          }
+        ]
+      }
+    ]
+  },
+  "slack": {
+    "channels": [
+      {
+        "name": "launch-kestrel",
+        "topic": "Embargo lifts Friday 06:00 BST",
+        "purpose": "Everything shipping for the Kestrel spring campaign, up to embargo lift.",
+        "members": [
+          "nadia",
+          "theo",
+          "bea",
+          "jonah",
+          "lucia",
+          "moira"
+        ],
+        "messages": [
+          {
+            "personId": "bea",
+            "minutesAgo": 1070,
+            "text": "clive has notes. logo lockup + one VO word. he called it small :melting_face:",
+            "threadReplies": [
+              {
+                "personId": "theo",
+                "minutesAgo": 1050,
+                "text": "it is not small"
+              },
+              {
+                "personId": "nadia",
+                "minutesAgo": 940,
+                "text": "i've told him it's two days and asked him to pick one. waiting on his 4pm"
+              },
+              {
+                "personId": "lucia",
+                "minutesAgo": 930,
+                "text": "if it's the VO i need ilse booked today and her invoices are 45 days unpaid, which she has noticed"
+              }
+            ]
+          },
+          {
+            "personId": "moira",
+            "minutesAgo": 400,
+            "text": "press kit is empty and print closes tonight",
+            "threadReplies": []
+          },
+          {
+            "personId": "nadia",
+            "minutesAgo": 180,
+            "text": "clive is coming back after 4. holding all renders until then. nobody promise anything to moira yet",
+            "threadReplies": []
+          }
+        ]
+      },
+      {
+        "name": "studio",
+        "topic": "grade locked, do not touch",
+        "purpose": "Edit, grade, render queue and who is on which machine.",
+        "members": [
+          "nadia",
+          "theo",
+          "jonah"
+        ],
+        "messages": [
+          {
+            "personId": "jonah",
+            "minutesAgo": 610,
+            "text": "https://halfmoon.review/kestrel-hero-v14 :sparkles:",
+            "threadReplies": [
+              {
+                "personId": "theo",
+                "minutesAgo": 600,
+                "text": "v14 is the locked one. nothing after this without nadia"
+              }
+            ]
+          },
+          {
+            "personId": "jonah",
+            "minutesAgo": 90,
+            "text": "prepping alt-lockup version overnight, not touching v14",
+            "threadReplies": []
+          }
+        ]
+      },
+      {
+        "name": "general",
+        "topic": "Halfmoon and Co",
+        "purpose": "Studio-wide notices, deliveries, the coffee machine.",
+        "members": [
+          "nadia",
+          "theo",
+          "bea",
+          "jonah",
+          "lucia"
+        ],
+        "messages": [
+          {
+            "personId": "lucia",
+            "minutesAgo": 3000,
+            "text": "edit suite 2 is booked solid thu + fri. do not book over it",
+            "threadReplies": []
+          },
+          {
+            "personId": "bea",
+            "minutesAgo": 300,
+            "text": "kestrel are sending a crate of something on friday. someone be here to sign for it",
+            "threadReplies": []
+          }
+        ]
+      }
+    ]
+  },
+  "calendar": {
+    "calendars": [
+      {
+        "name": "Nadia Farrow",
+        "ownerPersonId": "nadia",
+        "description": "Primary calendar"
+      },
+      {
+        "name": "Edit Suite 2",
+        "ownerPersonId": "lucia",
+        "description": "Bookable edit suite, grade and mix"
+      }
+    ],
+    "events": [
+      {
+        "summary": "Kestrel internal screening",
+        "calendarName": "Nadia Farrow",
+        "startOffsetMin": -1140,
+        "durationMin": 60,
+        "attendeePersonIds": [
+          "nadia",
+          "theo",
+          "bea",
+          "clive"
+        ],
+        "location": "Kestrel HQ",
+        "recurrence": "",
+        "description": "Where the late notes came from."
+      },
+      {
+        "summary": "Production standup",
+        "calendarName": "Nadia Farrow",
+        "startOffsetMin": -30,
+        "durationMin": 15,
+        "attendeePersonIds": [
+          "nadia",
+          "lucia",
+          "jonah",
+          "theo"
+        ],
+        "location": "Studio floor",
+        "recurrence": "RRULE:FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR",
+        "description": ""
+      },
+      {
+        "summary": "Clive — decision call",
+        "calendarName": "Nadia Farrow",
+        "startOffsetMin": 240,
+        "durationMin": 20,
+        "attendeePersonIds": [
+          "nadia",
+          "clive",
+          "bea"
+        ],
+        "location": "https://meet.halfmoonandco.com/kestrel",
+        "recurrence": "",
+        "description": "Logo lockup or VO. One of the two."
+      },
+      {
+        "summary": "Grade — held for possible re-open",
+        "calendarName": "Edit Suite 2",
+        "startOffsetMin": 300,
+        "durationMin": 240,
+        "attendeePersonIds": [
+          "theo",
+          "jonah"
+        ],
+        "location": "Edit suite 2",
+        "recurrence": "",
+        "description": "Only if Clive picks the lockup."
+      },
+      {
+        "summary": "Press kit deadline — Moira",
+        "calendarName": "Nadia Farrow",
+        "startOffsetMin": 1440,
+        "durationMin": 30,
+        "attendeePersonIds": [
+          "nadia",
+          "moira",
+          "bea"
+        ],
+        "location": "",
+        "recurrence": "",
+        "description": "Stills plus 30 second cut, or the exclusives run without assets."
+      },
+      {
+        "summary": "Platform delivery cutoff",
+        "calendarName": "Nadia Farrow",
+        "startOffsetMin": 1800,
+        "durationMin": 60,
+        "attendeePersonIds": [
+          "nadia",
+          "lucia",
+          "jonah"
+        ],
+        "location": "",
+        "recurrence": "",
+        "description": "Thursday 18:00. After this nothing changes."
+      },
+      {
+        "summary": "Embargo lifts",
+        "calendarName": "Nadia Farrow",
+        "startOffsetMin": 2520,
+        "durationMin": 30,
+        "attendeePersonIds": [
+          "nadia",
+          "bea",
+          "moira",
+          "clive"
+        ],
+        "location": "",
+        "recurrence": "",
+        "description": "Friday 06:00 BST, 41 outlets."
+      }
+    ]
+  }
+}

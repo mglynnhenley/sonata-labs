@@ -1,0 +1,24 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "isolatedModules": true,
+    "skipLibCheck": true,
+    "verbatimModuleSyntax": false,
+    "resolveJsonModule": true,
+    "baseUrl": ".",
+    "paths": {
+      "@sonata/core": ["../core/src/index.ts"],
+      "@sonata/core/*": ["../core/src/*.ts"],
+      "@sonata/judge": ["../judge/src/index.ts"],
+      "@sonata/judge/*": ["../judge/src/*.ts"]
+    }
+  },
+  "include": ["src/**/*.ts", "tests/**/*.ts"],
+  "exclude": ["node_modules"]
+}

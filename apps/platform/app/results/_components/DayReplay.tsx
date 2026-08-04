@@ -1,0 +1,467 @@
+"use client";
+
+import { useEffect, useRef, type ReactNode } from "react";
+import type { BeatBody, TwinName } from "@sonata/core";
+import {
+  Card,
+  Chip,
+  CodeBlock,
+  SERVICE_LABELS,
+  IconAlert,
+  IconArrowDown,
+  IconArrowUp,
+  IconBolt,
+  IconCalendar,
+  IconInfo,
+  IconMail,
+  IconMessage,
+  IconSearch,
+  IconSpark,
+  Timeline,
+  cn,
+} from "@sonata/ui";
+import type { Moment } from "../_lib/moments";
+import { formatSimTime } from "../_lib/summary";
+
+// The hero: one vertical story on the simulated clock, with the world's beats,
+// the agent's steps and the people answering it interleaved in the order they
+// happened. Selecting a moment opens it in the pane beside the story rather than
+// pushing the story around — the shape of the day has to stay stable while you
+// read one moment of it.
+//
+// Rows are hand-rolled instead of `TimelineItem` because this list is a
+// single-select listbox, not a set of independent disclosures. They keep the
+// component's `data-timeline-toggle` hook and rail markup, so `Timeline`'s own
+// arrow-key handling still walks them and the last row's rail still stops.
+
+const FAIL = "border-sn-failed-line bg-sn-failed-soft text-sn-failed-ink";
+const QUIET = "border-sn-line-strong bg-sn-surface text-sn-subtle";
+const WRITE = "border-sn-primary bg-sn-primary text-sn-on-primary";
+const GOLD = "border-sn-gold bg-sn-gold-soft text-sn-gold-ink";
+
+const TWIN_MARKER: Record<TwinName, string> = {
+  gmail: "border-sn-gmail-line bg-sn-gmail-soft text-sn-gmail-ink",
+  slack: "border-sn-slack-line bg-sn-slack-soft text-sn-slack-ink",
+  calendar: "border-sn-calendar-line bg-sn-calendar-soft text-sn-calendar-ink",
+};
+
+const TWIN_ICON: Record<TwinName, typeof IconMail> = {
+  gmail: IconMail,
+  slack: IconMessage,
+  calendar: IconCalendar,
+};
+
+const SOURCE_LABEL: Record<Moment["source"], string> = {
+  world: "The day",
+  agent: "The agent",
+  director: "Someone answered",
+  engine: "The engine",
+};
+
+function markerClass(moment: Moment): string {
+  if (moment.error) return FAIL;
+  if (moment.source === "agent") {
+    if (moment.step?.kind === "escalation") return FAIL;
+    return moment.isMutation ? WRITE : QUIET;
+  }
+  if (moment.twin) return TWIN_MARKER[moment.twin];
+  return moment.source === "world" ? GOLD : QUIET;
+}
+
+function MarkerIcon({ moment }: { moment: Moment }) {
+  if (moment.error || moment.step?.kind === "escalation") return <IconAlert size={12} />;
+  if (moment.source === "agent") {
+    return moment.isMutation ? <IconBolt size={12} /> : <IconSearch size={12} />;
+  }
+  if (moment.twin) {
+    const Icon = TWIN_ICON[moment.twin];
+    return <Icon size={12} />;
+  }
+  if (moment.source === "director") return <IconSpark size={12} />;
+  return <IconInfo size={12} />;
+}
+
+export function DayReplay({
+  moments,
+  selected,
+  onSelect,
+  onJumpSeq,
+  offsetMinutes,
+  people,
+  /** Bumped by every jump from a score, a criterion or a finding. */
+  focusToken,
+}: {
+  moments: Moment[];
+  selected: number;
+  onSelect: (index: number) => void;
+  onJumpSeq: (seq: number) => void;
+  offsetMinutes: number;
+  people: People;
+  focusToken: number;
+}) {
+  const listRef = useRef<HTMLOListElement | null>(null);
+  const lastFocus = useRef(focusToken);
+
+  // Only a jump moves focus. Clicking a row must not yank it to the middle of
+  // the viewport under the cursor that just clicked it.
+  useEffect(() => {
+    if (focusToken === lastFocus.current) return;
+    lastFocus.current = focusToken;
+    const row = listRef.current?.querySelector<HTMLButtonElement>(
+      `[data-moment-index="${selected}"]`,
+    );
+    if (!row) return;
+    row.focus({ preventScroll: true });
+    row.scrollIntoView({ block: "center", behavior: "smooth" });
+  }, [focusToken, selected]);
+
+  const current = moments[selected];
+
+  return (
+    <Card padding="none" radius="2xl" className="scroll-mt-6 overflow-hidden">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-sn-line px-5 py-3.5">
+        <div>
+          <h3 className="text-[14px] font-medium text-sn-ink">The day, replayed</h3>
+          <p className="mt-0.5 text-[12px] text-sn-muted">
+            Everything that happened, in order. Arrow keys step through it.
+          </p>
+        </div>
+        {moments.length > 0 ? (
+          <div className="flex items-center gap-1 text-[12px] text-sn-muted">
+            <button
+              type="button"
+              onClick={() => onSelect(Math.max(0, selected - 1))}
+              disabled={selected === 0}
+              aria-label="Previous moment"
+              className="grid h-7 w-7 place-items-center rounded-sn-md text-sn-muted transition-colors duration-150 ease-sn hover:bg-sn-bg-subtle hover:text-sn-ink disabled:opacity-40"
+            >
+              <IconArrowUp size={14} />
+            </button>
+            <span data-numeric className="tabular-nums">
+              {selected + 1} / {moments.length}
+            </span>
+            <button
+              type="button"
+              onClick={() => onSelect(Math.min(moments.length - 1, selected + 1))}
+              disabled={selected >= moments.length - 1}
+              aria-label="Next moment"
+              className="grid h-7 w-7 place-items-center rounded-sn-md text-sn-muted transition-colors duration-150 ease-sn hover:bg-sn-bg-subtle hover:text-sn-ink disabled:opacity-40"
+            >
+              <IconArrowDown size={14} />
+            </button>
+          </div>
+        ) : null}
+      </div>
+
+      {moments.length === 0 ? (
+        <p className="px-5 py-8 text-center text-[13px] text-sn-muted">
+          No ticks were recorded. The run stopped before the day started.
+        </p>
+      ) : (
+        <div className="grid lg:grid-cols-[minmax(0,1fr)_minmax(0,400px)]">
+          <div className="sn-scroll max-h-[640px] overflow-y-auto border-b border-sn-line px-5 py-4 lg:border-r lg:border-b-0">
+            <Timeline ref={listRef} aria-label="The day, moment by moment">
+              {moments.map((moment, index) => {
+                const first = index === 0 || moments[index - 1]?.tick !== moment.tick;
+                return (
+                  <MomentRow
+                    key={`${moment.tick}-${moment.index}`}
+                    moment={moment}
+                    active={index === selected}
+                    showTime={first}
+                    offsetMinutes={offsetMinutes}
+                    onSelect={() => onSelect(index)}
+                  />
+                );
+              })}
+            </Timeline>
+          </div>
+
+          <aside className="sn-scroll max-h-[640px] overflow-y-auto bg-sn-bg-subtle/40 p-5">
+            {current ? (
+              <MomentDetail
+                moment={current}
+                offsetMinutes={offsetMinutes}
+                people={people}
+                onJumpSeq={onJumpSeq}
+              />
+            ) : null}
+          </aside>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function MomentRow({
+  moment,
+  active,
+  showTime,
+  offsetMinutes,
+  onSelect,
+}: {
+  moment: Moment;
+  active: boolean;
+  showTime: boolean;
+  offsetMinutes: number;
+  onSelect: () => void;
+}) {
+  return (
+    <li className="group flex gap-3">
+      <div className="w-12 shrink-0 pt-[3px] text-right">
+        {showTime ? (
+          <>
+            <span data-numeric className="block text-[12px] font-medium text-sn-muted">
+              {formatSimTime(moment.simTimeISO, offsetMinutes)}
+            </span>
+            <span className="block text-[11px] text-sn-subtle">t{moment.tick}</span>
+          </>
+        ) : null}
+      </div>
+
+      <div data-rail className="relative flex-1 border-l border-sn-line pb-3 pl-5">
+        <span
+          aria-hidden="true"
+          className={cn(
+            "absolute top-0.5 -left-[11px] grid h-[22px] w-[22px] place-items-center rounded-full border",
+            markerClass(moment),
+            active && "ring-3 ring-sn-primary-soft",
+          )}
+        >
+          <MarkerIcon moment={moment} />
+        </span>
+
+        <button
+          type="button"
+          data-timeline-toggle
+          data-moment-index={moment.index}
+          aria-current={active}
+          onClick={onSelect}
+          onFocus={onSelect}
+          className={cn(
+            "-mx-2 flex w-full rounded-sn-md px-2 py-1 text-left",
+            "transition-colors duration-150 ease-sn hover:bg-sn-surface-hover",
+            active && "bg-sn-primary-soft/60",
+          )}
+        >
+          <span className="min-w-0 flex-1">
+            <span className="flex items-baseline gap-2">
+              <span
+                className={cn(
+                  "truncate text-[13.5px] font-medium text-sn-ink",
+                  moment.source === "agent" && moment.step?.kind === "tool" && "font-mono text-[12.5px]",
+                )}
+              >
+                {moment.title}
+              </span>
+              {moment.isMutation ? (
+                <span className="shrink-0 text-[10.5px] tracking-[0.06em] text-sn-primary-ink uppercase">
+                  write
+                </span>
+              ) : null}
+            </span>
+            {moment.detail ? (
+              <span className="mt-0.5 line-clamp-2 block text-[12.5px] leading-[18px] text-sn-muted">
+                {moment.detail}
+              </span>
+            ) : null}
+          </span>
+        </button>
+      </div>
+    </li>
+  );
+}
+
+type People = Record<string, string>;
+
+function payloadLines(body: BeatBody, people: People): Array<{ label: string; value: string }> {
+  // People are named by `Person.id` in payloads. An unknown ref is someone
+  // outside the company — a raw address — so it is shown exactly as written.
+  const who = (ref: string) => people[ref] ?? ref;
+
+  if (body.twin === "gmail") {
+    const p = body.payload;
+    return [
+      { label: "From", value: who(p.from) },
+      { label: "To", value: p.to.map(who).join(", ") },
+      { label: "Subject", value: p.subject },
+      { label: "Body", value: p.body },
+    ];
+  }
+  if (body.twin === "slack") {
+    if (body.kind === "message") {
+      const p = body.payload;
+      return [
+        { label: "Channel", value: `#${p.channel}` },
+        { label: "From", value: who(p.from) },
+        { label: "Message", value: p.text },
+      ];
+    }
+    const p = body.payload;
+    return [
+      { label: "From", value: who(p.from) },
+      { label: "Reacted", value: `:${p.emoji}: on ${p.messageRef}` },
+    ];
+  }
+  if (body.kind === "invite") {
+    const p = body.payload;
+    return [
+      { label: "Meeting", value: p.title },
+      { label: "When", value: `${p.startISO} → ${p.endISO}` },
+      { label: "With", value: p.attendees.map(who).join(", ") },
+    ];
+  }
+  if (body.kind === "move") {
+    const p = body.payload;
+    return [
+      { label: "Moved", value: p.eventRef },
+      { label: "To", value: `${p.startISO} → ${p.endISO}` },
+      ...(p.reason ? [{ label: "Because", value: p.reason }] : []),
+    ];
+  }
+  if (body.kind === "cancel") {
+    const p = body.payload;
+    return [
+      { label: "Cancelled", value: p.eventRef },
+      ...(p.reason ? [{ label: "Because", value: p.reason }] : []),
+    ];
+  }
+  const p = body.payload;
+  return [
+    { label: "RSVP", value: `${who(p.who)} → ${p.response}` },
+    { label: "Event", value: p.eventRef },
+    ...(p.comment ? [{ label: "Said", value: p.comment }] : []),
+  ];
+}
+
+function MomentDetail({
+  moment,
+  offsetMinutes,
+  people,
+  onJumpSeq,
+}: {
+  moment: Moment;
+  offsetMinutes: number;
+  people: People;
+  onJumpSeq: (seq: number) => void;
+}) {
+  const step = moment.step;
+  const event = moment.event;
+  const beat = moment.beat;
+  // Captured: narrowing on a property does not survive into a callback.
+  const becauseSeq = event?.becauseSeq;
+
+  return (
+    <div className="animate-sn-fade-in flex flex-col gap-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <Chip size="sm" icon={false}>
+          {SOURCE_LABEL[moment.source]}
+        </Chip>
+        {moment.twin ? <Chip size="sm" service={moment.twin} /> : null}
+        <span data-numeric className="text-[11.5px] text-sn-subtle">
+          {formatSimTime(moment.simTimeISO, offsetMinutes)} · tick {moment.tick}
+          {moment.seq !== undefined ? ` · step ${moment.seq}` : ""}
+        </span>
+      </div>
+
+      <h4 className="text-[15px] leading-[21px] font-medium break-words text-sn-ink">
+        {moment.title}
+      </h4>
+
+      {moment.error ? (
+        <p className="rounded-sn-lg border border-sn-failed-line bg-sn-failed-soft p-2.5 text-[12.5px] text-sn-failed-ink">
+          {moment.error}
+          {step?.kind === "tool" ? " — the call failed, so nothing changed." : ""}
+        </p>
+      ) : null}
+
+      {step?.kind === "tool" ? (
+        <>
+          <CodeBlock
+            language="json"
+            filename={`${step.name}(…)`}
+            code={JSON.stringify(step.args ?? null, null, 2)}
+            wrap
+            maxHeight="260px"
+          />
+          <Detail label="What came back">{step.resultSummary || "(nothing)"}</Detail>
+        </>
+      ) : null}
+
+      {step?.kind === "thought" ? <Detail label="What it was thinking">{step.text}</Detail> : null}
+
+      {step?.kind === "escalation" ? (
+        <Detail label="What it handed back">
+          {step.text}
+          <span className="mt-2 block text-[12px] text-sn-subtle">
+            Every escalation is counted against autonomy — this is a moment a human had to step
+            in.
+          </span>
+        </Detail>
+      ) : null}
+
+      {beat ? (
+        <Detail label="Scripted beat">
+          <span className="font-mono text-[12px]">{beat.beatId}</span>
+          {beat.ref ? <span className="text-sn-subtle"> · ref {beat.ref}</span> : null}
+          <span className="text-sn-subtle"> · {beat.kind}</span>
+        </Detail>
+      ) : null}
+
+      {event ? (
+        <>
+          <Detail label="Why this happened">{event.reason}</Detail>
+          <div className="rounded-sn-lg border border-sn-line bg-sn-surface p-3">
+            <dl className="space-y-2">
+              {payloadLines(event, people).map((line) => (
+                <div key={line.label}>
+                  <dt className="text-[11px] font-medium tracking-[0.06em] text-sn-subtle uppercase">
+                    {line.label}
+                  </dt>
+                  <dd className="mt-0.5 text-[13px] leading-[19px] whitespace-pre-wrap text-sn-ink">
+                    {line.value}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          </div>
+          {becauseSeq !== undefined ? (
+            <button
+              type="button"
+              onClick={() => onJumpSeq(becauseSeq)}
+              className="self-start text-[12.5px] font-medium text-sn-primary-ink hover:underline"
+            >
+              This answers step {becauseSeq} →
+            </button>
+          ) : null}
+        </>
+      ) : null}
+
+      {moment.note ? <Detail label="Engine note">{moment.note}</Detail> : null}
+
+      {moment.url ? (
+        <a
+          href={moment.url}
+          target="_blank"
+          rel="noreferrer"
+          className="self-start text-[12.5px] font-medium text-sn-primary-ink hover:underline"
+        >
+          {moment.twin ? `Open it in ${SERVICE_LABELS[moment.twin]}` : "Open it in the twin"} →
+        </a>
+      ) : null}
+    </div>
+  );
+}
+
+function Detail({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div>
+      <div className="text-[11px] font-medium tracking-[0.06em] text-sn-subtle uppercase">
+        {label}
+      </div>
+      <div className="mt-1 text-[13px] leading-[20px] whitespace-pre-wrap text-sn-ink">
+        {children}
+      </div>
+    </div>
+  );
+}
