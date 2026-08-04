@@ -96,7 +96,7 @@ function Row({ row, onOpen }: { row: ThreadRow; onOpen: () => void }) {
         </span>
       </button>
       <span
-        className={`material-symbols-outlined shrink-0 text-[20px] ${row.important ? "filled text-[#f9ab00]" : "text-[#dadce0]"}`}
+        className={`material-symbols-outlined marker shrink-0 text-[18px] ${row.important ? "filled text-[#f9ab00]" : "text-[#e8eaed]"}`}
         title="Important"
       >
         label_important
