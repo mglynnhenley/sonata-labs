@@ -1,45 +1,20 @@
 {
-  "name": "gmail-sandbox-clone",
+  "name": "sonata-labs",
   "version": "0.1.0",
   "private": true,
-  "type": "module",
+  "description": "Clone your business, then test how well your agent does the work inside the clone.",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "next lint",
-    "db:init": "tsx src/cli/db-init.ts",
-    "seed": "tsx src/cli/seed.ts",
-    "sync": "tsx src/cli/sync.ts",
-    "reset": "tsx src/cli/reset.ts",
-    "smoke": "tsx scripts/smoke-sdk.ts",
-    "demo": "tsx scripts/demo-agent.ts",
-    "eval": "tsx src/cli/eval.ts",
-    "judge": "tsx src/cli/judge.ts",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "eval:check": "tsx scripts/eval-offline-check.ts"
-  },
-  "dependencies": {
-    "@google-cloud/local-auth": "^3.0.1",
-    "better-sqlite3": "^11.8.1",
-    "googleapis": "^144.0.0",
-    "mailparser": "^3.7.1",
-    "next": "^15.1.6",
-    "openai": "^7.1.0",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0"
-  },
-  "devDependencies": {
-    "@tailwindcss/postcss": "^4.0.0",
-    "@types/better-sqlite3": "^7.6.12",
-    "@types/mailparser": "^3.4.5",
-    "@types/node": "^22.10.7",
-    "@types/react": "^19.0.7",
-    "@types/react-dom": "^19.0.3",
-    "tailwindcss": "^4.0.0",
-    "tsx": "^4.19.2",
-    "typescript": "^5.7.3",
-    "vitest": "^3.0.2"
+    "dev": "npm run dev -w apps/platform",
+    "dev:gmail": "PORT=3101 npm run dev -w apps/gmail",
+    "dev:slack": "PORT=3200 npm run dev -w apps/slack",
+    "dev:calendar": "PORT=3400 npm run dev -w apps/calendar",
+    "test": "npm run test -w apps/gmail && npm run test -w apps/slack",
+    "test:gmail": "npm run test -w apps/gmail",
+    "test:slack": "npm run test -w apps/slack",
+    "typecheck": "npm run typecheck --workspaces --if-present"
   }
 }
