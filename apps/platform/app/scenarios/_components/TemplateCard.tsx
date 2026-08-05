@@ -15,7 +15,7 @@ export type TemplateCardProps = {
 
 /**
  * A ready-made day. The three actions are three different intents and none of
- * them is a menu item: run it now, keep it as a starting point, or just stand up
+ * them is a menu item: run it now, keep it as a starting point, or just build
  * the fake company and go poke at it in Gmail.
  */
 export function TemplateCard({ template, busy, onAction }: TemplateCardProps) {
@@ -50,7 +50,7 @@ export function TemplateCard({ template, busy, onAction }: TemplateCardProps) {
           iconRight={<IconArrowRight size={13} />}
           onClick={() => onAction(template, "use")}
         >
-          Use template
+          Run this day
         </Button>
         <Button
           size="sm"
@@ -59,7 +59,7 @@ export function TemplateCard({ template, busy, onAction }: TemplateCardProps) {
           disabled={busy !== null && busy !== "copy"}
           onClick={() => onAction(template, "copy")}
         >
-          Save a copy
+          Save &amp; edit
         </Button>
         <Button
           size="sm"
@@ -69,7 +69,7 @@ export function TemplateCard({ template, busy, onAction }: TemplateCardProps) {
           icon={<IconPlay size={12} />}
           onClick={() => onAction(template, "environment")}
         >
-          Start environment
+          Build the company
         </Button>
       </div>
     </Card>

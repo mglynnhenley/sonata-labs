@@ -1,9 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { PageHeader } from "@sonata/ui";
-import { readBrief, readRun } from "../../_lib/artifacts";
-import { buildRunReport } from "../../_lib/report";
-import { ReportView } from "../../_components/ReportView";
+import { readBrief, readRun } from "../../../results/_lib/artifacts";
+import { buildRunReport } from "../../../results/_lib/report";
+import { ReportView } from "../../../results/_components/ReportView";
 
 // The design-partner report for one run. It reads the same artifact the run page
 // does and assembles it into a document — what the agent did, where it failed,
@@ -28,7 +28,7 @@ export default async function ReportPage({ params }: { params: Promise<{ runId: 
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
       <PageHeader
         eyebrow={
-          <Link href={`/results/${encodeURIComponent(runId)}`} className="hover:text-sn-ink">
+          <Link href={`/runs/${encodeURIComponent(runId)}`} className="hover:text-sn-ink">
             {run.specTitle}
           </Link>
         }

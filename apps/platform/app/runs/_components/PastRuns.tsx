@@ -18,8 +18,7 @@ import { modelLabel } from "@/lib/models";
 import { CHECKLIST_HINT, CHECKLIST_LABEL } from "../../results/_lib/summary";
 import type { RunSummary } from "../../api/_lib/types";
 
-// History. Every row is a door: a finished run opens its results, a live one
-// opens the day it is still playing.
+// History. Every row is a door onto its run — live or finished, the same URL.
 
 // This column answers "did the day play?", NOT "did the agent do the job" — the
 // summary this list is built from carries no outcome, only a run status. It used
@@ -57,10 +56,6 @@ function statusOf(run: RunSummary): { tone: BadgeStatus; label: string } {
     return { tone: run.status === "failed" ? "failed" : "neutral", label: NO_RESULT };
   }
   return { tone: BADGE[run.status], label: LABEL[run.status] };
-}
-
-export function runHref(run: RunSummary): string {
-  return LIVE.includes(run.status) ? `/runs/${run.runId}` : `/results/${run.runId}`;
 }
 
 export type PastRunsProps = {
@@ -162,7 +157,9 @@ export function PastRuns({ runs, now }: PastRunsProps) {
       rows={runs}
       rowKey={(run) => run.runId}
       rowLabel={(run) => `${run.specTitle} on ${modelLabel(run.model)}`}
-      onRowClick={(run) => router.push(runHref(run))}
+      // One run, one URL: /runs/{id} serves the day live and its verdict after,
+      // so a row needs no guess about which page its run belongs on.
+      onRowClick={(run) => router.push(`/runs/${run.runId}`)}
       caption="Past runs, newest first"
       empty={
         <EmptyState

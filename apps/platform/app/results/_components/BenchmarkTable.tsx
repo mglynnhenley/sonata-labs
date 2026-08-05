@@ -128,7 +128,7 @@ export function BenchmarkTable({ benchmark }: { benchmark: Benchmark }) {
                 </th>
                 {benchmark.scenarios.map((scenario) => (
                   <td key={scenario.specId} className="px-3 py-2 text-center align-middle">
-                    <Cell cell={row.cells[scenario.specId]} model={row.model} />
+                    <Cell cell={row.cells[scenario.specId]} />
                   </td>
                 ))}
                 <td
@@ -191,7 +191,7 @@ function Swatch({ className }: { className?: string }) {
   );
 }
 
-function Cell({ cell, model }: { cell: BenchmarkCell | undefined; model: string }) {
+function Cell({ cell }: { cell: BenchmarkCell | undefined }) {
   if (!cell || !cell.latestRunId) {
     return (
       <span className="inline-flex h-9 w-full min-w-[74px] items-center justify-center rounded-sn-md border border-dashed border-sn-line text-[12px] text-sn-subtle">
@@ -200,12 +200,9 @@ function Cell({ cell, model }: { cell: BenchmarkCell | undefined; model: string 
     );
   }
 
-  // One run: straight to it. Several: to the filtered list, which shows the
-  // spread the mean is hiding.
-  const href =
-    cell.runs === 1
-      ? `/results/${cell.latestRunId}`
-      : `/results?spec=${encodeURIComponent(cell.specId)}&model=${encodeURIComponent(model)}`;
+  // One run: straight to it. Several: to the latest of them — the mean's most
+  // recent witness — until the run list grows per-cell filters.
+  const href = `/runs/${cell.latestRunId}`;
 
   return (
     <Link

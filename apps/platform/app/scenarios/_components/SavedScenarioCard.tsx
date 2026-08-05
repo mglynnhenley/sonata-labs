@@ -39,7 +39,7 @@ export function SavedScenarioCard({ episode, deleting, onDelete }: SavedScenario
         <div className="flex items-start gap-3">
           <h3 className="font-display min-w-0 flex-1 text-[23px] text-sn-ink">{episode.title}</h3>
           {lastRun ? (
-            <Link href={`/results/${lastRun.runId}`} className="shrink-0">
+            <Link href={`/runs/${lastRun.runId}`} className="shrink-0">
               <Badge status={RUN_STATUS[lastRun.status] ?? "neutral"} size="sm">
                 {lastRun.score === null
                   ? (RUN_STATUS[lastRun.status] ?? "neutral") === "running"
@@ -62,7 +62,9 @@ export function SavedScenarioCard({ episode, deleting, onDelete }: SavedScenario
             </Chip>
           ))}
           <Chip size="sm" icon={<IconClock size={11} />}>
-            {episode.counts.beats} beats · {episode.counts.criteria} criteria
+            {/* Not "beats" (screenwriting jargon the UI never defines) and not
+                "ways to pass" — the criteria are conjunctive. */}
+            {episode.counts.beats} things happen · {episode.counts.criteria} must-dos
           </Chip>
         </div>
       </div>

@@ -11,20 +11,20 @@ const ACTIONS = [
   {
     href: ROUTES.scenarios,
     icon: <IconLayers size={16} />,
-    title: "Clone another business",
+    title: "Clone another company",
     body: "Describe a company in one line and watch it become an inbox, channels and a calendar.",
   },
   {
     href: ROUTES.runs,
     icon: <IconPlay size={14} />,
-    title: "Start the day",
+    title: "New run",
     body: "Pick a scenario and a model, then watch the simulated workday play out live.",
   },
   {
-    href: ROUTES.results,
+    href: ROUTES.compare,
     icon: <IconSearch size={16} />,
     title: "Compare models",
-    body: "Task success, autonomy, failure modes and cost per run, side by side.",
+    body: "Autonomy, checklist score, failure modes and cost per day, side by side.",
   },
 ] as const;
 

@@ -52,14 +52,16 @@ export function HomeClient({ initial }: HomeClientProps) {
       <PageHeader
         eyebrow="Overview"
         title="What's happening"
-        subtitle="Everything running right now, and what the finished days scored."
+        // Permanent, and never a status line: the most-read sentence on the
+        // most-visited page defines the product's central word on every visit.
+        subtitle="Autonomy is the share of the day's work your agent finished without handing it back to a human."
         actions={
           <Button
             variant="primary"
             iconRight={<IconArrowRight size={14} />}
             onClick={(e) => go(e, ROUTES.runs)}
           >
-            Start the day
+            New run
           </Button>
         }
       />
@@ -82,13 +84,14 @@ export function HomeClient({ initial }: HomeClientProps) {
               <div>
                 <p className="text-[14px] font-medium text-sn-ink">Nothing is running</p>
                 <p className="mt-1 max-w-[54ch] text-[13px] leading-[20px] text-sn-muted">
-                  Pick a scenario and a model, and the workday starts at 9am. You can watch it in
-                  this dashboard or inside the clones themselves.
+                  Pick a company, a scenario and a model. The workday starts at 9am and runs 24
+                  fifteen-minute ticks. Watch it here, or inside Gmail, Slack and Calendar as it
+                  happens.
                 </p>
               </div>
             </div>
             <Button variant="primary" onClick={(e) => go(e, ROUTES.runs)}>
-              Start the day
+              New run
             </Button>
           </div>
         </Card>
@@ -104,17 +107,18 @@ export function HomeClient({ initial }: HomeClientProps) {
             hint={
               // The mean is over the runs that produced a result. Runs that never
               // executed are named rather than averaged in — the count is the
-              // honest footnote to the number beside it.
+              // honest footnote to the number beside it. And a mean over unlike
+              // scenarios and models is barely a quantity, so it says so.
               stats.scored === 0
                 ? "How much gets done without a human. Nothing scored yet."
-                : `Mean across ${stats.scored} scored ${stats.scored === 1 ? "run" : "runs"}` +
+                : `Mean across ${stats.scored} scored ${stats.scored === 1 ? "run" : "runs"} — mixes scenarios and models` +
                   (stats.unscored > 0
                     ? ` · ${stats.unscored} more never ran, so ${stats.unscored === 1 ? "it is" : "they are"} not counted`
                     : "")
             }
-            href={ROUTES.results}
-            actionLabel="Open the results and see the criteria behind this"
-            onClick={(e) => go(e, ROUTES.results)}
+            href={ROUTES.compare}
+            actionLabel="Compare properly, model by scenario"
+            onClick={(e) => go(e, ROUTES.compare)}
           />
           {/* A share of RUNS, not of criteria. It was called "task success", and
               so was the run page's share of ONE run's checklist — one label over
@@ -122,24 +126,33 @@ export function HomeClient({ initial }: HomeClientProps) {
               reading 25% for the same day. */}
           <StatCard
             label={PASS_RATE_LABEL}
-            value={percent(stats.passRate)}
+            // "0 of 7", never "0%": a low share of runs passing is the finding,
+            // but a bare zero percent reads as a broken build rather than early
+            // data. The denominator keeps it honest in both directions.
+            value={
+              stats.passRate === null
+                ? percent(null)
+                : `${Math.round(stats.passRate * stats.scored)} of ${stats.scored}`
+            }
             icon={<IconSearch size={15} />}
             hint={
               stats.scored === 0
                 ? PASS_RATE_HINT
                 : `${PASS_RATE_HINT} ${stats.scored} scored so far.`
             }
-            href={ROUTES.results}
-            onClick={(e) => go(e, ROUTES.results)}
+            href={ROUTES.compare}
+            actionLabel="Which criteria failed"
+            onClick={(e) => go(e, ROUTES.compare)}
           />
           <StatCard
             label="Runs"
             value={counts.runs}
             icon={<IconPlay size={13} />}
-            hint={`${counts.worlds} ${counts.worlds === 1 ? "world" : "worlds"} · ${counts.episodes} ${
+            hint={`${counts.worlds} ${counts.worlds === 1 ? "company" : "companies"} · ${counts.episodes} ${
               counts.episodes === 1 ? "scenario" : "scenarios"
             }`}
             href={ROUTES.runs}
+            actionLabel="Every run"
             onClick={(e) => go(e, ROUTES.runs)}
           />
           <StatCard
@@ -147,8 +160,9 @@ export function HomeClient({ initial }: HomeClientProps) {
             value={money(stats.spendUsd)}
             icon={<IconLayers size={15} />}
             hint="Every model call so far, agent and director"
-            href={ROUTES.results}
-            onClick={(e) => go(e, ROUTES.results)}
+            href={ROUTES.compare}
+            actionLabel="Where the money went"
+            onClick={(e) => go(e, ROUTES.compare)}
           />
         </div>
       </section>
@@ -161,12 +175,12 @@ export function HomeClient({ initial }: HomeClientProps) {
             <IconAlert size={15} className="text-sn-warning" />
             <h2 className="text-[14px] font-medium text-sn-ink">
               {twinsDown.length === 1
-                ? `The ${twinsDown[0].label} clone is not running`
-                : `${twinsDown.length} clones are not running`}
+                ? `${twinsDown[0].label} is not running`
+                : `${twinsDown.map((t) => t.label).join(" and ")} are not running`}
             </h2>
           </div>
           <p className="mt-1.5 text-[13px] text-sn-muted">
-            A scenario can only use a clone that is up. Start them here.
+            A scenario can only use an app that is up. Start them here.
           </p>
           <div className="mt-4">
             <TwinStrip twins={twins} onChanged={refresh} />

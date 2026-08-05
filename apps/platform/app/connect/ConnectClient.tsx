@@ -348,11 +348,11 @@ export function ConnectClient({ connection, initialTwins }: ConnectClientProps) 
             <IconArrowRight size={13} />
           </a>
           <a
-            href={ROUTES.results}
-            onClick={(e) => go(e, ROUTES.results)}
+            href={ROUTES.compare}
+            onClick={(e) => go(e, ROUTES.compare)}
             className={buttonClasses("secondary", "md")}
           >
-            See a finished report
+            See what finished days scored
             <IconArrowRight size={13} />
           </a>
         </div>

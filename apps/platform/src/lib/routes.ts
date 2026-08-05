@@ -3,10 +3,12 @@
 
 export const ROUTES = {
   home: "/",
+  companies: "/companies",
   scenarios: "/scenarios",
   runs: "/runs",
-  results: "/results",
+  compare: "/compare",
   settings: "/settings",
+  /** The only run URL. Live and finished are states of one page, not two addresses. */
   run: (id: string) => `/runs/${id}`,
   /**
    * The first-run button. `/runs` opens with the demo world and the stock

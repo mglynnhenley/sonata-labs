@@ -17,7 +17,7 @@ import type { ModelRole } from "./models";
 // means one round trip rather than four racing each other every two seconds.
 
 export interface Overview {
-  /** Nothing cloned yet ⇒ Home shows the welcome instead of the dashboard. */
+  /** No day played yet ⇒ Home shows the welcome instead of the dashboard. */
   firstRun: boolean;
   counts: { worlds: number; episodes: number; runs: number };
   /** Queued, running or judging — newest first. */
@@ -36,7 +36,9 @@ export async function getOverview(): Promise<Overview> {
   const runs = countRuns();
   const twins = await allTwinStatuses();
   return {
-    firstRun: worlds === 0 && runs === 0,
+    // Keyed on runs alone: someone who clones a company without playing a day
+    // has not seen the product yet, and must not lose the explainer for it.
+    firstRun: runs === 0,
     counts: { worlds, episodes: countEpisodes(), runs },
     live: listLiveRuns(),
     recent: listRuns({ limit: 6 }),

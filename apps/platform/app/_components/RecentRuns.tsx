@@ -72,7 +72,7 @@ export function RecentRuns({ runs, now }: RecentRunsProps) {
             ]}
             action={
               <Button variant="primary" onClick={(e) => go(e, ROUTES.runs)}>
-                Start the day
+                New run
               </Button>
             }
           />

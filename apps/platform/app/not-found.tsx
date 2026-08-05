@@ -10,10 +10,11 @@ import { ROUTES } from "@/lib/routes";
 // language, and offers the way on rather than a dead end.
 
 const ELSEWHERE = [
+  { href: ROUTES.companies, label: "Companies", hint: "The fake companies you've cloned" },
   { href: ROUTES.scenarios, label: "Scenarios", hint: "The days you can run" },
-  { href: ROUTES.runs, label: "Runs", hint: "Start one, or watch the one playing" },
-  { href: ROUTES.results, label: "Results", hint: "Scores, failure modes and the benchmark" },
-  { href: ROUTES.settings, label: "Settings", hint: "Models, key and the three clones" },
+  { href: ROUTES.runs, label: "Runs", hint: "Every day played, live or finished" },
+  { href: ROUTES.compare, label: "Compare", hint: "Models against scenarios, cell by cell" },
+  { href: ROUTES.settings, label: "Settings", hint: "Models, key and the three apps" },
 ] as const;
 
 export default function NotFound() {

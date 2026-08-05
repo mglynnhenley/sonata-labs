@@ -81,7 +81,7 @@ export function StartRunPanel({
         action={
           <a href="/scenarios">
             <Button variant="primary" iconRight={<IconArrowRight size={14} />}>
-              Browse scenarios
+              See the five scenarios
             </Button>
           </a>
         }
@@ -145,7 +145,7 @@ export function StartRunPanel({
         </div>
 
         <div>
-          <p className="text-[13px] font-medium text-sn-ink">Clones to attach</p>
+          <p className="text-[13px] font-medium text-sn-ink">Where the agent can work</p>
           <div className="mt-2.5 flex flex-wrap gap-2">
             {TWIN_NAMES.map((twin) => {
               const on = twins.includes(twin);
@@ -170,7 +170,7 @@ export function StartRunPanel({
             })}
           </div>
           <p className="mt-2 text-[12px] leading-[18px] text-sn-muted">
-            Detach a clone to see what the agent does without it — that is the cheapest way to
+            Detach an app to see what the agent does without it — that is the cheapest way to
             find out which surface it was actually relying on.
           </p>
         </div>
@@ -212,8 +212,8 @@ export function StartRunPanel({
         </Button>
         <p className="text-[12px] leading-[18px] text-sn-subtle">
           {twins.length === 0
-            ? "Attach at least one clone — the agent has to have somewhere to work."
-            : `${ticks} ticks of 15 simulated minutes, across ${twins.length} clone${twins.length === 1 ? "" : "s"}. You can pause or stop at any point.`}
+            ? "Give the agent at least one app — it has to have somewhere to work."
+            : `${ticks} ticks of 15 simulated minutes, across ${twins.length} app${twins.length === 1 ? "" : "s"}. You can pause or stop at any point.`}
         </p>
       </div>
     </Card>

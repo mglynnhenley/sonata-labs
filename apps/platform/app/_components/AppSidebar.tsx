@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   Badge,
   IconBolt,
+  IconInbox,
   IconLayers,
   IconPlay,
   IconSearch,
@@ -16,27 +17,32 @@ import {
 } from "@sonata/ui";
 import { usePoll } from "./usePoll";
 import type { Overview } from "@/lib/overview";
+import { ROUTES } from "@/lib/routes";
 
 // The shell's navigation. It polls the same overview payload Home does, so the
 // running-run count in the nav is live wherever you are in the app — you should
 // never have to go back to Home to find out whether the day is still playing.
 
+// One flat list sorted by a user's day, not our data lifecycle. "Runs" is the
+// only place a run lives; "Compare" is the benchmark's front door.
 const NAV = [
-  {
-    label: "Simulate",
-    items: [
-      { href: "/", label: "Home", icon: <IconSpark size={16} /> },
-      { href: "/scenarios", label: "Scenarios", icon: <IconLayers size={16} /> },
-      { href: "/runs", label: "Runs", icon: <IconPlay size={14} /> },
-    ],
-  },
-  {
-    label: "Analyse",
-    items: [{ href: "/results", label: "Results", icon: <IconSearch size={16} /> }],
-  },
+  { href: ROUTES.home, label: "Home", icon: <IconSpark size={16} /> },
+  { href: ROUTES.companies, label: "Companies", icon: <IconInbox size={16} /> },
+  { href: ROUTES.scenarios, label: "Scenarios", icon: <IconLayers size={16} /> },
+  { href: ROUTES.runs, label: "Runs", icon: <IconPlay size={14} /> },
+  { href: ROUTES.compare, label: "Compare", icon: <IconSearch size={16} /> },
+  { href: ROUTES.settings, label: "Settings", icon: <IconBolt size={16} /> },
 ] as const;
 
 const EMPTY: Pick<Overview, "live" | "twins"> = { live: [], twins: [] };
+
+/** Names the apps rather than counting an unexplained noun. */
+function twinLine(twins: Pick<Overview, "twins">["twins"]): string {
+  if (twins.length === 0) return "Checking the three apps…";
+  const down = twins.filter((t) => !t.ok);
+  if (down.length === 0) return "Gmail, Slack and Calendar are up";
+  return `${down.map((t) => t.label).join(" and ")} ${down.length === 1 ? "is" : "are"} down`;
+}
 
 export function AppSidebar() {
   const pathname = usePathname();
@@ -46,8 +52,7 @@ export function AppSidebar() {
   // Client-side navigation with real links: the href keeps middle-click and
   // "copy link address" working, the push keeps the transition instant.
   useEffect(() => {
-    for (const group of NAV) for (const item of group.items) router.prefetch(item.href);
-    router.prefetch("/settings");
+    for (const item of NAV) router.prefetch(item.href);
   }, [router]);
 
   const go = (event: MouseEvent<HTMLElement>, href: string) => {
@@ -60,7 +65,6 @@ export function AppSidebar() {
     href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(`${href}/`);
 
   const liveCount = data.live.length;
-  const ready = data.twins.filter((t) => t.ok).length;
 
   return (
     <Sidebar
@@ -69,60 +73,49 @@ export function AppSidebar() {
         <a
           href="/"
           onClick={(e) => go(e, "/")}
-          className="inline-flex items-baseline rounded-sn-sm"
+          className="block rounded-sn-sm"
           aria-label="Sonata Labs home"
         >
-          <span className="font-display text-[26px] text-sn-ink">Sonata</span>
-          <span className="ml-1.5 text-[11px] font-medium tracking-[0.14em] text-sn-subtle uppercase">
-            Labs
+          <span className="inline-flex items-baseline">
+            <span className="font-display text-[26px] text-sn-ink">Sonata</span>
+            <span className="ml-1.5 text-[11px] font-medium tracking-[0.14em] text-sn-subtle uppercase">
+              Labs
+            </span>
+          </span>
+          {/* The premise, permanently — immune to every boolean and every state. */}
+          <span className="mt-1 block text-[11.5px] leading-[16px] text-sn-subtle">
+            Clone a company. Test your agent inside it.
           </span>
         </a>
       }
       footer={
         <SidebarUser
           name="Local workspace"
-          detail={
-            data.twins.length === 0
-              ? "Checking the clones…"
-              : `${ready} of ${data.twins.length} clones ready`
-          }
-          href="/settings"
-          onClick={(e) => go(e, "/settings")}
+          detail={twinLine(data.twins)}
+          href={ROUTES.settings}
+          onClick={(e) => go(e, ROUTES.settings)}
         />
       }
     >
-      {NAV.map((group) => (
-        <SidebarGroup key={group.label} label={group.label}>
-          {group.items.map((item) => (
-            <SidebarItem
-              key={item.href}
-              href={item.href}
-              icon={item.icon}
-              active={isActive(item.href)}
-              onClick={(e) => go(e, item.href)}
-              trailing={
-                item.href === "/runs" && liveCount > 0 ? (
-                  <Badge status="running" size="sm">
-                    {liveCount}
-                  </Badge>
-                ) : undefined
-              }
-            >
-              {item.label}
-            </SidebarItem>
-          ))}
-        </SidebarGroup>
-      ))}
-
       <SidebarGroup>
-        <SidebarItem
-          href="/settings"
-          icon={<IconBolt size={16} />}
-          active={isActive("/settings")}
-          onClick={(e) => go(e, "/settings")}
-        >
-          Settings
-        </SidebarItem>
+        {NAV.map((item) => (
+          <SidebarItem
+            key={item.href}
+            href={item.href}
+            icon={item.icon}
+            active={isActive(item.href)}
+            onClick={(e) => go(e, item.href)}
+            trailing={
+              item.href === ROUTES.runs && liveCount > 0 ? (
+                <Badge status="running" size="sm">
+                  {liveCount}
+                </Badge>
+              ) : undefined
+            }
+          >
+            {item.label}
+          </SidebarItem>
+        ))}
       </SidebarGroup>
     </Sidebar>
   );

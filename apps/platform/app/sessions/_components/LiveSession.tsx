@@ -115,7 +115,7 @@ export function LiveSession({ initial, twinLinks }: LiveSessionProps) {
   }, [rows.length, follow]);
 
   const behind = rows.length - seen;
-  const resultsHref = `/results/${session.sessionId}`;
+  const resultsHref = `/runs/${session.sessionId}`;
 
   return (
     <div className="flex flex-col gap-8">

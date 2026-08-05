@@ -109,7 +109,9 @@ export function LiveEpisode({ initial, twinLinks }: LiveEpisodeProps) {
     setFollow(true);
   }
 
-  const resultsHref = `/results/${run.runId}`;
+  // The same address this page is on: once the day is over, /runs/{id} serves
+  // the verdict, so "see the results" is a re-render rather than another page.
+  const resultsHref = `/runs/${run.runId}`;
 
   return (
     <div className="flex flex-col gap-8">
@@ -156,7 +158,7 @@ export function LiveEpisode({ initial, twinLinks }: LiveEpisodeProps) {
                 iconRight={<IconArrowRight size={14} />}
                 onClick={(e) => go(e, resultsHref)}
               >
-                See the results
+                See the verdict
               </Button>
             )}
           </>
@@ -207,7 +209,7 @@ export function LiveEpisode({ initial, twinLinks }: LiveEpisodeProps) {
         <dl className="mt-7 grid grid-cols-2 gap-x-8 gap-y-4 border-t border-sn-line pt-5 sm:grid-cols-4">
           <Tally label="Arrived" value={counts.arrivals} hint="emails, posts, invites" />
           <Tally label="People answered" value={counts.replies} hint="because of the agent" />
-          <Tally label="Agent acted" value={counts.agentActions} hint="writes to a clone" />
+          <Tally label="Agent acted" value={counts.agentActions} hint="writes to an app" />
           <Tally
             label="Handed back"
             value={counts.escalations}
@@ -218,7 +220,7 @@ export function LiveEpisode({ initial, twinLinks }: LiveEpisodeProps) {
 
         {twinLinks.length > 0 ? (
           <div className="mt-6 flex flex-wrap items-center gap-2 border-t border-sn-line pt-5">
-            <span className="text-[12px] text-sn-subtle">Watch it happen in the clones:</span>
+            <span className="text-[12px] text-sn-subtle">Watch it happen in the apps:</span>
             {twinLinks.map((link) => (
               <a key={link.twin} href={link.url} target="_blank" rel="noreferrer">
                 <Chip service={link.twin} size="sm">
@@ -269,7 +271,7 @@ export function LiveEpisode({ initial, twinLinks }: LiveEpisodeProps) {
             <div className="mt-2 flex items-center gap-2.5 rounded-sn-lg bg-sn-bg-subtle px-4 py-3">
               <IconCheck size={14} className="shrink-0 text-sn-success" />
               <p className="text-[13px] text-sn-muted">
-                The day is over. The results page has the score, the criteria behind it and the
+                The day is over. The verdict has the score, the criteria behind it and the
                 failure modes the judge found.
               </p>
               <a
@@ -277,7 +279,7 @@ export function LiveEpisode({ initial, twinLinks }: LiveEpisodeProps) {
                 onClick={(e) => go(e, resultsHref)}
                 className="ml-auto shrink-0 text-[13px] font-medium text-sn-primary-ink hover:underline"
               >
-                Read the results
+                Read the verdict
               </a>
             </div>
           ) : null}

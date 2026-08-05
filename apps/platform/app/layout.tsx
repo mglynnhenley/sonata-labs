@@ -6,7 +6,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Sonata Labs",
-  description: "Clone your business, then test how well your agent does the work inside the clone.",
+  description: "Clone a company. Test your agent inside it.",
 };
 
 /**

@@ -178,10 +178,10 @@ export function RunsClient({
           <h2 className="font-display text-[26px] text-sn-ink">Past runs</h2>
           {/* NOT "on this machine". This list is `/api/runs`, which reads the
               dashboard's own document store; runs started by the CLI land in the
-              artifact directory that Results reads, and only there. Saying "on
-              this machine" over one of two stores is how this page claimed 1 run
-              while Results counted 11 of the same days. Results is the full
-              record, so the link goes there. */}
+              artifact directory, and only there. Saying "on this machine" over
+              one of two stores is how this page claimed 1 run while the old
+              results page counted 11 of the same days. The benchmark reads the
+              full record, so the outbound link goes there. */}
           <div className="flex items-center gap-3 text-[12px] text-sn-subtle">
             <button
               type="button"
@@ -191,11 +191,11 @@ export function RunsClient({
               {data.runs.length} run{data.runs.length === 1 ? "" : "s"} started from this dashboard
             </button>
             <a
-              href={ROUTES.results}
-              onClick={(e) => go(e, ROUTES.results)}
+              href={ROUTES.compare}
+              onClick={(e) => go(e, ROUTES.compare)}
               className="text-sn-primary-ink underline underline-offset-2"
             >
-              Every finished run
+              Every scored run, compared
             </a>
           </div>
         </div>

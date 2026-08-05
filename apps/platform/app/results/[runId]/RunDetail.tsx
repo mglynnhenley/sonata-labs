@@ -105,8 +105,8 @@ export function RunDetail({
     <div className="flex flex-col gap-6">
       <PageHeader
         eyebrow={
-          <Link href="/results" className="hover:text-sn-ink">
-            Results
+          <Link href="/runs" className="hover:text-sn-ink">
+            Runs
           </Link>
         }
         title={run.specTitle}
@@ -130,7 +130,7 @@ export function RunDetail({
                 that it is a page of dashes, so it waits with the rejudge action. */}
             {settled ? (
               <Link
-                href={`/results/${encodeURIComponent(run.runId)}/report`}
+                href={`/runs/${encodeURIComponent(run.runId)}/report`}
                 className={buttonClasses("secondary", "md")}
               >
                 Report

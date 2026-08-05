@@ -11,26 +11,32 @@ import { useGo } from "./useGo";
 // teaches the product in three sentences, offers exactly one primary action,
 // and puts the only piece of setup — starting the clones — on the same screen.
 
+// Stamped with elapsed time: the promise is five minutes, so the steps prove it.
 const STEPS = [
   {
     n: 1,
-    title: "Clone a business",
-    body: "Describe it in one line — “a 12-person fintech, the week before an audit”. Sonata writes the people, their threads, their channels and their meetings, and puts the same cast in all three clones.",
+    stamp: "0:00",
+    title: "A company appears.",
+    body: "12 people, their threads, their channels, a week of meetings. The same cast in Gmail, Slack and the calendar.",
     href: ROUTES.scenarios,
-    cta: "See the scenarios",
+    cta: "See the five scenarios",
   },
   {
     n: 2,
-    title: "Run a day",
-    body: "The clock moves in 15-minute ticks. A client escalates at 9:15, a meeting collides after lunch. Your agent lives inside the day — and when it writes to someone, that person writes back.",
+    stamp: "0:30",
+    title: "The day starts at 9am.",
+    body: "The clock moves in 15-minute steps. A client escalates at 9:15; a meeting collides after lunch. Your agent is told the time and what's new, and works. When it writes to someone, that person writes back — in their own voice.",
     href: ROUTES.runs,
     cta: "See how a run works",
   },
   {
     n: 3,
-    title: "Read the score",
-    body: "Each scenario has criteria, and a judge reads the whole day and names how the agent failed. The number that matters is autonomy: how much of the job got done without a human stepping in.",
-    href: ROUTES.results,
+    stamp: "4:00",
+    // The highest-value string in the product: it defines the coined word and
+    // gives it a reference point.
+    title: "You get one number.",
+    body: "Autonomy: the share of the day's job that got done without a human stepping in. 100% means you could have gone to lunch. Every number on the page opens the moment that produced it.",
+    href: ROUTES.compare,
     cta: "See what gets scored",
   },
 ] as const;
@@ -49,15 +55,17 @@ export function FirstRun({ twins, onTwinsChanged }: FirstRunProps) {
       <PageHeader
         size="lg"
         eyebrow="Welcome to Sonata Labs"
-        title="Clone your business, then test your agent inside it."
-        subtitle="Sonata builds a fake company — an inbox, Slack channels and a calendar, with the same people in all three — and plays one workday inside it while your agent works. Everything runs on this machine. Nothing touches a real account."
+        title="Clone a company. Find out what your agent can actually do inside it."
+        subtitle="Sonata builds a fake company — an inbox, Slack channels and a calendar, with the same people in all three — then plays one workday inside it while your agent works. Emails arrive on a clock, coworkers write back in character, meetings move. At 5pm you get one number: how much of the job it handled without you. Everything runs on this machine. Nothing touches a real account."
         meta={
           <>
             <Chip tone="gold" icon={<IconSpark size={13} />}>
               Five minutes end to end
             </Chip>
             <Chip>Local only</Chip>
-            <Chip>{ready === 3 ? "All three clones ready" : `${ready} of 3 clones ready`}</Chip>
+            <Chip>
+              {ready === 3 ? "Gmail, Slack and Calendar ready" : `${ready} of the three apps ready`}
+            </Chip>
           </>
         }
         actions={
@@ -67,7 +75,7 @@ export function FirstRun({ twins, onTwinsChanged }: FirstRunProps) {
               size="lg"
               onClick={(e) => go(e, ROUTES.scenarios)}
             >
-              Browse scenarios
+              See the five scenarios
             </Button>
             <Button
               variant="primary"
@@ -75,16 +83,18 @@ export function FirstRun({ twins, onTwinsChanged }: FirstRunProps) {
               iconRight={<IconArrowRight size={15} />}
               onClick={(e) => go(e, ROUTES.guidedDemo)}
             >
-              Start the guided demo
+              Run the demo day
             </Button>
           </>
         }
       />
 
       <section>
-        <h2 className="font-display text-[28px] text-sn-ink">How a day works</h2>
+        <h2 className="font-display text-[28px] text-sn-ink">
+          What happens when you press the button
+        </h2>
         <p className="mt-2 max-w-[62ch] text-[14px] leading-[22px] text-sn-muted">
-          Three steps, and the guided demo does all of them for you the first time.
+          Three steps, and the demo day does all of them for you the first time.
         </p>
 
         <ol className="mt-6 grid gap-4 md:grid-cols-3">
@@ -93,9 +103,10 @@ export function FirstRun({ twins, onTwinsChanged }: FirstRunProps) {
               <Card padding="lg" className="flex h-full flex-col">
                 <span
                   aria-hidden="true"
-                  className="font-display-upright grid h-9 w-9 place-items-center rounded-full bg-sn-gold-soft text-[17px] text-sn-gold-ink"
+                  data-numeric
+                  className="font-display-upright grid h-9 min-w-9 place-items-center self-start rounded-full bg-sn-gold-soft px-2.5 text-[15px] text-sn-gold-ink"
                 >
-                  {step.n}
+                  {step.stamp}
                 </span>
                 <h3 className="mt-4 text-[15px] font-medium text-sn-ink">{step.title}</h3>
                 <p className="mt-2 flex-1 text-[13px] leading-[21px] text-sn-muted">{step.body}</p>
@@ -119,10 +130,12 @@ export function FirstRun({ twins, onTwinsChanged }: FirstRunProps) {
       <section>
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
-            <h2 className="font-display text-[28px] text-sn-ink">The three clones</h2>
+            <h2 className="font-display text-[28px] text-sn-ink">
+              The three apps you&apos;ll be watching
+            </h2>
             <p className="mt-2 max-w-[62ch] text-[14px] leading-[22px] text-sn-muted">
               Each one speaks its real API closely enough that the official SDKs work against it.
-              The guided demo starts whichever it needs, or you can start them here.
+              The demo day starts whichever it needs, or you can start them here.
             </p>
           </div>
           <a
