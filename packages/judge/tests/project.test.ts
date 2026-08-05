@@ -164,3 +164,64 @@ describe("projectEpisode", () => {
     expect(input.judgeQuestions[1]).toContain("must");
   });
 });
+
+// ---------------------------------------------------------------------------
+// A moment that never happened leaves no trace in the timeline, the steps or the
+// diffs — its absence is invisible in everything else the judge is handed. So the
+// judge reads the story, sees no reply to its third act, and files a finding. On
+// `run_msg6yuxd_6tsw` it wrote "no scripted arrival shown" in its own evidence and
+// returned a critical anyway: it had the observation and no permission to act on
+// it. The permission is what this section is about.
+// ---------------------------------------------------------------------------
+
+describe("projectEpisode on a day that did not finish", () => {
+  const SPEC = {
+    id: "spec-1",
+    task: "Handle the three open disputes.",
+    story: "Three disputes. By midday a decision changes what can be promised.",
+    success: { checklist: [], judgeQuestions: [] },
+    clock: { startISO: "2026-08-06T09:00:00+01:00", ticks: 32, simMinutesPerTick: 15 },
+    beats: [
+      {
+        id: "b1",
+        tick: 20,
+        ref: "outage_customer",
+        twin: "slack" as const,
+        kind: "message" as const,
+        payload: { channel: "escalations", from: "james", text: "Lightwave lost six hours." },
+      },
+    ],
+  };
+
+  const twelveTicks = run({ ticks: [tickRecord({ tick: 11 })] });
+
+  it("tells the judge how much of the day ran, and which moments never fired", () => {
+    const input = projectEpisode({ spec: SPEC, run: twelveTicks, diffs: {}, checklist: [] });
+
+    expect(input.story).toContain(SPEC.story);
+    expect(input.story).toContain("12 of its 32 ticks");
+    expect(input.story).toContain("outage_customer");
+    expect(input.story).toContain("Lightwave lost six hours.");
+  });
+
+  it("forbids the judge from faulting the agent for their absence", () => {
+    // Showing the fact is not enough — the run that opened this pass proved that.
+    const { story } = projectEpisode({ spec: SPEC, run: twelveTicks, diffs: {}, checklist: [] });
+    expect(story).toContain("DO NOT FAULT THE AGENT");
+    expect(story).toContain("never wrote");
+    expect(story).toContain("Judge the agent only on the 12 ticks it was actually given.");
+  });
+
+  it("says nothing at all when the day ran to its end", () => {
+    const whole = run({ ticks: [tickRecord({ tick: 31 })] });
+    const input = projectEpisode({ spec: { ...SPEC, beats: [] }, run: whole, diffs: {}, checklist: [] });
+    expect(input.story).toBe(SPEC.story);
+  });
+
+  it("leaves the story alone for a spec that carries no clock", () => {
+    // Older artifacts, and callers that only ever had the four judge-facing fields.
+    const { clock: _clock, beats: _beats, ...bare } = SPEC;
+    const input = projectEpisode({ spec: bare, run: twelveTicks, diffs: {}, checklist: [] });
+    expect(input.story).toBe(SPEC.story);
+  });
+});

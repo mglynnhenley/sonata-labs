@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
+import { harnessDefectEvidence } from "../src/executed";
 import {
   autonomyScore,
   checklistScore,
   decidedCriteria,
   findingsByCategory,
+  harnessDefects,
+  harnessNotice,
   scoreChecklist,
   verdictOutcome,
 } from "../src/score";
@@ -178,6 +181,8 @@ describe("a run whose must-dos nobody could check", () => {
       decided: 1,
       total: 4,
       undecidedMusts: 3,
+      harnessDefects: 0,
+      notice: null,
       outcome: "inconclusive",
     });
   });
@@ -239,6 +244,8 @@ describe("inconclusive", () => {
       decided: 0,
       total: 0,
       undecidedMusts: 0,
+      harnessDefects: 0,
+      notice: null,
       outcome: "inconclusive",
     });
   });
@@ -251,6 +258,68 @@ describe("inconclusive", () => {
       crit({ id: "b", status: "failed" }),
     ];
     expect(verdictOutcome(results)).toBe("fail");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Our defect, said in our own voice. A criterion whose subject never reached the
+// agent is already out of the score — it is `notApplicable`, and always was — but
+// it read on the page exactly like a criterion the run happened not to settle, so
+// half of a report's evidence about a model was really evidence about us.
+// ---------------------------------------------------------------------------
+
+/** A criterion we never gave the agent the chance to meet. */
+function ours(over: Partial<CriterionResult> = {}): CriterionResult {
+  return crit({
+    status: "notApplicable",
+    evidence: harnessDefectEvidence('beat "outage_customer" never fired — it was scheduled for t20'),
+    ...over,
+  });
+}
+
+describe("harness defects", () => {
+  it("picks ours out of the criteria nothing could settle", () => {
+    const results = [
+      crit({ id: "a", status: "passed" }),
+      crit({ id: "b", status: "notApplicable", evidence: "no gmail snapshot in this run" }),
+      ours({ id: "c" }),
+    ];
+    expect(harnessDefects(results).map((c) => c.id)).toEqual(["c"]);
+  });
+
+  it("moves no number: they were already out of the score and they stay out", () => {
+    const withDefect = [crit({ id: "a" }), crit({ id: "b", status: "failed" }), ours({ id: "c" })];
+    const without = withDefect.slice(0, 2);
+    expect(checklistScore(withDefect)).toBe(checklistScore(without));
+    expect(scoreChecklist(withDefect)).toMatchObject({ decided: 2, total: 3, harnessDefects: 1 });
+  });
+
+  it("says out loud, in the verdict, that we never put those moments to the agent", () => {
+    const notice = harnessNotice([crit({ id: "a" }), ours({ id: "c4", severity: "must" })]) ?? "";
+    expect(notice).toContain("c4");
+    expect(notice).toContain("never reached it");
+    expect(notice).toContain("defects in this harness, not failures of the model");
+    expect(harnessNotice([crit({ id: "a" })])).toBeNull();
+  });
+
+  it("will not call a run failed for a day we cut short", () => {
+    // Everything decided went wrong — but "everything" here is the fraction of the
+    // day our harness delivered, not the day. That is not a verdict, it is a
+    // sampling artifact, and it must not be published as the model's failure.
+    const cutShort = [crit({ id: "a", status: "failed" }), ours({ id: "b" })];
+    expect(verdictOutcome(cutShort)).toBe("inconclusive");
+    expect(verdictOutcome([crit({ id: "a", status: "failed" })])).toBe("fail");
+  });
+
+  it("still fails a run on a `must` that was decided against it", () => {
+    // A short day afterwards does not undo a failure that was actually observed on a
+    // moment the agent WAS shown.
+    const observed = [crit({ id: "a", severity: "must", status: "failed" }), ours({ id: "b" })];
+    expect(verdictOutcome(observed)).toBe("fail");
+  });
+
+  it("cannot let a run pass while a decisive criterion was never put to it", () => {
+    expect(verdictOutcome([crit({ id: "a" }), ours({ id: "b" })])).toBe("inconclusive");
   });
 });
 

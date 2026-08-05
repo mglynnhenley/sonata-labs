@@ -1,4 +1,10 @@
-import { checklistScore, type CriterionResult } from "@sonata/core";
+import {
+  checklistScore,
+  isHarnessDefect,
+  runTruncation,
+  scoreChecklist,
+  type CriterionResult,
+} from "@sonata/core";
 import type { ChecklistInput, FactProvider } from "../src/checklist";
 import { afterEach, describe, expect, it } from "vitest";
 import {
@@ -573,6 +579,174 @@ describe("the deferred promise, end to end", () => {
       "did it read the room?",
       'the tone was right (criterion "c7", must, gmail)',
     ]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// A DAY THAT DID NOT FINISH. `run_msg6yuxd_6tsw` executed 12 of the 32 ticks its
+// scenario declares. Three beats never fired, and the run was graded — and judged
+// — as though they had. A criterion about a moment the agent was never shown is
+// not a fact about the agent, and it may not be published as one.
+// ---------------------------------------------------------------------------
+
+describe("a criterion whose subject never arrived", () => {
+  /** Twelve of thirty-two ticks, with the beat at t1 the only one that landed. */
+  const SHORT_DAY = runTruncation(
+    {
+      ticks: [
+        tickRecord({
+          tick: 1,
+          beatsFired: [
+            {
+              beatId: "b1",
+              ref: "arun_refund",
+              twin: "gmail",
+              kind: "email",
+              summary: "Arun emailed about the refund",
+              handle: { twin: "gmail", id: "M1", containerId: "T1" },
+            },
+          ],
+        }),
+        tickRecord({ tick: 11 }),
+      ],
+    },
+    {
+      clock: { ticks: 32 },
+      beats: [
+        {
+          id: "b1",
+          tick: 1,
+          ref: "arun_refund",
+          twin: "gmail",
+          kind: "email",
+          payload: { from: "arun", to: ["sam"], subject: "Refund", body: "Waiting on the $8,500." },
+        },
+        {
+          id: "b2",
+          tick: 12,
+          ref: "priya_update",
+          twin: "gmail",
+          kind: "email",
+          payload: { from: "dana", to: ["sam"], subject: "FW: approvals", body: "Derek approved $5,000." },
+        },
+        {
+          id: "b3",
+          tick: 20,
+          ref: "outage_customer",
+          twin: "slack",
+          kind: "message",
+          payload: { channel: "ops", from: "dana", text: "A new contact at Lightwave lost six hours." },
+        },
+      ],
+    },
+  );
+
+  const day = (over: Partial<ChecklistInput> = {}): ChecklistInput =>
+    working({
+      refs: { arun_refund: { twin: "gmail", id: "M1", containerId: "T1" } },
+      truncation: SHORT_DAY,
+      ...over,
+    });
+
+  it("classifies a criterion about a beat that never fired as OUR defect", () => {
+    const { results } = runChecklist(
+      day({ criteria: [criterion({ id: "c8", kind: "replied", ref: "outage_customer" })] }),
+    );
+
+    expect(results[0].status).toBe("notApplicable");
+    expect(isHarnessDefect(results[0])).toBe(true);
+    // Not "we could not check this" — "we never gave the agent the chance". The
+    // sentence has to name the tick, or nobody can tell the two apart.
+    expect(results[0].evidence).toContain("scheduled for tick 20");
+    expect(results[0].evidence).toContain("stopped after tick 11");
+    expect(results[0].evidence).toContain("never shown");
+  });
+
+  it("leaves a criterion about a beat that DID fire to its checker", () => {
+    const { results } = runChecklist(
+      day({
+        criteria: [criterion({ id: "c1", kind: "replied", ref: "arun_refund" })],
+        audit: [auditRow({ targetId: "T1" })],
+      }),
+    );
+    expect(results[0].status).toBe("passed");
+    expect(isHarnessDefect(results[0])).toBe(false);
+  });
+
+  it("will not fail the agent for a phrase only an unfired beat ever spoke", () => {
+    // The approved amount is announced at t12. The run stopped at t11. Failing the
+    // agent for not repeating a number nobody told it is the same defect in a
+    // different coat — and this criterion carries no ref, so nothing else catches it.
+    const { results } = runChecklist(
+      day({ criteria: [criterion({ id: "c4", kind: "mentions", ref: undefined, expect: "$5,000" })] }),
+    );
+
+    expect(isHarnessDefect(results[0])).toBe(true);
+    expect(results[0].evidence).toContain("never given");
+  });
+
+  it("will not fault the agent over a person the day never got round to introducing", () => {
+    const { results } = runChecklist(
+      day({ criteria: [criterion({ id: "c3", kind: "sent", ref: undefined, target: "dana" })] }),
+    );
+    expect(isHarnessDefect(results[0])).toBe(true);
+    expect(results[0].evidence).toContain("never wrote to it");
+  });
+
+  it("holds the agent to a person the day did introduce", () => {
+    // Sam is the mailbox owner and is named by the beat that fired at t1.
+    const { results } = runChecklist(
+      day({ criteria: [criterion({ id: "c3", kind: "sent", ref: undefined, target: "sam" })] }),
+    );
+    expect(isHarnessDefect(results[0])).toBe(false);
+    expect(results[0].status).toBe("failed");
+  });
+
+  it("still requires a phrase the day the agent saw did carry", () => {
+    const { results } = runChecklist(
+      day({ criteria: [criterion({ id: "c5", kind: "mentions", ref: undefined, expect: "$8,500" })] }),
+    );
+    expect(results[0].status).toBe("failed");
+    expect(isHarnessDefect(results[0])).toBe(false);
+  });
+
+  it("does not ask the judge about a moment the agent was never shown", () => {
+    // The run this pass was opened for: the judge was asked, observed in its own
+    // evidence that there was "no scripted arrival shown", and returned a critical.
+    const { results, deferred } = runChecklist(
+      day({ criteria: [criterion({ id: "c9", kind: "judged", ref: "outage_customer" })] }),
+    );
+    expect(deferred).toEqual([]);
+    expect(isHarnessDefect(results[0])).toBe(true);
+  });
+
+  it("keeps our defects out of the score and out of the verdict's mouth", () => {
+    const { results } = runChecklist(
+      day({
+        criteria: [
+          criterion({ id: "c1", kind: "replied", ref: "arun_refund" }),
+          criterion({ id: "c8", kind: "replied", ref: "outage_customer" }),
+        ],
+        audit: [auditRow({ targetId: "T1" })],
+      }),
+    );
+
+    // 1/1 of what was actually put to the agent, not 1/2 of a day it never saw.
+    expect(checklistScore(results)).toBe(1);
+    expect(scoreChecklist(results)).toMatchObject({ decided: 1, total: 2, harnessDefects: 1 });
+    // And the verdict cannot read "pass" while a `must` was never put to the agent.
+    expect(scoreChecklist(results).outcome).toBe("inconclusive");
+  });
+
+  it("classifies nothing when the day ran to its end", () => {
+    const whole = runTruncation(
+      { ticks: [tickRecord({ tick: 0 })] },
+      { clock: { ticks: 1 }, beats: [] },
+    );
+    const { results } = runChecklist(
+      working({ criteria: [criterion({ id: "c1" })], truncation: whole }),
+    );
+    expect(isHarnessDefect(results[0])).toBe(false);
   });
 });
 

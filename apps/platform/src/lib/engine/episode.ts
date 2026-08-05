@@ -5,12 +5,18 @@ import {
   plannedTicks,
   tickToISO,
   type AgentTrace,
+  type ByTwin,
   type EpisodeRun,
   type EpisodeSpec,
   type RunStatus,
+  type Termination,
   type TickRecord,
+  type TwinAdapter,
+  type TwinAuditRow,
   type TwinName,
+  type TwinSnapshot,
 } from "@sonata/core";
+import { createAdapters } from "@sonata/engine";
 import { mirrorRunFinish } from "../../../app/api/_lib/mirror";
 import { getWorld } from "../../../app/api/_lib/records";
 import { newId } from "../../../app/api/_lib/store";
@@ -51,6 +57,18 @@ export interface StartEpisodeInput {
   twins?: TwinName[];
   /** Length of the simulated day. Defaults to the scenario's own clock. */
   ticks?: number;
+  /**
+   * Raise (or lower) this run's stop guards, leaving the saved scenario alone.
+   *
+   * Exists because a guard sized for a shorter day silently truncates a longer
+   * one, and a truncated day cannot be graded against a whole checklist without
+   * charging our interruption to the agent. When the answer a run has to give is
+   * "what does this model do across the WHOLE day", the budget has to be allowed
+   * to say so out loud — and it is merged into the spec the artifact is filed
+   * with, so a reader months later sees the guards that were actually in force
+   * rather than the ones the scenario was saved with.
+   */
+  termination?: Partial<Termination>;
   /** Judge the day when it ends. On by default — a run without a diagnosis is half a result. */
   judge?: boolean;
   judgeModel?: string;
@@ -174,7 +192,7 @@ function toView(entry: LiveRun): RunView {
  */
 export function startEpisode(input: StartEpisodeInput): RunView {
   const episode = resolveScenario(input.episodeId);
-  const spec = specForRun(episode.spec, input.ticks);
+  const spec = specForRun(episode.spec, input.ticks, input.termination);
   const settings = getSettings();
   const model = input.model?.trim() || settings.models.agent;
 
@@ -262,8 +280,138 @@ function onTick(entry: LiveRun, record: TickRecord): void {
   });
 }
 
+// ---------------------------------------------------------------------------
+// Evidence. The artifact's own half of the promise.
+// ---------------------------------------------------------------------------
+
+// The engine captures both snapshots and the audit window itself — but it does
+// so at the END of its try block, so a loop that unwinds takes the capture with
+// it. `cancel` unwinds the loop by design (see `RunStopped`), which means a day
+// stopped at 11:00 was filing a self-describing artifact with `snapshots: {}` and
+// no log, and every deterministic criterion in it came back undecidable. That is
+// not the engine's bug to fix in a package: the artifact is what THIS file
+// promises, so this file takes its own capture and uses it wherever the loop's
+// is missing. A twin that will not answer is written down as a twin that would
+// not answer, at the time it would not.
+
+interface Capture {
+  before: ByTwin<TwinSnapshot>;
+  after: ByTwin<TwinSnapshot>;
+  audit: TwinAuditRow[];
+  /** Per twin, why the above is short. Travels into the artifact verbatim. */
+  notes: Partial<Record<TwinName, string>>;
+}
+
+function newCapture(): Capture {
+  return { before: {}, after: {}, audit: [], notes: {} };
+}
+
+/** The clones as the platform's own witness — stateless HTTP, so building costs nothing. */
+function witnesses(twins: readonly TwinName[]): ByTwin<TwinAdapter> {
+  const urls = twinUrlMap(twins);
+  const map: ByTwin<TwinAdapter> = {};
+  for (const adapter of createAdapters({
+    ...(urls.gmail ? { gmail: { baseUrl: urls.gmail } } : {}),
+    ...(urls.slack ? { slack: { baseUrl: urls.slack } } : {}),
+    ...(urls.calendar ? { calendar: { baseUrl: urls.calendar } } : {}),
+  })) {
+    if (twins.includes(adapter.name)) map[adapter.name] = adapter;
+  }
+  return map;
+}
+
+/** "11:15" in the operator's own clock — a report quotes this, so it is local time. */
+function atClock(ms: number): string {
+  return new Date(ms).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+}
+
+async function snapshotInto(
+  into: ByTwin<TwinSnapshot>,
+  used: ByTwin<TwinAdapter>,
+  capture: Capture,
+): Promise<void> {
+  for (const [name, adapter] of Object.entries(used) as [TwinName, TwinAdapter][]) {
+    if (into[name]) continue;
+    try {
+      into[name] = await adapter.snapshot();
+    } catch (err) {
+      // Not swallowed: the reason and the moment go on the record, so the report
+      // can say the clone was unreachable at 11:15 rather than leave a reader to
+      // read an empty checklist as the agent's silence.
+      capture.notes[name] = `the ${name} clone was unreachable at ${atClock(Date.now())} (${message(err)})`;
+    }
+  }
+}
+
+/**
+ * Every twin's write rows from the moment the day began.
+ *
+ * The floor is the first tick, never the run's start: seeding a cloned business
+ * writes hundreds of rows, and crediting those to the agent is how a criterion
+ * passes for free.
+ */
+async function auditFrom(
+  used: ByTwin<TwinAdapter>,
+  fromMs: number,
+  capture: Capture,
+): Promise<TwinAuditRow[]> {
+  const rows: TwinAuditRow[] = [];
+  for (const [name, adapter] of Object.entries(used) as [TwinName, TwinAdapter][]) {
+    try {
+      rows.push(...(await adapter.auditSince(0)).filter((r) => r.ts >= fromMs));
+    } catch (err) {
+      capture.notes[name] ??= `the ${name} clone's audit log could not be read at ${atClock(Date.now())} (${message(err)})`;
+    }
+  }
+  return rows.sort((a, b) => a.id - b.id);
+}
+
+/**
+ * Fill in whatever the loop did not hand back, then close the record.
+ *
+ * The loop's own capture wins where it exists: its `before` was taken after
+ * seeding and inside the same process that drove the day, and a second opinion
+ * on a moment that has already passed would be a different moment.
+ */
+async function closeCapture(
+  capture: Capture,
+  used: ByTwin<TwinAdapter>,
+  entry: LiveRun,
+  result: EngineRunResult | null,
+): Promise<Capture> {
+  for (const [name, pair] of Object.entries(result?.run.snapshots ?? {}) as [
+    TwinName,
+    { before: TwinSnapshot; after: TwinSnapshot },
+  ][]) {
+    capture.before[name] = pair.before;
+    capture.after[name] = pair.after;
+  }
+  await snapshotInto(capture.after, used, capture);
+
+  if (result && result.audit.length > 0) capture.audit = result.audit;
+  else capture.audit = await auditFrom(used, entry.ticks[0]?.startedAt ?? entry.startedAt, capture);
+  return capture;
+}
+
+/** Only pairs. A lone snapshot cannot be diffed, and half a pair reads as a whole one. */
+function snapshotsOf(capture: Capture): EpisodeRun["snapshots"] {
+  const out: EpisodeRun["snapshots"] = {};
+  for (const name of Object.keys(capture.before) as TwinName[]) {
+    const before = capture.before[name];
+    const after = capture.after[name];
+    if (before && after) out[name] = { before, after };
+  }
+  return out;
+}
+
 /** What the artifact says when the run never got far enough to have one. */
-function partialRun(entry: LiveRun, spec: EpisodeSpec, status: RunStatus): EpisodeRun {
+function partialRun(
+  entry: LiveRun,
+  spec: EpisodeSpec,
+  status: RunStatus,
+  capture: Capture,
+): EpisodeRun {
+  const audit = capture.audit;
   return {
     runId: entry.runId,
     specId: spec.id,
@@ -273,7 +421,11 @@ function partialRun(entry: LiveRun, spec: EpisodeSpec, status: RunStatus): Episo
     startedAt: entry.startedAt,
     endedAt: entry.endedAt ?? Date.now(),
     ticks: entry.ticks,
-    snapshots: {},
+    // A day that fell over at 09:15 still changed the clones up to 09:15, and the
+    // evidence for what it did is the reason it fell over. Empty here was never
+    // honesty — it was a second failure on top of the first.
+    snapshots: snapshotsOf(capture),
+    ...(audit.length > 0 ? { audit } : {}),
     verdict: null,
     ...(entry.error ? { error: entry.error } : {}),
   };
@@ -315,6 +467,8 @@ async function drive(
 ): Promise<EpisodeRun> {
   const loop = input.runEpisode ?? engineLoop;
   const settings = getSettings();
+  const used = witnesses(twins);
+  const capture = newCapture();
   // The agent loop and the director both reach a model; a key typed into
   // Settings lives in platform.db and the engine cannot see it on its own.
   applyStoredApiKey();
@@ -337,6 +491,14 @@ async function drive(
       await loadClone(clone, twins);
     }
 
+    // The loop seeds only when no clone was loaded. When it does, the world does
+    // not exist yet and a `before` taken here would picture an empty company —
+    // the diff has to show what the AGENT changed, so the platform's own opening
+    // shot is taken only once seeding is known to be finished, and the loop's is
+    // the record for every other case.
+    const seedsInLoop = clone ? false : wanted;
+    if (!seedsInLoop) await snapshotInto(capture.before, used, capture);
+
     const result = await loop({
       spec,
       runId: entry.runId,
@@ -344,7 +506,7 @@ async function drive(
       directorModel: input.directorModel?.trim() || settings.models.director,
       twins,
       twinUrls: twinUrlMap(twins),
-      seedWorld: clone ? false : wanted,
+      seedWorld: seedsInLoop,
       onTick: (record) => {
         onTick(entry, record);
         if (entry.cancelled) throw new RunStopped();
@@ -359,9 +521,13 @@ async function drive(
     if (entry.ticks.length === 0 && result.run.ticks.length > 0) entry.ticks = result.run.ticks;
     writeTrace(entry.runId, result.trace);
 
-    return await complete(entry, result, spec, input);
+    await closeCapture(capture, used, entry, result);
+    return await complete(entry, result, spec, input, capture, twins);
   } catch (err) {
-    return fail(entry, spec, err);
+    // Before `fail` writes anything: the clones still hold whatever the day did
+    // to them, and this is the last moment anyone can ask them.
+    await closeCapture(capture, used, entry, null).catch(() => capture);
+    return fail(entry, spec, err, capture, twins);
   }
 }
 
@@ -370,8 +536,13 @@ async function complete(
   result: EngineRunResult,
   spec: EpisodeSpec,
   input: StartEpisodeInput,
+  capture: Capture,
+  twins: TwinName[],
 ): Promise<EpisodeRun> {
-  const run = result.run;
+  // The record the artifact is filed with, not the loop's report of it: the two
+  // differ exactly when the loop unwound before its own capture, which is the
+  // case this whole path exists for.
+  const run: EpisodeRun = { ...result.run, snapshots: snapshotsOf(capture) };
   const status: RunStatus = entry.cancelled ? "aborted" : run.status === "failed" ? "failed" : "done";
   // Reconcile the ticks BEFORE scoring: autonomy reads the shape of the day, so a
   // loop that reported its ticks only through `onTick` would otherwise be scored
@@ -381,7 +552,7 @@ async function complete(
   // cancelled day is aborted, and `scoreRun` refuses to score a day that was cut
   // short as though the afternoon's criteria had had their chance.
   const { checklist, verdict, execution } = scoreRun({ ...run, status, ticks }, spec, {
-    audit: result.audit,
+    audit: capture.audit,
     cost: result.cost,
   });
   const scored: EpisodeRun = {
@@ -392,8 +563,9 @@ async function complete(
     // Saved with the run, because the checklist above is re-derived from this
     // artifact on every read and a re-derivation without the log turns real sends
     // into "no reply landed". The evidence that decided a row has to travel with
-    // the row.
-    audit: result.audit,
+    // the row — and it is the same array `scoreRun` just read, so the file can
+    // never disagree with the score printed beside it.
+    audit: capture.audit,
     verdict,
     // A stopped day is not a broken one, and the engine's own note for it is the
     // sentinel above — which would read as a crash on the results page.
@@ -409,7 +581,7 @@ async function complete(
 
   // One terminal write for the row and the artifact together, through the same
   // function the rest of the dashboard finishes runs with.
-  mirrorRunFinish({ run: scored, spec, checklist, cost: result.cost });
+  mirrorRunFinish({ run: scored, spec, checklist, cost: result.cost, twins, captureNotes: capture.notes });
 
   const wantsJudge = input.judge !== false && execution.executed && !entry.cancelled;
   if (wantsJudge) {
@@ -451,7 +623,13 @@ async function complete(
   return scored;
 }
 
-function fail(entry: LiveRun, spec: EpisodeSpec, err: unknown): EpisodeRun {
+function fail(
+  entry: LiveRun,
+  spec: EpisodeSpec,
+  err: unknown,
+  capture: Capture,
+  twins: TwinName[],
+): EpisodeRun {
   const status: RunStatus = entry.cancelled ? "aborted" : "failed";
   entry.status = status;
   entry.error = message(err);
@@ -461,13 +639,13 @@ function fail(entry: LiveRun, spec: EpisodeSpec, err: unknown): EpisodeRun {
   // record are usually the reason it fell over. It is not worth SCORING — the
   // status alone puts it outside `scoreRun`, so the verdict here is always null
   // and the row keeps its error instead of a number.
-  const run = partialRun(entry, spec, status);
-  const { checklist, verdict } = scoreRun(run, spec);
+  const run = partialRun(entry, spec, status, capture);
+  const { checklist, verdict } = scoreRun(run, spec, { audit: capture.audit });
   entry.score = verdict?.score ?? null;
   entry.autonomy = verdict?.autonomy ?? null;
   // One write, not two: `mirrorRunFinish` finishes the row itself, and the second
   // call is where a score could creep back in behind the artifact's back.
-  mirrorRunFinish({ run: { ...run, verdict }, spec, checklist });
+  mirrorRunFinish({ run: { ...run, verdict }, spec, checklist, twins, captureNotes: capture.notes });
   return run;
 }
 

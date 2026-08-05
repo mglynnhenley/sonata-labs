@@ -1,4 +1,4 @@
-import { plannedTicks, type EpisodeSpec } from "@sonata/core";
+import { plannedTicks, type EpisodeSpec, type Termination } from "@sonata/core";
 import { SCENARIOS, getScenario } from "@sonata/scenarios";
 import type { GeneratedWorld } from "@sonata/world";
 import { actualCounts, growBacklog } from "./clone";
@@ -229,9 +229,21 @@ export function createWorldFromTemplate(templateId: string): CreatedScenario {
  * beats and its digest against a 12-tick day, not a 32-tick one it will leave
  * early.
  */
-export function specForRun(spec: EpisodeSpec, ticks?: number): EpisodeSpec {
-  if (ticks === undefined) return spec;
-  const wanted = Math.max(1, Math.min(Math.round(ticks), 200));
-  if (wanted === spec.clock.ticks) return spec;
-  return { ...spec, clock: { ...spec.clock, ticks: wanted } };
+export function specForRun(
+  spec: EpisodeSpec,
+  ticks?: number,
+  termination?: Partial<Termination>,
+): EpisodeSpec {
+  let out = spec;
+  if (ticks !== undefined) {
+    const wanted = Math.max(1, Math.min(Math.round(ticks), 200));
+    if (wanted !== spec.clock.ticks) out = { ...out, clock: { ...out.clock, ticks: wanted } };
+  }
+  // Merged, never replaced: a caller that only wants more wall clock should not
+  // have to restate the idle guard, and silently dropping the guards it did not
+  // mention is how a runaway run gets bought by a typo.
+  if (termination && Object.keys(termination).length > 0) {
+    out = { ...out, termination: { ...out.termination, ...termination } };
+  }
+  return out;
 }

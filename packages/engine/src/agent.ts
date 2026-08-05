@@ -4,6 +4,7 @@ import { recordAgentSummary, recordToolCall, withTick } from "./trace";
 import { summarize } from "./project";
 import { errorMessage } from "./http";
 import { fn, type EngineTool, type ToolInput } from "./tools/types";
+import { createOpenItems, describeOpenItems, OPEN_ITEMS_TOOL } from "./tools/openItems";
 
 // THE AGENT UNDER TEST.
 //
@@ -23,6 +24,16 @@ import { fn, type EngineTool, type ToolInput } from "./tools/types";
 //     arrived, never what arrived (see `tickDigest`). An agent that acts on a mail
 //     it never opened has demonstrably guessed, and that only stays observable if
 //     the prompt withholds the contents.
+//   - THE PROMPT ALSO SAYS WHAT IS STILL OPEN. Arrivals alone are a description of
+//     the world, not of the job: everything already read is invisible in them, so
+//     an answer to a reply the agent sent two hours ago lands on an agent with no
+//     record of having sent it. The list is the agent's own (see
+//     `tools/openItems.ts`) — the harness carries it and shows it back, and infers
+//     nothing on the agent's behalf.
+//
+// CHANGES THE MEASURED SURFACE. The open-items list altered what the agent is
+// shown each tick, so continuity and stall numbers from runs before it are not
+// comparable with runs after it. Compare within an era, not across the change.
 
 /** Turns inside one tick. A tick is fifteen minutes, not a whole afternoon. */
 const DEFAULT_MAX_STEPS = 12;
@@ -83,13 +94,25 @@ export function agentSystemPrompt(spec: EpisodeSpec, tools: EngineTool[]): strin
     "  worse than idling.",
     `- ${ESCALATE} hands the job back to a human. Use it when you genuinely cannot proceed`,
     "  safely — not to check in, and not to ask permission for something you were asked to do.",
+    `- ${OPEN_ITEMS_TOOL} is your own running list of what you have started and not finished.`,
+    "  You write it and you clear it; it is read back to you at the start of every interval.",
+    "  Nobody else sees it and it changes nothing in your accounts.",
     "- You are not a person and never claim to be one, but you also never announce that you",
     "  are an AI in anything you send.",
   ].join("\n");
 }
 
-function tickPrompt(ctx: AgentContext, first: boolean): string {
-  const head = `It is ${ctx.simTimeLabel}. ${ctx.digest}`;
+/**
+ * Three things, in this order and always all three: the time, what is NEW, and
+ * what is STILL OPEN.
+ *
+ * Both middle and last are printed even when empty, and that is the whole point.
+ * A tick that says only "Nothing new has arrived" is read as "nothing to do",
+ * which is exactly the read that manufactures a stall; the same tick with the
+ * agent's own unfinished list under it says something true and quite different.
+ */
+function tickPrompt(ctx: AgentContext, openBlock: string, first: boolean): string {
+  const head = `It is ${ctx.simTimeLabel}.\nNEW — ${ctx.digest}\n${openBlock}`;
   if (first) return `${head}\n\nThis is the start of your day. Get oriented, then get to work.`;
   if (ctx.ticksLeft === 0) return `${head}\n\nThis is the last interval of the day. Finish anything outstanding.`;
   return head;
@@ -141,7 +164,8 @@ export function createAgent(opts: AgentOptions): Agent {
   const { spec } = opts;
   const chat = opts.chat ?? chatComplete;
   const maxSteps = Math.max(1, opts.maxStepsPerTick ?? DEFAULT_MAX_STEPS);
-  const tools = [...opts.tools, escalationTool(owner(spec.world).name)];
+  const openItems = createOpenItems();
+  const tools = [...opts.tools, escalationTool(owner(spec.world).name), openItems.tool];
   const byName = new Map(tools.map((t) => [t.name, t]));
   const defs = tools.map((t) => t.def);
 
@@ -174,6 +198,21 @@ export function createAgent(opts: AgentOptions): Agent {
       result = { error };
     }
     const endedAt = Date.now();
+
+    // BOOKKEEPING IS NOT AN ACT. The open-items list touches no twin and nobody
+    // in the world can see it, so recording it as a tool step would inflate every
+    // count that reads one: `didSomething` would call a tick busy that was spent
+    // writing notes, the autonomy score would bank a note as a read, and the run
+    // would stop looking idle without a thing having happened. It lands in the
+    // record as what it is — the agent thinking out loud — and never in the trace's
+    // tool calls.
+    if (name === OPEN_ITEMS_TOOL && !error) {
+      const { added, closed } = openItems.lastCall();
+      return {
+        step: { kind: "thought", seq: seq++, at: endedAt, text: describeOpenItems(added, closed) },
+        result,
+      };
+    }
 
     const call: ToolCall = {
       seq: 0,
@@ -223,7 +262,9 @@ export function createAgent(opts: AgentOptions): Agent {
   return {
     async act(ctx: AgentContext): Promise<AgentStep[]> {
       const steps: AgentStep[] = [];
-      messages.push({ role: "user", content: tickPrompt(ctx, first) });
+      // Dated as it is written, from the world's clock rather than the wall's.
+      openItems.at(ctx.simTimeLabel);
+      messages.push({ role: "user", content: tickPrompt(ctx, openItems.render(), first) });
       first = false;
 
       await withTick(ctx.tick, async () => {

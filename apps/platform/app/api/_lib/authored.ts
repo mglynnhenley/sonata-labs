@@ -7,6 +7,7 @@ import {
   type Criterion,
   type EpisodeSpec,
   type Person,
+  type Termination,
   type TwinName,
   type WorldSeed,
 } from "@sonata/core";
@@ -149,6 +150,43 @@ export function nextWorkdayClock(ticks: number, simMinutesPerTick = 15): Clock {
 
   const date = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, "0")}-${String(day.getDate()).padStart(2, "0")}`;
   return { startISO: `${date}T09:00:00${offsetSuffix(day)}`, ticks, simMinutesPerTick };
+}
+
+// ---------------------------------------------------------------------------
+// Guards, sized to the day the scenario declares.
+//
+// These were flat — 20 minutes and $2 for every generated day, whether it
+// declared 8 ticks or 32. A real tick is a model turn of up to a dozen steps and
+// takes tens of seconds, so a 32-tick day could not finish inside 20 minutes by
+// ANY model: the guard fired around tick 12, the run was filed `done`, and the
+// beats scheduled after it never happened. It was then graded against the whole
+// 32-tick checklist, and the agent wore a critical for ignoring a customer whose
+// message the harness had stopped the clock before sending. A budget that the
+// declared day cannot fit inside is not a runaway guard, it is a truncation with
+// a scoring bug behind it.
+//
+// So they scale. They are still guards and still bite a genuine runaway — they
+// are simply no longer guaranteed to bite a day that is merely long.
+// ---------------------------------------------------------------------------
+
+/** Generous per tick, because the guard's job is to catch a loop, not to pace a day. */
+const WALL_CLOCK_MS_PER_TICK = 45_000;
+const USD_PER_TICK = 0.12;
+
+/** Floors, so a short day keeps the headroom it always had. */
+const MIN_WALL_CLOCK_MS = 20 * 60_000;
+const MIN_COST_USD = 2;
+
+function guardsFor(clock: Clock): Termination {
+  return {
+    stopWhenAllMustPass: false,
+    // Consecutive dead intervals, not a fraction of the day: six in a row is a
+    // stalled agent at any length, and scaling this one would let a long day
+    // stall for an hour before anyone noticed.
+    idleTicks: 6,
+    maxWallClockMs: Math.max(MIN_WALL_CLOCK_MS, clock.ticks * WALL_CLOCK_MS_PER_TICK),
+    maxCostUsd: Math.max(MIN_COST_USD, Number((clock.ticks * USD_PER_TICK).toFixed(2))),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -440,12 +478,7 @@ export function assembleScenario(
         ),
       ],
     },
-    termination: {
-      stopWhenAllMustPass: false,
-      idleTicks: 6,
-      maxWallClockMs: 20 * 60_000,
-      maxCostUsd: 2,
-    },
+    termination: guardsFor(clock),
   };
 
   const usedTwins = new Set<TwinName>(beats.map((b) => b.twin));

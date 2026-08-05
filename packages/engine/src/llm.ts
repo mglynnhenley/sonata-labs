@@ -295,6 +295,112 @@ export interface ChatOptions {
 /** The seam the agent loop is written against, so a test never needs a network. */
 export type ChatComplete = (opts: ChatOptions) => Promise<OpenAI.ChatCompletionMessage>;
 
+// ---------------------------------------------------------------------------
+// PROMPT CACHING.
+//
+// The agent's message array is append-only: every tick adds to it and nothing
+// earlier ever changes. That is the exact shape a prefix cache is for, and
+// without one the loop re-sends the whole day on every step — a 32-tick day
+// costs about four times its own context in re-reads, and the bill grows with
+// the SQUARE of the day's length. That priced a full-length run out of
+// existence, which is its own kind of measurement failure: the harness could
+// only afford to grade half a day.
+//
+// This changes the billing and NOTHING the agent sees. The bytes on the wire are
+// identical with and without a breakpoint — same prompt, same tokens, same
+// sampling — so it cannot move a score. That is the reason it is safe to add
+// between a run and the run it is compared against, and the reason it is not
+// listed with the open-items change as something that alters the measured
+// surface.
+// ---------------------------------------------------------------------------
+
+/**
+ * Anthropic is the only provider whose caching is driven by an explicit
+ * breakpoint in the request. The rest either cache automatically or ignore the
+ * field — but "ignore" is not something to bet a run on, since an unknown key
+ * inside message content is a 400 from a strict provider. So the marker goes on
+ * only where it is documented to belong.
+ */
+export function cachesByBreakpoint(model: string): boolean {
+  return model.startsWith("anthropic/");
+}
+
+/** One cached span. `ephemeral` is the only kind, and it lives about five minutes. */
+const CACHE_CONTROL = { type: "ephemeral" as const };
+
+/**
+ * A text part carrying the breakpoint.
+ *
+ * `cache_control` is a provider extension and is genuinely absent from the
+ * OpenAI-shaped types this client is built on, so the intersection is where that
+ * fact is written down once — rather than a cast at the call site that would
+ * also silence a real mistake about the rest of the part's shape.
+ */
+type CachedText = OpenAI.ChatCompletionContentPartText & { cache_control: typeof CACHE_CONTROL };
+
+function cachedText(text: string): [CachedText] {
+  return [{ type: "text", text, cache_control: CACHE_CONTROL }];
+}
+
+/**
+ * The same messages with at most two cache breakpoints added.
+ *
+ * WHERE, and why only there:
+ *   - the system message, which holds the company, the cast and the brief. It is
+ *     byte-identical for the whole run, so it is the one span guaranteed to be
+ *     read back on every single call;
+ *   - the last `user` message, which is the current tick's prompt. Everything
+ *     before it is settled history, so this is the furthest-forward point that is
+ *     still stable — the next call reads the whole day up to here.
+ *
+ * Deliberately NOT on assistant or tool messages, even though they are the
+ * literal tail. Rewriting an assistant turn's content into block form is where a
+ * `tool_calls` payload gets mangled, and the few thousand tokens between the last
+ * user message and the tail are not worth putting the run's own transcript at
+ * risk. The uncached remainder is one tick's work; the cached prefix is the day.
+ *
+ * Returns a copy. The caller's array is live — `agent.ts` keeps appending to the
+ * very array it hands over — and a marker left behind in it would move a
+ * breakpoint into the middle of the next request's history, where it would
+ * silently cost a write and buy nothing.
+ */
+export function withCacheBreakpoints(
+  messages: OpenAI.ChatCompletionMessageParam[],
+): OpenAI.ChatCompletionMessageParam[] {
+  const out = [...messages];
+
+  // Narrowed per role rather than spread over the union: only `system` and `user`
+  // are touched here, and saying so in the types is what keeps a `tool` or
+  // `assistant` turn — whose content is not interchangeable with a text block —
+  // from ever reaching this rewrite.
+  const mark = (at: number): void => {
+    const message = out[at];
+    // String content only. Anything already in block form was built by another
+    // path with its own reasons, and a second opinion about its shape here is how
+    // a working request stops working.
+    if (!message || typeof message.content !== "string") return;
+    if (message.role === "system") out[at] = { ...message, content: cachedText(message.content) };
+    else if (message.role === "user") out[at] = { ...message, content: cachedText(message.content) };
+  };
+
+  const firstSystem = out.findIndex((m) => m.role === "system");
+  if (firstSystem >= 0) mark(firstSystem);
+
+  // Written as a reverse scan rather than `findLastIndex`, which this package's
+  // language target does not have.
+  let lastUser = -1;
+  for (let i = out.length - 1; i >= 0; i -= 1) {
+    if (out[i]?.role === "user") {
+      lastUser = i;
+      break;
+    }
+  }
+  // Guarded: marking one index twice would spend two of the four breakpoints the
+  // provider allows on a single position.
+  if (lastUser >= 0 && lastUser !== firstSystem) mark(lastUser);
+  return out;
+}
+
 /**
  * One assistant turn. Returns the message rather than the whole completion
  * because the loop only ever reads `content` and `tool_calls` — and because a
@@ -306,7 +412,7 @@ export const chatComplete: ChatComplete = async (opts) => {
   const res = await openai.chat.completions.create({
     model,
     max_tokens: opts.maxTokens ?? 4000,
-    messages: opts.messages,
+    messages: cachesByBreakpoint(model) ? withCacheBreakpoints(opts.messages) : opts.messages,
     ...(opts.tools?.length ? { tools: opts.tools } : {}),
     ...reasoningFor(opts.effort),
   } as OpenAI.ChatCompletionCreateParamsNonStreaming);

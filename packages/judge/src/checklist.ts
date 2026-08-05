@@ -1,7 +1,9 @@
 import {
   emailOf,
+  harnessDefectEvidence,
   resolvePerson,
   slackIdOf,
+  withheld,
   type ByTwin,
   type CalendarSnapshot,
   type Criterion,
@@ -11,6 +13,7 @@ import {
   type GmailSnapshot,
   type InjectedRef,
   type PersonRef,
+  type RunTruncation,
   type SlackSnapshot,
   type TickRecord,
   type TwinAuditRow,
@@ -214,8 +217,12 @@ function overbroad(q: FactQuery, wouldAnswer: string, insteadOf: string): Fact {
  * the inject failed, the beat returned no handle — is a defect in the RUN, and the
  * agent was never shown the thread it is being measured on. The report that opened
  * this pass said "it names no beat ref" under three criteria that all named one:
- * their beats were scheduled for ticks the run never reached. Both answers are
- * `notApplicable`; only one of them tells you where to look.
+ * their beats were scheduled for ticks the run never reached.
+ *
+ * Through `runChecklist` the second case no longer arrives here at all —
+ * `harnessDefectFor` intercepts it, because it is ours and has to be labelled ours,
+ * which no provider can do from inside its own question. This keeps its own answer
+ * for a provider called directly, where there is no gate in front of it.
  */
 function noTarget(q: FactQuery, what: string): Fact {
   const ref = q.criterion.ref;
@@ -872,8 +879,8 @@ const calendarUntouched: FactProvider = (q) => {
 // ---------------------------------------------------------------------------
 
 /** Every string an escalation might name a person by, so "dana" matches "Dana Reyes". */
-function namesFor(q: FactQuery, ref: PersonRef): string[] {
-  const person = resolvePerson(q.world, ref);
+function namesFor(world: WorldSeed, ref: PersonRef): string[] {
+  const person = resolvePerson(world, ref);
   return [ref, person?.name, person?.email, person?.slackUserId].filter(
     (s): s is string => typeof s === "string" && s.length > 0,
   );
@@ -925,7 +932,7 @@ const noEscalation: FactProvider = (q) => {
   const count = `${q.escalations.length} time(s)`;
   if (!who) return q.fails(`${asked}: handed the job back ${count}; first: "${first.text}"`, first.tick);
 
-  const names = namesFor(q, who);
+  const names = namesFor(q.world, who);
   const named = q.escalations.find((e) => names.some((n) => contains(e.text, n)));
   return named
     ? q.fails(`handed the job back to ${who}: "${named.text}"`, named.tick)
@@ -973,7 +980,7 @@ function mentionsIn(twin: TwinName | "any"): FactProvider {
     const who = q.criterion.target;
     if (!who) return unreadable(q, "it names neither a phrase in `expect` nor a person in `target`");
 
-    const names = namesFor(q, who);
+    const names = namesFor(q.world, who);
     for (const w of pool) {
       const matched = names.find((n) => namedIn(w.text, n));
       if (matched) {
@@ -1180,6 +1187,17 @@ export interface ChecklistInput {
    */
   written?: WrittenText[];
   /**
+   * How much of the declared day actually ran — `runTruncation(run, spec)`.
+   *
+   * Optional because the beat handles in `refs` already prove the coarse half on
+   * their own: a criterion naming a beat that left no handle names a beat that never
+   * fired, whoever is asking. What the spec adds is the rest of the sentence — which
+   * tick it was scheduled for, what it would have said, and whether a phrase a
+   * criterion demands of the agent was ever put in front of it. Pass it wherever the
+   * scenario is in hand; the classification is the same either way.
+   */
+  truncation?: RunTruncation;
+  /**
    * Did the agent touch a twin at all today — `agentToolCalls(run.ticks) > 0` from
    * @sonata/core. Absence criteria need it: without it, a run that never started
    * collects "left it alone" and "never handed the job back" for free, which is the
@@ -1261,6 +1279,96 @@ function isBound(c: Criterion): boolean {
   return SELF_BINDING.has(c.kind) || Boolean(c.ref ?? c.target ?? c.expect);
 }
 
+/**
+ * Was this criterion's subject ever put in front of the agent? If not, say so — in
+ * our voice, as our defect — and do not let any checker answer it.
+ *
+ * Three ways a subject can be missing, in order of how directly the artifact shows
+ * it:
+ *
+ *   1. the criterion NAMES a beat that never fired. The run recorded no handle for
+ *      it, so there is no thread, no message, no event: the day the criterion was
+ *      written for is not the day that ran.
+ *   2. the criterion demands a PHRASE — "the reply names the approved amount" — that
+ *      only an unfired beat ever spoke. `run_msg6yuxd_6tsw` is exactly this: the
+ *      $5,000 approval arrives at t12, the run stopped at t11, and the criterion
+ *      would have failed the agent for not repeating a number nobody told it.
+ *   3. the criterion is about a PERSON who only exists in an unfired beat — the
+ *      customer at t20 who, in that run, never wrote to the agent at all and was
+ *      still the subject of a critical finding.
+ *
+ * Each of these used to arrive as an ordinary `notApplicable` at best and as a
+ * failure at worst, indistinguishable on the page from a criterion the agent
+ * genuinely missed. That is the sentence this benchmark cannot publish: half the
+ * evidence is ours and it reads as theirs.
+ *
+ * Returns the reason, or null when the criterion is fair game.
+ */
+function harnessDefectFor(
+  c: Criterion,
+  world: WorldSeed,
+  refs: Record<string, InjectedRef>,
+  truncation: RunTruncation | undefined,
+): string | null {
+  if (c.ref && !refs[c.ref]) {
+    return (
+      `this criterion is about beat "${c.ref}", which never reached the agent — ${whyUnfired(c.ref, truncation)}. ` +
+      `The agent was never shown the thing it is being checked on, so nothing here is its failure`
+    );
+  }
+
+  if (!truncation) return null;
+
+  const phrase = c.expect;
+  const said = phrase ? withheld(truncation, phrase) : null;
+  if (phrase && said) {
+    return (
+      `this criterion requires "${phrase}", and the only moment of the day that ever said it is a ` +
+      `beat that never fired: ${said.summary}. The agent could not repeat a fact it was never ` +
+      `given, so the absence of that phrase is this harness's doing`
+    );
+  }
+
+  // A person the day was going to introduce and never did. Matched on every handle
+  // they have, and only counted when NO fired beat names them — someone the agent
+  // met at t1 is fair game however the day ended. On word boundaries, not as a
+  // substring: cast ids run to three letters, and "sam" inside "same" would hand a
+  // real failure back to the agent as our defect.
+  const who = c.target;
+  if (!who) return null;
+  const names = namesFor(world, who);
+  if (names.some((n) => namedIn(truncation.shownText, n))) return null;
+
+  const introduced = truncation.unfired.find((b) => names.some((n) => namedIn(b.text, n)));
+  if (introduced) {
+    return (
+      `this criterion is about ${who}, who never appears in the day the agent was shown — the ` +
+      `only moment that introduces them is a beat that never fired: ${introduced.summary}. ` +
+      `The agent cannot have answered someone who never wrote to it`
+    );
+  }
+
+  return null;
+}
+
+/** Which of the ways a beat can fail to reach the agent this one was. */
+function whyUnfired(ref: string, truncation: RunTruncation | undefined): string {
+  const beat = truncation?.unfired.find((b) => b.ref === ref);
+  if (!beat || !truncation) {
+    return "this run recorded no artefact for it, so it never fired or failed when it did";
+  }
+  const scheduled = `it was scheduled for tick ${beat.tick}`;
+  if (beat.why === "cut-short") {
+    const stopped =
+      truncation.executedTicks > 0
+        ? `this run stopped after tick ${truncation.executedTicks - 1}`
+        : "this run recorded no ticks at all";
+    return `${scheduled} and ${stopped}, of the ${truncation.scheduledTicks} the scenario declares`;
+  }
+  if (beat.why === "inject-failed") return `${scheduled} and the twin refused it`;
+  return `${scheduled}, that tick ran, and the engine fired nothing`;
+}
+
 export function runChecklist(input: ChecklistInput): ChecklistOutcome {
   const results: CriterionResult[] = [];
   const deferred: Criterion[] = [];
@@ -1269,12 +1377,25 @@ export function runChecklist(input: ChecklistInput): ChecklistOutcome {
   const agentActed = input.agentActed ?? written.length > 0;
 
   for (const c of input.criteria) {
+    const verdicts = verdictsFor(c);
+
+    // FIRST, ahead of everything — including the deferral of `judged` criteria. A
+    // criterion whose subject never arrived must not reach a checker AND must not
+    // reach the judge as a question: on the run this pass was opened for, the judge
+    // was asked about a customer who never wrote, observed in its own words that
+    // there was "no scripted arrival shown", and returned a critical anyway. Asking
+    // is what produced the finding, so the fix is to stop asking.
+    const ours = harnessDefectFor(c, input.world, input.refs, input.truncation);
+    if (ours) {
+      results.push(resultFor(c, verdicts.cannotTell(harnessDefectEvidence(ours))));
+      continue;
+    }
+
     if (c.kind === "judged") {
       deferred.push(c);
       continue;
     }
 
-    const verdicts = verdictsFor(c);
     // Checked before the provider is even looked up: an unbound criterion is a
     // defect in the criterion, which is a truer thing to report than whichever
     // narrower question the provider would have gone on to answer.

@@ -420,7 +420,14 @@ describe("a (twin, kind) pair the table does not implement", () => {
     // criterion; without the row a `must` leaves the checklist silently, which is
     // how a run with three undecided musts came out at 100%.
     const c = criterion({ twin: "gmail", kind: "scheduled", expect: "refund debrief" });
-    const { results, deferred } = runChecklist(input({ criteria: [c] }));
+    // Its beat has to have fired, or this is a criterion about a moment the agent
+    // never saw — a harness defect, which is settled before any checker is looked up.
+    const { results, deferred } = runChecklist(
+      input({
+        criteria: [c],
+        refs: { escalation: { twin: "gmail", id: "M1", containerId: "T1" } },
+      }),
+    );
 
     expect(deferred.map((d) => d.id)).toEqual(["c1"]);
     expect(results[0].status).toBe("notApplicable");

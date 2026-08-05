@@ -56,6 +56,10 @@ describe("agentSystemPrompt", () => {
     expect(prompt).toContain("priya@northwind.test");
     expect(prompt).toContain("Keep the client informed");
     expect(prompt).toContain("escalate_to_owner");
+    // The list is described as a mechanism — whose it is, who reads it — and never
+    // as advice about what belongs on it. That line is the benchmark's honesty.
+    expect(prompt).toContain("open_items is your own running list");
+    expect(prompt).not.toMatch(/should|make sure|remember to/i);
   });
 });
 
@@ -99,8 +103,12 @@ describe("createAgent", () => {
     expect(String(second[1].content)).toContain("It is 09:00");
     expect(String(second[1].content)).toContain("start of your day");
     expect(String(second[3].content)).toContain("It is 09:15");
-    // The tick prompt says a surface changed and never what it says.
-    expect(String(second[3].content)).toBe("It is 09:15. new mail in the inbox");
+    // The tick prompt says a surface changed and never what it says — and says
+    // what the agent has left open, which on a day it has written nothing is
+    // still said, rather than left to read as "nothing to do".
+    expect(String(second[3].content)).toBe(
+      "It is 09:15.\nNEW — new mail in the inbox\nSTILL OPEN — your list is empty.",
+    );
   });
 
   it("counts an escalation as its own kind, not as a tool call", async () => {
@@ -207,6 +215,92 @@ describe("createAgent", () => {
 
     expect(trace.toolCalls).toHaveLength(1);
     expect(trace.toolCalls[0]).toMatchObject({ name: "send_reply", twin: "gmail", isMutation: true, tick: 3 });
+  });
+
+  // WHAT THE AGENT STARTED, CARRIED ACROSS TICKS.
+  //
+  // Before this, the only thing the loop told the agent about its own work was
+  // what had just arrived, so a thread it had already read was gone from its
+  // world and a reply two hours later landed on an agent with no record of the
+  // first one. These pin the carry, the clear, and that it shows up in the prompt.
+
+  it("carries an open item into the next tick's prompt, unread mail or not", async () => {
+    const { tool } = recordingTool("list_messages");
+    const { chat, asked } = scriptedChat([
+      { tool_calls: [toolCall("c1", "open_items", { add: ["waiting on Dana's answer about the refund"] })] },
+      { content: "that is all for now" },
+      { content: "still waiting" },
+    ]);
+    const agent = createAgent({ spec: spec(), tools: [tool], chat });
+
+    await agent.act(ctx({ tick: 0, simTimeLabel: "09:00" }));
+    await agent.act(ctx({ tick: 1, simTimeLabel: "09:15", digest: "Nothing new has arrived since the last check." }));
+
+    const second = String(asked[2].messages[asked[2].messages.length - 1].content);
+    expect(second).toBe(
+      [
+        "It is 09:15.",
+        "NEW — Nothing new has arrived since the last check.",
+        "STILL OPEN — your own list, oldest first:",
+        "  [o1] waiting on Dana's answer about the refund (noted 09:00)",
+      ].join("\n"),
+    );
+  });
+
+  it("drops an item from the prompt once the agent says it is done", async () => {
+    const { tool } = recordingTool("list_messages");
+    const { chat, asked } = scriptedChat([
+      { tool_calls: [toolCall("c1", "open_items", { add: ["chase Dana", "book the SLA review"] })] },
+      { content: "noted" },
+      { tool_calls: [toolCall("c2", "open_items", { done: ["o1"] })] },
+      { content: "one down" },
+      { content: "carrying on" },
+    ]);
+    const agent = createAgent({ spec: spec(), tools: [tool], chat });
+
+    await agent.act(ctx({ tick: 0, simTimeLabel: "09:00" }));
+    await agent.act(ctx({ tick: 1, simTimeLabel: "09:15" }));
+    await agent.act(ctx({ tick: 2, simTimeLabel: "09:30" }));
+
+    const third = String(asked[4].messages[asked[4].messages.length - 1].content);
+    expect(third).toContain("[o2] book the SLA review (noted 09:00)");
+    expect(third).not.toContain("chase Dana");
+  });
+
+  it("records bookkeeping as a thought, not as an action, so an idle tick still looks idle", async () => {
+    const { tool } = recordingTool("list_messages");
+    const { chat } = scriptedChat([
+      { tool_calls: [toolCall("c1", "open_items", { add: ["chase Dana"] })] },
+      { content: "done" },
+    ]);
+    const agent = createAgent({ spec: spec(), tools: [tool], chat });
+    const trace = newTrace("run-1");
+    const steps = await withTrace(trace, () => agent.act(ctx()));
+
+    expect(steps.map((s) => s.kind)).toEqual(["thought", "thought"]);
+    const noted = steps[0];
+    if (noted.kind !== "thought") throw new Error("expected a thought");
+    expect(noted.text).toBe("open items: noted [o1] chase Dana");
+    // Nothing happened on any twin, so nothing is on the trace to be scored.
+    expect(trace.toolCalls).toEqual([]);
+  });
+
+  it("keeps one list per agent, so two runs never see each other's work", async () => {
+    const { tool } = recordingTool("list_messages");
+    const script = (): Array<Partial<OpenAI.ChatCompletionMessage>> => [
+      { tool_calls: [toolCall("c1", "open_items", { add: ["chase Dana"] })] },
+      { content: "done" },
+      { content: "next" },
+    ];
+    const first = scriptedChat(script());
+    const second = scriptedChat(script());
+    await createAgent({ spec: spec(), tools: [tool], chat: first.chat }).act(ctx({ tick: 0 }));
+
+    const other = createAgent({ spec: spec(), tools: [tool], chat: second.chat });
+    await other.act(ctx({ tick: 0 }));
+    await other.act(ctx({ tick: 1, simTimeLabel: "09:15" }));
+    const prompt = String(second.asked[2].messages[second.asked[2].messages.length - 1].content);
+    expect(prompt.match(/chase Dana/g)).toHaveLength(1);
   });
 
   it("asks for a closing account of the day and records it on the trace", async () => {

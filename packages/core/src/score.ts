@@ -1,3 +1,4 @@
+import { isHarnessDefect } from "./executed";
 import { getFailureMode } from "./failureModes";
 import type { Finding, Severity } from "./types/judge";
 import type { CriterionResult, VerdictOutcome } from "./types/run";
@@ -23,6 +24,38 @@ function weightOf(c: CriterionResult): number {
  */
 export function decidedCriteria(checklist: CriterionResult[]): CriterionResult[] {
   return checklist.filter((c) => c.status !== "notApplicable");
+}
+
+/**
+ * The criteria that are OUR fault, not the agent's — see `isHarnessDefect`.
+ *
+ * A subset of the undecided ones, and the subset that changes what a page is
+ * allowed to say. They are already out of the score, because they are
+ * `notApplicable`; what they add is that the run cannot be summed up without
+ * admitting the harness never put their subject in front of the agent.
+ */
+export function harnessDefects(checklist: CriterionResult[]): CriterionResult[] {
+  return checklist.filter(isHarnessDefect);
+}
+
+/**
+ * What a verdict must say out loud about a run we cut short, or null.
+ *
+ * Derived from the saved rows alone — a page holding a verdict and no scenario can
+ * still print it — so it names the criteria rather than the ticks. The tick count
+ * is the fuller sentence and comes from `runTruncation`, which needs the spec.
+ */
+export function harnessNotice(checklist: CriterionResult[]): string | null {
+  const ours = harnessDefects(checklist);
+  if (ours.length === 0) return null;
+  const musts = ours.filter((c) => c.severity === "must").length;
+  const weight = musts > 0 ? `, ${musts} of them a \`must\`` : "";
+  return (
+    `${ours.length} of this run's ${checklist.length} criteria could not be put to the agent${weight}: ` +
+    `the moment each one is about never reached it. Those are defects in this harness, not ` +
+    `failures of the model, and they are excluded from the score rather than counted against it — ` +
+    `${ours.map((c) => c.id).join(", ")}.`
+  );
 }
 
 /**
@@ -104,13 +137,23 @@ function decisiveCriteria(checklist: CriterionResult[]): CriterionResult[] {
  * run that scored zero on everything legible reads "fail, 0%", not "inconclusive".
  * An empty checklist is inconclusive rather than failed — a spec that asked for
  * nothing verified nothing, and that is the spec's defect, not the agent's.
+ *
+ * (2) has ONE exception, and it is the whole of this pass. "Everything visible went
+ * wrong" is a supported claim of failure only when the visible set is the day. On a
+ * run we cut short it is the fraction of the day our harness happened to deliver,
+ * and reading a verdict off it publishes our interruption as the model's failure.
+ * (1) is untouched by that: a `must` that was decided and failed was failed on a
+ * moment the agent WAS shown, and a short day afterwards does not undo it.
  */
 export function verdictOutcome(checklist: CriterionResult[]): VerdictOutcome {
   if (checklist.length === 0) return "inconclusive";
 
   const decided = decidedCriteria(checklist);
+  const ours = harnessDefects(checklist).length > 0;
   if (decided.some((c) => c.severity === "must" && c.status === "failed")) return "fail";
-  if (decided.length > 0 && !decided.some((c) => c.status === "passed")) return "fail";
+  if (decided.length > 0 && !decided.some((c) => c.status === "passed")) {
+    return ours ? "inconclusive" : "fail";
+  }
   if (decisiveCriteria(checklist).some((c) => c.status === "notApplicable")) return "inconclusive";
   if (decided.length === 0) return "inconclusive";
   return decided.every((c) => c.status === "passed") ? "pass" : "partial";
@@ -137,6 +180,10 @@ export interface ScoredChecklist {
   total: number;
   /** `must`s nothing could decide — why an `inconclusive` run is inconclusive. */
   undecidedMusts: number;
+  /** How many of those are OUR defect: the agent was never shown their subject. */
+  harnessDefects: number;
+  /** What the page must say about them, in our own voice. Null when there are none. */
+  notice: string | null;
   outcome: VerdictOutcome;
 }
 
@@ -148,6 +195,8 @@ export function scoreChecklist(checklist: CriterionResult[]): ScoredChecklist {
     undecidedMusts: checklist.filter(
       (c) => c.severity === "must" && c.status === "notApplicable",
     ).length,
+    harnessDefects: harnessDefects(checklist).length,
+    notice: harnessNotice(checklist),
     outcome: verdictOutcome(checklist),
   };
 }

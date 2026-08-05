@@ -4,6 +4,7 @@ import {
   agentToolCalls,
   asVerdictOutcome,
   checklistScore,
+  episodeTwins,
   runExecution,
   verdictOutcome,
   type AgentTrace,
@@ -19,6 +20,7 @@ import {
   type RunStatus,
   type TickRecord,
   type TwinAuditRow,
+  type TwinName,
 } from "@sonata/core";
 import {
   autonomy,
@@ -110,6 +112,203 @@ const RUN_STATUSES: readonly RunStatus[] = [
   "failed",
   "aborted",
 ];
+
+// ---------------------------------------------------------------------------
+// Evidence. What the artifact can actually be asked.
+// ---------------------------------------------------------------------------
+
+// Every deterministic criterion is answered from two snapshots and an audit log.
+// When those are missing the checkers say "nothing to check against" on each row
+// individually, and a reader with eight rows in front of them has no way to tell
+// a criterion the agent failed from a criterion nobody captured — so half the
+// findings in a report read as facts about the model when they are facts about
+// us. This block is the artifact stating, once and in words, what it holds. It is
+// written on every run and derived for runs filed before it existed, so no reader
+// ever has to infer it from an empty object.
+
+/** One attached twin's evidence in a filed artifact. */
+export interface TwinEvidence {
+  twin: TwinName;
+  /** State captured after seeding and before the agent's first tick. */
+  before: boolean;
+  /** State captured after the agent's last tick. */
+  after: boolean;
+  /** Audit rows saved for this twin. */
+  auditRows: number;
+  /** What the clone said when it would not answer, when that is why the rest is false. */
+  note?: string;
+}
+
+export interface RunEvidence {
+  /** Every twin the run attached. A criterion for a twin absent here was never checkable. */
+  twins: TwinEvidence[];
+  /** Wall-clock window the saved audit rows cover. Null when no row was saved. */
+  auditWindow: { fromMs: number; toMs: number } | null;
+  /** True only when every attached twin has both snapshots and a readable log. */
+  complete: boolean;
+  /** The sentence a report prints instead of an undecidable checklist. */
+  summary: string;
+}
+
+/**
+ * A run as this module hands it back: the artifact, plus what it can be asked.
+ *
+ * `evidence` is not optional here even though it is a recent field on disk —
+ * every reader gets one, derived when the file predates it, because the whole
+ * point is that no surface is allowed to render a checklist without being able
+ * to say what was behind it.
+ */
+export interface SavedRun extends EpisodeRun {
+  evidence: RunEvidence;
+}
+
+/** Stable order, so two artifacts of the same run read the same way. */
+const TWIN_ORDER: readonly TwinName[] = ["gmail", "slack", "calendar"];
+
+function clockTime(ms: number): string {
+  return new Date(ms).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+}
+
+/**
+ * What this run can be asked, from what it saved.
+ *
+ * Pure, and shared by the writer and the reader on purpose: the block filed with
+ * a fresh run and the block derived for a 2025 artifact have to mean the same
+ * thing, or "complete" would quietly mean two things in one table.
+ */
+export function describeEvidence(input: {
+  /** The twins the run attached — not the ones it happened to capture. */
+  twins: readonly TwinName[];
+  snapshots: EpisodeRun["snapshots"];
+  audit: readonly TwinAuditRow[];
+  /** Per twin, why capture failed. The clone's own words, when it gave any. */
+  notes?: Partial<Record<TwinName, string>>;
+}): RunEvidence {
+  const attached = TWIN_ORDER.filter((t) => input.twins.includes(t));
+  const rows = input.twins.length === 0 ? [] : input.audit;
+  const twins: TwinEvidence[] = attached.map((twin) => {
+    const pair = input.snapshots[twin];
+    const note = input.notes?.[twin];
+    return {
+      twin,
+      before: Boolean(pair?.before),
+      after: Boolean(pair?.after),
+      auditRows: rows.filter((r) => r.twin === twin).length,
+      ...(note ? { note } : {}),
+    };
+  });
+
+  const stamps = rows.map((r) => r.ts).filter((ts) => Number.isFinite(ts) && ts > 0);
+  const auditWindow =
+    stamps.length > 0 ? { fromMs: Math.min(...stamps), toMs: Math.max(...stamps) } : null;
+  const missing = twins.filter((t) => !t.before || !t.after);
+  const complete = attached.length > 0 && missing.length === 0 && auditWindow !== null;
+
+  return { twins, auditWindow, complete, summary: evidenceSummary(twins, auditWindow, attached) };
+}
+
+function evidenceSummary(
+  twins: TwinEvidence[],
+  auditWindow: RunEvidence["auditWindow"],
+  attached: readonly TwinName[],
+): string {
+  if (attached.length === 0) {
+    return (
+      "No clone was attached to this run, so nothing objective was ever observable. Every " +
+      "deterministic criterion below is undecidable, and that is a fact about the harness, not " +
+      "about the agent."
+    );
+  }
+
+  const missing = twins.filter((t) => !t.before || !t.after);
+  if (missing.length === 0 && auditWindow) {
+    const total = twins.reduce((n, t) => n + t.auditRows, 0);
+    return (
+      `Both snapshots were captured for ${attached.join(", ")}, with ${total} audit ` +
+      `row${total === 1 ? "" : "s"} between ${clockTime(auditWindow.fromMs)} and ` +
+      `${clockTime(auditWindow.toMs)}. Every deterministic criterion here can be re-checked from ` +
+      "this file alone."
+    );
+  }
+
+  const sentences: string[] = [];
+  if (missing.length === attached.length && missing.every((t) => !t.before && !t.after)) {
+    // The common shape, and the one that misleads: nothing was captured at all,
+    // so every objective row is going to say "nothing to check against" and a
+    // reader will bank all of them as findings unless this says otherwise first.
+    const why = missing.find((t) => t.note)?.note;
+    sentences.push(
+      `Nothing was captured from any attached clone (${attached.join(", ")})` +
+        `${why ? ` — ${why}` : ""}, so no criterion below can be decided by comparing state.`,
+    );
+  } else if (missing.length > 0) {
+    const phrases = missing.map(missingPhrase).join("; ");
+    sentences.push(
+      `${phrases.charAt(0).toUpperCase()}${phrases.slice(1)} — criteria for ${
+        missing.length === 1 ? "that surface" : "those surfaces"
+      } cannot be decided from this file.`,
+    );
+  }
+  if (!auditWindow) {
+    sentences.push(
+      "No audit rows were saved, so a reply that really went out cannot be proved from this file.",
+    );
+  }
+  return sentences.join(" ");
+}
+
+function missingPhrase(t: TwinEvidence): string {
+  const which = !t.before && !t.after ? "neither snapshot" : !t.before ? "no before-snapshot" : "no after-snapshot";
+  return `${which} was captured for ${t.twin}${t.note ? ` (${t.note})` : ""}`;
+}
+
+function normalizeEvidence(raw: unknown, run: {
+  twins: readonly TwinName[];
+  snapshots: EpisodeRun["snapshots"];
+  audit: readonly TwinAuditRow[];
+}): RunEvidence {
+  const e = asRecord(raw);
+  // Derived, not defaulted, for an artifact written before this block existed:
+  // the snapshots and the log on disk are exactly the inputs `describeEvidence`
+  // takes, so an old run answers the same question as a new one.
+  if (!e) return describeEvidence(run);
+  const twins = list<unknown>(e.twins).flatMap((row) => {
+    const t = asRecord(row);
+    const name = TWIN_ORDER.find((n) => n === t?.twin);
+    if (!t || !name) return [];
+    return [
+      {
+        twin: name,
+        before: t.before === true,
+        after: t.after === true,
+        auditRows: num(t.auditRows, 0),
+        ...(typeof t.note === "string" && t.note ? { note: t.note } : {}),
+      } satisfies TwinEvidence,
+    ];
+  });
+  const w = asRecord(e.auditWindow);
+  const auditWindow = w ? { fromMs: num(w.fromMs, 0), toMs: num(w.toMs, 0) } : null;
+  return {
+    twins,
+    auditWindow,
+    complete: e.complete === true,
+    summary: str(e.summary, evidenceSummary(twins, auditWindow, twins.map((t) => t.twin))),
+  };
+}
+
+/**
+ * The twins a saved run attached, for an artifact that did not record them.
+ *
+ * The spec's own twin set is the honest floor: a criterion names a twin, so a
+ * twin the spec grades against is one the run was expected to attach. Reading it
+ * off the snapshots instead would make an uncaptured surface disappear from the
+ * evidence block, which is the exact silence this whole file is fixing.
+ */
+function attachedTwins(spec: EpisodeSpec | null, snapshots: EpisodeRun["snapshots"]): TwinName[] {
+  const fromSpec = spec ? episodeTwins(spec) : [];
+  const captured = TWIN_ORDER.filter((t) => snapshots[t]);
+  return TWIN_ORDER.filter((t) => fromSpec.includes(t) || captured.includes(t));
+}
 
 function normalizeCost(raw: unknown): RunCost {
   const c = asRecord(raw);
@@ -257,7 +456,21 @@ function checklistFrom(raw: Record<string, unknown>): CriterionResult[] | null {
   if (!derived) return null;
   if (audit.length > 0) return derived;
   const stored = storedChecklist(raw);
-  return stored.length > 0 ? reconcile(derived, stored) : derived;
+  if (stored.length === 0) return derived;
+  return reconcile(derived, stored, evidenceOf(raw, spec, snapshots, audit).summary);
+}
+
+function evidenceOf(
+  raw: Record<string, unknown>,
+  spec: EpisodeSpec | null,
+  snapshots: EpisodeRun["snapshots"],
+  audit: TwinAuditRow[],
+): RunEvidence {
+  return normalizeEvidence(raw.evidence, {
+    twins: attachedTwins(spec, snapshots),
+    snapshots,
+    audit,
+  });
 }
 
 function storedChecklist(raw: Record<string, unknown>): CriterionResult[] {
@@ -270,6 +483,7 @@ function storedChecklist(raw: Record<string, unknown>): CriterionResult[] {
 function reconcile(
   fresh: CriterionResult[],
   stored: CriterionResult[],
+  why: string,
 ): CriterionResult[] {
   const before = new Map(stored.map((c) => [c.id, c]));
   return fresh.map((c) => {
@@ -278,12 +492,14 @@ function reconcile(
     return {
       ...c,
       status: "notApplicable" as const,
+      // The reason, not just the fact. "The log was not saved" leaves a reader to
+      // guess whether the clone fell over or nothing was ever attached, and those
+      // are different sentences in a published report.
       evidence:
-        `this run's audit log was not saved with it, so today's checker is reading less than the ` +
-        `one that scored it — which recorded: "${was.evidence ?? "passed"}". Re-checking now ` +
-        `reports "${c.evidence ?? "failed"}", and that failure rests on the missing evidence ` +
-        `rather than on anything in the artifact. Neither can be published, so this criterion is ` +
-        `left undecided`,
+        `${why} Today's checker is therefore reading less than the one that scored this run, ` +
+        `which recorded: "${was.evidence ?? "passed"}". Re-checking now reports ` +
+        `"${c.evidence ?? "failed"}", and that failure rests on the missing evidence rather than ` +
+        `on anything in the artifact. Neither can be published, so this criterion is left undecided`,
     };
   });
 }
@@ -357,7 +573,7 @@ function castNames(spec: EpisodeSpec | null): Record<string, string> {
   return people;
 }
 
-function normalizeRun(raw: unknown, fallbackId: string): EpisodeRun | null {
+function normalizeRun(raw: unknown, fallbackId: string): SavedRun | null {
   const r = asRecord(raw);
   if (!r) return null;
   const runId = str(r.runId, fallbackId);
@@ -386,13 +602,14 @@ function normalizeRun(raw: unknown, fallbackId: string): EpisodeRun | null {
     ticks,
     snapshots,
     ...(audit.length > 0 ? { audit } : {}),
+    evidence: evidenceOf(r, spec, snapshots, audit),
     verdict,
     ...(typeof r.error === "string" ? { error: r.error } : {}),
   };
 }
 
 /** Newest first. Ids are timestamps, so a lexical sort is a chronological one. */
-export function listRuns(): EpisodeRun[] {
+export function listRuns(): SavedRun[] {
   let names: string[];
   try {
     names = readdirSync(runsDir());
@@ -412,7 +629,7 @@ export function listRuns(): EpisodeRun[] {
     .sort((a, b) => (b.startedAt || 0) - (a.startedAt || 0) || b.runId.localeCompare(a.runId));
 }
 
-export function readRun(runId: string): EpisodeRun | null {
+export function readRun(runId: string): SavedRun | null {
   const file = resolveArtifact(runId, ".json");
   if (!file) return null;
   const run = normalizeRun(readJson(file), runId);
@@ -458,6 +675,55 @@ export function readBrief(runId: string): RunBrief {
     offsetMinutes: startISO ? safeOffsetMinutes(startISO) : 0,
     people: castNames(spec),
   };
+}
+
+export interface EvidenceRepair {
+  runId: string;
+  evidence: RunEvidence;
+  /** True when the file changed. False for a run that already stated its evidence. */
+  written: boolean;
+}
+
+/**
+ * Write the evidence block onto artifacts filed before it existed.
+ *
+ * THIS DOES NOT RECOVER EVIDENCE, and it cannot: a snapshot is a picture of a
+ * clone at a moment that is gone, and the trace beside a run carries the audit
+ * row *ids* a tool call touched but never the rows themselves — no `ts`, no
+ * `endpoint`, no summary — so there is nothing to rebuild a log out of. What it
+ * recovers is the artifact's ability to SAY so, which is the half that was
+ * costing readers a wrong conclusion: an old run comes out of this able to
+ * report "neither snapshot was captured for gmail" instead of quietly handing a
+ * checker an empty object and letting eight rows of "nothing to check against"
+ * read as eight findings about the model.
+ *
+ * Idempotent, and it edits the raw record so a field this module does not model
+ * is never the price of running it.
+ */
+export function repairEvidence(runIds?: readonly string[]): EvidenceRepair[] {
+  const ids = runIds ?? listRuns().map((r) => r.runId);
+  const out: EvidenceRepair[] = [];
+  for (const runId of ids) {
+    const file = resolveArtifact(runId, ".json");
+    if (!file) continue;
+    const raw = asRecord(readJson(file));
+    if (!raw) continue;
+    const snapshots = (asRecord(raw.snapshots) ?? {}) as EpisodeRun["snapshots"];
+    const spec = (asRecord(raw.spec) as unknown as EpisodeSpec | null) ?? null;
+    const evidence = evidenceOf(raw, spec, snapshots, list<TwinAuditRow>(raw.audit));
+    if (asRecord(raw.evidence)) {
+      out.push({ runId, evidence, written: false });
+      continue;
+    }
+    raw.evidence = evidence;
+    try {
+      writeFileSync(file, `${JSON.stringify(raw, null, 2)}\n`, "utf8");
+      out.push({ runId, evidence, written: true });
+    } catch (err) {
+      console.warn(`[sonata] could not repair the evidence block of ${runId}:`, (err as Error).message);
+    }
+  }
+  return out;
 }
 
 /** `offsetMinutes` throws on an offsetless string; a bad spec must not 500 a page. */

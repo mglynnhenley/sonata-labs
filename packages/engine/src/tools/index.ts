@@ -9,6 +9,15 @@ export * from "./types";
 export { gmailTools } from "./gmail";
 export { slackTools } from "./slack";
 export { calendarTools, freeWindows } from "./calendar";
+export {
+  createOpenItems,
+  describeOpenItems,
+  renderOpenItems,
+  OPEN_ITEMS_TOOL,
+  type OpenItem,
+  type OpenItems,
+  type OpenItemsCall,
+} from "./openItems";
 
 /**
  * The toolset for the twins an episode actually uses.

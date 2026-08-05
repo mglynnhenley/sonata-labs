@@ -598,6 +598,13 @@ function message(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
+/** One reason, told about every attached twin — the artifact's `captureNotes`. */
+function noteForAll(twins: readonly TwinName[], why: string): Partial<Record<TwinName, string>> {
+  const notes: Partial<Record<TwinName, string>> = {};
+  for (const twin of twins) notes[twin] = why;
+  return notes;
+}
+
 // ---------------------------------------------------------------------------
 // Finishing — the same scoring a run gets, and deliberately no other
 // ---------------------------------------------------------------------------
@@ -616,6 +623,11 @@ async function settle(entry: LiveSession, record: SessionRecord): Promise<void> 
   const scored: SessionArtifact = {
     ...run,
     endedAt: run.endedAt ?? Date.now(),
+    // The log the checklist above just read, filed beside the score it produced.
+    // Without it the artifact is re-derived months later against less evidence
+    // than decided it, and a reply that really went out reads as "no reply
+    // landed" — see `EpisodeRun.audit`.
+    audit: record.audit,
     verdict,
     session: {
       sessionId: entry.sessionId,
@@ -632,7 +644,7 @@ async function settle(entry: LiveSession, record: SessionRecord): Promise<void> 
   // writer to disagree with it. Its other half, the `runs` row, is a no-op here:
   // a session never had one, on purpose (see the DDL above), and the update
   // simply matches nothing.
-  mirrorRunFinish({ run: scored, spec: entry.spec, checklist, cost });
+  mirrorRunFinish({ run: scored, spec: entry.spec, checklist, cost, twins: entry.twins });
 
   finishRow(entry.sessionId, {
     status,
@@ -693,7 +705,17 @@ function fail(entry: LiveSession, err: unknown): void {
     error: reason,
   };
   const { checklist } = scoreRun(run, entry.spec);
-  mirrorRunFinish({ run, spec: entry.spec, checklist });
+  // Why there are no snapshots, per twin, rather than an empty object a reader
+  // has to guess at: a session fails standing the world up, so nothing was ever
+  // observable and every deterministic criterion below is undecidable for OUR
+  // reason. That sentence belongs in the artifact, not in a maintainer's head.
+  mirrorRunFinish({
+    run,
+    spec: entry.spec,
+    checklist,
+    twins: entry.twins,
+    captureNotes: noteForAll(entry.twins, `the session stopped before the day began: ${reason}`),
+  });
 
   finishRow(entry.sessionId, {
     status,
@@ -787,7 +809,18 @@ export function sweepOrphanSessions(): void {
     };
     if (spec) {
       const { checklist } = scoreRun(run, spec);
-      mirrorRunFinish({ run, spec, checklist });
+      const twins = parseList(row.twins) as TwinName[];
+      // Deliberately NOT captured here, late as it is: the three clones are
+      // shared, a restart is exactly when the next day resets them, and an
+      // after-snapshot taken now could file someone else's morning as this
+      // session's evidence. Saying so is the honest record.
+      mirrorRunFinish({
+        run,
+        spec,
+        checklist,
+        twins,
+        captureNotes: noteForAll(twins, `${reason}, so the closing snapshot was never taken`),
+      });
     }
     finishRow(row.id, {
       status: "aborted",

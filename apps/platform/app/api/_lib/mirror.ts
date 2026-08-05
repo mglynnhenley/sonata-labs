@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import {
   checklistScore,
+  episodeTwins,
   runExecution,
   verdictOutcome,
   type CriterionResult,
@@ -9,6 +10,8 @@ import {
   type EpisodeSpec,
   type EpisodeVerdict,
   type RunCost,
+  type TwinAuditRow,
+  type TwinName,
 } from "@sonata/core";
 import { autonomy } from "@sonata/judge";
 import {
@@ -19,7 +22,12 @@ import {
   saveWorld as indexWorld,
   updateRunProgress,
 } from "@/lib/db";
-import { listRuns as listArtifacts } from "../../results/_lib/artifacts";
+import {
+  describeEvidence,
+  listRuns as listArtifacts,
+  runsDir,
+  type RunEvidence,
+} from "../../results/_lib/artifacts";
 import type { EpisodeRecord, WorldRecord } from "./types";
 
 // The document store in ./store is the record: a WorldSeed, an EpisodeSpec and a
@@ -96,13 +104,15 @@ export function mirrorRunProgress(
   );
 }
 
-/** The `EpisodeRun` artifact, plus the spec that Results needs for the brief. */
+/**
+ * The `EpisodeRun` artifact, plus the spec Results needs for the brief and the
+ * evidence block every reader is entitled to. `runsDir` is imported rather than
+ * repeated: the writer and the reader disagreeing about where runs live is a
+ * class of bug nobody would find for weeks.
+ */
 interface RunArtifact extends EpisodeRun {
   spec: EpisodeSpec;
-}
-
-function runsDir(): string {
-  return process.env.SONATA_RUNS_DIR ?? path.join(process.cwd(), "data", "runs");
+  evidence: RunEvidence;
 }
 
 /**
@@ -114,6 +124,13 @@ function runsDir(): string {
  * autonomy, in the row and in the artifact alike. Those columns are nullable and
  * the null is the point — a zero would be averaged into every table that reads
  * them, and a crash has no performance to average.
+ *
+ * And nothing is filed without an evidence block. This is the one funnel every
+ * writer in the product goes through, so it is the only place that can promise a
+ * reader will never be handed a checklist without being told what was behind it —
+ * a run whose clones were never captured says so here, in a sentence, instead of
+ * spending eight criteria saying "nothing to check against" and letting a reader
+ * bank them as findings about the agent.
  */
 export function mirrorRunFinish(input: {
   run: EpisodeRun;
@@ -121,6 +138,14 @@ export function mirrorRunFinish(input: {
   checklist: CriterionResult[];
   /** Spend, for a run that has no verdict to carry it. A crash still costs money. */
   cost?: RunCost;
+  /**
+   * The twins this run actually attached. Defaults to the ones the spec grades
+   * against — the honest floor, since a criterion naming a twin is a twin the run
+   * was expected to have.
+   */
+  twins?: readonly TwinName[];
+  /** Per twin, why capture failed. The clone's own words when it gave any. */
+  captureNotes?: Partial<Record<TwinName, string>>;
 }): void {
   const { run, checklist } = input;
   const cost = run.verdict?.cost ?? input.cost ?? { usd: 0, promptTokens: 0, completionTokens: 0, llmCalls: 0 };
@@ -162,7 +187,14 @@ export function mirrorRunFinish(input: {
   quietly(`artifact for ${run.runId}`, () => {
     const dir = runsDir();
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-    const artifact: RunArtifact = { ...run, verdict, spec };
+    const audit: readonly TwinAuditRow[] = run.audit ?? [];
+    const evidence = describeEvidence({
+      twins: input.twins ?? episodeTwins(spec),
+      snapshots: run.snapshots,
+      audit,
+      ...(input.captureNotes ? { notes: input.captureNotes } : {}),
+    });
+    const artifact: RunArtifact = { ...run, verdict, spec, evidence };
     writeFileSync(path.join(dir, `${run.runId}.json`), `${JSON.stringify(artifact, null, 2)}\n`, "utf8");
   });
 }

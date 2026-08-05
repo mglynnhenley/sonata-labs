@@ -2,7 +2,7 @@ import "./env"; // must precede every import that reaches a model module or the 
 
 import path from "node:path";
 import { formatEstimate, renderReport, type BenchmarkEvent } from "@sonata/benchmark";
-import type { CriterionResult, EpisodeRun, TwinName } from "@sonata/core";
+import type { CriterionResult, EpisodeRun, Termination, TwinName } from "@sonata/core";
 import { TWIN_NAMES, offsetMinutes, runExecution } from "@sonata/core";
 import { reconcileRunRows } from "../../app/api/_lib/mirror";
 import { readRun } from "../../app/results/_lib/artifacts";
@@ -56,6 +56,9 @@ const USAGE = `sonata — run agents inside a cloned business
       --ticks <n>                       Length of the day, in 15-minute ticks
       --twins <a,b>                     Narrow the surfaces attached
       --seed <n>                        Vary the sampling, same day
+      --idle-ticks <n>                  Dead intervals that end the day (0 = never)
+      --max-minutes <n>                 Wall-clock guard for the whole run
+      --max-cost <usd>                  Spend guard for the whole run
       --no-judge                        Skip the judge; keep the checklist
       --judge-model <slug>              Judge with something other than Settings
 
@@ -134,6 +137,25 @@ function number(args: Args, name: string): number | undefined {
   const n = Number(raw);
   if (!Number.isFinite(n)) throw new Error(`--${name} needs a number, not "${raw}"`);
   return n;
+}
+
+/**
+ * Stop guards from the command line, or undefined to keep the scenario's own.
+ *
+ * `--idle-ticks 0` is meaningful and must survive: it disables the idle guard,
+ * which is how you ask for the whole day from an agent that may go quiet in the
+ * middle of it — so this tests for `undefined`, not for falsiness.
+ */
+function terminationFlags(args: Args): Partial<Termination> | undefined {
+  const idle = number(args, "idle-ticks");
+  const minutes = number(args, "max-minutes");
+  const cost = number(args, "max-cost");
+  const out: Partial<Termination> = {
+    ...(idle === undefined ? {} : { idleTicks: Math.max(0, Math.round(idle)) }),
+    ...(minutes === undefined ? {} : { maxWallClockMs: Math.max(0, minutes) * 60_000 }),
+    ...(cost === undefined ? {} : { maxCostUsd: Math.max(0, cost) }),
+  };
+  return Object.keys(out).length > 0 ? out : undefined;
 }
 
 function twinList(args: Args): TwinName[] | undefined {
@@ -313,9 +335,11 @@ async function runCommand(args: Args): Promise<void> {
   // day's own clock. Resolving twice costs a lookup and registers nothing twice.
   const episode = resolveScenario(query);
   const offset = safeOffsetMinutes(episode.spec.clock.startISO);
+  const termination = terminationFlags(args);
 
   const view = startEpisode({
     episodeId: episode.id,
+    ...(termination ? { termination } : {}),
     ...(flag(args, "model") ? { model: flag(args, "model") as string } : {}),
     ...(number(args, "ticks") === undefined ? {} : { ticks: number(args, "ticks") as number }),
     ...(twinList(args) ? { twins: twinList(args) as TwinName[] } : {}),

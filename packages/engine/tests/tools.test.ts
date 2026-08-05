@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { TwinHttp } from "../src/http";
-import { calendarTools, freeWindows, toolsFor } from "../src/tools";
+import { calendarTools, createOpenItems, describeOpenItems, freeWindows, toolsFor } from "../src/tools";
 import { fetchFake } from "./fixtures";
 
 // The agent's hands. What matters here is the same thing that matters in the
@@ -196,5 +196,111 @@ describe("toolsFor", () => {
     const http = new TwinHttp({ baseUrl: "http://x.test", fetchImpl: fetchFake({}).fetch });
     const all = toolsFor(["gmail", "slack", "calendar"], { gmail: http, slack: http, calendar: http });
     expect(new Set(all.map((t) => t.name)).size).toBe(all.length);
+  });
+});
+
+describe("open_items", () => {
+  // The list the agent keeps for itself. What is pinned here is that the harness
+  // only CARRIES it: every item on it was put there by an explicit call, and
+  // nothing infers one from what the agent did on a twin.
+
+  const store = () => createOpenItems();
+
+  it("keeps what the agent wrote and hands it back, oldest first", async () => {
+    const items = store();
+    items.at("09:15");
+    await items.tool.run({ add: ["waiting on Dana about the refund"] });
+    items.at("09:30");
+    await items.tool.run({ add: ["promised Arun a date by end of day"] });
+
+    expect(items.list()).toEqual([
+      { id: "o1", text: "waiting on Dana about the refund", notedAt: "09:15" },
+      { id: "o2", text: "promised Arun a date by end of day", notedAt: "09:30" },
+    ]);
+    expect(items.render()).toBe(
+      [
+        "STILL OPEN — your own list, oldest first:",
+        "  [o1] waiting on Dana about the refund (noted 09:15)",
+        "  [o2] promised Arun a date by end of day (noted 09:30)",
+      ].join("\n"),
+    );
+  });
+
+  it("takes an item off when the agent says it is done, by id or by its wording", async () => {
+    const items = store();
+    items.at("09:15");
+    await items.tool.run({ add: ["chase Dana", "book the SLA review"] });
+
+    await items.tool.run({ done: ["O1"] });
+    expect(items.list().map((i) => i.id)).toEqual(["o2"]);
+
+    // A model that answers with the item rather than the id has still said which.
+    const result = await items.tool.run({ done: ["book the SLA review"] });
+    expect(items.list()).toEqual([]);
+    expect(result).toEqual({ open: [] });
+  });
+
+  it("says so rather than guessing when it is told to close something it has no record of", async () => {
+    const items = store();
+    items.at("09:15");
+    await items.tool.run({ add: ["chase Dana"] });
+    const result = await items.tool.run({ done: ["o9"] });
+    expect(result).toMatchObject({ notOnTheList: ["o9"] });
+    expect(items.list()).toHaveLength(1);
+  });
+
+  it("closes before it adds, and never reuses an id", async () => {
+    const items = store();
+    items.at("09:15");
+    await items.tool.run({ add: ["chase Dana"] });
+    await items.tool.run({ done: ["o1"], add: ["chase Dana again"] });
+    expect(items.list()).toEqual([{ id: "o2", text: "chase Dana again", notedAt: "09:15" }]);
+  });
+
+  it("refuses a twenty-first item instead of dropping the oldest one", async () => {
+    const items = store();
+    items.at("09:15");
+    await items.tool.run({ add: Array.from({ length: 20 }, (_, i) => `item ${i + 1}`) });
+    const result = await items.tool.run({ add: ["one too many"] });
+
+    expect(items.list()).toHaveLength(20);
+    // The oldest survives: it is the likeliest dropped thread, and evicting it
+    // would rebuild the blindness the list exists to remove.
+    expect(items.list()[0].text).toBe("item 1");
+    expect(result).toMatchObject({ refused: expect.stringContaining("close something") });
+  });
+
+  it("is bookkeeping, not an act: no twin, no mutation", () => {
+    const items = store();
+    expect(items.tool.twin).toBeNull();
+    expect(items.tool.isMutation).toBe(false);
+  });
+
+  it("reports a call the way the timeline reads it", async () => {
+    const items = store();
+    items.at("09:15");
+    await items.tool.run({ add: ["chase Dana"] });
+    expect(describeOpenItems(items.lastCall().added, [])).toBe("open items: noted [o1] chase Dana");
+    await items.tool.run({ done: ["o1"] });
+    const { added, closed } = items.lastCall();
+    expect(describeOpenItems(added, closed)).toBe("open items: closed [o1] chase Dana");
+    await items.tool.run({});
+    const empty = items.lastCall();
+    expect(describeOpenItems(empty.added, empty.closed)).toBe("open items: reviewed, no change");
+  });
+
+  it("ignores blank items and normalises whitespace, so the block stays readable", async () => {
+    const items = store();
+    items.at("09:15");
+    await items.tool.run({ add: ["   ", "chase\n  Dana", ""] });
+    expect(items.list()).toEqual([{ id: "o1", text: "chase Dana", notedAt: "09:15" }]);
+  });
+
+  it("clips an item that is really an essay, so notes cannot own the prompt", async () => {
+    const items = store();
+    items.at("09:15");
+    await items.tool.run({ add: ["x".repeat(500)] });
+    expect(items.list()[0].text).toHaveLength(200);
+    expect(items.list()[0].text.endsWith("…")).toBe(true);
   });
 });
