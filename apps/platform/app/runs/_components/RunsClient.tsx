@@ -15,6 +15,8 @@ import {
 } from "@sonata/ui";
 import { elapsed, simClock } from "@/lib/format";
 import { modelLabel } from "@/lib/models";
+import { ROUTES } from "@/lib/routes";
+import { StaleNotice } from "../../_components/StaleNotice";
 import { usePoll } from "../../_components/usePoll";
 import { useGo } from "../../_components/useGo";
 import { apiSend } from "../../api/_lib/client";
@@ -56,7 +58,8 @@ export function RunsClient({
   const router = useRouter();
   const go = useGo();
   const { toast } = useToast();
-  const { data, refresh } = usePoll<RunsFeed>("/api/runs", 3000, initial);
+  const poll = usePoll<RunsFeed>("/api/runs", 3000, initial);
+  const { data, refresh } = poll;
 
   const [starting, setStarting] = useState(false);
   const [demoing, setDemoing] = useState(demo);
@@ -134,6 +137,8 @@ export function RunsClient({
         }
       />
 
+      <StaleNotice poll={poll} what="the run list" />
+
       {demoing ? (
         <Card padding="lg" className="animate-sn-rise">
           <div className="flex items-center gap-4">
@@ -171,13 +176,28 @@ export function RunsClient({
       <section>
         <div className="flex flex-wrap items-baseline justify-between gap-3">
           <h2 className="font-display text-[26px] text-sn-ink">Past runs</h2>
-          <button
-            type="button"
-            onClick={refresh}
-            className="text-[12px] text-sn-subtle transition-colors duration-150 ease-sn hover:text-sn-ink"
-          >
-            {data.runs.length} run{data.runs.length === 1 ? "" : "s"} on this machine
-          </button>
+          {/* NOT "on this machine". This list is `/api/runs`, which reads the
+              dashboard's own document store; runs started by the CLI land in the
+              artifact directory that Results reads, and only there. Saying "on
+              this machine" over one of two stores is how this page claimed 1 run
+              while Results counted 11 of the same days. Results is the full
+              record, so the link goes there. */}
+          <div className="flex items-center gap-3 text-[12px] text-sn-subtle">
+            <button
+              type="button"
+              onClick={refresh}
+              className="transition-colors duration-150 ease-sn hover:text-sn-ink"
+            >
+              {data.runs.length} run{data.runs.length === 1 ? "" : "s"} started from this dashboard
+            </button>
+            <a
+              href={ROUTES.results}
+              onClick={(e) => go(e, ROUTES.results)}
+              className="text-sn-primary-ink underline underline-offset-2"
+            >
+              Every finished run
+            </a>
+          </div>
         </div>
         <div className="mt-5">
           <PastRuns runs={data.runs} now={data.at} />

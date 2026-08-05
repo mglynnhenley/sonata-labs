@@ -27,6 +27,16 @@ import { ScenarioPreview } from "./ScenarioPreview";
 // what was on screen — the preview and the thing that gets built can never
 // disagree, and looking twice never costs twice.
 
+/** The one way a failed generation is reported, on either step. */
+function ErrorNote({ message }: { message: string }) {
+  return (
+    <div className="flex items-start gap-2.5 rounded-sn-lg border border-sn-failed-line bg-sn-failed-soft px-4 py-3">
+      <IconAlert size={15} className="mt-0.5 shrink-0 text-sn-danger" />
+      <p className="text-[13px] leading-[20px] text-sn-failed-ink">{message}</p>
+    </div>
+  );
+}
+
 /** Shown in order while the company is being written. The wait is real work. */
 const WORKING_LINES = [
   "Reading your description…",
@@ -137,6 +147,11 @@ export function NewScenarioComposer() {
           }
         />
 
+        {/* "Try again" lives on this step too, so its failure has to be
+            reportable here — otherwise the button spins, stops, and nothing
+            visible happens. */}
+        {error ? <ErrorNote message={error} /> : null}
+
         <ScenarioPreview draft={draft} />
 
         <div className="flex flex-wrap items-center justify-end gap-3 border-t border-sn-line pt-6">
@@ -231,9 +246,8 @@ export function NewScenarioComposer() {
         </div>
 
         {error ? (
-          <div className="mt-6 flex items-start gap-2.5 rounded-sn-lg border border-sn-failed-line bg-sn-failed-soft px-4 py-3">
-            <IconAlert size={15} className="mt-0.5 shrink-0 text-sn-danger" />
-            <p className="text-[13px] leading-[20px] text-sn-failed-ink">{error}</p>
+          <div className="mt-6">
+            <ErrorNote message={error} />
           </div>
         ) : null}
 

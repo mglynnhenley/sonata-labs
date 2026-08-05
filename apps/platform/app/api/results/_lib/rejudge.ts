@@ -8,6 +8,7 @@ import {
   type Finding,
   type Severity,
 } from "@sonata/core";
+import { CHECK_LABEL } from "@sonata/judge";
 import { getApiKey, getSettings } from "@/lib/settings";
 import type { RunBrief } from "../../../results/_lib/artifacts";
 import { buildMoments, type Moment } from "../../../results/_lib/moments";
@@ -83,12 +84,16 @@ function renderThoughts(moments: Moment[]): string {
   return lines.length ? lines.join("\n\n") : "(the agent said nothing as it worked)";
 }
 
+// PASS / FAIL / N-A, the same three labels the live judge uses (`CHECK_LABEL`),
+// shared rather than re-spelled: a re-judge months later has to see the checklist
+// exactly as the original judge saw it, and a criterion nothing could settle must
+// not arrive here as either a pass or a failure.
 function renderChecklist(checklist: CriterionResult[]): string {
   if (checklist.length === 0) return "(this scenario declared no deterministic checks)";
   return checklist
     .map(
       (c) =>
-        `- [${c.passed ? "PASS" : "FAIL"}] ${c.severity.padEnd(6)} ${c.id} — ${c.description}` +
+        `- [${CHECK_LABEL[c.status]}] ${c.severity.padEnd(6)} ${c.id} — ${c.description}` +
         (c.evidence ? `\n    evidence: ${c.evidence}` : ""),
     )
     .join("\n");

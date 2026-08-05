@@ -157,6 +157,19 @@ export interface TimelineEntry {
 // Outcome
 // ---------------------------------------------------------------------------
 
+/**
+ * What a checker concluded about one criterion. Three states, not two.
+ *
+ * `notApplicable` is the whole point of the type: a criterion can hold for a
+ * reason that is no credit to the agent ("never handed the job back" — it never
+ * did anything at all), or be undecidable ("the surface was never captured").
+ * Both used to arrive as a boolean, and a boolean forces a lie either way: `true`
+ * pays an idle agent for work it did not do, `false` reports a failure that never
+ * happened. Neither may reach a published table, so scoring drops these from the
+ * numerator AND the denominator — see `checklistScore`.
+ */
+export type CriterionStatus = "passed" | "failed" | "notApplicable";
+
 export interface CriterionResult {
   id: string;
   description: string;
@@ -164,7 +177,7 @@ export interface CriterionResult {
   kind: Criterion["kind"];
   severity: Criterion["severity"];
   weight: number;
-  passed: boolean;
+  status: CriterionStatus;
   /** What made the checker decide — quoted, so a failed criterion shows its work. */
   evidence?: string;
   /** Tick the criterion was satisfied on, when it was. */

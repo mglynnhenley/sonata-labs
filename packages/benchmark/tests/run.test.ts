@@ -123,7 +123,15 @@ describe("runBenchmark", () => {
 
     expect(report.results).toHaveLength(8);
     const failed = report.results.find((r) => r.runId === failing);
-    expect(failed).toMatchObject({ status: "failed", autonomy: 0, error: "provider 400" });
+    // No numbers on a cell that threw: it is a row saying a run was attempted,
+    // not a row saying the model scored zero.
+    expect(failed).toMatchObject({
+      status: "failed",
+      score: null,
+      autonomy: null,
+      outcome: null,
+      error: "provider 400",
+    });
     // No artifact, so resuming retries it — the usual cause is transient.
     expect(readRunArtifact(dir, failing)).toBeNull();
     expect(events.filter((e) => e.kind === "cell-failed")).toHaveLength(1);

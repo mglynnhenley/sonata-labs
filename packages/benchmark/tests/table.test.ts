@@ -142,10 +142,10 @@ describe("renderSummaryTable", () => {
   it("puts cost per episode next to autonomy, where the argument actually is", () => {
     expect(renderSummaryTable(AGG, LABELS)).toBe(
       [
-        "| Model      | Episodes | Autonomy | Task success | Cost/episode | Seed variance | Failed | Top failure mode   |",
-        "| :--------- | -------: | -------: | -----------: | -----------: | ------------: | -----: | :----------------- |",
-        "| Haiku 4.5  |        4 |     0.80 |          75% |      $0.1150 |        0.0050 |      0 | Over-escalated (1) |",
-        "| GPT-5 mini |        4 |     0.57 |          50% |      $0.2950 |        0.0012 |      0 | Over-escalated (2) |",
+        "| Model      | Episodes | Scored | Autonomy | Task success | Cost/episode | Seed variance | Failed | Top failure mode   |",
+        "| :--------- | -------: | -----: | -------: | -----------: | -----------: | ------------: | -----: | :----------------- |",
+        "| Haiku 4.5  |        4 |      4 |     0.80 |          75% |      $0.1150 |        0.0050 |      0 | Over-escalated (1) |",
+        "| GPT-5 mini |        4 |      4 |     0.57 |          50% |      $0.2950 |        0.0012 |      0 | Over-escalated (2) |",
       ].join("\n"),
     );
   });
@@ -203,10 +203,10 @@ describe("renderReport", () => {
         "",
         "### Summary",
         "",
-        "| Model      | Episodes | Autonomy | Task success | Cost/episode | Seed variance | Failed | Top failure mode   |",
-        "| :--------- | -------: | -------: | -----------: | -----------: | ------------: | -----: | :----------------- |",
-        "| Haiku 4.5  |        4 |     0.80 |          75% |      $0.1150 |        0.0050 |      0 | Over-escalated (1) |",
-        "| GPT-5 mini |        4 |     0.57 |          50% |      $0.2950 |        0.0012 |      0 | Over-escalated (2) |",
+        "| Model      | Episodes | Scored | Autonomy | Task success | Cost/episode | Seed variance | Failed | Top failure mode   |",
+        "| :--------- | -------: | -----: | -------: | -----------: | -----------: | ------------: | -----: | :----------------- |",
+        "| Haiku 4.5  |        4 |      4 |     0.80 |          75% |      $0.1150 |        0.0050 |      0 | Over-escalated (1) |",
+        "| GPT-5 mini |        4 |      4 |     0.57 |          50% |      $0.2950 |        0.0012 |      0 | Over-escalated (2) |",
         "",
         "### Failure modes",
         "",
@@ -222,12 +222,25 @@ describe("renderReport", () => {
     );
   });
 
-  it("owns up to crashed episodes in the provenance line", () => {
+  it("owns up in the provenance line to the episodes it left out", () => {
     const broken = aggregate({ ...MATRIX, models: [HAIKU], seeds: [1] }, [
-      { ...row(HAIKU, "sla-escalation", 1, 0, "fail", 0), status: "failed", error: "502" },
+      {
+        ...row(HAIKU, "sla-escalation", 1, 0, "fail", 0),
+        status: "failed",
+        score: null,
+        autonomy: null,
+        outcome: null,
+        error: "502",
+      },
       row(HAIKU, "quiet-monday", 1, 0.9, "pass", 0.1),
     ]);
-    expect(renderReport(broken, LABELS)).toContain("_2 episodes, 1 of them failed to complete —");
+    const report = renderReport(broken, LABELS);
+    expect(report).toContain(
+      "_2 episodes, 1 of which never ran and are excluded from every number above —",
+    );
+    // The excluded cell is a dash in the table, never a 0.00 a reader would take
+    // for a score.
+    expect(report).toContain("|              — |");
   });
 
   it("is a pure function of the aggregate", () => {

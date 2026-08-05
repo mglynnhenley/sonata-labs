@@ -130,15 +130,18 @@ export async function runBenchmark(plan: BenchmarkPlan, opts: RunOptions): Promi
       emit({ kind: "cell-done", cell, result });
     } catch (err) {
       const message = errorText(err);
+      // A cell that threw produced no result — not a zero. The row exists so the
+      // matrix can say a run was attempted and what it cost; every number on it
+      // is absent, because nothing was measured.
       results.push({
         runId: cell.runId,
         scenarioId: cell.scenarioId,
         model: cell.model,
         seed: cell.seed,
         status: "failed",
-        score: 0,
-        autonomy: 0,
-        outcome: "fail",
+        score: null,
+        autonomy: null,
+        outcome: null,
         cost: { usd: 0, promptTokens: 0, completionTokens: 0, llmCalls: 0 },
         ticks: 0,
         durationMs: Math.max(0, now() - cellStartedAt),

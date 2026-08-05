@@ -12,14 +12,21 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(_req: Request, { params }: { params: Promise<{ runId: string }> }) {
-  const { runId } = await params;
-  const run = readRun(runId);
-  if (!run) return NextResponse.json({ error: "No run with that id." }, { status: 404 });
+  try {
+    const { runId } = await params;
+    const run = readRun(runId);
+    if (!run) return NextResponse.json({ error: "No run with that id." }, { status: 404 });
 
-  return NextResponse.json({
-    run,
-    summary: summarizeRun(run),
-    brief: readBrief(runId),
-    cost: costBreakdown(readTrace(runId), run.verdict?.cost ?? null),
-  });
+    return NextResponse.json({
+      run,
+      summary: summarizeRun(run),
+      brief: readBrief(runId),
+      cost: costBreakdown(readTrace(runId), run.verdict?.cost ?? null),
+    });
+  } catch (err) {
+    // A trace can be megabytes and is written while the run is going, so this
+    // reads a live file. An unhandled throw would answer with an empty 500 body
+    // instead of the `{ error }` every other route here returns.
+    return NextResponse.json({ error: (err as Error).message }, { status: 500 });
+  }
 }

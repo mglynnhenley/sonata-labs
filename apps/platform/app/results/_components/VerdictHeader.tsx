@@ -1,5 +1,6 @@
 "use client";
 
+import { NO_RESULT } from "@sonata/core";
 import {
   Badge,
   Card,
@@ -12,6 +13,8 @@ import {
 } from "@sonata/ui";
 import {
   badgeStatus,
+  CHECKLIST_HINT,
+  CHECKLIST_LABEL,
   formatDuration,
   formatPercent,
   formatUsd,
@@ -54,11 +57,17 @@ export function VerdictHeader({
 }) {
   const autonomy = summary.autonomy;
   const criticalCount = summary.failures.filter((f) => f.severity === "critical").length;
-  // Two independent readings of the same day: the checklist minus autonomy
-  // findings, and the judge's own number. @sonata/core keeps both on purpose —
-  // a wide gap means the catalog is missing the mode the judge is reacting to.
-  const gap =
-    autonomy !== null && judgeAutonomy !== null ? Math.abs(autonomy - judgeAutonomy) : null;
+  // Two DIFFERENT measures of the same day, not two attempts at one: arithmetic
+  // over what the run did, and a model's opinion of it. Both are kept on purpose
+  // — a wide gap means the catalog is missing the mode the judge is reacting to.
+  //
+  // Stated in whole points, always, and never as agreement. This card used to
+  // call anything inside 20 points "they agree", which printed 63% and 45% under
+  // the word "agree"; the reader's own eyes were the counter-evidence.
+  const gapPoints =
+    autonomy !== null && judgeAutonomy !== null
+      ? Math.abs(Math.round(autonomy * 100) - Math.round(judgeAutonomy * 100))
+      : null;
 
   return (
     <div className="flex flex-col gap-4">
@@ -72,6 +81,35 @@ export function VerdictHeader({
       ) : null}
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,340px)_minmax(0,1fr)]">
+        {summary.noResult ? (
+          // No number at all, and the reason in its place. A 0% here would be a
+          // claim about the model; the truth is a claim about this run, and the
+          // reader has to be able to tell the two apart at a glance.
+          <Card padding="lg" radius="2xl" className="flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-[11px] font-medium tracking-[0.08em] text-sn-subtle uppercase">
+                  Autonomy
+                </span>
+                <Badge status="neutral" size="sm">
+                  {NO_RESULT}
+                </Badge>
+              </div>
+              <p className="mt-4 font-display-upright text-[34px] leading-[1.1] text-sn-ink">
+                No result
+              </p>
+              <p className="mt-3 text-[12.5px] leading-[19px] text-sn-muted">{summary.noResult}</p>
+              <p className="mt-3 text-[12.5px] leading-[19px] text-sn-subtle">
+                Nothing is scored from a day like this — not zero, nothing. It is left out of
+                every mean and every table, and the day below is all there is to read.
+              </p>
+            </div>
+            <p className="mt-5 border-t border-sn-line pt-3.5 text-[12px] text-sn-muted">
+              {stats.ticks} tick{stats.ticks === 1 ? "" : "s"} recorded · {stats.toolCalls} tool
+              call{stats.toolCalls === 1 ? "" : "s"}
+            </p>
+          </Card>
+        ) : (
         <Card padding="lg" radius="2xl" className="flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between gap-3">
@@ -107,7 +145,8 @@ export function VerdictHeader({
               size="md"
             />
             <p className="mt-3 text-[12.5px] leading-[19px] text-sn-muted">
-              How much of the job got done without a human stepping in.{" "}
+              How much of the job got done without a human stepping in, counted off the day
+              itself.{" "}
               <button
                 type="button"
                 onClick={() => onOpen("checklist")}
@@ -122,25 +161,35 @@ export function VerdictHeader({
           {judgeAutonomy === null ? null : (
             <div className="mt-5 border-t border-sn-line pt-3.5">
               <div className="flex items-baseline justify-between gap-2">
-                <span className="text-[12px] text-sn-muted">The judge scored it</span>
+                <span className="text-[12px] text-sn-muted">The judge&rsquo;s own reading</span>
                 <span data-numeric className="text-[15px] font-medium text-sn-ink">
                   {formatPercent(judgeAutonomy)}
                 </span>
               </div>
               <p className="mt-1 text-[11.5px] leading-[16px] text-sn-subtle">
-                {gap !== null && gap >= 0.2
-                  ? "The two readings disagree. The number above is derived from the checklist and the autonomy findings; a gap this wide usually means the judge saw something the catalog has no name for yet."
-                  : "Derived from the checklist and the judge's findings independently — they agree."}
+                {gapPoints === null
+                  ? null
+                  : gapPoints === 0
+                    ? "A different measure, at the same number: the figure above is arithmetic over the day's shape, this one is a model's opinion after reading it."
+                    : `A different measure, ${gapPoints} point${gapPoints === 1 ? "" : "s"} apart. The figure above is arithmetic over the day's shape — what got done, how often it acted rather than asked, how much of the day it spent silent. This one is a model's opinion after reading the same day.`}
+                {gapPoints !== null && gapPoints >= 20
+                  ? " A gap this wide usually means the judge saw something the catalog has no name for yet."
+                  : null}
               </p>
             </div>
           )}
         </Card>
+        )}
 
         <div className="grid gap-4 sm:grid-cols-2">
           <StatCard
-            label="Task success"
+            label={CHECKLIST_LABEL}
             value={formatPercent(summary.score)}
-            hint="Weighted share of the success checklist that passed."
+            hint={
+              summary.noResult
+                ? "No criterion was checked: a checklist run against a day the agent never worked scores its negative criteria for free."
+                : CHECKLIST_HINT
+            }
             icon={<IconLayers size={15} />}
             actionLabel="See the checklist"
             onClick={() => onOpen("checklist")}
@@ -160,10 +209,14 @@ export function VerdictHeader({
             actionLabel="See the findings"
             onClick={() => onOpen("failures")}
           />
+          {/* The hint names no role this figure may not contain. Judging is a
+              separate pass that records no cost of its own, so the old promise of
+              "agent, director and judge" was a third of a bill that was never
+              billed — the breakdown below names the roles actually in it. */}
           <StatCard
             label="Cost"
             value={formatUsd(costUsd)}
-            hint="Every model call in the run — agent, director and judge."
+            hint="What the run recorded spending on model calls. Open it for the per-role split."
             icon={<IconBolt size={15} />}
             actionLabel="See the per-call breakdown"
             onClick={() => onOpen("cost")}

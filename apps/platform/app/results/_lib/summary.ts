@@ -1,5 +1,7 @@
 import {
   getFailureMode,
+  NO_RESULT,
+  runExecution,
   type EpisodeJudgeReport,
   type EpisodeRun,
   type RunStatus,
@@ -37,9 +39,32 @@ export interface RunSummary {
   ticks: number;
   judged: boolean;
   failures: FailureChip[];
+  /**
+   * Why this run has no score, in the words to print. Null when it has one — so
+   * a page never has to choose between rendering a 0 and rendering an empty card.
+   */
+  noResult: string | null;
 }
 
 export const SEVERITY_ORDER: readonly Severity[] = ["critical", "major", "minor"];
+
+// ---------------------------------------------------------------------------
+// Names. Three numbers on this product's screens are fractions of something that
+// passed, and two of them used to share the label "task success" — Home's, which
+// is a share of RUNS, and the run page's, which is a share of ONE RUN'S
+// CRITERIA. Same words, different denominators, adjacent pages: Home printed 0%
+// while the run page printed 25% for the same day. They are named apart here, as
+// constants rather than as strings in three components, because a shared label
+// that lives in three files is a label that drifts back.
+// ---------------------------------------------------------------------------
+
+/** `EpisodeVerdict.score` — weighted share of ONE run's checklist that passed. */
+export const CHECKLIST_LABEL = "Checklist score";
+export const CHECKLIST_HINT = "Weighted share of this run's success criteria that passed.";
+
+/** `RunStats.passRate` — share of finished RUNS whose every criterion passed. */
+export const PASS_RATE_LABEL = "Runs passed";
+export const PASS_RATE_HINT = "Finished runs where every criterion the day could decide passed.";
 
 export function failureChips(judge: EpisodeJudgeReport | null): FailureChip[] {
   if (!judge) return [];
@@ -67,7 +92,10 @@ export function failureChips(judge: EpisodeJudgeReport | null): FailureChip[] {
 }
 
 export function summarizeRun(run: EpisodeRun): RunSummary {
-  const verdict = run.verdict;
+  const execution = runExecution(run);
+  // The artifact decides, not the file's own verdict: a run that never executed
+  // is unscored even if an older writer left numbers on it.
+  const verdict = execution.executed ? run.verdict : null;
   return {
     runId: run.runId,
     specId: run.specId,
@@ -83,10 +111,23 @@ export function summarizeRun(run: EpisodeRun): RunSummary {
     ticks: run.ticks.length,
     judged: Boolean(verdict?.judge),
     failures: failureChips(verdict?.judge ?? null),
+    noResult: execution.reason,
   };
 }
 
-/** A run the benchmark can count: it reached a verdict, however bad. */
+/**
+ * A run an average may include.
+ *
+ * One test, and it is `summarizeRun`'s: a run that never executed has no score,
+ * no autonomy and no outcome by the time it reaches here, so `outcome !== null`
+ * is now exactly "this run produced a result". Re-deriving the rule here would
+ * be a second definition of the population, which is the shape of the bug this
+ * pass exists to remove — four runs that crashed before their first tick were
+ * averaged into this table's headline beside a run with forty-five real actions.
+ *
+ * The runs LIST is unfiltered on purpose: a crashed run is a fact about the
+ * harness and hiding it would be the worse lie. It just does not get a vote.
+ */
 export function isScored(run: RunSummary): boolean {
   return run.outcome !== null;
 }
@@ -121,6 +162,12 @@ export interface BenchmarkRow {
 export interface Benchmark {
   scenarios: Array<{ specId: string; title: string }>;
   rows: BenchmarkRow[];
+  /**
+   * Runs in scope that no average includes — they never finished their day. Shown
+   * under the table, because a mean over a silently smaller population is the
+   * same lie in the other direction.
+   */
+  excluded: number;
 }
 
 function mean(values: number[]): number | null {
@@ -188,7 +235,7 @@ export function buildBenchmark(runs: RunSummary[]): Benchmark {
 
   // Best autonomy first — the ranking the article leads with.
   rows.sort((a, b) => (b.meanAutonomy ?? -1) - (a.meanAutonomy ?? -1));
-  return { scenarios, rows };
+  return { scenarios, rows, excluded: runs.length - scored.length };
 }
 
 /** The same table as a Markdown block, ready to paste into the article draft. */
@@ -292,7 +339,9 @@ export function outcomeLabel(run: { status: RunStatus; outcome: Outcome | null }
   if (run.outcome === "pass") return "Passed";
   if (run.outcome === "partial") return "Partial";
   if (run.outcome === "fail") return "Failed";
-  return "Not scored";
+  // A finished day with no outcome is a day the agent never worked. "No result"
+  // rather than "Not scored": the second sounds like an oversight of ours.
+  return NO_RESULT;
 }
 
 export const SEVERITY_BADGE: Record<Severity, "failed" | "warning" | "neutral"> = {

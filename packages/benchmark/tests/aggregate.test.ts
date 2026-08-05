@@ -55,13 +55,29 @@ describe("summarizeRun", () => {
     expect(r.failureModes).toEqual(["bulk-swept", "over-escalated"]);
   });
 
-  it("scores an unjudged run zero rather than dropping it", () => {
+  it("keeps a crashed run as a row but gives it no numbers at all", () => {
     const cell = cellFor("sla-escalation", "openai/gpt-5-mini", 1);
     const r = summarizeRun(cell, episodeRun({ noVerdict: true, status: "failed", error: "boom" }));
 
-    expect(r).toMatchObject({ status: "failed", score: 0, autonomy: 0, outcome: "fail", error: "boom" });
-    // Excluding it would flatter exactly the models that fell over.
+    // Null, not 0: scoring a crash zero is a claim about the model, and dropping
+    // the row would flatter exactly the models that fell over. Neither happened.
+    expect(r).toMatchObject({
+      status: "failed",
+      score: null,
+      autonomy: null,
+      outcome: null,
+      error: "boom",
+    });
     expect(r.cost.usd).toBe(0);
+  });
+
+  it("refuses the verdict of a day the agent slept through", () => {
+    const cell = cellFor("sla-escalation", "openai/gpt-5-mini", 1);
+    // A verdict IS present, and it is the shape of the bug: an idle agent passes
+    // every negative criterion and banks their weight.
+    const r = summarizeRun(cell, episodeRun({ idleAgent: true, score: 0.25, autonomy: 0.25 }));
+
+    expect(r).toMatchObject({ status: "done", score: null, autonomy: null, outcome: null });
   });
 
   it("takes the override cost only when there is no verdict to read it from", () => {
@@ -196,15 +212,16 @@ describe("aggregate", () => {
     expect(agg.scenarioIds).toContain("retired-scenario");
   });
 
-  it("counts crashed episodes without hiding them from the totals", () => {
+  it("counts crashed episodes without hiding them, and without averaging them in", () => {
     const rows = [
       result({
         scenarioId: "sla-escalation",
         model: "m1",
         seed: 1,
         status: "failed",
-        autonomy: 0,
-        outcome: "fail",
+        score: null,
+        autonomy: null,
+        outcome: null,
         cost: cost({ usd: 0 }),
       }),
       result({ scenarioId: "sla-escalation", model: "m1", seed: 2, autonomy: 1 }),
@@ -212,9 +229,37 @@ describe("aggregate", () => {
     const agg = aggregate({ ...MATRIX, models: ["m1"] }, rows);
     expect(agg.failed).toBe(1);
     expect(agg.episodes).toBe(2);
+    expect(agg.scored).toBe(1);
+    expect(agg.unscored).toBe(1);
     expect(agg.byModel[0].failed).toBe(1);
-    // The crash drags the mean down; that is the honest number.
-    expect(agg.byModel[0].meanAutonomy).toBe(0.5);
+    // The crash is a fact about the harness, not a zero the model earned: the
+    // mean is over the one seed that produced a result.
+    expect(agg.byModel[0].meanAutonomy).toBe(1);
+    expect(agg.byModel[0].scored).toBe(1);
+    expect(agg.byModel[0].unscored).toBe(1);
+  });
+
+  it("reports no mean at all when a model produced no result anywhere", () => {
+    const rows = [
+      result({
+        scenarioId: "sla-escalation",
+        model: "m1",
+        seed: 1,
+        status: "failed",
+        score: null,
+        autonomy: null,
+        outcome: null,
+      }),
+    ];
+    const agg = aggregate({ ...MATRIX, models: ["m1"] }, rows);
+    // Null, so the table prints a dash. A 0.00 here would be read as a score.
+    expect(agg.byModel[0]).toMatchObject({
+      episodes: 1,
+      scored: 0,
+      meanAutonomy: null,
+      meanScore: null,
+      successRate: null,
+    });
   });
 
   it("is a pure function of its inputs", () => {

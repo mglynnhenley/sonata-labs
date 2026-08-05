@@ -14,12 +14,22 @@ function passed(n: number, weight = 1): CriterionResult[] {
     kind: "replied" as const,
     severity: "must" as const,
     weight,
-    passed: true,
+    status: "passed" as const,
   }));
 }
 
 function failed(n: number, weight = 1): CriterionResult[] {
-  return passed(n, weight).map((c, i) => ({ ...c, id: `f${i}`, passed: false }));
+  return passed(n, weight).map((c, i) => ({ ...c, id: `f${i}`, status: "failed" as const }));
+}
+
+/** Criteria the run could not decide either way — restraint by an idle agent. */
+function unverifiable(n: number, weight = 1): CriterionResult[] {
+  return passed(n, weight).map((c, i) => ({
+    ...c,
+    id: `n${i}`,
+    kind: "untouched" as const,
+    status: "notApplicable" as const,
+  }));
 }
 
 /** A beat arriving on tick 0, then `busy` ticks of work and `quiet` ticks of silence. */
@@ -180,6 +190,20 @@ describe("autonomy", () => {
     const completion = autonomy(checklist, day(2, 0)).components.find((c) => c.id === "completion");
     expect(completion?.value).toBe(0.75);
     expect(completion?.detail).toContain("1/2 criteria passed");
+  });
+
+  it("gives completion nothing for criteria the run never decided", () => {
+    // The do-nothing control again, but with its negative criteria as the checker
+    // now reports them. Weight 9 apiece: if `notApplicable` reached the denominator
+    // — or worse, the numerator — this would not be zero.
+    const checklist = [...failed(1), ...unverifiable(3, 9)];
+    const result = autonomy(checklist, day(0, 5));
+    const completion = result.components.find((c) => c.id === "completion");
+
+    expect(completion?.value).toBe(0);
+    expect(completion?.detail).toContain("0/1 criteria passed");
+    expect(completion?.detail).toContain("3 not applicable");
+    expect(result.score).toBe(0);
   });
 
   it("scores an empty run at zero rather than dividing by zero", () => {

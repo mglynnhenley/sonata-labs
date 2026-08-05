@@ -58,14 +58,21 @@ function mdTable(headers: string[], rows: string[][], align: Align[]): string {
   ].join("\n");
 }
 
-/** 0..1 as two decimals. Two, because seed noise lives in the second one. */
-export function formatScore(n: number): string {
-  return n.toFixed(2);
+/**
+ * 0..1 as two decimals. Two, because seed noise lives in the second one.
+ *
+ * A null is a dash, and that is the whole contract of this file: the table may
+ * print a number we measured or say that we did not, and it may never print a
+ * 0.00 that means "no run". A reader cannot tell those apart, and the first one
+ * who tries is holding the article.
+ */
+export function formatScore(n: number | null): string {
+  return n === null ? "—" : n.toFixed(2);
 }
 
 /** 0..1 as a whole percentage — "67%", never "66.7%". */
-export function formatPct(n: number): string {
-  return `${Math.round(n * 100)}%`;
+export function formatPct(n: number | null): string {
+  return n === null ? "—" : `${Math.round(n * 100)}%`;
 }
 
 function label(id: string, labels: Record<string, string> | undefined): string {
@@ -92,9 +99,9 @@ export function renderMatrixTable(agg: BenchmarkAggregate, opts: TableOptions = 
     ...agg.scenarioIds.map((id) => {
       const s = m.byScenario[id];
       if (!s) return missing;
-      // The ± is shown only where more than one seed ran: quoting "±0.00" on a
+      // The ± is shown only where more than one seed SCORED: quoting "±0.00" on a
       // single episode would claim a reproducibility that was never tested.
-      return spread && s.episodes > 1
+      return spread && s.scored > 1
         ? `${formatScore(s.meanAutonomy)} ±${formatScore(s.autonomyStdDev)}`
         : formatScore(s.meanAutonomy);
     }),
@@ -119,6 +126,9 @@ export function renderSummaryTable(agg: BenchmarkAggregate, opts: TableOptions =
   const headers = [
     "Model",
     "Episodes",
+    // Scored is its own column rather than a footnote: it is the denominator of
+    // the three numbers to its right, and a reader is entitled to see it.
+    "Scored",
     "Autonomy",
     "Task success",
     "Cost/episode",
@@ -130,6 +140,7 @@ export function renderSummaryTable(agg: BenchmarkAggregate, opts: TableOptions =
   const rows = agg.byModel.map((m) => [
     label(m.model, opts.modelLabels),
     String(m.episodes),
+    String(m.scored),
     formatScore(m.meanAutonomy),
     formatPct(m.successRate),
     formatUsd(m.meanCostUsd),
@@ -140,6 +151,7 @@ export function renderSummaryTable(agg: BenchmarkAggregate, opts: TableOptions =
 
   return mdTable(headers, rows, [
     "left",
+    "right",
     "right",
     "right",
     "right",
@@ -187,7 +199,12 @@ export function renderReport(agg: BenchmarkAggregate, opts: TableOptions = {}): 
   const dims =
     `${agg.byModel.length} model(s) x ${agg.scenarioIds.length} scenario(s) ` +
     `x ${agg.seeds.length} seed(s)`;
-  const failed = agg.failed > 0 ? `, ${agg.failed} of them failed to complete` : "";
+  // The provenance line has to carry the exclusion, or every number above it is
+  // quoted without the one caveat that would let a reader check it.
+  const unscored =
+    agg.unscored > 0
+      ? `, ${agg.unscored} of which never ran and are excluded from every number above`
+      : "";
 
   return [
     `## ${agg.benchmarkId}`,
@@ -204,7 +221,7 @@ export function renderReport(agg: BenchmarkAggregate, opts: TableOptions = {}): 
     "",
     renderFailureModeTable(agg, opts),
     "",
-    `_${agg.episodes} episodes${failed} — ${dims}. Total spend ${formatUsd(agg.totalCostUsd)}._`,
+    `_${agg.episodes} episodes${unscored} — ${dims}. Total spend ${formatUsd(agg.totalCostUsd)}._`,
     "",
   ].join("\n");
 }

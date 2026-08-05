@@ -174,6 +174,34 @@ describe("the slack adapter", () => {
     expect(handle).toEqual({ twin: "slack", id: "1720.01", containerId: "C01OPS" });
   });
 
+  it("splits the channel off an audit-log ref before using it as a ts", async () => {
+    // A ref minted from the twin's own audit log is Slack's `target_id` —
+    // "C01OPS/1720.01", one string. Passing that whole thing back as a threadTs
+    // is a 400, which is the world silently unable to answer the agent.
+    const fake = fetchFake({ "/api/sandbox/inject": { injected: { id: "1720.09", containerId: "C01OPS" } } });
+    const adapter = createSlackAdapter({ baseUrl: "http://slack.test", fetchImpl: fake.fetch });
+    await adapter.inject(
+      {
+        twin: "slack",
+        kind: "message",
+        payload: { channel: "ops", from: "sam", text: "seen", threadRef: "act:slack:11" },
+      },
+      ctx({ "act:slack:11": { twin: "slack", id: "C01OPS/1720.01" } }),
+    );
+    expect(fake.find("/api/sandbox/inject")?.body).toMatchObject({
+      kind: "thread_reply",
+      threadTs: "1720.01",
+    });
+
+    const react = fetchFake({ "/api/sandbox/inject": { injected: {} } });
+    const handle = await createSlackAdapter({ baseUrl: "http://slack.test", fetchImpl: react.fetch }).inject(
+      { twin: "slack", kind: "reaction", payload: { messageRef: "act:slack:11", from: "sam", emoji: "eyes" } },
+      ctx({ "act:slack:11": { twin: "slack", id: "C01OPS/1720.01" } }),
+    );
+    expect(react.find("/api/sandbox/inject")?.body).toMatchObject({ channel: "C01OPS", ts: "1720.01" });
+    expect(handle).toEqual({ twin: "slack", id: "1720.01", containerId: "C01OPS" });
+  });
+
   it("says what is missing when a reaction points at nothing", async () => {
     const adapter = createSlackAdapter({ baseUrl: "http://slack.test", fetchImpl: fetchFake({}).fetch });
     await expect(

@@ -1,14 +1,20 @@
 "use client";
 
 import { useState } from "react";
-import type { CriterionResult } from "@sonata/core";
-import { Card, Chip, IconAlert, IconArrowRight, IconCheck, IconChevronDown, IconClose, cn } from "@sonata/ui";
+import { decidedCriteria, type CriterionResult } from "@sonata/core";
+import { Card, Chip, IconAlert, IconArrowRight, IconCheck, IconChevronDown, IconClose, IconMinus, cn } from "@sonata/ui";
 import { formatPercent } from "../_lib/summary";
 
 // The checklist, with its work shown. A criterion is a claim about the day, so
 // clicking one opens the evidence the checker quoted and, when it knows which
 // tick satisfied it, hands off to the replay. A green tick nobody can open is
 // exactly the dead-end stat the spec bans.
+//
+// Three states, not two. A criterion nothing could decide is not a failure and
+// must never be shown as one — it is the row a reader would otherwise carry out
+// of here as "the agent didn't do this", from a run that gave no evidence either
+// way. It is drawn apart, counted apart, and excluded from the denominator, the
+// same way `checklistScore` excludes it.
 
 export function SuccessChecklist({
   checklist,
@@ -20,7 +26,9 @@ export function SuccessChecklist({
   /** Park the replay on the tick this criterion was satisfied. */
   onJump: (target: { tick: number }) => void;
 }) {
-  const passed = checklist.filter((c) => c.passed).length;
+  const decided = decidedCriteria(checklist);
+  const passed = decided.filter((c) => c.status === "passed").length;
+  const undecided = checklist.length - decided.length;
 
   return (
     <Card
@@ -30,7 +38,12 @@ export function SuccessChecklist({
       subtitle={
         checklist.length === 0
           ? "This run has no checklist yet."
-          : `${passed} of ${checklist.length} criteria passed — ${formatPercent(score)} by weight.`
+          : decided.length === 0
+            ? `Nothing on this checklist could be decided from what the run left behind — all ${checklist.length} criteria are unchecked, and none of them counts either way.`
+            : `${passed} of ${decided.length} criteria passed — ${formatPercent(score)} by weight.` +
+              (undecided > 0
+                ? ` ${undecided} more could not be decided, so ${undecided === 1 ? "it is" : "they are"} not counted either way.`
+                : "")
       }
       className="scroll-mt-6"
     >
@@ -61,6 +74,8 @@ function CriterionRow({
   const [open, setOpen] = useState(false);
   // Captured, because narrowing on a property does not survive into the callback.
   const tick = criterion.tick;
+  const passed = criterion.status === "passed";
+  const undecided = criterion.status === "notApplicable";
 
   return (
     <li className="border-b border-sn-line/70 last:border-b-0">
@@ -73,21 +88,37 @@ function CriterionRow({
           "transition-colors duration-150 ease-sn hover:bg-sn-surface-hover",
         )}
       >
+        {/* Undecided is its own mark, deliberately not a red cross: a hollow
+            dash reads as "nothing to say", which is what it means. */}
         <span
           aria-hidden="true"
           className={cn(
             "mt-0.5 grid h-[18px] w-[18px] shrink-0 place-items-center rounded-full border",
-            criterion.passed
-              ? "border-sn-passed-line bg-sn-passed-soft text-sn-passed-ink"
-              : "border-sn-failed-line bg-sn-failed-soft text-sn-failed-ink",
+            undecided
+              ? "border-dashed border-sn-line-strong bg-sn-bg-subtle text-sn-subtle"
+              : passed
+                ? "border-sn-passed-line bg-sn-passed-soft text-sn-passed-ink"
+                : "border-sn-failed-line bg-sn-failed-soft text-sn-failed-ink",
           )}
         >
-          {criterion.passed ? <IconCheck size={11} /> : <IconClose size={11} />}
+          {undecided ? (
+            <IconMinus size={11} />
+          ) : passed ? (
+            <IconCheck size={11} />
+          ) : (
+            <IconClose size={11} />
+          )}
         </span>
 
         <span className="min-w-0 flex-1">
           <span className="block text-[13.5px] text-sn-ink">{criterion.description}</span>
           <span className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-sn-subtle">
+            {undecided ? (
+              <>
+                <span className="font-medium text-sn-muted">could not be checked</span>
+                <span aria-hidden="true">·</span>
+              </>
+            ) : null}
             <span className="font-mono">{criterion.id}</span>
             <span aria-hidden="true">·</span>
             <span>{criterion.kind}</span>
@@ -107,16 +138,18 @@ function CriterionRow({
         </span>
 
         {criterion.severity === "must" ? (
+          // Only a DECIDED must can fail the run, so only a failed one is drawn
+          // in alarm. An undecided must is not an accusation.
           <Chip
             size="sm"
             icon={false}
             className={cn(
               "mt-0.5",
-              criterion.passed
+              passed || undecided
                 ? "border-sn-line bg-sn-bg-subtle text-sn-muted"
                 : "border-sn-failed-line bg-sn-failed-soft text-sn-failed-ink",
             )}
-            title="A failed must-criterion fails the whole run."
+            title="A failed must-criterion fails the whole run. One nothing could decide does not."
           >
             must
           </Chip>
@@ -140,9 +173,11 @@ function CriterionRow({
           ) : (
             <p className="flex items-start gap-2 text-[13px] text-sn-muted">
               <IconAlert size={14} className="mt-0.5 shrink-0 text-sn-subtle" />
-              {criterion.passed
-                ? "The checker passed this without quoting anything — it matched on state, not on a message."
-                : "Nothing in the world satisfied this criterion, so there is nothing to quote."}
+              {undecided
+                ? "No checker could settle this from what the run left behind, so it is neither passed nor failed and takes no part in the score."
+                : passed
+                  ? "The checker passed this without quoting anything — it matched on state, not on a message."
+                  : "Nothing in the world satisfied this criterion, so there is nothing to quote."}
             </p>
           )}
 

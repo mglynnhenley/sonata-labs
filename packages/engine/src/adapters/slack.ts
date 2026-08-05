@@ -84,6 +84,22 @@ export function createSlackAdapter(opts: SlackAdapterOptions = {}): TwinAdapter 
     return res.injected ?? {};
   }
 
+  /**
+   * A message ref, split into the channel it lives in and its `ts`.
+   *
+   * Two shapes arrive here. A ref the engine minted from an inject carries `id`
+   * and `containerId` separately; a ref minted from the twin's own audit log
+   * carries Slack's `target_id`, which is `"C01OPS/1720000000.000200"` — one
+   * string, because that is what identifies a message in this twin. Handing that
+   * whole string back as a `ts` is how every attempt by the world to reply in a
+   * thread the agent started came back 400 "thread not found".
+   */
+  function messageRef(ref: InjectedRef): { ts: string; channel?: string } {
+    const slash = ref.id.indexOf("/");
+    if (slash > 0) return { ts: ref.id.slice(slash + 1), channel: ref.id.slice(0, slash) };
+    return { ts: ref.id, ...(ref.containerId ? { channel: ref.containerId } : {}) };
+  }
+
   function digest(channelId: string, channelName: string, m: SlackMessage) {
     return {
       channelId,
@@ -171,7 +187,7 @@ export function createSlackAdapter(opts: SlackAdapterOptions = {}): TwinAdapter 
                   channel: p.channel.replace(/^#/, ""),
                   user: slackIdOf(ctx.world, p.from),
                   text: p.text,
-                  threadTs: parent.id,
+                  threadTs: messageRef(parent).ts,
                   atISO: ctx.atISO,
                 }
               : {
@@ -193,20 +209,21 @@ export function createSlackAdapter(opts: SlackAdapterOptions = {}): TwinAdapter 
         const p = body.payload;
         const target = ctx.resolve(p.messageRef);
         if (!target) throw new Error(`reaction targets "${p.messageRef}", which nothing created`);
-        if (!target.containerId) {
+        const { ts, channel } = messageRef(target);
+        if (!channel) {
           throw new Error(`reaction target "${p.messageRef}" has no channel to react in`);
         }
         await injected({
           kind: "reaction",
-          channel: target.containerId,
-          ts: target.id,
+          channel,
+          ts,
           user: slackIdOf(ctx.world, p.from),
           emoji: p.emoji,
           atISO: ctx.atISO,
         });
         // A reaction has no identity of its own in Slack; it belongs to the
         // message, so the handle points back at what it decorated.
-        return { twin: "slack", id: target.id, containerId: target.containerId };
+        return { twin: "slack", id: ts, containerId: channel };
       } catch (err) {
         if (err instanceof TwinHttpError && err.status === 404) {
           throw new Error(

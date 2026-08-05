@@ -11,19 +11,27 @@ import {
   type BadgeStatus,
   type Column,
 } from "@sonata/ui";
-import type { RunStatus } from "@sonata/core";
+import { NO_RESULT, type RunStatus } from "@sonata/core";
 import { ago, elapsed, percent } from "@/lib/format";
 import { modelLabel } from "@/lib/models";
+// One name for the checklist number, wherever it is printed.
+import { CHECKLIST_HINT, CHECKLIST_LABEL } from "../../results/_lib/summary";
 import type { RunSummary } from "../../api/_lib/types";
 
 // History. Every row is a door: a finished run opens its results, a live one
 // opens the day it is still playing.
 
+// This column answers "did the day play?", NOT "did the agent do the job" — the
+// summary this list is built from carries no outcome, only a run status. It used
+// to render `done` as a green "Finished", which put the same run under a green
+// tick here and a red "Failed" on its results page. Green is the outcome's to
+// give, so the neutral tone and the plainer word stay out of its way; the score
+// and autonomy columns beside this one are where the judgement lives.
 const BADGE: Record<RunStatus, BadgeStatus> = {
   queued: "pending",
   running: "running",
   judging: "running",
-  done: "passed",
+  done: "neutral",
   failed: "failed",
   aborted: "neutral",
 };
@@ -32,12 +40,24 @@ const LABEL: Record<RunStatus, string> = {
   queued: "Starting",
   running: "Running",
   judging: "Judging",
-  done: "Finished",
+  done: "Ran to the end",
   failed: "Errored",
   aborted: "Stopped",
 };
 
 const LIVE: readonly RunStatus[] = ["queued", "running", "judging"];
+
+/**
+ * What the status cell says. A finished run with no score is not "Finished" —
+ * the agent never ran, and the row has to say so rather than leave two dashes
+ * for the reader to interpret.
+ */
+function statusOf(run: RunSummary): { tone: BadgeStatus; label: string } {
+  if (!LIVE.includes(run.status) && run.score === null) {
+    return { tone: run.status === "failed" ? "failed" : "neutral", label: NO_RESULT };
+  }
+  return { tone: BADGE[run.status], label: LABEL[run.status] };
+}
 
 export function runHref(run: RunSummary): string {
   return LIVE.includes(run.status) ? `/runs/${run.runId}` : `/results/${run.runId}`;
@@ -89,11 +109,18 @@ export function PastRuns({ runs, now }: PastRunsProps) {
     },
     {
       key: "score",
-      header: "Score",
+      // The same number the results page calls "checklist score". Headed "Score"
+      // here, it read as the headline; the headline is autonomy, in the column
+      // beside it.
+      header: CHECKLIST_LABEL,
       align: "right",
-      width: "90px",
+      width: "110px",
       render: (run) => (
-        <span data-numeric className={run.score === null ? "text-sn-subtle" : "text-sn-ink"}>
+        <span
+          data-numeric
+          className={run.score === null ? "text-sn-subtle" : "text-sn-ink"}
+          title={CHECKLIST_HINT}
+        >
           {percent(run.score)}
         </span>
       ),
@@ -111,14 +138,21 @@ export function PastRuns({ runs, now }: PastRunsProps) {
     },
     {
       key: "status",
-      header: "Status",
+      // "The day", not "Status": this says whether the day played, and the
+      // results page's badge says whether the agent passed. Two questions, two
+      // headings — one run reading "Finished" here and "Failed" there was one
+      // heading doing both jobs.
+      header: "The day",
       align: "right",
-      width: "120px",
-      render: (run) => (
-        <Badge status={BADGE[run.status]} size="sm" dot={run.status === "running"}>
-          {LABEL[run.status]}
-        </Badge>
-      ),
+      width: "140px",
+      render: (run) => {
+        const status = statusOf(run);
+        return (
+          <Badge status={status.tone} size="sm" dot={run.status === "running"}>
+            {status.label}
+          </Badge>
+        );
+      },
     },
   ];
 

@@ -49,6 +49,8 @@ export interface RunOver {
   endedAt?: number | null;
   /** Set to drop the verdict entirely — a run that died before it was scored. */
   noVerdict?: boolean;
+  /** A day that ticked through with the agent never touching a twin. */
+  idleAgent?: boolean;
   error?: string;
 }
 
@@ -73,7 +75,22 @@ export function episodeRun(over: RunOver = {}): EpisodeRun {
       endedAt: startedAt + i * 100 + 50,
       beatsFired: [],
       directorEvents: [],
-      agentSteps: [],
+      // A tool call per tick, because that is what makes a run scoreable at all
+      // — `runExecution` reads the steps, not the tick count.
+      agentSteps: over.idleAgent
+        ? []
+        : [
+            {
+              kind: "tool" as const,
+              seq: i + 1,
+              at: startedAt + i * 100,
+              twin: "gmail" as const,
+              name: "gmail.send_reply",
+              args: {},
+              resultSummary: "sent",
+              isMutation: true,
+            },
+          ],
       notes: [],
     })),
     snapshots: {},

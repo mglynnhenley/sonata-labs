@@ -10,13 +10,20 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
-  const params = new URL(req.url).searchParams;
-  const spec = params.get("spec");
-  const model = params.get("model");
+  try {
+    const params = new URL(req.url).searchParams;
+    const spec = params.get("spec");
+    const model = params.get("model");
 
-  const runs = listRuns()
-    .map(summarizeRun)
-    .filter((run) => (!spec || run.specId === spec) && (!model || run.model === model));
+    const runs = listRuns()
+      .map(summarizeRun)
+      .filter((run) => (!spec || run.specId === spec) && (!model || run.model === model));
 
-  return NextResponse.json({ runs, benchmark: buildBenchmark(runs) });
+    return NextResponse.json({ runs, benchmark: buildBenchmark(runs) });
+  } catch (err) {
+    // Reading the artifact directory is filesystem work, and an unhandled throw
+    // out of a route handler is an empty 500 body — which every caller here
+    // renders as a bare "Internal Server Error". One shape, always: `{ error }`.
+    return NextResponse.json({ error: (err as Error).message }, { status: 500 });
+  }
 }

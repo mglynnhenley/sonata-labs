@@ -73,7 +73,7 @@ export function RejudgeButton({
         description={
           first
             ? "A model reads the saved day and names what went wrong, with evidence for each finding. Nothing is re-run — the deterministic checklist stays exactly as it is."
-            : "The saved day is read again by a different model. Nothing is re-run, and the deterministic checklist does not change — only the findings and the autonomy score they imply."
+            : "The saved day is read again by a different model. Nothing is re-run: the checklist and the autonomy score are counted off the day itself and stay put — only the diagnosis changes."
         }
         footer={
           <>

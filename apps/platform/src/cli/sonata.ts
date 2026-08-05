@@ -3,7 +3,8 @@ import "./env"; // must precede every import that reaches a model module or the 
 import path from "node:path";
 import { formatEstimate, renderReport, type BenchmarkEvent } from "@sonata/benchmark";
 import type { CriterionResult, EpisodeRun, TwinName } from "@sonata/core";
-import { TWIN_NAMES, offsetMinutes } from "@sonata/core";
+import { TWIN_NAMES, offsetMinutes, runExecution } from "@sonata/core";
+import { reconcileRunRows } from "../../app/api/_lib/mirror";
 import { readRun } from "../../app/results/_lib/artifacts";
 import { formatSimTime } from "../../app/results/_lib/summary";
 import { buildStory, type StoryRow } from "../../app/runs/_lib/story";
@@ -66,6 +67,8 @@ const USAGE = `sonata — run agents inside a cloned business
       --budget <usd>  --id <name>       Stop at a spend; name the matrix
 
   sonata status                         Twins, live runs, and what has been run
+  sonata reconcile                      Re-read every artifact and repoint the
+                                        runs list at what today's checker says
 `;
 
 // ---------------------------------------------------------------------------
@@ -180,8 +183,11 @@ function storyLine(row: StoryRow, offset: number): string {
   return `${clock} ${mark}${where} ${row.title}${detail}`;
 }
 
+/** Three states, not two: a criterion nothing could decide is not a failure. */
+const CRITERION_MARK = { passed: "PASS", failed: "FAIL", notApplicable: "n/a " } as const;
+
 function checklistLine(c: CriterionResult): string {
-  return `  ${c.passed ? "PASS" : "FAIL"}  ${c.severity.padEnd(6)} ${c.description}${
+  return `  ${CRITERION_MARK[c.status]}  ${c.severity.padEnd(6)} ${c.description}${
     c.evidence ? `\n          ${c.evidence}` : ""
   }`;
 }
@@ -193,7 +199,9 @@ function printVerdict(runId: string, fallback: EpisodeRun): void {
   say();
   say(`  ${runId}`);
   if (!verdict) {
-    say("  No verdict was written. The run artifact is still worth reading.");
+    // Not "scored zero": there is no score, and the reason is the result.
+    say(`  NO RESULT · ${runExecution(run).reason ?? "this run was never scored"}`);
+    say("  The artifact is still worth reading — the ticks it did record say why.");
     return;
   }
 
@@ -396,9 +404,9 @@ function benchEventLine(event: BenchmarkEvent): string {
         event.done + 1
       }/${event.total}`;
     case "cell-done":
-      return `    ${event.result.outcome} · score ${percent(event.result.score)} · autonomy ${percent(
-        event.result.autonomy,
-      )} · ${money(event.result.cost.usd)}`;
+      return `    ${event.result.outcome ?? "no result"} · score ${percent(
+        event.result.score,
+      )} · autonomy ${percent(event.result.autonomy)} · ${money(event.result.cost.usd)}`;
     case "cell-failed":
       return `    failed: ${event.error}`;
     case "stopped":
@@ -492,8 +500,12 @@ async function statusCommand(): Promise<void> {
   const stats = runStats();
   say();
   say("Work");
-  say(`  ${countWorlds()} businesses · ${countEpisodes()} scenarios · ${stats.finished} finished runs`);
-  if (stats.finished > 0) {
+  say(
+    `  ${countWorlds()} businesses · ${countEpisodes()} scenarios · ${stats.scored} scored runs` +
+      // Named, never averaged in: a run that never executed has no performance.
+      (stats.unscored > 0 ? ` · ${stats.unscored} that never ran` : ""),
+  );
+  if (stats.scored > 0) {
     say(
       `  pass rate ${percent(stats.passRate)} · autonomy ${percent(stats.autonomy)} · spent ${money(
         stats.spendUsd,
@@ -519,6 +531,29 @@ async function statusCommand(): Promise<void> {
   }
 }
 
+/**
+ * Repoint the runs list at the artifacts.
+ *
+ * The relational row caches a verdict so a list renders without parsing the
+ * whole day, and a cache written by an older checker is how Home and a run's own
+ * page came to print two different numbers for one run. Run this after anything
+ * that changes what a criterion means.
+ */
+function reconcileCommand(): void {
+  const moved = reconcileRunRows();
+  if (moved.length === 0) {
+    say("Every run already reads the same in the list as it does on its own page.");
+    return;
+  }
+  say(`Repointed ${moved.length} run${moved.length === 1 ? "" : "s"} at today's checker:`);
+  for (const m of moved) {
+    say(
+      `  ${m.runId.padEnd(22)} score ${percent(m.was.score)} → ${percent(m.now.score)}` +
+        ` · autonomy ${percent(m.was.autonomy)} → ${percent(m.now.autonomy)}`,
+    );
+  }
+}
+
 // ---------------------------------------------------------------------------
 
 async function main(): Promise<void> {
@@ -536,6 +571,8 @@ async function main(): Promise<void> {
       return benchCommand(args);
     case "status":
       return statusCommand();
+    case "reconcile":
+      return reconcileCommand();
     case undefined:
     case "help":
       say(USAGE);

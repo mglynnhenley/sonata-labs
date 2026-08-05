@@ -369,27 +369,40 @@ async function complete(
 ): Promise<EpisodeRun> {
   const run = result.run;
   const status: RunStatus = entry.cancelled ? "aborted" : run.status === "failed" ? "failed" : "done";
-  const { checklist, verdict } = scoreRun(run, spec, { audit: result.audit, cost: result.cost });
+  // Reconcile the ticks BEFORE scoring: autonomy reads the shape of the day, so a
+  // loop that reported its ticks only through `onTick` would otherwise be scored
+  // against an empty one and look like an agent that never moved.
+  const ticks = run.ticks.length > 0 ? run.ticks : entry.ticks;
+  // Scored as the status it is FINISHING with, not the one the loop returned: a
+  // cancelled day is aborted, and `scoreRun` refuses to score a day that was cut
+  // short as though the afternoon's criteria had had their chance.
+  const { checklist, verdict, execution } = scoreRun({ ...run, status, ticks }, spec, {
+    audit: result.audit,
+    cost: result.cost,
+  });
   const scored: EpisodeRun = {
     ...run,
     status,
     endedAt: run.endedAt ?? Date.now(),
-    ticks: run.ticks.length > 0 ? run.ticks : entry.ticks,
+    ticks,
     verdict,
     // A stopped day is not a broken one, and the engine's own note for it is the
     // sentinel above — which would read as a crash on the results page.
     ...(entry.cancelled ? { error: undefined } : {}),
   };
 
-  entry.score = verdict.score;
-  entry.autonomy = verdict.autonomy;
-  entry.costUsd = verdict.cost.usd;
+  // Null, not zero, when nothing was scored — the runs list and Home read these
+  // straight through, and both have to be able to tell "did badly" from "we do
+  // not know". The spend is known either way; it was paid either way.
+  entry.score = verdict?.score ?? null;
+  entry.autonomy = verdict?.autonomy ?? null;
+  entry.costUsd = result.cost.usd;
 
   // One terminal write for the row and the artifact together, through the same
   // function the rest of the dashboard finishes runs with.
-  mirrorRunFinish({ run: scored, spec, checklist });
+  mirrorRunFinish({ run: scored, spec, checklist, cost: result.cost });
 
-  const wantsJudge = input.judge !== false && scored.ticks.length > 0 && !entry.cancelled;
+  const wantsJudge = input.judge !== false && execution.executed && !entry.cancelled;
   if (wantsJudge) {
     entry.status = "judging";
     updateRunProgress(entry.runId, { status: "judging" });
@@ -399,7 +412,9 @@ async function complete(
         signal: entry.controller.signal,
       });
       entry.autonomy = judged.autonomy;
-      scored.verdict = { ...verdict, autonomy: judged.autonomy, judge: judged.report };
+      // `wantsJudge` is only true for a run that executed, so there is a verdict
+      // here; the guard is for the type, not for the case.
+      if (verdict) scored.verdict = { ...verdict, autonomy: judged.autonomy, judge: judged.report };
     } catch (err) {
       // A judge that fails costs the run its diagnosis, not its score. The
       // checklist already ran, the artifact is already on disk, and the note
@@ -408,10 +423,14 @@ async function complete(
       finishRun({
         id: entry.runId,
         status,
-        outcome: verdict.outcome,
-        score: verdict.score,
-        autonomy: verdict.autonomy,
-        costUsd: verdict.cost.usd,
+        ...(verdict
+          ? {
+              outcome: verdict.outcome,
+              score: verdict.score,
+              autonomy: verdict.autonomy,
+              costUsd: verdict.cost.usd,
+            }
+          : {}),
         error: entry.error,
         endedAt: scored.endedAt ?? Date.now(),
       });
@@ -430,21 +449,16 @@ function fail(entry: LiveRun, spec: EpisodeSpec, err: unknown): EpisodeRun {
   entry.endedAt = Date.now();
 
   // Even a day that fell over at 09:15 is worth writing down: the ticks it did
-  // record are usually the reason it fell over.
+  // record are usually the reason it fell over. It is not worth SCORING — the
+  // status alone puts it outside `scoreRun`, so the verdict here is always null
+  // and the row keeps its error instead of a number.
   const run = partialRun(entry, spec, status);
   const { checklist, verdict } = scoreRun(run, spec);
-  entry.score = verdict.score;
-  entry.autonomy = verdict.autonomy;
+  entry.score = verdict?.score ?? null;
+  entry.autonomy = verdict?.autonomy ?? null;
+  // One write, not two: `mirrorRunFinish` finishes the row itself, and the second
+  // call is where a score could creep back in behind the artifact's back.
   mirrorRunFinish({ run: { ...run, verdict }, spec, checklist });
-  finishRun({
-    id: entry.runId,
-    status,
-    outcome: verdict.outcome,
-    score: verdict.score,
-    autonomy: verdict.autonomy,
-    error: entry.error,
-    endedAt: entry.endedAt,
-  });
   return run;
 }
 

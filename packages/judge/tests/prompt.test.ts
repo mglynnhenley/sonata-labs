@@ -79,7 +79,7 @@ function input(over: Partial<EpisodeJudgeInput> = {}): EpisodeJudgeInput {
         kind: "replied",
         severity: "must",
         weight: 2,
-        passed: true,
+        status: "passed",
         evidence: "replied: [audit 1] POST /send thread T1",
         tick: 2,
       },

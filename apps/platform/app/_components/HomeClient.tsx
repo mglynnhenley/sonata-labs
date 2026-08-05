@@ -15,10 +15,14 @@ import {
 import { money, percent } from "@/lib/format";
 import { ROUTES } from "@/lib/routes";
 import type { Overview } from "@/lib/overview";
+// The names live with the projections that produce the numbers, so Home and the
+// results pages cannot spell the same metric two ways.
+import { PASS_RATE_HINT, PASS_RATE_LABEL } from "../results/_lib/summary";
 import { FirstRun } from "./FirstRun";
 import { QuickStart } from "./QuickStart";
 import { RecentRuns } from "./RecentRuns";
 import { RunningCard } from "./RunningCard";
+import { StaleNotice } from "./StaleNotice";
 import { TwinStrip } from "./TwinStrip";
 import { useGo } from "./useGo";
 import { usePoll } from "./usePoll";
@@ -33,7 +37,8 @@ export interface HomeClientProps {
 
 export function HomeClient({ initial }: HomeClientProps) {
   const go = useGo();
-  const { data, refresh } = usePoll<Overview>("/api/overview", 2500, initial);
+  const poll = usePoll<Overview>("/api/overview", 2500, initial);
+  const { data, refresh } = poll;
   const { counts, stats, live, recent, twins } = data;
 
   if (data.firstRun) {
@@ -58,6 +63,8 @@ export function HomeClient({ initial }: HomeClientProps) {
           </Button>
         }
       />
+
+      <StaleNotice poll={poll} what="the overview" />
 
       {live.length > 0 ? (
         <div className="flex flex-col gap-4">
@@ -95,19 +102,33 @@ export function HomeClient({ initial }: HomeClientProps) {
             value={percent(stats.autonomy)}
             icon={<IconSpark size={15} />}
             hint={
-              stats.finished === 0
+              // The mean is over the runs that produced a result. Runs that never
+              // executed are named rather than averaged in — the count is the
+              // honest footnote to the number beside it.
+              stats.scored === 0
                 ? "How much gets done without a human. Nothing scored yet."
-                : `Mean across ${stats.finished} finished ${stats.finished === 1 ? "run" : "runs"}`
+                : `Mean across ${stats.scored} scored ${stats.scored === 1 ? "run" : "runs"}` +
+                  (stats.unscored > 0
+                    ? ` · ${stats.unscored} more never ran, so ${stats.unscored === 1 ? "it is" : "they are"} not counted`
+                    : "")
             }
             href={ROUTES.results}
             actionLabel="Open the results and see the criteria behind this"
             onClick={(e) => go(e, ROUTES.results)}
           />
+          {/* A share of RUNS, not of criteria. It was called "task success", and
+              so was the run page's share of ONE run's checklist — one label over
+              two denominators, which is how this card read 0% beside a run page
+              reading 25% for the same day. */}
           <StatCard
-            label="Task success"
+            label={PASS_RATE_LABEL}
             value={percent(stats.passRate)}
             icon={<IconSearch size={15} />}
-            hint="Days where every must-do criterion passed"
+            hint={
+              stats.scored === 0
+                ? PASS_RATE_HINT
+                : `${PASS_RATE_HINT} ${stats.scored} scored so far.`
+            }
             href={ROUTES.results}
             onClick={(e) => go(e, ROUTES.results)}
           />

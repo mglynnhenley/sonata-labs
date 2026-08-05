@@ -1,7 +1,7 @@
 import {
-  autonomyScore,
   checklistScore,
   offsetMinutes,
+  runExecution,
   verdictOutcome,
   type CriterionResult,
   type EpisodeJudgeReport,
@@ -9,9 +9,11 @@ import {
   type EpisodeSpec,
   type EpisodeVerdict,
   type RunCost,
+  type RunExecution,
   type TwinAuditRow,
 } from "@sonata/core";
 import {
+  autonomy,
   escalationsFromTicks,
   refsFromTicks,
   runChecklist,
@@ -42,6 +44,14 @@ export interface ScoreInput {
   cost?: RunCost;
 }
 
+export interface ScoredRun {
+  /** Empty when the run did not execute — there is nothing to show criteria for. */
+  checklist: CriterionResult[];
+  /** Null when the run did not execute. Absent, not zero. */
+  verdict: EpisodeVerdict | null;
+  execution: RunExecution;
+}
+
 /**
  * Score a finished run against its own checklist.
  *
@@ -51,12 +61,16 @@ export interface ScoreInput {
  * deliberately absent from the result — a criterion no checker could decide must
  * not drag a score that claims to report what was verified. They reach the judge
  * as questions instead.
+ *
+ * A run that never executed is not scored at all — see `runExecution`. It returns
+ * an empty checklist with it, because the criteria such a run "passes" are the
+ * negative ones it passed by doing nothing, and printing those as evidence is how
+ * a crash came to look like a mid-table result.
  */
-export function scoreRun(
-  run: EpisodeRun,
-  spec: EpisodeSpec,
-  input: ScoreInput = {},
-): { checklist: CriterionResult[]; verdict: EpisodeVerdict } {
+export function scoreRun(run: EpisodeRun, spec: EpisodeSpec, input: ScoreInput = {}): ScoredRun {
+  const execution = runExecution(run);
+  if (!execution.executed) return { checklist: [], verdict: null, execution };
+
   const existing = run.verdict;
   const checklist =
     existing && existing.checklist.length > 0
@@ -74,10 +88,16 @@ export function scoreRun(
 
   return {
     checklist,
+    execution,
     verdict: {
       outcome: verdictOutcome(checklist),
       score: checklistScore(checklist),
-      autonomy: autonomyScore(checklist, existing?.judge?.findings ?? []),
+      // @sonata/judge's `autonomy` is the definition of the headline number, and
+      // it reads the run rather than the judge's opinion of it: same artifact in,
+      // same number out, months later, with no key. That is what lets the runs
+      // list and the run page quote one figure — nothing downstream of the judge
+      // can move it.
+      autonomy: autonomy(checklist, run.ticks).score,
       checklist,
       judge: existing?.judge ?? null,
       cost: input.cost ?? existing?.cost ?? ZERO_COST,
@@ -113,24 +133,31 @@ export function briefFor(spec: EpisodeSpec): RunBrief {
 
 export interface JudgeResult {
   report: EpisodeJudgeReport;
-  /** Re-derived from the findings, so it moves with them. */
+  /** The run's own autonomy, re-read off the artifact the report was written to. */
   autonomy: number;
 }
 
 /**
- * Judge a day and write the report back onto its artifact.
+ * Judge a day, write the report to `<runId>.judge.json`, and fold it back into
+ * the run's verdict.
  *
- * The write-back goes through `updateRunJudge`, which read-modify-writes the raw
- * file: the engine owns that file and may have written fields this dashboard
- * does not model, and a judge pass must never be the thing that drops them.
+ * Both writes go through `updateRunJudge`. The separate judge artifact is the
+ * point of the split — `sonata judge <runId> --model X` overwrites one small
+ * file and the day never re-runs — and the run file is read-modify-written
+ * rather than rebuilt, because the engine owns it and may have put fields in it
+ * this dashboard does not model.
  */
 export async function judgeRun(
   run: EpisodeRun,
   brief: RunBrief,
   opts: { model?: string; signal?: AbortSignal } = {},
 ): Promise<JudgeResult> {
-  if (run.ticks.length === 0) {
-    throw new Error("This run recorded no ticks, so there is nothing for a judge to read.");
+  // The same bar the score uses. A judge reading a day the agent never worked
+  // would write a diagnosis of nothing, and that diagnosis would then be quoted
+  // as a finding about a model.
+  const execution = runExecution(run);
+  if (!execution.executed) {
+    throw new Error(`There is nothing for a judge to read. ${execution.reason ?? ""}`.trim());
   }
 
   const report = await rejudgeRun(run, brief, {
@@ -138,7 +165,7 @@ export async function judgeRun(
     ...(opts.signal ? { signal: opts.signal } : {}),
   });
   const verdict = updateRunJudge(run.runId, report);
-  const autonomy = verdict?.autonomy ?? autonomyScore(run.verdict?.checklist ?? [], report.findings);
+  const headline = verdict?.autonomy ?? autonomy(run.verdict?.checklist ?? [], run.ticks).score;
 
   // The runs list reads the relational row, not the file, so the headline number
   // has to move in both places or the two pages disagree about the same run.
@@ -149,13 +176,13 @@ export async function judgeRun(
       status: row.status === "judging" ? "done" : row.status,
       ...(row.outcome ? { outcome: row.outcome } : {}),
       ...(row.score === null ? {} : { score: row.score }),
-      autonomy,
+      autonomy: headline,
       ...(row.error ? { error: row.error } : {}),
       endedAt: row.endedAt ?? Date.now(),
     });
   }
 
-  return { report, autonomy };
+  return { report, autonomy: headline };
 }
 
 /**

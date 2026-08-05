@@ -1,11 +1,18 @@
 import { NextResponse } from "next/server";
+import { runExecution } from "@sonata/core";
+import { judgeRun } from "@/lib/engine/verdict";
 import { isModelId } from "@/lib/models";
-import { readBrief, readRun, updateRunJudge } from "../../../../results/_lib/artifacts";
-import { rejudgeRun } from "../../_lib/rejudge";
+import { readBrief, readRun } from "../../../../results/_lib/artifacts";
 
 // Re-judge a saved run with a different model. Nothing is re-run: the day on
 // disk is read again, so the only thing that can change is the judge's half of
-// the verdict — the findings, and the autonomy score derived from them.
+// the verdict — the findings and the diagnosis, not the deterministic score.
+//
+// The work is `judgeRun`, the same function the engine judges a day with when it
+// ends. It writes `<runId>.judge.json`, folds the report into the run artifact
+// AND moves the relational row Home reads. Calling the judge from here and
+// writing back by hand is how this button used to leave the two pages quoting
+// different numbers for the same run.
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -27,13 +34,6 @@ export async function POST(req: Request, { params }: { params: Promise<{ runId: 
     );
   }
 
-  if (run.ticks.length === 0) {
-    return NextResponse.json(
-      { error: "This run recorded no ticks, so there is nothing for a judge to read." },
-      { status: 400 },
-    );
-  }
-
   // Judging a day that is still being written would score a fragment at full
   // price, and the write-back would race the engine still appending ticks.
   if (run.status === "queued" || run.status === "running") {
@@ -43,19 +43,23 @@ export async function POST(req: Request, { params }: { params: Promise<{ runId: 
     );
   }
 
+  // The same bar `scoreRun` uses, checked before the money is spent: a run the
+  // agent never worked has nothing in it for a judge to read, and a diagnosis of
+  // nothing would be quoted as a finding about a model.
+  const execution = runExecution(run);
+  if (!execution.executed) {
+    return NextResponse.json(
+      { error: `There is nothing for a judge to read. ${execution.reason ?? ""}`.trim() },
+      { status: 400 },
+    );
+  }
+
   try {
-    const report = await rejudgeRun(run, readBrief(runId), {
+    const { report, autonomy } = await judgeRun(run, readBrief(runId), {
       ...(model ? { model } : {}),
       signal: req.signal,
     });
-    const verdict = updateRunJudge(runId, report);
-    if (!verdict) {
-      return NextResponse.json(
-        { error: "The judge ran, but the artifact could not be written back." },
-        { status: 500 },
-      );
-    }
-    return NextResponse.json({ report, autonomy: verdict.autonomy });
+    return NextResponse.json({ report, autonomy });
   } catch (err) {
     // The message is shown verbatim in the dialog, so it has to say what to do
     // next: a missing key, a bad slug and a timeout are all recoverable.

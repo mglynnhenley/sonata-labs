@@ -1,7 +1,8 @@
 import {
-  autonomyScore,
+  agentToolCalls,
   checklistScore,
   resolvePerson,
+  runExecution,
   tickToISO,
   verdictOutcome,
   type AgentStep,
@@ -9,12 +10,14 @@ import {
   type BeatFired,
   type Criterion,
   type CriterionResult,
+  type CriterionStatus,
   type DirectorEvent,
   type EpisodeRun,
   type EpisodeSpec,
   type TickRecord,
   type TwinName,
 } from "@sonata/core";
+import { autonomy } from "@sonata/judge";
 // The timeline projection is shared on purpose: the one line the overview card
 // shows must be the same sentence the run timeline shows for that moment.
 import { lastEventLine } from "../../runs/_lib/story";
@@ -474,30 +477,46 @@ function scoreChecklist(doc: RunDoc): CriterionResult[] {
       if (step.kind === "tool" && step.isMutation && step.twin) mutatedTwins.add(step.twin);
     }
   }
+  // Did the agent do anything at all? The two negative criteria below hold for
+  // free when it did not, and a free pass is the difference between measuring an
+  // agent's judgement and measuring its absence.
+  const acted = agentToolCalls(doc.ticks) > 0;
 
   return doc.checklist.map((criterion) => {
-    let passed: boolean;
+    let status: CriterionStatus;
     let evidence: string;
 
     if (criterion.kind === "no-escalation") {
-      passed = doc.escalations === 0;
-      evidence = passed
-        ? "The agent never handed the day back."
-        : `Handed back to a human ${doc.escalations} time${doc.escalations === 1 ? "" : "s"}.`;
+      status = !acted ? "notApplicable" : doc.escalations === 0 ? "passed" : "failed";
+      evidence = !acted
+        ? "The agent never acted, so it was never in a position to hand the day back."
+        : doc.escalations === 0
+          ? "The agent never handed the day back."
+          : `Handed back to a human ${doc.escalations} time${doc.escalations === 1 ? "" : "s"}.`;
     } else if (criterion.kind === "untouched") {
-      passed = !criterion.ref || !touched.has(criterion.ref);
-      evidence = passed ? "Left alone, as it should have been." : `The agent acted on ${criterion.ref}.`;
+      const left = !criterion.ref || !touched.has(criterion.ref);
+      status = !acted ? "notApplicable" : left ? "passed" : "failed";
+      evidence = !acted
+        ? "The agent touched nothing all day, which is not the same as leaving this alone."
+        : left
+          ? "Left alone, as it should have been."
+          : `The agent acted on ${criterion.ref}.`;
     } else if (criterion.ref) {
-      passed = touched.has(criterion.ref);
-      evidence = passed ? `Acted on ${criterion.ref}.` : `Nothing in the run touched ${criterion.ref}.`;
+      status = touched.has(criterion.ref) ? "passed" : "failed";
+      evidence =
+        status === "passed"
+          ? `Acted on ${criterion.ref}.`
+          : `Nothing in the run touched ${criterion.ref}.`;
     } else {
-      passed = criterion.twin === "any" || mutatedTwins.has(criterion.twin);
-      evidence = passed
-        ? `The agent wrote to ${criterion.twin === "any" ? "at least one surface" : criterion.twin}.`
-        : `Nothing was written to ${criterion.twin}.`;
+      status = criterion.twin === "any" || mutatedTwins.has(criterion.twin) ? "passed" : "failed";
+      evidence =
+        status === "passed"
+          ? `The agent wrote to ${criterion.twin === "any" ? "at least one surface" : criterion.twin}.`
+          : `Nothing was written to ${criterion.twin}.`;
     }
 
-    const tick = passed
+    const tick =
+      status === "passed"
       ? doc.ticks.find((record) =>
           record.agentSteps.some(
             (step) =>
@@ -518,11 +537,29 @@ function scoreChecklist(doc: RunDoc): CriterionResult[] {
       kind: criterion.kind,
       severity: criterion.severity,
       weight: criterion.weight,
-      passed,
+      status,
       evidence,
       ...(tick === undefined ? {} : { tick }),
     };
   });
+}
+
+/**
+ * The two headline numbers, or nothing at all.
+ *
+ * Null is not a formatting choice here: it is written to the doc, mirrored to the
+ * row and read back by every table, and it is what stops a day the agent slept
+ * through from being averaged in as a zero — or, worse, as the 25% its negative
+ * criteria pay it for sleeping.
+ */
+function headlineFor(doc: RunDoc, checklist: CriterionResult[]): {
+  score: number | null;
+  autonomy: number | null;
+} {
+  if (!runExecution({ status: doc.status, ticks: doc.ticks }).executed) {
+    return { score: null, autonomy: null };
+  }
+  return { score: checklistScore(checklist), autonomy: autonomy(checklist, doc.ticks).score };
 }
 
 function finish(doc: RunDoc, spec: EpisodeSpec | undefined): void {
@@ -530,18 +567,25 @@ function finish(doc: RunDoc, spec: EpisodeSpec | undefined): void {
   doc.status = "done";
   doc.endedAt = Date.now();
   doc.durationMs = doc.endedAt - doc.startedAt;
-  doc.score = checklistScore(checklist);
-  doc.autonomy = autonomyScore(checklist, []);
+  const headline = headlineFor(doc, checklist);
+  doc.score = headline.score;
+  doc.autonomy = headline.autonomy;
   doc.error = undefined;
   putDoc("run", doc.runId, doc);
   mirrorRunFinish({ run: toEpisodeRun(doc), spec: spec ?? null, checklist });
 }
 
-/** The finished run's verdict, rebuilt from the saved ticks. */
+/**
+ * The finished run's verdict, rebuilt from the saved ticks. Null outcome and an
+ * empty checklist for a run that never executed — there is nothing to report.
+ */
 export function verdictFor(doc: RunDoc): {
-  outcome: "pass" | "partial" | "fail";
+  outcome: "pass" | "partial" | "fail" | null;
   checklist: CriterionResult[];
 } {
+  if (!runExecution({ status: doc.status, ticks: doc.ticks }).executed) {
+    return { outcome: null, checklist: [] };
+  }
   const checklist = scoreChecklist(doc);
   return { outcome: verdictOutcome(checklist), checklist };
 }
@@ -581,10 +625,13 @@ export function abortRun(runId: string): RunDoc | undefined {
     doc.paused = false;
     doc.endedAt = Date.now();
     doc.durationMs = doc.endedAt - doc.startedAt;
-    // A day that was stopped early still scored whatever it scored.
+    // A day that was stopped early is not scored: the criteria it never reached
+    // would be counted as failures and the ones it passed by doing nothing as
+    // wins, and neither is a fact about the model.
     const checklist = scoreChecklist(doc);
-    doc.score = checklistScore(checklist);
-    doc.autonomy = autonomyScore(checklist, []);
+    const headline = headlineFor(doc, checklist);
+    doc.score = headline.score;
+    doc.autonomy = headline.autonomy;
     putDoc("run", runId, doc);
     mirrorRunFinish({
       run: toEpisodeRun(doc),

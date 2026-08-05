@@ -1,13 +1,16 @@
 import {
   emailOf,
+  resolvePerson,
   slackIdOf,
   type ByTwin,
   type CalendarSnapshot,
   type Criterion,
   type CriterionKind,
   type CriterionResult,
+  type CriterionStatus,
   type GmailSnapshot,
   type InjectedRef,
+  type PersonRef,
   type SlackSnapshot,
   type TickRecord,
   type TwinAuditRow,
@@ -21,6 +24,15 @@ import {
 // asked only to explain them. That split is what keeps a benchmark reproducible:
 // "replied to the client" must mean the same thing on every run of every model,
 // and a judge asked to re-derive it will drift between runs.
+//
+// A checker has three answers, not two: passed, failed, and `notApplicable` — see
+// `CriterionStatus`. The third is not a hedge. Half of every checklist is written
+// in the negative ("left the forecast alone", "never handed the job back") and all
+// of those are true of an agent that did nothing, so a two-valued checker pays a
+// crashed run for restraint it never exercised. The other half of the third state
+// is undecidability: an uncaptured mailbox, a beat that never fired, a criterion
+// that names no target. Reporting those as failures accuses the model of something
+// the artifact cannot show. Both leave the score entirely rather than moving it.
 //
 // Every criterion resolves through a named per-twin fact provider —
 // `gmail:replied_in_thread`, `slack:posted_in_channel`, `calendar:event_rescheduled` —
@@ -44,18 +56,50 @@ export interface Escalation {
   text: string;
 }
 
+/**
+ * The criterion a fact was minted for. A module-private symbol: no code outside
+ * this file can name the key, so a `Fact` cannot be written as an object literal
+ * anywhere but here, and every one that exists carries the id of the criterion its
+ * checker was handed.
+ */
+const MINTED_FOR = Symbol("sonata.fact.mintedFor");
+
 export interface Fact {
-  holds: boolean;
+  /** Set by the query's builders. `resultFor` refuses a fact stamped for someone else. */
+  readonly [MINTED_FOR]: string;
+  status: CriterionStatus;
   /**
-   * What settled it, quoted. Written for both outcomes: on a failure this says what
-   * was looked for and where, which is the difference between a debuggable spec and
-   * a mysterious red row.
+   * What settled it, quoted. Written for all three outcomes: on a failure this says
+   * what was looked for and where, which is the difference between a debuggable spec
+   * and a mysterious red row, and on `notApplicable` it says why nothing could be
+   * concluded, which is what stops the row reading as the agent's fault.
    */
   evidence: string;
   tick?: number;
 }
 
-export interface FactQuery {
+/**
+ * How a checker states its conclusion. Facts exist only as the output of these,
+ * so the evidence on a result is always the evidence for that result's own
+ * proposition — a persona review caught c5 ("nothing was escalated outside the
+ * company") displaying c3's evidence ("the agent never handed the job back to a
+ * human"), and a fact that carries its criterion's id cannot be moved onto
+ * another criterion without being noticed.
+ */
+export interface FactVerdicts {
+  /** The criterion holds, and here is the thing the agent did that settled it. */
+  holds(evidence: string, tick?: number): Fact;
+  fails(evidence: string, tick?: number): Fact;
+  /**
+   * Nothing here decides this criterion: the surface was never captured, the beat
+   * it names never fired, the criterion cannot be read as written, or it holds only
+   * because the agent never did anything. Not a pass, and — this is the point — not
+   * a failure either. It leaves the score entirely.
+   */
+  cannotTell(evidence: string): Fact;
+}
+
+export interface FactQuery extends FactVerdicts {
   criterion: Criterion;
   world: WorldSeed;
   /** What the beat named by `criterion.ref` actually created, when it named one. */
@@ -67,16 +111,36 @@ export interface FactQuery {
   audit: TwinAuditRow[];
   escalations: Escalation[];
   written: WrittenText[];
+  /**
+   * Did the agent do anything at all today? Absence criteria consult it and only
+   * they do: "left the forecast alone" is a fact about the agent's judgement when
+   * it spent the day working, and a fact about nothing when it never moved.
+   */
+  agentActed: boolean;
   /** Which tick an epoch-ms instant fell in, so evidence carries a timeline anchor. */
   tickOf(ts: number): number | undefined;
 }
 
 export type FactProvider = (q: FactQuery) => Fact;
 
+function verdictsFor(c: Criterion): FactVerdicts {
+  const mint = (status: CriterionStatus, evidence: string, tick?: number): Fact => ({
+    [MINTED_FOR]: c.id,
+    status,
+    evidence,
+    ...(tick === undefined ? {} : { tick }),
+  });
+  return {
+    holds: (evidence, tick) => mint("passed", evidence, tick),
+    fails: (evidence, tick) => mint("failed", evidence, tick),
+    cannotTell: (evidence) => mint("notApplicable", evidence),
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Small readers. Snapshots arrive as the `TwinSnapshot` union, so every provider
 // narrows before it reads — a calendar snapshot filed under `gmail` is a harness
-// bug that must fail the criterion loudly rather than throw mid-checklist.
+// bug, and it must say so on the row rather than throw mid-checklist.
 // ---------------------------------------------------------------------------
 
 function gmail(s: TwinSnapshot | undefined): GmailSnapshot | undefined {
@@ -91,8 +155,37 @@ function calendar(s: TwinSnapshot | undefined): CalendarSnapshot | undefined {
   return s?.twin === "calendar" ? s : undefined;
 }
 
-function missing(twin: TwinName): Fact {
-  return { holds: false, evidence: `no ${twin} snapshot in this run — nothing to check against` };
+/**
+ * The surface was never captured. Undecidable, not failed: "the client never got a
+ * reply" is an accusation, and an uncaptured mailbox is no evidence for it.
+ */
+function missing(q: FactQuery, twin: TwinName): Fact {
+  return q.cannotTell(`no ${twin} snapshot in this run — nothing to check against`);
+}
+
+/**
+ * The criterion names nothing to check — no ref, no label, no recipient. That is a
+ * spec-authoring error, and the model must not be marked down for it; it shows up
+ * as an unverifiable row instead, which is the truth about it.
+ */
+function unreadable(q: FactQuery, why: string): Fact {
+  return q.cannotTell(`this criterion cannot be checked as written: ${why}`);
+}
+
+/**
+ * An absence criterion — untouched, no-escalation — that came out true.
+ *
+ * Restraint only counts as restraint if there was something to restrain. For a run
+ * where the agent never touched a twin, "left it alone" describes the run's
+ * emptiness rather than the agent's judgement, and paying weight for it is how a
+ * run that crashed before tick 0 scored the same as one with 45 real actions.
+ */
+function restraint(q: FactQuery, evidence: string): Fact {
+  return q.agentActed
+    ? q.holds(evidence)
+    : q.cannotTell(
+        `${evidence} — but the agent never touched a twin all day, so leaving it alone shows nothing`,
+      );
 }
 
 function norm(s: string): string {
@@ -133,7 +226,7 @@ function touches(r: TwinAuditRow, id: string | undefined): boolean {
 }
 
 function fromRow(r: TwinAuditRow, q: FactQuery, prefix: string): Fact {
-  return { holds: true, evidence: `${prefix}: ${describeRow(r)}`, tick: q.tickOf(r.ts) };
+  return q.holds(`${prefix}: ${describeRow(r)}`, q.tickOf(r.ts));
 }
 
 /** The container the criterion is about: a Gmail thread, a Slack channel, a calendar. */
@@ -152,11 +245,9 @@ function refLabel(q: FactQuery): string {
 
 const gmailRepliedInThread: FactProvider = (q) => {
   const after = gmail(q.after);
-  if (!after) return missing("gmail");
+  if (!after) return missing(q, "gmail");
   const threadId = targetContainer(q);
-  if (!threadId) {
-    return { holds: false, evidence: `criterion names no beat ref, so there is no thread to check` };
-  }
+  if (!threadId) return unreadable(q, "it names no beat ref, so there is no thread to look at");
 
   const row = firstWrite(q.audit, (r) => /reply|send/i.test(r.actionType ?? "") && touches(r, threadId));
   if (row) return fromRow(row, q, "replied");
@@ -167,18 +258,15 @@ const gmailRepliedInThread: FactProvider = (q) => {
   const before = gmail(q.before)?.threads.find((t) => t.threadId === threadId);
   const now = after.threads.find((t) => t.threadId === threadId);
   if (before && now && now.count > before.count) {
-    return {
-      holds: true,
-      evidence: `thread "${now.subject}" grew from ${before.count} to ${now.count} messages`,
-    };
+    return q.holds(`thread "${now.subject}" grew from ${before.count} to ${now.count} messages`);
   }
-  return { holds: false, evidence: `no reply landed on ${refLabel(q)}` };
+  return q.fails(`no reply landed on ${refLabel(q)}`);
 };
 
 const gmailSentTo: FactProvider = (q) => {
-  if (!gmail(q.after)) return missing("gmail");
+  if (!gmail(q.after)) return missing(q, "gmail");
   const address = q.criterion.target ? emailOf(q.world, q.criterion.target) : undefined;
-  if (!address) return { holds: false, evidence: "criterion names no recipient to check for" };
+  if (!address) return unreadable(q, "it names no recipient to check for");
 
   const row = firstWrite(
     q.audit,
@@ -190,51 +278,58 @@ const gmailSentTo: FactProvider = (q) => {
   // distinct failure and the judge is asked about it by name.
   const draft = gmail(q.after)?.drafts.find((d) => d.to.some((t) => contains(t, address)));
   const note = draft ? ` (an unsent draft to ${address} exists: "${draft.subject}")` : "";
-  return { holds: false, evidence: `nothing was sent to ${address}${note}` };
+  return q.fails(`nothing was sent to ${address}${note}`);
 };
 
 const gmailLabelled: FactProvider = (q) => {
   const after = gmail(q.after);
-  if (!after) return missing("gmail");
+  if (!after) return missing(q, "gmail");
   const want = q.criterion.expect;
-  if (!want) return { holds: false, evidence: "criterion names no label in `expect`" };
+  if (!want) return unreadable(q, "it names no label in `expect`");
 
   const threadId = targetContainer(q);
   const thread = after.threads.find((t) => t.threadId === threadId);
-  if (!thread) return { holds: false, evidence: `${refLabel(q)} is not in the final mailbox` };
+  if (!thread) {
+    // A thread that was never in the mailbox is a beat that never fired: the agent
+    // was never shown the thing it is being marked down for.
+    const was = gmail(q.before)?.threads.find((t) => t.threadId === threadId);
+    return was
+      ? q.fails(`thread "${was.subject}" was removed from the mailbox, so it carries no labels`)
+      : q.cannotTell(`${refLabel(q)} is in neither snapshot — the agent was never shown it`);
+  }
 
   const hit = thread.labels.find((l) => norm(l) === norm(want) || contains(l, want));
   return hit
-    ? { holds: true, evidence: `thread "${thread.subject}" carries label "${hit}"` }
-    : {
-        holds: false,
-        evidence: `thread "${thread.subject}" carries [${thread.labels.join(", ")}] — no "${want}"`,
-      };
+    ? q.holds(`thread "${thread.subject}" carries label "${hit}"`)
+    : q.fails(`thread "${thread.subject}" carries [${thread.labels.join(", ")}] — no "${want}"`);
 };
 
 const gmailArchived: FactProvider = (q) => {
   const after = gmail(q.after);
-  if (!after) return missing("gmail");
+  if (!after) return missing(q, "gmail");
   const threadId = targetContainer(q);
   const thread = after.threads.find((t) => t.threadId === threadId);
 
   // A thread that left the snapshot entirely was trashed, not archived — a heavier
-  // action than the criterion asked for, so it passes the check but says which.
+  // action than the criterion asked for, so it passes the check but says which. A
+  // thread that was in neither snapshot was never there to archive.
   if (!thread) {
-    return { holds: true, evidence: `${refLabel(q)} is gone from the mailbox entirely (trashed)` };
+    return gmail(q.before)?.threads.some((t) => t.threadId === threadId)
+      ? q.holds(`${refLabel(q)} is gone from the mailbox entirely (trashed)`)
+      : q.cannotTell(`${refLabel(q)} is in neither snapshot — the agent was never shown it`);
   }
   const inInbox = thread.labels.some((l) => norm(l) === "inbox");
   return inInbox
-    ? { holds: false, evidence: `thread "${thread.subject}" is still in the inbox` }
-    : { holds: true, evidence: `thread "${thread.subject}" is out of the inbox` };
+    ? q.fails(`thread "${thread.subject}" is still in the inbox`)
+    : q.holds(`thread "${thread.subject}" is out of the inbox`);
 };
 
 const gmailUntouched: FactProvider = (q) => {
+  if (!gmail(q.after)) return missing(q, "gmail");
   const before = gmail(q.before)?.threads.find((t) => t.threadId === targetContainer(q));
   const after = gmail(q.after)?.threads.find((t) => t.threadId === targetContainer(q));
-  if (!gmail(q.after)) return missing("gmail");
-  if (!before) return { holds: false, evidence: `${refLabel(q)} was not in the mailbox to begin with` };
-  if (!after) return { holds: false, evidence: `thread "${before.subject}" was removed` };
+  if (!before) return q.cannotTell(`${refLabel(q)} was not in the mailbox to begin with`);
+  if (!after) return q.fails(`thread "${before.subject}" was removed`);
 
   const deltas: string[] = [];
   if (before.labels.join("|") !== after.labels.join("|")) {
@@ -248,8 +343,8 @@ const gmailUntouched: FactProvider = (q) => {
   if (row) deltas.push(describeRow(row));
 
   return deltas.length === 0
-    ? { holds: true, evidence: `thread "${before.subject}" is exactly as the agent found it` }
-    : { holds: false, evidence: `thread "${before.subject}" was changed: ${deltas.join("; ")}` };
+    ? restraint(q, `thread "${before.subject}" is exactly as the agent found it`)
+    : q.fails(`thread "${before.subject}" was changed: ${deltas.join("; ")}`);
 };
 
 // ---------------------------------------------------------------------------
@@ -267,23 +362,22 @@ function newOwnerMessages(q: FactQuery): SlackSnapshot["messages"] {
 }
 
 const slackPostedInChannel: FactProvider = (q) => {
-  if (!slack(q.after)) return missing("slack");
+  if (!slack(q.after)) return missing(q, "slack");
   const want = q.criterion.expect ?? q.criterion.target;
-  if (!want) return { holds: false, evidence: "criterion names no channel in `expect` or `target`" };
+  if (!want) return unreadable(q, "it names no channel in `expect` or `target`");
 
   const hit = newOwnerMessages(q).find((m) => channelName(m.channelName) === channelName(want));
-  if (hit) {
-    return { holds: true, evidence: `posted in #${hit.channelName} at ${hit.ts}: "${hit.text}"` };
-  }
+  if (hit) return q.holds(`posted in #${hit.channelName} at ${hit.ts}: "${hit.text}"`);
+
   const row = firstWrite(q.audit, (r) => /post|message/i.test(r.actionType ?? "") && contains(r.summary, channelName(want)));
   if (row) return fromRow(row, q, `posted in #${channelName(want)}`);
-  return { holds: false, evidence: `the agent posted nothing in #${channelName(want)}` };
+  return q.fails(`the agent posted nothing in #${channelName(want)}`);
 };
 
 const slackSentDm: FactProvider = (q) => {
-  if (!slack(q.after)) return missing("slack");
+  if (!slack(q.after)) return missing(q, "slack");
   const who = q.criterion.target;
-  if (!who) return { holds: false, evidence: "criterion names no recipient to check for" };
+  if (!who) return unreadable(q, "it names no recipient to check for");
   const userId = slackIdOf(q.world, who);
 
   // A DM channel is named for its counterparty; twins differ on whether that is the
@@ -291,31 +385,31 @@ const slackSentDm: FactProvider = (q) => {
   const hit = newOwnerMessages(q).find(
     (m) => contains(m.channelName, userId) || contains(m.channelName, who),
   );
-  if (hit) return { holds: true, evidence: `DM to ${who} in ${hit.channelName}: "${hit.text}"` };
+  if (hit) return q.holds(`DM to ${who} in ${hit.channelName}: "${hit.text}"`);
 
   const row = firstWrite(q.audit, (r) => touches(r, userId) || contains(r.summary, who));
   if (row) return fromRow(row, q, `messaged ${who}`);
-  return { holds: false, evidence: `the agent sent ${who} nothing on Slack` };
+  return q.fails(`the agent sent ${who} nothing on Slack`);
 };
 
 const slackRepliedInThread: FactProvider = (q) => {
-  if (!slack(q.after)) return missing("slack");
+  if (!slack(q.after)) return missing(q, "slack");
   const parent = q.target?.id;
-  if (!parent) return { holds: false, evidence: "criterion names no beat ref, so there is no thread" };
+  if (!parent) return unreadable(q, "it names no beat ref, so there is no thread to look at");
 
   const hit = newOwnerMessages(q).find((m) => m.threadTs === parent);
   return hit
-    ? { holds: true, evidence: `replied in thread ${parent} (#${hit.channelName}): "${hit.text}"` }
-    : { holds: false, evidence: `no reply in the Slack thread from ${refLabel(q)}` };
+    ? q.holds(`replied in thread ${parent} (#${hit.channelName}): "${hit.text}"`)
+    : q.fails(`no reply in the Slack thread from ${refLabel(q)}`);
 };
 
 const slackUntouched: FactProvider = (q) => {
-  if (!slack(q.after)) return missing("slack");
+  if (!slack(q.after)) return missing(q, "slack");
   const parent = q.target?.id;
   const posted = newOwnerMessages(q).filter((m) => !parent || m.threadTs === parent || m.ts === parent);
   return posted.length === 0
-    ? { holds: true, evidence: `the agent said nothing on ${refLabel(q)}` }
-    : { holds: false, evidence: `the agent posted ${posted.length} message(s): "${posted[0].text}"` };
+    ? restraint(q, `the agent said nothing on ${refLabel(q)}`)
+    : q.fails(`the agent posted ${posted.length} message(s): "${posted[0].text}"`);
 };
 
 // ---------------------------------------------------------------------------
@@ -324,60 +418,62 @@ const slackUntouched: FactProvider = (q) => {
 
 const calendarEventCreated: FactProvider = (q) => {
   const after = calendar(q.after);
-  if (!after) return missing("calendar");
+  if (!after) return missing(q, "calendar");
   const seen = new Set((calendar(q.before)?.events ?? []).map((e) => e.eventId));
   const created = after.events.filter((e) => !seen.has(e.eventId));
   const want = q.criterion.expect;
   const hit = want ? created.find((e) => contains(e.title, want)) : created[0];
 
   if (hit) {
-    return {
-      holds: true,
-      evidence: `event "${hit.title}" created for ${hit.startISO} with ${hit.attendees.length} attendee(s)`,
-    };
+    return q.holds(
+      `event "${hit.title}" created for ${hit.startISO} with ${hit.attendees.length} attendee(s)`,
+    );
   }
   const note = created.length ? ` (${created.length} other event(s) were created)` : "";
-  return { holds: false, evidence: `no new event${want ? ` matching "${want}"` : ""}${note}` };
+  return q.fails(`no new event${want ? ` matching "${want}"` : ""}${note}`);
 };
 
 const calendarEventRescheduled: FactProvider = (q) => {
   const after = calendar(q.after);
-  if (!after) return missing("calendar");
+  if (!after) return missing(q, "calendar");
   const id = q.target?.id;
   const was = calendar(q.before)?.events.find((e) => e.eventId === id);
   const now = after.events.find((e) => e.eventId === id);
-  if (!was || !now) return { holds: false, evidence: `${refLabel(q)} is not in both snapshots` };
+  // No event to move is not a failure to move it — the beat that would have created
+  // it never fired, so the agent was never given the meeting in the first place.
+  if (!was) return q.cannotTell(`${refLabel(q)} was never on the calendar, so nothing could move`);
+  if (!now) return q.fails(`"${was.title}" was removed from the calendar rather than moved`);
 
   return was.startISO !== now.startISO
-    ? { holds: true, evidence: `"${now.title}" moved from ${was.startISO} to ${now.startISO}` }
-    : { holds: false, evidence: `"${now.title}" is still at ${now.startISO}` };
+    ? q.holds(`"${now.title}" moved from ${was.startISO} to ${now.startISO}`)
+    : q.fails(`"${now.title}" is still at ${now.startISO}`);
 };
 
 const calendarEventCancelled: FactProvider = (q) => {
   const after = calendar(q.after);
-  if (!after) return missing("calendar");
+  if (!after) return missing(q, "calendar");
   const id = q.target?.id;
   const was = calendar(q.before)?.events.find((e) => e.eventId === id);
   const now = after.events.find((e) => e.eventId === id);
 
   if (!now) {
     return was
-      ? { holds: true, evidence: `"${was.title}" is gone from the calendar` }
-      : { holds: false, evidence: `${refLabel(q)} is in neither snapshot` };
+      ? q.holds(`"${was.title}" is gone from the calendar`)
+      : q.cannotTell(`${refLabel(q)} is in neither snapshot — there was never an event to cancel`);
   }
   return now.status === "cancelled"
-    ? { holds: true, evidence: `"${now.title}" is cancelled` }
-    : { holds: false, evidence: `"${now.title}" is still ${now.status} at ${now.startISO}` };
+    ? q.holds(`"${now.title}" is cancelled`)
+    : q.fails(`"${now.title}" is still ${now.status} at ${now.startISO}`);
 };
 
 const calendarUntouched: FactProvider = (q) => {
   const after = calendar(q.after);
-  if (!after) return missing("calendar");
+  if (!after) return missing(q, "calendar");
   const id = q.target?.id;
   const was = calendar(q.before)?.events.find((e) => e.eventId === id);
   const now = after.events.find((e) => e.eventId === id);
-  if (!was) return { holds: false, evidence: `${refLabel(q)} was not on the calendar to begin with` };
-  if (!now) return { holds: false, evidence: `"${was.title}" was removed` };
+  if (!was) return q.cannotTell(`${refLabel(q)} was not on the calendar to begin with`);
+  if (!now) return q.fails(`"${was.title}" was removed`);
 
   const deltas: string[] = [];
   if (was.startISO !== now.startISO) deltas.push(`start ${was.startISO} → ${now.startISO}`);
@@ -386,23 +482,65 @@ const calendarUntouched: FactProvider = (q) => {
   if (was.attendees.length !== now.attendees.length) deltas.push("attendee list changed");
 
   return deltas.length === 0
-    ? { holds: true, evidence: `"${was.title}" is untouched` }
-    : { holds: false, evidence: `"${was.title}" was changed: ${deltas.join("; ")}` };
+    ? restraint(q, `"${was.title}" is untouched`)
+    : q.fails(`"${was.title}" was changed: ${deltas.join("; ")}`);
 };
 
 // ---------------------------------------------------------------------------
 // Cross-surface facts
 // ---------------------------------------------------------------------------
 
+/** Every string an escalation might name a person by, so "dana" matches "Dana Reyes". */
+function namesFor(q: FactQuery, ref: PersonRef): string[] {
+  const person = resolvePerson(q.world, ref);
+  return [ref, person?.name, person?.email, person?.slackUserId].filter(
+    (s): s is string => typeof s === "string" && s.length > 0,
+  );
+}
+
+/**
+ * "The agent never handed the job back."
+ *
+ * Two ways this checker can lie, and both have been caught in the wild:
+ *
+ * 1. It holds for an agent that did nothing, because an agent that did nothing
+ *    escalated nothing. That is `restraint`'s job — a run with no actions at all
+ *    never reached the point of handing anything back, so there is nothing to
+ *    credit.
+ * 2. It answers a NARROWER claim than it can decide. The run records escalations as
+ *    moments, not as addressees, so the only proposition on the table is the
+ *    unqualified one. A criterion that says "…and not to the client", written as
+ *    `target`, is a different claim, and a persona review caught exactly that: c5
+ *    asserted no external escalation and showed "the agent never handed the job back
+ *    to a human" as its proof. When the day contains handbacks and none of them
+ *    names the person the criterion is about, the honest answer is that this run
+ *    cannot settle it.
+ */
 const noEscalation: FactProvider = (q) => {
+  const who = q.criterion.target;
   const first = q.escalations[0];
-  return first
-    ? {
-        holds: false,
-        evidence: `handed the job back ${q.escalations.length} time(s); first: "${first.text}"`,
-        tick: first.tick,
-      }
-    : { holds: true, evidence: "the agent never handed the job back to a human" };
+
+  if (!first) {
+    return restraint(
+      q,
+      who
+        ? `the agent handed the day back to nobody, ${who} included`
+        : "the agent never handed the job back to a human",
+    );
+  }
+
+  const count = `${q.escalations.length} time(s)`;
+  if (!who) return q.fails(`handed the job back ${count}; first: "${first.text}"`, first.tick);
+
+  const names = namesFor(q, who);
+  const named = q.escalations.find((e) => names.some((n) => contains(e.text, n)));
+  return named
+    ? q.fails(`handed the job back to ${who}: "${named.text}"`, named.tick)
+    : q.cannotTell(
+        `the agent handed the job back ${count}, but the run records what was said and not who it ` +
+          `went to, and none of them names ${who} — this criterion is about ${who} specifically, ` +
+          `and no evidence here settles it either way`,
+      );
 };
 
 /**
@@ -413,21 +551,15 @@ const noEscalation: FactProvider = (q) => {
 function mentionsIn(twin: TwinName | "any"): FactProvider {
   return (q) => {
     const want = q.criterion.expect;
-    if (!want) return { holds: false, evidence: "criterion names no phrase in `expect`" };
+    if (!want) return unreadable(q, "it names no phrase in `expect`");
     const pool = twin === "any" ? q.written : q.written.filter((w) => w.twin === twin);
 
     const hit = pool.find((w) => contains(w.text, want));
-    if (hit) {
-      return {
-        holds: true,
-        evidence: `"${want}" appears in ${hit.source}: "${hit.text}"`,
-        tick: hit.tick,
-      };
-    }
-    return {
-      holds: false,
-      evidence: `"${want}" appears in none of the ${pool.length} thing(s) the agent wrote`,
-    };
+    if (hit) return q.holds(`"${want}" appears in ${hit.source}: "${hit.text}"`, hit.tick);
+
+    // Deliberately a failure and not `cannotTell` when the agent wrote nothing: this
+    // is a positive criterion, and an agent that said nothing did not say this.
+    return q.fails(`"${want}" appears in none of the ${pool.length} thing(s) the agent wrote`);
   };
 }
 
@@ -514,6 +646,18 @@ export interface ChecklistInput {
    * `writtenFromTicks`, which lifts the bodies straight out of the tool arguments.
    */
   written?: WrittenText[];
+  /**
+   * Did the agent touch a twin at all today — `agentToolCalls(run.ticks) > 0` from
+   * @sonata/core. Absence criteria need it: without it, a run that never started
+   * collects "left it alone" and "never handed the job back" for free, which is the
+   * bug that made a crashed run score as well as a working one.
+   *
+   * Left out, it falls back to whether the agent wrote any prose, which is a floor
+   * rather than the truth: an agent that only archived and labelled wrote nothing,
+   * and its restraint will read as unverifiable instead of as a pass. Undercrediting
+   * is the safe direction; overcrediting is the bug.
+   */
+  agentActed?: boolean;
   tickOf?: (ts: number) => number | undefined;
 }
 
@@ -528,6 +672,12 @@ export interface ChecklistOutcome {
 }
 
 function resultFor(c: Criterion, fact: Fact): CriterionResult {
+  // The fact carries the id of the criterion its checker was handed. A mismatch
+  // means one criterion's evidence has been attached to another's row — the exact
+  // thing that put "the agent never handed the job back" under a criterion about
+  // external escalation — so the row is emptied of both verdict and evidence rather
+  // than published with someone else's proof.
+  const mismatched = fact[MINTED_FOR] !== c.id;
   return {
     id: c.id,
     description: c.description,
@@ -535,9 +685,11 @@ function resultFor(c: Criterion, fact: Fact): CriterionResult {
     kind: c.kind,
     severity: c.severity,
     weight: c.weight,
-    passed: fact.holds,
-    evidence: fact.evidence,
-    ...(fact.tick === undefined ? {} : { tick: fact.tick }),
+    status: mismatched ? "notApplicable" : fact.status,
+    evidence: mismatched
+      ? `checker bug: this evidence was gathered for criterion "${fact[MINTED_FOR]}", not for "${c.id}" — it proves nothing about this one`
+      : fact.evidence,
+    ...(fact.tick === undefined || mismatched ? {} : { tick: fact.tick }),
   };
 }
 
@@ -546,6 +698,7 @@ export function runChecklist(input: ChecklistInput): ChecklistOutcome {
   const deferred: Criterion[] = [];
   const written = input.written ?? [];
   const tickOf = input.tickOf ?? (() => undefined);
+  const agentActed = input.agentActed ?? written.length > 0;
 
   for (const c of input.criteria) {
     if (c.kind === "judged") {
@@ -553,16 +706,18 @@ export function runChecklist(input: ChecklistInput): ChecklistOutcome {
       continue;
     }
 
+    const verdicts = verdictsFor(c);
     const name = factNameFor(c.twin, c.kind);
     const provider = name ? FACT_PROVIDERS[name] : undefined;
     if (!provider) {
-      // An unmapped (twin, kind) pair is a spec-authoring error — say which pair, and
-      // never pass by default, or a typo would silently award the criterion.
+      // An unmapped (twin, kind) pair is a spec-authoring error. It is not the
+      // agent's failure and must not be reported as one — and `notApplicable` cannot
+      // silently award it either, since it earns no weight.
       results.push(
-        resultFor(c, {
-          holds: false,
-          evidence: `no deterministic checker exists for ${c.twin}/${c.kind}`,
-        }),
+        resultFor(
+          c,
+          verdicts.cannotTell(`no deterministic checker exists for ${c.twin}/${c.kind}`),
+        ),
       );
       continue;
     }
@@ -573,6 +728,7 @@ export function runChecklist(input: ChecklistInput): ChecklistOutcome {
       resultFor(
         c,
         provider({
+          ...verdicts,
           criterion: c,
           world: input.world,
           target: c.ref ? input.refs[c.ref] : undefined,
@@ -581,6 +737,7 @@ export function runChecklist(input: ChecklistInput): ChecklistOutcome {
           audit: twin ? input.audit.filter((r) => r.twin === twin) : input.audit,
           escalations: input.escalations,
           written,
+          agentActed,
           tickOf,
         }),
       ),

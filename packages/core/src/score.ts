@@ -17,26 +17,55 @@ function weightOf(c: CriterionResult): number {
 }
 
 /**
- * Weighted fraction of the checklist that passed, 0..1.
+ * The criteria this run actually settled. `notApplicable` is not a quiet failure
+ * and not a quiet pass: it is a criterion the run gave no evidence either way on,
+ * so it takes no part in any number derived from the checklist.
+ */
+export function decidedCriteria(checklist: CriterionResult[]): CriterionResult[] {
+  return checklist.filter((c) => c.status !== "notApplicable");
+}
+
+/**
+ * Weighted fraction of the DECIDED checklist that passed, 0..1.
  *
- * An empty (or entirely zero-weight) checklist scores 0, not 1: nothing was
- * verified, and a spec with no criteria should look broken rather than perfect.
+ * `notApplicable` criteria are excluded from both the numerator and the
+ * denominator. That exclusion is the fix for the bug this scorer shipped with: a
+ * negative criterion ("never handed the job back", "left the forecast alone")
+ * holds trivially for an agent that did nothing, so a run that crashed before its
+ * first tick farmed every one of them and landed within a point of a run with 45
+ * real actions. A vacuous truth is not work, and it may not be paid as work.
+ *
+ * An empty checklist — or one where nothing could be decided — scores 0, not 1:
+ * nothing was verified, and that should look broken rather than perfect.
  */
 export function checklistScore(checklist: CriterionResult[]): number {
   let total = 0;
   let earned = 0;
-  for (const c of checklist) {
+  for (const c of decidedCriteria(checklist)) {
     const w = weightOf(c);
     total += w;
-    if (c.passed) earned += w;
+    if (c.status === "passed") earned += w;
   }
   return total === 0 ? 0 : clamp01(earned / total);
 }
 
-/** A failed `must` fails the whole run — the same rule the Gmail eval uses. */
+/**
+ * A failed `must` fails the whole run — the same rule the Gmail eval uses.
+ *
+ * A `must` nobody could decide is NOT a failed must: reporting "failed: replied
+ * to the client" for a run whose mailbox was never captured is an accusation the
+ * artifact cannot support. It drops out, exactly as it does from the score.
+ *
+ * "Partial" has to mean partial credit, so a checklist that earned none — every
+ * decided criterion failed, or nothing was decided at all — is a fail. Otherwise a
+ * run that did nothing whatsoever reads "partial, 0%", and the word does the
+ * opposite of what the number says.
+ */
 export function verdictOutcome(checklist: CriterionResult[]): "pass" | "partial" | "fail" {
-  if (checklist.some((c) => c.severity === "must" && !c.passed)) return "fail";
-  return checklist.every((c) => c.passed) ? "pass" : "partial";
+  const decided = decidedCriteria(checklist);
+  if (decided.some((c) => c.severity === "must" && c.status === "failed")) return "fail";
+  if (!decided.some((c) => c.status === "passed")) return "fail";
+  return decided.every((c) => c.status === "passed") ? "pass" : "partial";
 }
 
 /**

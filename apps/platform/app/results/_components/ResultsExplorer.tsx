@@ -20,6 +20,8 @@ import {
 import {
   badgeStatus,
   buildBenchmark,
+  CHECKLIST_HINT,
+  CHECKLIST_LABEL,
   formatDuration,
   formatPercent,
   formatUsd,
@@ -109,30 +111,46 @@ export function ResultsExplorer({
       key: "autonomy",
       header: "Autonomy",
       width: "12%",
-      render: (run) => (
-        <div className="w-full">
-          <div data-numeric className="text-[15px] font-medium text-sn-ink">
-            {formatPercent(run.autonomy)}
+      // An empty bar at 0% reads as "scored zero". A run with no result gets the
+      // words instead, so the row cannot be misread at a glance.
+      render: (run) =>
+        run.noResult ? (
+          <span className="text-[12.5px] text-sn-subtle" title={run.noResult}>
+            Never ran — no result
+          </span>
+        ) : (
+          <div className="w-full">
+            <div data-numeric className="text-[15px] font-medium text-sn-ink">
+              {formatPercent(run.autonomy)}
+            </div>
+            <ProgressBar
+              className="mt-1"
+              size="sm"
+              value={(run.autonomy ?? 0) * 100}
+              tone={
+                (run.autonomy ?? 0) >= 0.75
+                  ? "success"
+                  : (run.autonomy ?? 0) >= 0.4
+                    ? "gold"
+                    : "danger"
+              }
+            />
           </div>
-          <ProgressBar
-            className="mt-1"
-            size="sm"
-            value={(run.autonomy ?? 0) * 100}
-            tone={(run.autonomy ?? 0) >= 0.75 ? "success" : (run.autonomy ?? 0) >= 0.4 ? "gold" : "danger"}
-          />
-        </div>
-      ),
+        ),
     },
     {
       key: "outcome",
-      header: "Task success",
+      // Named for the number it holds. "Task success" also labelled Home's pass
+      // rate — a share of runs, not of criteria — and one word over two
+      // denominators is how the two pages came to contradict each other.
+      header: CHECKLIST_LABEL,
       width: "14%",
       render: (run) => (
         <div className="flex items-center gap-2">
           <Badge status={badgeStatus(run)} size="sm">
             {outcomeLabel(run)}
           </Badge>
-          <span data-numeric className="text-[12px] text-sn-muted">
+          <span data-numeric className="text-[12px] text-sn-muted" title={CHECKLIST_HINT}>
             {formatPercent(run.score)}
           </span>
         </div>
@@ -198,7 +216,7 @@ export function ResultsExplorer({
           title="No runs have finished yet"
           description="A run leaves an artifact behind: the day it played, the score it earned and the judge's reading of it. This page is where you compare them."
           hints={[
-            "One row per run — autonomy, task success, cost and how long the day took",
+            "One row per run — autonomy, checklist score, cost and how long the day took",
             "Open a run to replay it tick by tick and see every tool call",
             "Run the same scenario on two models to fill the benchmark table",
           ]}

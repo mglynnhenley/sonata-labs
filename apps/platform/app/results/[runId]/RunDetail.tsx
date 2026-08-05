@@ -3,7 +3,7 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import type { EpisodeRun, TwinName } from "@sonata/core";
-import { Badge, Chip, IconArrowRight, PageHeader } from "@sonata/ui";
+import { Badge, buttonClasses, Chip, IconArrowRight, PageHeader } from "@sonata/ui";
 import type { RunBrief } from "../_lib/artifacts";
 import { headlineUsd, type CostReport } from "../_lib/cost";
 import { buildMoments, findMomentIndex, replayStats } from "../_lib/moments";
@@ -124,7 +124,22 @@ export function RunDetail({
             ))}
           </>
         }
-        actions={rejudge("secondary")}
+        actions={
+          <>
+            {/* The report is worth handing over once the day is scored; before
+                that it is a page of dashes, so it waits with the rejudge action. */}
+            {settled ? (
+              <Link
+                href={`/results/${encodeURIComponent(run.runId)}/report`}
+                className={buttonClasses("secondary", "md")}
+              >
+                Report
+                <IconArrowRight size={14} />
+              </Link>
+            ) : null}
+            {rejudge("secondary")}
+          </>
+        }
       />
 
       <VerdictHeader

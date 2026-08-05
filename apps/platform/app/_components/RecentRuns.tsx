@@ -1,5 +1,6 @@
 "use client";
 
+import { NO_RESULT } from "@sonata/core";
 import { Badge, Button, Card, EmptyState, IconArrowRight, IconPlay, type BadgeStatus } from "@sonata/ui";
 import { ago, percent } from "@/lib/format";
 import { modelLabel } from "@/lib/models";
@@ -15,7 +16,10 @@ function statusOf(run: RunSummary): { tone: BadgeStatus; label: string } {
   if (run.status === "done") {
     if (run.outcome === "pass") return { tone: "passed", label: "Passed" };
     if (run.outcome === "fail") return { tone: "failed", label: "Failed" };
-    return { tone: "warning", label: "Partial" };
+    if (run.outcome === "partial") return { tone: "warning", label: "Partial" };
+    // Finished with no outcome: the agent never acted, so there is nothing to
+    // call passed, partial or failed. It used to fall through to "Partial".
+    return { tone: "neutral", label: NO_RESULT };
   }
   if (run.status === "failed") return { tone: "failed", label: "Errored" };
   if (run.status === "aborted") return { tone: "neutral", label: "Stopped" };

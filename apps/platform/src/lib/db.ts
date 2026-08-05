@@ -545,31 +545,51 @@ export function countRuns(): number {
 }
 
 export interface RunStats {
-  finished: number;
-  /** Fraction of finished runs whose outcome was `pass`, 0..1; null if none. */
+  /** Runs that produced a result. The denominator for everything below. */
+  scored: number;
+  /** Runs that ended without one — errored, stopped, or the agent never acted. */
+  unscored: number;
+  /** Fraction of scored runs whose outcome was `pass`, 0..1; null if none. */
   passRate: number | null;
-  /** Mean autonomy across finished runs, 0..1; null if none scored. */
+  /** Mean autonomy across scored runs, 0..1; null if none scored. */
   autonomy: number | null;
   spendUsd: number;
 }
 
+/**
+ * The headline numbers, over the runs that have one.
+ *
+ * A run with a null score is a run we know nothing about — it crashed, was
+ * stopped, or the agent never touched a twin — and it is counted separately
+ * rather than folded in. Averaging those in as zeroes is exactly how four runs
+ * that never started came to sit mid-table beside a run with 45 real actions.
+ */
 export function runStats(): RunStats {
   const row = getDb()
     .prepare(
-      `SELECT COUNT(*) AS finished,
+      `SELECT SUM(CASE WHEN score IS NOT NULL THEN 1 ELSE 0 END) AS scored,
+              SUM(CASE WHEN score IS NULL AND status IN ('done','failed','aborted')
+                       THEN 1 ELSE 0 END) AS unscored,
               SUM(CASE WHEN outcome = 'pass' THEN 1 ELSE 0 END) AS passed,
               AVG(autonomy) AS autonomy
-       FROM runs WHERE status = 'done'`,
+       FROM runs`,
     )
-    .get() as { finished: number; passed: number | null; autonomy: number | null };
+    .get() as {
+    scored: number | null;
+    unscored: number | null;
+    passed: number | null;
+    autonomy: number | null;
+  };
   // Spend counts every run, including the ones that fell over — a burnt run
   // still costs money, and hiding it would make the figure a lie.
   const spend = getDb().prepare("SELECT COALESCE(SUM(cost_usd), 0) AS usd FROM runs").get() as {
     usd: number;
   };
+  const scored = row.scored ?? 0;
   return {
-    finished: row.finished,
-    passRate: row.finished > 0 ? (row.passed ?? 0) / row.finished : null,
+    scored,
+    unscored: row.unscored ?? 0,
+    passRate: scored > 0 ? (row.passed ?? 0) / scored : null,
     autonomy: row.autonomy,
     spendUsd: spend.usd,
   };

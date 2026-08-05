@@ -11,5 +11,6 @@ export * from "./failureModes";
 export * from "./twin";
 export * from "./clock";
 export * from "./score";
+export * from "./executed";
 export * from "./cast";
 export * from "./spec";

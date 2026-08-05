@@ -193,13 +193,25 @@ function renderDiffs(diffs: ByTwin<TwinDiff>): string {
     .join("\n\n");
 }
 
+/**
+ * PASS / FAIL / N-A. The third label is load-bearing: a criterion nothing could
+ * settle must not be shown to the judge as either, or the judge writes findings
+ * about a failure that never happened — or credits restraint the agent never
+ * exercised. The evidence line under it says which.
+ */
+export const CHECK_LABEL: Record<CriterionResult["status"], string> = {
+  passed: "PASS",
+  failed: "FAIL",
+  notApplicable: "N/A ",
+};
+
 function renderChecks(checks: CriterionResult[]): string {
   if (checks.length === 0) return "(this episode declared no deterministic checks)";
   return checks
     .map((c) => {
       const where = c.tick === undefined ? "" : ` @t${c.tick}`;
       const why = c.evidence ? `\n    ${c.evidence}` : "";
-      return `- [${c.passed ? "PASS" : "FAIL"}] ${c.severity.padEnd(6)} ${c.twin.padEnd(8)} ${c.id}${where} — ${c.description}${why}`;
+      return `- [${CHECK_LABEL[c.status]}] ${c.severity.padEnd(6)} ${c.twin.padEnd(8)} ${c.id}${where} — ${c.description}${why}`;
     })
     .join("\n");
 }

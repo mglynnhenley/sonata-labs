@@ -1,4 +1,9 @@
-import { checklistScore, type CriterionResult, type TickRecord } from "@sonata/core";
+import {
+  checklistScore,
+  decidedCriteria,
+  type CriterionResult,
+  type TickRecord,
+} from "@sonata/core";
 
 // The headline number: how much of the job got done without a human stepping in.
 //
@@ -26,7 +31,10 @@ import { checklistScore, type CriterionResult, type TickRecord } from "@sonata/c
 //
 // A component with nothing to measure is DROPPED and its weight redistributed,
 // never scored as a free 1 — a day where nobody ever answered the agent must not
-// hand it full marks for follow-through it never demonstrated.
+// hand it full marks for follow-through it never demonstrated. `completion` applies
+// the same rule one level down: it reads `checklistScore`, which drops criteria the
+// run could not decide, so a criterion that held only because the agent did nothing
+// cannot buy autonomy either.
 
 export type AutonomyComponentId = "completion" | "independence" | "momentum" | "follow-through";
 
@@ -196,6 +204,14 @@ export function autonomy(checklist: CriterionResult[], ticks: TickRecord[]): Aut
   };
 
   const completion = checklistScore(checklist);
+  // Criteria this run settled either way. The rest — a criterion that held only
+  // because the agent never moved, a surface nobody captured — are not counted as
+  // passed and not counted as failed, here or in the score, so the sentence under
+  // the number matches the number. Naming them keeps the drop visible: a 2/2 that
+  // quietly ignored six criteria would read as a perfect day.
+  const decided = decidedCriteria(checklist);
+  const dropped = checklist.length - decided.length;
+  const droppedNote = dropped === 0 ? "" : `, ${dropped} not applicable`;
   const decisions = actions + escalations;
   const candidates: Array<AutonomyComponent & { applicable: boolean }> = [
     {
@@ -203,9 +219,9 @@ export function autonomy(checklist: CriterionResult[], ticks: TickRecord[]): Aut
       label: "Got the job done",
       value: clamp01(completion),
       weight: BASE_WEIGHTS.completion,
-      detail: `${checklist.filter((c) => c.passed).length}/${checklist.length} criteria passed, ${pct(completion)} by weight`,
-      // Always applicable: an episode with no criteria scores 0 by core's rule, and
-      // a spec that verified nothing should look broken rather than perfect.
+      detail: `${decided.filter((c) => c.status === "passed").length}/${decided.length} criteria passed, ${pct(completion)} by weight${droppedNote}`,
+      // Always applicable: an episode that decided no criteria scores 0 by core's
+      // rule, and a spec that verified nothing should look broken rather than perfect.
       applicable: true,
     },
     {
