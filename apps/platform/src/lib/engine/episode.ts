@@ -389,6 +389,11 @@ async function complete(
     status,
     endedAt: run.endedAt ?? Date.now(),
     ticks,
+    // Saved with the run, because the checklist above is re-derived from this
+    // artifact on every read and a re-derivation without the log turns real sends
+    // into "no reply landed". The evidence that decided a row has to travel with
+    // the row.
+    audit: result.audit,
     verdict,
     // A stopped day is not a broken one, and the engine's own note for it is the
     // sentinel above — which would read as a crash on the results page.

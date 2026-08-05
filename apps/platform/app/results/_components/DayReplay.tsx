@@ -377,13 +377,20 @@ function MomentDetail({
 
       {step?.kind === "tool" ? (
         <>
-          <CodeBlock
-            language="json"
-            filename={`${step.name}(…)`}
-            code={JSON.stringify(step.args ?? null, null, 2)}
-            wrap
-            maxHeight="260px"
-          />
+          {/* When the agent wrote something, show the words. The whole report is
+              an argument about what it did, and "called send_reply" is not an
+              answer to that — the reply is. Raw arguments stay one click away. */}
+          {composed(step.args) ? (
+            <ComposedMessage message={composed(step.args)!} raw={step.args} name={step.name} />
+          ) : (
+            <CodeBlock
+              language="json"
+              filename={`${step.name}(…)`}
+              code={JSON.stringify(step.args ?? null, null, 2)}
+              wrap
+              maxHeight="260px"
+            />
+          )}
           <Detail label="What came back">{step.resultSummary || "(nothing)"}</Detail>
         </>
       ) : null}
@@ -449,6 +456,90 @@ function MomentDetail({
           {moment.twin ? `Open it in ${SERVICE_LABELS[moment.twin]}` : "Open it in the twin"} →
         </a>
       ) : null}
+    </div>
+  );
+}
+
+/**
+ * What the agent actually wrote, pulled out of a tool call's arguments.
+ *
+ * Every writing tool across the three clones carries its prose in `body` or
+ * `text`, and its addressing in some combination of to/cc/subject/channel. The
+ * shape differs per tool; the question a reader has does not.
+ */
+interface Composed {
+  to?: string;
+  cc?: string;
+  subject?: string;
+  channel?: string;
+  body: string;
+}
+
+function str(v: unknown): string | undefined {
+  if (typeof v === "string" && v.trim()) return v;
+  if (Array.isArray(v)) {
+    const joined = v.filter((x) => typeof x === "string").join(", ");
+    return joined || undefined;
+  }
+  return undefined;
+}
+
+function composed(args: unknown): Composed | null {
+  if (!args || typeof args !== "object") return null;
+  const a = args as Record<string, unknown>;
+  const body = str(a.body) ?? str(a.text);
+  if (!body) return null;
+  return {
+    body,
+    ...(str(a.to) ? { to: str(a.to) } : {}),
+    ...(str(a.cc) ? { cc: str(a.cc) } : {}),
+    ...(str(a.subject) ? { subject: str(a.subject) } : {}),
+    ...(str(a.channel) ? { channel: str(a.channel) } : {}),
+  };
+}
+
+function ComposedMessage({
+  message,
+  raw,
+  name,
+}: {
+  message: Composed;
+  raw: unknown;
+  name: string;
+}) {
+  const headers: Array<[string, string]> = [];
+  if (message.channel) headers.push(["Channel", message.channel]);
+  if (message.to) headers.push(["To", message.to]);
+  if (message.cc) headers.push(["Cc", message.cc]);
+  if (message.subject) headers.push(["Subject", message.subject]);
+
+  return (
+    <div className="overflow-hidden rounded-sn-lg border border-sn-line bg-sn-surface">
+      {headers.length > 0 ? (
+        <div className="border-b border-sn-line bg-sn-raised px-3 py-2">
+          {headers.map(([label, value]) => (
+            <div key={label} className="flex gap-2 text-[12px] leading-[19px]">
+              <span className="w-[52px] shrink-0 text-sn-subtle">{label}</span>
+              <span className="min-w-0 break-words text-sn-ink">{value}</span>
+            </div>
+          ))}
+        </div>
+      ) : null}
+      <div className="max-h-[320px] overflow-auto px-3 py-2.5 text-[13px] leading-[20px] whitespace-pre-wrap text-sn-ink">
+        {message.body}
+      </div>
+      <details className="border-t border-sn-line">
+        <summary className="cursor-pointer px-3 py-1.5 text-[11.5px] text-sn-subtle select-none hover:text-sn-ink">
+          Raw arguments
+        </summary>
+        <CodeBlock
+          language="json"
+          filename={`${name}(…)`}
+          code={JSON.stringify(raw ?? null, null, 2)}
+          wrap
+          maxHeight="220px"
+        />
+      </details>
     </div>
   );
 }

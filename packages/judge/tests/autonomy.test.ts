@@ -214,6 +214,31 @@ describe("autonomy", () => {
     ]);
   });
 
+  it("carries the verdict the score is qualified by, not just the score", () => {
+    // The run that forced this: three `must`s nothing could decide and one `should`
+    // that passed. Every component is perfect on what it could see, so the headline
+    // is 100% — and 100% of one of four criteria is not a measurement of the day.
+    const checklist: CriterionResult[] = [
+      ...unverifiable(3).map((c) => ({ ...c, severity: "must" as const })),
+      { ...passed(1)[0], severity: "should" as const },
+    ];
+    const result = autonomy(checklist, day(4, 0));
+
+    expect(result.score).toBe(1);
+    expect(result.outcome).toBe("inconclusive");
+    expect(result.coverage).toMatchObject({ decided: 1, total: 4, undecidedMusts: 3 });
+    const completion = result.components.find((c) => c.id === "completion");
+    expect(completion?.detail).toContain("3 must-do(s) undecided");
+  });
+
+  it("leaves a fully decided run's verdict alone", () => {
+    const result = autonomy(passed(3), day(4, 0));
+    expect(result.score).toBe(1);
+    expect(result.outcome).toBe("pass");
+    expect(result.coverage).toMatchObject({ decided: 3, total: 3, undecidedMusts: 0 });
+    expect(result.components.find((c) => c.id === "completion")?.detail).not.toContain("must-do");
+  });
+
   it("gives every component a detail line the UI can open", () => {
     for (const c of autonomy(passed(1), day(2, 0)).components) {
       expect(c.detail.length).toBeGreaterThan(0);

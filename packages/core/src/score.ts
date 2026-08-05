@@ -1,6 +1,6 @@
 import { getFailureMode } from "./failureModes";
 import type { Finding, Severity } from "./types/judge";
-import type { CriterionResult } from "./types/run";
+import type { CriterionResult, VerdictOutcome } from "./types/run";
 
 // Scoring. Pure, deterministic and small on purpose: the numbers on the results
 // page have to be reproducible from the saved artifact, and every one of them
@@ -49,23 +49,107 @@ export function checklistScore(checklist: CriterionResult[]): number {
   return total === 0 ? 0 : clamp01(earned / total);
 }
 
+const OUTCOMES: readonly VerdictOutcome[] = ["pass", "partial", "fail", "inconclusive"];
+
+/**
+ * An outcome read back off disk or out of a SQLite column, or null if it is not one.
+ *
+ * Exists because three separate places had each written out their own
+ * `x === "pass" || x === "partial" || x === "fail" ? x : null`, and every one of
+ * them silently turned a fourth state into "no result" — a run the harness could
+ * not grade would have come back from storage indistinguishable from a run that
+ * never happened. One list, derived from the type, so the next state added is
+ * added once.
+ */
+export function asVerdictOutcome(value: unknown): VerdictOutcome | null {
+  return OUTCOMES.find((o) => o === value) ?? null;
+}
+
+/**
+ * The criteria the verdict is actually about.
+ *
+ * The `must`s, when the spec named any: that is what `must` means, and a run that
+ * met every `should` while a `must` went unchecked has not been shown to have done
+ * its job. When a spec named none, nothing is privileged and every criterion is
+ * load-bearing — a should-only checklist has no other floor, and the alternative is
+ * that dropping the word "must" from a spec also drops the requirement to have
+ * looked. A spec that wants its runs to be pass-able must say what had to happen.
+ */
+function decisiveCriteria(checklist: CriterionResult[]): CriterionResult[] {
+  const musts = checklist.filter((c) => c.severity === "must");
+  return musts.length > 0 ? musts : checklist;
+}
+
 /**
  * A failed `must` fails the whole run — the same rule the Gmail eval uses.
  *
  * A `must` nobody could decide is NOT a failed must: reporting "failed: replied
  * to the client" for a run whose mailbox was never captured is an accusation the
- * artifact cannot support. It drops out, exactly as it does from the score.
+ * artifact cannot support. It drops out of the score, exactly as before — and it
+ * now stops the verdict, which is the half that was missing. A verdict is a claim
+ * about the whole run, so it may not be read off the corner of the checklist that
+ * happened to be legible: `inconclusive` says the run has not been graded rather
+ * than pretending it has.
  *
- * "Partial" has to mean partial credit, so a checklist that earned none — every
- * decided criterion failed, or nothing was decided at all — is a fail. Otherwise a
- * run that did nothing whatsoever reads "partial, 0%", and the word does the
- * opposite of what the number says.
+ * The order below is the order the evidence supports, strongest first:
+ *
+ *   1. a `must` that was decided and failed — blindness elsewhere does not undo a
+ *      failure that was actually observed;
+ *   2. nothing earned among what WAS decided — everything visible went wrong, which
+ *      is a supported claim of failure whatever else could not be seen;
+ *   3. any decisive criterion undecided — the run cannot be vouched for;
+ *   4. otherwise pass/partial, as before.
+ *
+ * "Partial" still has to mean partial credit, which is why (2) sits above (3): a
+ * run that scored zero on everything legible reads "fail, 0%", not "inconclusive".
+ * An empty checklist is inconclusive rather than failed — a spec that asked for
+ * nothing verified nothing, and that is the spec's defect, not the agent's.
  */
-export function verdictOutcome(checklist: CriterionResult[]): "pass" | "partial" | "fail" {
+export function verdictOutcome(checklist: CriterionResult[]): VerdictOutcome {
+  if (checklist.length === 0) return "inconclusive";
+
   const decided = decidedCriteria(checklist);
   if (decided.some((c) => c.severity === "must" && c.status === "failed")) return "fail";
-  if (!decided.some((c) => c.status === "passed")) return "fail";
+  if (decided.length > 0 && !decided.some((c) => c.status === "passed")) return "fail";
+  if (decisiveCriteria(checklist).some((c) => c.status === "notApplicable")) return "inconclusive";
+  if (decided.length === 0) return "inconclusive";
   return decided.every((c) => c.status === "passed") ? "pass" : "partial";
+}
+
+/**
+ * The headline number and the confidence in it, which are one fact and not two.
+ *
+ * "100%" off one of four criteria and "100%" off four of four are different claims
+ * about a run, and they used to render identically because the percentage was the
+ * only thing a caller was handed. Everything that quotes the score gets the counts
+ * with it, so a UI cannot show the number without being able to show what it was
+ * computed over.
+ *
+ * The percentage itself is unchanged — `checklistScore`, `notApplicable` excluded
+ * from both sides. This adds the denominator's provenance, not new arithmetic.
+ */
+export interface ScoredChecklist {
+  /** Weighted fraction of the DECIDED checklist that passed, 0..1. */
+  score: number;
+  /** Criteria this run settled either way — what `score` is a fraction OF. */
+  decided: number;
+  /** Criteria the spec asked for, decided or not. */
+  total: number;
+  /** `must`s nothing could decide — why an `inconclusive` run is inconclusive. */
+  undecidedMusts: number;
+  outcome: VerdictOutcome;
+}
+
+export function scoreChecklist(checklist: CriterionResult[]): ScoredChecklist {
+  return {
+    score: checklistScore(checklist),
+    decided: decidedCriteria(checklist).length,
+    total: checklist.length,
+    undecidedMusts: checklist.filter(
+      (c) => c.severity === "must" && c.status === "notApplicable",
+    ).length,
+    outcome: verdictOutcome(checklist),
+  };
 }
 
 /**

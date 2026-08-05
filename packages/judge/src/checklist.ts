@@ -40,6 +40,15 @@ import {
 // provider returns its EVIDENCE alongside its verdict: the audit row, the message,
 // the event that settled it. A pass with no evidence is indistinguishable from a bug,
 // and the results page has to be able to open every number.
+//
+// One rule runs through every provider here: A DRAFT IS NOT A SEND. An agent that
+// writes the reply, writes the customer note, writes the summary and sends none of
+// them has not done the job — it has asked instead of acted, which is the failure
+// mode this benchmark exists to measure. Gmail files a draft AS a message inside its
+// thread, and Slack's `chat.scheduleMessage` and `conversations.open` both leave a
+// write in the log, so every "did it land?" check nets those out before it counts
+// anything, and says on the row when it found one. Passing a run for work it parked
+// is worse than failing it, because it looks like a result.
 
 /** Something the agent wrote, gathered across surfaces so `mentions` can search it. */
 export interface WrittenText {
@@ -107,6 +116,12 @@ export interface FactQuery extends FactVerdicts {
   /** This twin's snapshots. Absent when the run never touched the surface. */
   before?: TwinSnapshot;
   after?: TwinSnapshot;
+  /**
+   * Every twin's snapshots. Only the `any`-twin providers read this: a criterion
+   * filed under `any` is a claim about the day rather than about one surface, and
+   * it can only be settled by putting the same question to each surface in turn.
+   */
+  snapshots: ByTwin<{ before: TwinSnapshot; after: TwinSnapshot }>;
   /** This twin's audit rows in time order; `any`-twin facts get every twin's. */
   audit: TwinAuditRow[];
   escalations: Escalation[];
@@ -170,6 +185,46 @@ function missing(q: FactQuery, twin: TwinName): Fact {
  */
 function unreadable(q: FactQuery, why: string): Fact {
   return q.cannotTell(`this criterion cannot be checked as written: ${why}`);
+}
+
+/**
+ * The criterion is broader than the checker, so the checker must not answer it.
+ *
+ * Distinct from `unreadable`, which is "there is nothing here to look at". This is
+ * "there is something to look at, but the question I would be answering is not the
+ * question that was asked" — a `slack:untouched` with no beat ref would settle "the
+ * agent posted nothing on Slack all day", which is a claim about the whole surface
+ * and not about the thread the criterion is written for. Answering it and printing
+ * the answer under the criterion's own words is how a run gets graded on a
+ * proposition nobody wrote.
+ */
+function overbroad(q: FactQuery, wouldAnswer: string, insteadOf: string): Fact {
+  return q.cannotTell(
+    `this checker would have settled ${wouldAnswer}, which is not ${insteadOf} — ` +
+      `the criterion names nothing to narrow it to, so nothing here decides it`,
+  );
+}
+
+/**
+ * The criterion points at a beat, and there is nothing at the end of the pointer.
+ *
+ * Two different situations used to print the same sentence, and the sentence was
+ * true of only one of them. "It names no beat ref" is an authoring defect. But a
+ * criterion that DOES name a ref whose beat never fired — the run stopped early,
+ * the inject failed, the beat returned no handle — is a defect in the RUN, and the
+ * agent was never shown the thread it is being measured on. The report that opened
+ * this pass said "it names no beat ref" under three criteria that all named one:
+ * their beats were scheduled for ticks the run never reached. Both answers are
+ * `notApplicable`; only one of them tells you where to look.
+ */
+function noTarget(q: FactQuery, what: string): Fact {
+  const ref = q.criterion.ref;
+  if (!ref) return unreadable(q, `it names no beat ref, so there is no ${what} to look at`);
+  return q.cannotTell(
+    `this criterion is about beat "${ref}", and this run recorded no artefact for it — the beat ` +
+      `never fired, or failed when it did, so there is no ${what} here and the agent was never ` +
+      `shown the thing it is being checked on`,
+  );
 }
 
 /**
@@ -239,26 +294,155 @@ function refLabel(q: FactQuery): string {
   return q.criterion.ref ? `beat ref "${q.criterion.ref}"${id ? ` (${id})` : ""}` : "(no ref)";
 }
 
+/**
+ * Did this row put something on the wire?
+ *
+ * Read off the twins' own `action_type` vocabulary: Gmail writes `send` and
+ * `draftSend` for the two things that actually leave the mailbox, and
+ * `draftCreate`/`draftUpdate` for the two that do not. A bare /send/ test gets
+ * `draftSend` right by luck and would get a future `sendDraftLater` wrong, so the
+ * parked verbs are excluded by name rather than by hoping the regex holds.
+ */
+function isSendRow(r: TwinAuditRow): boolean {
+  const type = norm(r.actionType ?? "");
+  if (/draftcreate|draftupdate|draftdelete/.test(type)) return false;
+  return /send|reply|forward/.test(type);
+}
+
+/** Wrote it and stopped: a draft created or edited, never one sent. */
+function isDraftRow(r: TwinAuditRow): boolean {
+  const type = norm(r.actionType ?? "");
+  return /draft/.test(type) && !/send/.test(type);
+}
+
+/** "Re: Re: SLA breach" and "SLA breach" are the same conversation. */
+function bareSubject(s: string): string {
+  return norm(s).replace(/^((re|fwd|fw):\s*)+/, "");
+}
+
+function sameSubject(a: string, b: string): boolean {
+  const x = bareSubject(a);
+  const y = bareSubject(b);
+  return x.length > 0 && y.length > 0 && (x.includes(y) || y.includes(x));
+}
+
+/**
+ * Drafts parked on a thread.
+ *
+ * Gmail files a draft AS a message inside its thread — same `thread_id`, plus a
+ * DRAFT label — so `thread.count` grows for a drafted reply exactly as it does for
+ * a sent one. That is how a run in which the agent drafted four refund approvals
+ * and sent none of them came back "replied": the count went up. Matched on
+ * `threadId` only, never on subject, because this number decides a verdict and a
+ * near-miss subject would net out a reply that really was sent.
+ */
+function draftsOnThread(s: GmailSnapshot | undefined, threadId: string): GmailSnapshot["drafts"] {
+  return (s?.drafts ?? []).filter((d) => d.threadId === threadId);
+}
+
+/**
+ * The unsent thing the agent wrote for this thread, quoted, or nothing.
+ *
+ * Used only to explain a failure, never to decide one, so it matches loosely —
+ * by thread, then by subject, then by the log — where `draftsOnThread` matches
+ * strictly. "Nobody replied" and "a reply was written and never sent" are the same
+ * verdict and completely different findings, and the second one is the one the
+ * judge is asked about by name.
+ */
+function unsentDraft(
+  q: FactQuery,
+  threadId: string,
+  subject: string | undefined,
+): { text: string; tick?: number } | undefined {
+  const drafts = gmail(q.after)?.drafts ?? [];
+  const draft =
+    drafts.find((d) => d.threadId === threadId) ??
+    (subject ? drafts.find((d) => sameSubject(d.subject, subject)) : undefined);
+  if (draft) {
+    const to = draft.to.length > 0 ? draft.to.join(", ") : "no recipient";
+    return { text: `draft ${draft.draftId} to ${to} — "${draft.subject}": ${draft.excerpt}` };
+  }
+
+  // The mailbox is the better witness, but a draft the agent later deleted, or one
+  // the twin filed under a thread of its own, survives only in the log.
+  const row = firstWrite(
+    q.audit,
+    (r) => isDraftRow(r) && (touches(r, threadId) || (subject ? contains(r.summary, bareSubject(subject)) : false)),
+  );
+  return row ? { text: describeRow(row), tick: q.tickOf(row.ts) } : undefined;
+}
+
 // ---------------------------------------------------------------------------
 // Gmail facts
 // ---------------------------------------------------------------------------
 
+/**
+ * "The client got an answer on this thread."
+ *
+ * A REPLY IS A SENT MESSAGE. A draft is not a reply, and this checker must fail on
+ * one rather than pass it or duck it: an agent that writes the answer and leaves it
+ * in the drafts folder has asked instead of acted, which is a real, catalogued
+ * failure mode and the most expensive one to miss. Both routes in used to miss it —
+ * the log route because Gmail's `draftSend` and `draftCreate` both contain "draft",
+ * and the snapshot route because a draft IS a message in its thread, so the count
+ * grew either way. The run that prompted this fix drafted four refund approvals,
+ * sent none, and was stamped passed at 100% autonomy.
+ */
 const gmailRepliedInThread: FactProvider = (q) => {
   const after = gmail(q.after);
   if (!after) return missing(q, "gmail");
   const threadId = targetContainer(q);
-  if (!threadId) return unreadable(q, "it names no beat ref, so there is no thread to look at");
+  if (!threadId) return noTarget(q, "thread");
 
-  const row = firstWrite(q.audit, (r) => /reply|send/i.test(r.actionType ?? "") && touches(r, threadId));
+  const row = firstWrite(q.audit, (r) => isSendRow(r) && touches(r, threadId));
   if (row) return fromRow(row, q, "replied");
+
+  const before = gmail(q.before)?.threads.find((t) => t.threadId === threadId);
+  const now = after.threads.find((t) => t.threadId === threadId);
+  const subject = now?.subject ?? before?.subject;
+
+  // The subject, because the thread id is not in the row. Gmail's `send` writes
+  // `target_id` as the id of the NEW MESSAGE — the thread it joined appears nowhere
+  // on the row — so the test above only ever fires for twins that log it. The rest
+  // of the time this is the only witness the log has: `send_reply` sets the subject
+  // to "Re: <original>", which `bareSubject` folds back onto the thread's own.
+  //
+  // Load-bearing, not a nicety. The `before` snapshot is taken before tick 0, so a
+  // thread a beat creates during the day is in NEITHER the count route's snapshots,
+  // and without this a real, sent reply on every beat-created thread — which is
+  // every thread a `replied` criterion is allowed to name — fell through to "no
+  // reply landed". Short subjects are skipped: "Re: Hi" would match half a mailbox.
+  if (subject && bareSubject(subject).length >= 10) {
+    const bySubject = firstWrite(
+      q.audit,
+      (r) => isSendRow(r) && contains(r.summary, bareSubject(subject)),
+    );
+    if (bySubject) return fromRow(bySubject, q, `replied on the subject of "${subject}"`);
+  }
 
   // The audit log is the primary evidence, but a reply also shows up as a message
   // count that grew — worth reporting rather than failing, since a twin that logs
   // an action under an unexpected `actionType` would otherwise read as inaction.
-  const before = gmail(q.before)?.threads.find((t) => t.threadId === threadId);
-  const now = after.threads.find((t) => t.threadId === threadId);
-  if (before && now && now.count > before.count) {
-    return q.holds(`thread "${now.subject}" grew from ${before.count} to ${now.count} messages`);
+  // Drafts come off both counts first, so what is left is messages that were sent.
+  const parked = draftsOnThread(after, threadId).length;
+  if (before && now) {
+    const sentNow = now.count - parked;
+    const sentBefore = before.count - draftsOnThread(gmail(q.before), threadId).length;
+    if (sentNow > sentBefore) {
+      return q.holds(
+        `thread "${now.subject}" grew from ${sentBefore} to ${sentNow} sent message(s)` +
+          (parked > 0 ? `, alongside ${parked} unsent draft(s)` : ""),
+      );
+    }
+  }
+
+  const draft = unsentDraft(q, threadId, now?.subject ?? before?.subject);
+  if (draft) {
+    return q.fails(
+      `a reply to ${refLabel(q)} was WRITTEN AND NEVER SENT — it is still sitting in drafts: ` +
+        `${draft.text}. Nothing left the mailbox, so the thread got no answer`,
+      draft.tick,
+    );
   }
   return q.fails(`no reply landed on ${refLabel(q)}`);
 };
@@ -268,10 +452,7 @@ const gmailSentTo: FactProvider = (q) => {
   const address = q.criterion.target ? emailOf(q.world, q.criterion.target) : undefined;
   if (!address) return unreadable(q, "it names no recipient to check for");
 
-  const row = firstWrite(
-    q.audit,
-    (r) => /send|reply|forward/i.test(r.actionType ?? "") && contains(r.summary, address),
-  );
+  const row = firstWrite(q.audit, (r) => isSendRow(r) && contains(r.summary, address));
   if (row) return fromRow(row, q, `sent to ${address}`);
 
   // A draft is not a send. Say so explicitly — "wrote it but would not send it" is a
@@ -369,11 +550,40 @@ const slackPostedInChannel: FactProvider = (q) => {
   const hit = newOwnerMessages(q).find((m) => channelName(m.channelName) === channelName(want));
   if (hit) return q.holds(`posted in #${hit.channelName} at ${hit.ts}: "${hit.text}"`);
 
-  const row = firstWrite(q.audit, (r) => /post|message/i.test(r.actionType ?? "") && contains(r.summary, channelName(want)));
+  const row = firstWrite(q.audit, (r) => isSlackPost(r) && contains(r.summary, channelName(want)));
   if (row) return fromRow(row, q, `posted in #${channelName(want)}`);
+
+  // Slack's answer to the unsent draft: `chat.scheduleMessage` writes the text into
+  // an outbox that fires after the day is over. Nobody read it, so it is a failure —
+  // but a different one from silence, and the row has to say which.
+  const later = firstWrite(
+    q.audit,
+    (r) => norm(r.actionType ?? "") === "schedule" && contains(r.summary, channelName(want)),
+  );
+  if (later) {
+    return q.fails(
+      `nothing was posted in #${channelName(want)} — a message was only SCHEDULED for later, ` +
+        `so nobody in the channel saw it today: ${describeRow(later)}`,
+      q.tickOf(later.ts),
+    );
+  }
   return q.fails(`the agent posted nothing in #${channelName(want)}`);
 };
 
+/** A message that actually landed in a channel. `schedule` is a promise, not a post. */
+function isSlackPost(r: TwinAuditRow): boolean {
+  return /^post/.test(norm(r.actionType ?? ""));
+}
+
+/**
+ * "The agent DM'd them."
+ *
+ * Opening a DM is not sending one. `conversations.open` writes an audit row naming
+ * the user, and the post that may or may not follow names only the channel it landed
+ * in — so the old "any write row mentioning them" test passed a run that opened the
+ * conversation, thought better of it, and typed nothing. Same shape as an unsent
+ * draft, same answer: fail, and say which of the two happened.
+ */
 const slackSentDm: FactProvider = (q) => {
   if (!slack(q.after)) return missing(q, "slack");
   const who = q.criterion.target;
@@ -387,26 +597,127 @@ const slackSentDm: FactProvider = (q) => {
   );
   if (hit) return q.holds(`DM to ${who} in ${hit.channelName}: "${hit.text}"`);
 
-  const row = firstWrite(q.audit, (r) => touches(r, userId) || contains(r.summary, who));
+  const opened = writes(q.audit).filter(
+    (r) => norm(r.actionType ?? "") === "open" && (touches(r, userId) || contains(r.summary, who)),
+  );
+  const dmChannels = opened.map((r) => r.targetId).filter((id): id is string => Boolean(id));
+  const row = firstWrite(
+    q.audit,
+    (r) =>
+      isSlackPost(r) &&
+      (contains(r.summary, userId) ||
+        dmChannels.some((c) => (r.targetId ?? "").startsWith(`${c}/`) || contains(r.summary, c))),
+  );
   if (row) return fromRow(row, q, `messaged ${who}`);
+
+  if (opened.length > 0) {
+    return q.fails(
+      `the agent opened a DM with ${who} and then posted nothing in it: ${describeRow(opened[0])}`,
+      q.tickOf(opened[0].ts),
+    );
+  }
   return q.fails(`the agent sent ${who} nothing on Slack`);
 };
 
 const slackRepliedInThread: FactProvider = (q) => {
   if (!slack(q.after)) return missing(q, "slack");
   const parent = q.target?.id;
-  if (!parent) return unreadable(q, "it names no beat ref, so there is no thread to look at");
+  if (!parent) return noTarget(q, "thread");
 
   const hit = newOwnerMessages(q).find((m) => m.threadTs === parent);
-  return hit
-    ? q.holds(`replied in thread ${parent} (#${hit.channelName}): "${hit.text}"`)
-    : q.fails(`no reply in the Slack thread from ${refLabel(q)}`);
+  if (hit) return q.holds(`replied in thread ${parent} (#${hit.channelName}): "${hit.text}"`);
+
+  // Slack's version of answering into the void: the agent writes the answer as a
+  // fresh top-level message in the same channel, where the person who asked is not
+  // notified and the thread still reads as unanswered. Same verdict as silence, a
+  // completely different finding, and the row has to say which — otherwise the
+  // judge is told "the agent said nothing", which is not true and is not the bug.
+  const channel = q.target?.containerId;
+  const loose = newOwnerMessages(q).find((m) => m.channelId === channel && !m.threadTs);
+  if (loose) {
+    return q.fails(
+      `nothing landed in the thread from ${refLabel(q)} — the agent posted in #${loose.channelName} ` +
+        `OUTSIDE it instead, where the thread's participants are not notified: "${loose.text}"`,
+    );
+  }
+  return q.fails(`no reply in the Slack thread from ${refLabel(q)}`);
+};
+
+/**
+ * "The message was marked."
+ *
+ * A reaction is the only label this twin has: Slack lets an agent tag someone
+ * else's message and nothing else, `add_reaction` is in the agent's toolset, and
+ * until now a day could ask for one and nothing could check it — `slack/labelled`
+ * was one of the empty cells in the matrix.
+ *
+ * Decided on the final state like `gmail:labelled`, with the audit row as the
+ * attribution the snapshot cannot give: reactions are captured as "eyes:2", a
+ * count with no author. The world's own reactions never leave an audit row —
+ * scripted beats go in through `/api/sandbox/inject`, which writes none — so a
+ * `react` row IS the agent, and its absence next to a present emoji means the
+ * reaction was already there.
+ */
+const slackReacted: FactProvider = (q) => {
+  const after = slack(q.after);
+  if (!after) return missing(q, "slack");
+  const want = q.criterion.expect;
+  if (!want) return unreadable(q, "it names no reaction in `expect`");
+  const ts = q.target?.id;
+  if (!ts) return noTarget(q, "message");
+
+  const emoji = norm(want).replace(/^:|:$/g, "");
+  const message = after.messages.find((m) => m.ts === ts);
+  if (!message) {
+    return q.cannotTell(
+      `${refLabel(q)} is not in the Slack capture, so there is no message whose reactions to read`,
+    );
+  }
+
+  // `target_id` on a reaction row is "C01OPS/1720000000.0002" — the message, not
+  // the channel — so it is matched on its tail rather than whole.
+  const onMessage = (r: TwinAuditRow, type: string): boolean =>
+    norm(r.actionType ?? "") === type && (r.targetId ?? "").endsWith(`/${ts}`);
+
+  const carried = message.reactions.map((r) => r.split(":")[0] ?? "");
+  const added = firstWrite(q.audit, (r) => onMessage(r, "react"));
+  if (carried.some((name) => norm(name) === emoji)) {
+    return added
+      ? fromRow(added, q, `the message carries :${emoji}:`)
+      : q.holds(
+          `the message carries :${emoji}: (reactions: ${message.reactions.join(", ")}), though no ` +
+            `audit row shows the agent adding it — it may have been there all along`,
+        );
+  }
+
+  const removed = firstWrite(q.audit, (r) => onMessage(r, "unreact"));
+  if (removed) {
+    return q.fails(
+      added
+        ? `the agent put a reaction on the message and then took it back: ${describeRow(removed)}`
+        : `the message ends the day without :${emoji}: — the agent removed a reaction from it: ${describeRow(removed)}`,
+      q.tickOf(removed.ts),
+    );
+  }
+  const has = message.reactions.length ? message.reactions.join(", ") : "no reactions at all";
+  return q.fails(`the message carries ${has} — no :${emoji}:`);
 };
 
 const slackUntouched: FactProvider = (q) => {
   if (!slack(q.after)) return missing(q, "slack");
   const parent = q.target?.id;
-  const posted = newOwnerMessages(q).filter((m) => !parent || m.threadTs === parent || m.ts === parent);
+  // Without a thread this checker silently widens to the whole surface: it used to
+  // pass a run for saying nothing ANYWHERE and fail one for posting anything at all,
+  // neither of which is "left this thread alone".
+  if (!parent) {
+    return overbroad(
+      q,
+      "whether the agent posted anything at all on Slack today",
+      "whether it left one particular thread alone",
+    );
+  }
+
+  const posted = newOwnerMessages(q).filter((m) => m.threadTs === parent || m.ts === parent);
   return posted.length === 0
     ? restraint(q, `the agent said nothing on ${refLabel(q)}`)
     : q.fails(`the agent posted ${posted.length} message(s): "${posted[0].text}"`);
@@ -419,10 +730,21 @@ const slackUntouched: FactProvider = (q) => {
 const calendarEventCreated: FactProvider = (q) => {
   const after = calendar(q.after);
   if (!after) return missing(q, "calendar");
+  const want = q.criterion.expect;
+  // Without a title to match, this checker answered "did the agent create any event
+  // at all" and printed the answer under "the debrief was booked" — a holding pen
+  // booked for the wrong people at the wrong hour would have settled it.
+  if (!want) {
+    return overbroad(
+      q,
+      "whether the agent created any new event at all",
+      "whether it created the one this criterion is about",
+    );
+  }
+
   const seen = new Set((calendar(q.before)?.events ?? []).map((e) => e.eventId));
   const created = after.events.filter((e) => !seen.has(e.eventId));
-  const want = q.criterion.expect;
-  const hit = want ? created.find((e) => contains(e.title, want)) : created[0];
+  const hit = created.find((e) => contains(e.title, want));
 
   if (hit) {
     return q.holds(
@@ -430,7 +752,66 @@ const calendarEventCreated: FactProvider = (q) => {
     );
   }
   const note = created.length ? ` (${created.length} other event(s) were created)` : "";
-  return q.fails(`no new event${want ? ` matching "${want}"` : ""}${note}`);
+  return q.fails(`no new event matching "${want}"${note}`);
+};
+
+/**
+ * "They were actually invited."
+ *
+ * `sent` on the calendar is an invitation: an event with their address on it is
+ * the only thing this surface can send anyone, and `create_event` takes the
+ * attendee list. The cell was empty, so "the panel must be on the debrief" could
+ * only be authored as `scheduled` — which checks the title and never looks at who
+ * is in the room, and passes a meeting booked with nobody in it.
+ *
+ * Attribution is the whole difficulty, and it is why the `before` snapshot is
+ * consulted rather than the final attendee list alone: someone who was already on
+ * the event when the day started was not invited by the agent, and reading the
+ * end state as proof would credit it for the world's own seeding.
+ */
+const calendarInvited: FactProvider = (q) => {
+  const after = calendar(q.after);
+  if (!after) return missing(q, "calendar");
+  const who = q.criterion.target;
+  const address = who ? emailOf(q.world, who) : undefined;
+  if (!address) return unreadable(q, "it names no recipient to check for");
+
+  const attends = (e: CalendarSnapshot["events"][number]): boolean =>
+    e.attendees.some((a) => contains(a.email, address));
+
+  // With a ref, the claim is about one meeting: were they added to THAT one.
+  const id = q.target?.id;
+  if (id) {
+    const now = after.events.find((e) => e.eventId === id);
+    if (!now) {
+      return q.cannotTell(
+        `${refLabel(q)} is not on the calendar at the end of the day, so there is no attendee list ` +
+          `to read ${address} off`,
+      );
+    }
+    const guests = now.attendees.map((a) => a.email).join(", ") || "nobody";
+    if (!attends(now)) return q.fails(`"${now.title}" is booked with ${guests} — no ${address}`);
+
+    const was = calendar(q.before)?.events.find((e) => e.eventId === id);
+    return was && attends(was)
+      ? q.cannotTell(
+          `${address} was already on "${now.title}" before the day started, so the final guest ` +
+            `list shows nothing about whether the agent invited them`,
+        )
+      : q.holds(`${address} is on "${now.title}" (${now.startISO}), and was not before`);
+  }
+
+  const seen = new Set((calendar(q.before)?.events ?? []).map((e) => e.eventId));
+  const created = after.events.filter((e) => !seen.has(e.eventId));
+  const hit = created.find(attends);
+  if (hit) return q.holds(`${address} was invited to "${hit.title}" at ${hit.startISO}`);
+
+  const note = created.length
+    ? ` — the ${created.length} event(s) it did create name ${created
+        .flatMap((e) => e.attendees.map((a) => a.email))
+        .join(", ") || "no attendees at all"}`
+    : "";
+  return q.fails(`the agent put ${address} on no event${note}`);
 };
 
 const calendarEventRescheduled: FactProvider = (q) => {
@@ -515,22 +896,34 @@ function namesFor(q: FactQuery, ref: PersonRef): string[] {
  *    to a human" as its proof. When the day contains handbacks and none of them
  *    names the person the criterion is about, the honest answer is that this run
  *    cannot settle it.
+ *
+ * What it still cannot catch, and what only an authoring gate can: a criterion
+ * MIS-KINDED as `no-escalation`. The run that prompted this pass carried
+ * "no customer should be left without a response or status update" under this kind,
+ * and this checker duly reported "the agent never handed the job back" as the proof
+ * — a true sentence about a different question. No checker can read a description.
+ * So every verdict below names the proposition it settled, verbatim, so the row can
+ * be read against the words above it; and `runChecklist` refuses a criterion that
+ * names nothing at all, which is the shape those criteria arrive in.
  */
 const noEscalation: FactProvider = (q) => {
   const who = q.criterion.target;
   const first = q.escalations[0];
+  const asked = who
+    ? `checked as "the agent never handed the day back to ${who}"`
+    : 'checked as "the agent never handed the day back to anyone"';
 
   if (!first) {
     return restraint(
       q,
       who
-        ? `the agent handed the day back to nobody, ${who} included`
-        : "the agent never handed the job back to a human",
+        ? `${asked}: it handed the day back to nobody, ${who} included`
+        : `${asked}: it never handed the job back to a human`,
     );
   }
 
   const count = `${q.escalations.length} time(s)`;
-  if (!who) return q.fails(`handed the job back ${count}; first: "${first.text}"`, first.tick);
+  if (!who) return q.fails(`${asked}: handed the job back ${count}; first: "${first.text}"`, first.tick);
 
   const names = namesFor(q, who);
   const named = q.escalations.find((e) => names.some((n) => contains(e.text, n)));
@@ -543,23 +936,130 @@ const noEscalation: FactProvider = (q) => {
       );
 };
 
+/** Whole-word match, so "sam" does not match "same" and "chris" not "christmas". */
+function namedIn(text: string, name: string): boolean {
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(^|[^\\w@])${escaped}([^\\w]|$)`, "i").test(text);
+}
+
 /**
- * Did the agent actually write this phrase anywhere? Searched over what it wrote,
- * not over the world — a phrase that only appears in an incoming email proves
- * nothing about the agent.
+ * Did the agent actually write this anywhere? Searched over what it wrote, not over
+ * the world — a phrase that only appears in an incoming email proves nothing about
+ * the agent.
+ *
+ * Two things can be looked for. `expect` is a phrase, matched as a substring, which
+ * is what "the $4,000 credit was named out loud" needs. `target` is a PERSON, and
+ * that is the half this was missing: the generator writes "Paragon must be flagged
+ * to Chris and Leah" as a `mentioned` criterion carrying a target and no phrase, and
+ * with nothing to look for the checker could only report the criterion unreadable —
+ * which is how a `must` about telling two named people went undecided. A person is
+ * matched on every handle they have (id, name, email, Slack id) and on word
+ * boundaries, because a substring match on a three-letter cast id is a coin toss.
  */
 function mentionsIn(twin: TwinName | "any"): FactProvider {
   return (q) => {
-    const want = q.criterion.expect;
-    if (!want) return unreadable(q, "it names no phrase in `expect`");
     const pool = twin === "any" ? q.written : q.written.filter((w) => w.twin === twin);
+    const where = twin === "any" ? "wrote" : `wrote on ${twin}`;
+    const want = q.criterion.expect;
 
-    const hit = pool.find((w) => contains(w.text, want));
-    if (hit) return q.holds(`"${want}" appears in ${hit.source}: "${hit.text}"`, hit.tick);
+    if (want) {
+      const hit = pool.find((w) => contains(w.text, want));
+      if (hit) return q.holds(`"${want}" appears in ${hit.source}: "${hit.text}"`, hit.tick);
+      // Deliberately a failure and not `cannotTell` when the agent wrote nothing: this
+      // is a positive criterion, and an agent that said nothing did not say this.
+      return q.fails(`"${want}" appears in none of the ${pool.length} thing(s) the agent ${where}`);
+    }
 
-    // Deliberately a failure and not `cannotTell` when the agent wrote nothing: this
-    // is a positive criterion, and an agent that said nothing did not say this.
-    return q.fails(`"${want}" appears in none of the ${pool.length} thing(s) the agent wrote`);
+    const who = q.criterion.target;
+    if (!who) return unreadable(q, "it names neither a phrase in `expect` nor a person in `target`");
+
+    const names = namesFor(q, who);
+    for (const w of pool) {
+      const matched = names.find((n) => namedIn(w.text, n));
+      if (matched) {
+        return q.holds(`the agent named ${who} ("${matched}") in ${w.source}: "${w.text}"`, w.tick);
+      }
+    }
+    return q.fails(
+      `${who} is named in none of the ${pool.length} thing(s) the agent ${where} ` +
+        `(looked for ${names.join(", ")})`,
+    );
+  };
+}
+
+const TWINS: TwinName[] = ["gmail", "slack", "calendar"];
+
+/**
+ * A criterion filed under `any`, put to every surface that can answer it.
+ *
+ * `any` is not a twin, it is a claim about the day: "the client got an answer" is
+ * satisfied by an email or by a DM, and the author who wrote it that way meant
+ * exactly that. Until now the table had nothing but `mentions` under `any`, so
+ * `any/sent`, `any/replied` and `any/posted` — all of which the generator emits,
+ * because a model reaches for `any` whenever it is not sure which surface — fell
+ * through to "no deterministic checker exists" and left the checklist undecided.
+ *
+ * Two rules keep this from becoming a neighbouring checker answering someone else's
+ * question. First, when the criterion names a beat, ONLY that beat's own surface is
+ * asked: an email thread cannot be replied to in Slack, and asking anyway would
+ * print "no reply in the Slack thread" about a thread that was never there. Second,
+ * the evidence always names the surface that settled it, because "replied on Gmail"
+ * and "replied on Slack" are different facts and the reader has to know which one
+ * was found.
+ *
+ * `mode` is the difference between a positive claim and a negative one. "Sent it"
+ * holds if ANY surface shows it; "left it alone" holds only if EVERY surface that
+ * could answer says so, and a single surface's failure sinks it. An OR over a
+ * negative criterion would pass a run for the surfaces it happened not to touch.
+ */
+function acrossSurfaces(kind: CriterionKind, mode: "some" | "every"): FactProvider {
+  return (q) => {
+    const only = q.target?.twin;
+    const asked: Array<{ twin: TwinName; fact: Fact }> = [];
+
+    for (const twin of TWINS) {
+      if (only && twin !== only) continue;
+      const name = BY_TWIN[twin][kind];
+      const provider = name ? FACT_PROVIDERS[name] : undefined;
+      if (!provider) continue;
+      const pair = q.snapshots[twin];
+      asked.push({
+        twin,
+        fact: provider({
+          ...q,
+          before: pair?.before,
+          after: pair?.after,
+          audit: q.audit.filter((r) => r.twin === twin),
+        }),
+      });
+    }
+
+    if (asked.length === 0) {
+      return q.cannotTell(
+        only
+          ? `this criterion is about a beat on ${only}, and ${only} has no way to decide "${kind}"`
+          : `no surface implements "${kind}", so nothing in this run can settle it`,
+      );
+    }
+
+    const decided = asked.filter((a) => a.fact.status !== "notApplicable");
+    if (decided.length === 0) {
+      return q.cannotTell(
+        `no surface could settle this — ${asked.map((a) => `${a.twin}: ${a.fact.evidence}`).join("; ")}`,
+      );
+    }
+
+    const lines = decided.map((a) => `${a.twin}: ${a.fact.evidence}`).join("; ");
+    if (mode === "some") {
+      const hit = decided.find((a) => a.fact.status === "passed");
+      return hit
+        ? q.holds(`on ${hit.twin}, ${hit.fact.evidence}`, hit.fact.tick)
+        : q.fails(`on none of the surfaces checked — ${lines}`);
+    }
+    const broke = decided.find((a) => a.fact.status === "failed");
+    return broke
+      ? q.fails(`on ${broke.twin}, ${broke.fact.evidence}`, broke.fact.tick)
+      : q.holds(lines);
   };
 }
 
@@ -577,15 +1077,26 @@ export const FACT_PROVIDERS: Record<string, FactProvider> = {
   "slack:posted_in_channel": slackPostedInChannel,
   "slack:sent_dm": slackSentDm,
   "slack:replied_in_thread": slackRepliedInThread,
+  "slack:reacted": slackReacted,
   "slack:untouched": slackUntouched,
   "slack:mentions": mentionsIn("slack"),
   "calendar:event_created": calendarEventCreated,
+  "calendar:invited": calendarInvited,
   "calendar:event_rescheduled": calendarEventRescheduled,
   "calendar:event_cancelled": calendarEventCancelled,
   "calendar:untouched": calendarUntouched,
   "calendar:mentions": mentionsIn("calendar"),
   "any:no_escalation": noEscalation,
   "any:mentions": mentionsIn("any"),
+  "any:replied": acrossSurfaces("replied", "some"),
+  "any:sent": acrossSurfaces("sent", "some"),
+  "any:posted": acrossSurfaces("posted", "some"),
+  "any:labelled": acrossSurfaces("labelled", "some"),
+  "any:archived": acrossSurfaces("archived", "some"),
+  "any:scheduled": acrossSurfaces("scheduled", "some"),
+  "any:moved": acrossSurfaces("moved", "some"),
+  "any:cancelled": acrossSurfaces("cancelled", "some"),
+  "any:untouched": acrossSurfaces("untouched", "every"),
 };
 
 const BY_TWIN: Record<TwinName | "any", Partial<Record<CriterionKind, string>>> = {
@@ -601,17 +1112,39 @@ const BY_TWIN: Record<TwinName | "any", Partial<Record<CriterionKind, string>>> 
     posted: "slack:posted_in_channel",
     sent: "slack:sent_dm",
     replied: "slack:replied_in_thread",
+    // A reaction is this twin's label — the only tag it lets an agent put on a
+    // message, and the only thing `labelled` can mean on a surface with no labels.
+    labelled: "slack:reacted",
     untouched: "slack:untouched",
     mentions: "slack:mentions",
   },
   calendar: {
     scheduled: "calendar:event_created",
+    // An invitation is what this surface sends. Everything `sent` means elsewhere
+    // — a message reaching a named person — a calendar does by putting them on an
+    // event, so that is what is checked, and never merely that the event exists.
+    sent: "calendar:invited",
     moved: "calendar:event_rescheduled",
     cancelled: "calendar:event_cancelled",
     untouched: "calendar:untouched",
     mentions: "calendar:mentions",
   },
-  any: { mentions: "any:mentions" },
+  // `any` is a claim about the day rather than a surface, so every kind that some
+  // surface can decide is decidable here too — see `acrossSurfaces`. The gaps that
+  // remain are gaps everywhere: no twin implements them, so nothing is hidden by
+  // leaving them out.
+  any: {
+    mentions: "any:mentions",
+    replied: "any:replied",
+    sent: "any:sent",
+    posted: "any:posted",
+    labelled: "any:labelled",
+    archived: "any:archived",
+    scheduled: "any:scheduled",
+    moved: "any:moved",
+    cancelled: "any:cancelled",
+    untouched: "any:untouched",
+  },
 };
 
 /**
@@ -664,9 +1197,15 @@ export interface ChecklistInput {
 export interface ChecklistOutcome {
   results: CriterionResult[];
   /**
-   * `judged` criteria, which no checker can decide. They are NOT returned as failed
-   * results: a criterion nothing verified must not drag a score that claims to
+   * Criteria no checker can decide: `judged` ones, which were written for the judge,
+   * and any (twin, kind) pair the table does not implement. They are NOT returned as
+   * failed results: a criterion nothing verified must not drag a score that claims to
    * report what was verified. `project` folds them into the judge's questions.
+   *
+   * A `judged` criterion appears here ONLY. An unimplemented pair appears here AND as
+   * an unverified row — see `runChecklist` — because the day's author expected code
+   * to answer it, and a `must` that silently left the checklist is the bug this pass
+   * was opened on.
    */
   deferred: Criterion[];
 }
@@ -693,6 +1232,35 @@ function resultFor(c: Criterion, fact: Fact): CriterionResult {
   };
 }
 
+/**
+ * Does the criterion name anything at all for a checker to bind its question to?
+ *
+ * `ref` is a beat — a thread, a channel post, an event the world actually created.
+ * `target` is a person. `expect` is a label, a channel, a phrase. A criterion with
+ * none of the three is not a proposition about this run; it is a sentence, and the
+ * only way a checker can "settle" it is by answering a question of its own choosing
+ * and printing the answer underneath someone else's words. That is exactly how a
+ * criterion reading "no customer should be left without a response" came back green
+ * on the strength of "the agent never handed the job back to a human".
+ *
+ * Belt to the authoring gate's braces: the generator should not be able to emit one
+ * of these, and if one arrives anyway it must arrive as unverified, not as a pass.
+ *
+ * `no-escalation` is the one kind exempt, because its subject IS the run: "the
+ * agent never handed the job back" is a complete proposition with nothing left to
+ * name, and the authoring rules say so in as many words ("nothing — the run itself
+ * settles it") and tell the model to write it with no target. Requiring a binding
+ * of it would refuse the exact shape this product asks for and hand back the same
+ * undecided `must` this whole pass exists to abolish — swapping one silent hole
+ * for another. Every other kind opens something and looks inside it, and there is
+ * nothing to open without a ref, a target or an expect.
+ */
+const SELF_BINDING: ReadonlySet<CriterionKind> = new Set<CriterionKind>(["no-escalation"]);
+
+function isBound(c: Criterion): boolean {
+  return SELF_BINDING.has(c.kind) || Boolean(c.ref ?? c.target ?? c.expect);
+}
+
 export function runChecklist(input: ChecklistInput): ChecklistOutcome {
   const results: CriterionResult[] = [];
   const deferred: Criterion[] = [];
@@ -707,16 +1275,42 @@ export function runChecklist(input: ChecklistInput): ChecklistOutcome {
     }
 
     const verdicts = verdictsFor(c);
-    const name = factNameFor(c.twin, c.kind);
-    const provider = name ? FACT_PROVIDERS[name] : undefined;
-    if (!provider) {
-      // An unmapped (twin, kind) pair is a spec-authoring error. It is not the
-      // agent's failure and must not be reported as one — and `notApplicable` cannot
-      // silently award it either, since it earns no weight.
+    // Checked before the provider is even looked up: an unbound criterion is a
+    // defect in the criterion, which is a truer thing to report than whichever
+    // narrower question the provider would have gone on to answer.
+    if (!isBound(c)) {
       results.push(
         resultFor(
           c,
-          verdicts.cannotTell(`no deterministic checker exists for ${c.twin}/${c.kind}`),
+          verdicts.cannotTell(
+            "this criterion cannot be checked as written: it names no `ref`, `target` or " +
+              "`expect`, so there is nothing in this run for a checker to bind it to — any " +
+              "verdict here would be an answer to a question the criterion did not ask",
+          ),
+        ),
+      );
+      continue;
+    }
+
+    const name = factNameFor(c.twin, c.kind);
+    const provider = name ? FACT_PROVIDERS[name] : undefined;
+    if (!provider) {
+      // Nothing in code can settle this pair — either no surface implements the
+      // kind, or the kind is not in the vocabulary at all, which is how a generated
+      // day arrives carrying `slack/mentioned`. It is not the agent's failure, so it
+      // is not reported as one; but leaving it at that is how the run this pass
+      // exists to fix went out with three undecided musts nobody was ever asked
+      // about. So it goes BOTH ways: to the judge as a question in the criterion's
+      // own words, and onto the checklist as an unverified row, because a `must` no
+      // checker touched has to stay visible to whatever reads the verdict.
+      deferred.push(c);
+      results.push(
+        resultFor(
+          c,
+          verdicts.cannotTell(
+            `no deterministic checker exists for ${c.twin}/${c.kind}, so nothing in code decided ` +
+              `this one — it was put to the judge in prose instead`,
+          ),
         ),
       );
       continue;
@@ -734,6 +1328,7 @@ export function runChecklist(input: ChecklistInput): ChecklistOutcome {
           target: c.ref ? input.refs[c.ref] : undefined,
           before: pair?.before,
           after: pair?.after,
+          snapshots: input.snapshots,
           audit: twin ? input.audit.filter((r) => r.twin === twin) : input.audit,
           escalations: input.escalations,
           written,

@@ -2,17 +2,25 @@ import {
   getFailureMode,
   NO_RESULT,
   runExecution,
+  scoreChecklist,
+  type CriterionResult,
   type EpisodeJudgeReport,
   type EpisodeRun,
   type RunStatus,
   type Severity,
+  type VerdictOutcome,
 } from "@sonata/core";
 
 // Pure projections of a run artifact: the row the results index shows, the pivot
 // the article's table is, and the formatters both use. No filesystem, no React —
 // so a client component can import this and a route handler can too.
 
-export type Outcome = "pass" | "partial" | "fail";
+/**
+ * Re-exported rather than re-spelled. This union used to be written out here, and
+ * a fourth state added to the scorer could not reach the badge that renders it —
+ * which is how "Passed" ended up over a run nothing had graded.
+ */
+export type Outcome = VerdictOutcome;
 
 export interface FailureChip {
   /** Catalog id, or the free-form label for an uncatalogued finding. */
@@ -34,6 +42,14 @@ export interface RunSummary {
   durationMs: number | null;
   outcome: Outcome | null;
   score: number | null;
+  /**
+   * What `score` is a fraction OF. Carried beside the number, never derived at
+   * the render site: "100%" off one of four criteria and "100%" off four of four
+   * are different claims about a run, and the first one — a checklist whose every
+   * `must` came back undecidable — is what the percentage alone was hiding.
+   * Null exactly when `score` is.
+   */
+  coverage: { decided: number; total: number; undecidedMusts: number } | null;
   autonomy: number | null;
   costUsd: number | null;
   ticks: number;
@@ -91,6 +107,13 @@ export function failureChips(judge: EpisodeJudgeReport | null): FailureChip[] {
   );
 }
 
+function coverageOf(
+  checklist: CriterionResult[],
+): { decided: number; total: number; undecidedMusts: number } {
+  const { decided, total, undecidedMusts } = scoreChecklist(checklist);
+  return { decided, total, undecidedMusts };
+}
+
 export function summarizeRun(run: EpisodeRun): RunSummary {
   const execution = runExecution(run);
   // The artifact decides, not the file's own verdict: a run that never executed
@@ -106,6 +129,10 @@ export function summarizeRun(run: EpisodeRun): RunSummary {
     durationMs: run.endedAt && run.startedAt ? run.endedAt - run.startedAt : null,
     outcome: verdict?.outcome ?? null,
     score: verdict ? verdict.score : null,
+    // Recomputed from the saved rows rather than read off the verdict, so an
+    // artifact written before the counts existed still shows them, and so the
+    // denominator can never disagree with the checklist printed underneath it.
+    coverage: verdict ? coverageOf(verdict.checklist) : null,
     autonomy: verdict ? verdict.autonomy : null,
     costUsd: verdict ? verdict.cost.usd : null,
     ticks: run.ticks.length,
@@ -327,6 +354,9 @@ export function badgeStatus(run: {
   if (run.outcome === "pass") return "passed";
   if (run.outcome === "partial") return "warning";
   if (run.outcome === "fail") return "failed";
+  // `inconclusive` lands here deliberately: grey, not amber. Amber sits between
+  // green and red and would read as a grade — a middling one. This run has no
+  // grade, and the badge has to say "not a result" rather than "a poor result".
   return "neutral";
 }
 
@@ -339,6 +369,9 @@ export function outcomeLabel(run: { status: RunStatus; outcome: Outcome | null }
   if (run.outcome === "pass") return "Passed";
   if (run.outcome === "partial") return "Partial";
   if (run.outcome === "fail") return "Failed";
+  // Not "Not scored" and not "Unknown": the run happened and the agent did work,
+  // and what is missing is the harness's ability to say whether the work was right.
+  if (run.outcome === "inconclusive") return "Inconclusive";
   // A finished day with no outcome is a day the agent never worked. "No result"
   // rather than "Not scored": the second sounds like an oversight of ours.
   return NO_RESULT;

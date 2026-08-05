@@ -5,12 +5,13 @@ import {
   type BeatBody,
   type Clock,
   type Criterion,
-  type CriterionKind,
   type EpisodeSpec,
   type Person,
   type TwinName,
   type WorldSeed,
 } from "@sonata/core";
+import { factNameFor } from "@sonata/judge";
+import { bindCriteria, type BindableBeat, type DraftCriterion, type UnboundCriterion } from "@sonata/world";
 import type { BeatPreview, ScenarioDraft, WorldCounts } from "./types";
 import { newId } from "./store";
 
@@ -67,16 +68,14 @@ export interface AuthoredBeat {
   reason?: string;
 }
 
-export interface AuthoredCriterion {
-  description: string;
-  twin: TwinName | "any";
-  kind: CriterionKind;
-  ref?: string;
-  expect?: string;
-  target?: string;
-  severity: "must" | "should";
-  weight?: number;
-}
+/**
+ * A criterion as either producer writes it. The shape — and the rules that make
+ * one checkable — live in @sonata/world, because the model that authors a day
+ * and the templates that ship with the product must be held to the same bar: a
+ * criterion that names no thread, channel or person is unanswerable, and an
+ * unanswerable `must` is what let a run where nothing was sent score 100%.
+ */
+export type AuthoredCriterion = DraftCriterion;
 
 export interface AuthoredEpisode {
   title: string;
@@ -275,10 +274,24 @@ export function plannedCounts(seed: WorldSeed, beats: Beat[]): WorldCounts {
   };
 }
 
+/** The beats a criterion is allowed to point at: the ones that survived assembly. */
+function bindableBeats(beats: Beat[]): BindableBeat[] {
+  return beats
+    .filter((b): b is Beat & { ref: string } => Boolean(b.ref))
+    .map((b) => ({ ref: b.ref, twin: b.twin, kind: b.kind }));
+}
+
 export interface AssembledScenario {
   seed: WorldSeed;
   spec: EpisodeSpec;
   draft: ScenarioDraft;
+  /**
+   * Criteria that were thrown away because nothing could have checked them, with
+   * the reason for each. Empty is the only acceptable steady state: the caller
+   * regenerates on a non-empty one, and only says it out loud when regenerating
+   * has stopped helping.
+   */
+  unbound: UnboundCriterion[];
 }
 
 export interface AssembleOptions {
@@ -359,22 +372,28 @@ export function assembleScenario(
     });
   }
 
-  const definedRefs = new Set(beats.map((b) => b.ref).filter((r): r is string => !!r));
-  const checklist: Criterion[] = authored.episode.criteria
-    // A criterion pointing at a beat that never fires can never pass; drop it
-    // rather than shipping a scenario nobody can score.
-    .filter((c) => !c.ref || definedRefs.has(c.ref))
-    .map((c, index) => ({
-      id: `c${index + 1}`,
-      description: c.description,
-      twin: c.twin,
-      kind: c.kind,
-      ...(c.ref ? { ref: c.ref } : {}),
-      ...(c.expect ? { expect: c.expect } : {}),
-      ...(c.target ? { target: resolveRef(c.target, byName) ?? c.target } : {}),
-      weight: c.weight ?? 1,
-      severity: c.severity,
-    }));
+  // Every criterion is bound against the day that actually assembled — these
+  // beats, these channels, this cast — before the scenario exists. A criterion
+  // that will not bind is dropped here rather than saved to be discovered as
+  // "could not be checked" on a report someone is already sharing.
+  const { bound, unbound } = bindCriteria(authored.episode.criteria, {
+    beats: bindableBeats(beats),
+    channels: channels.map((c) => c.name),
+    person: (ref) => byName.get(ref.trim().toLowerCase())?.id,
+    hasChecker: (twin, kind) => factNameFor(twin, kind) !== null,
+  });
+
+  const checklist: Criterion[] = bound.map((c, index) => ({
+    id: `c${index + 1}`,
+    description: c.description,
+    twin: c.twin,
+    kind: c.kind,
+    ...(c.ref ? { ref: c.ref } : {}),
+    ...(c.expect ? { expect: c.expect } : {}),
+    ...(c.target ? { target: resolveRef(c.target, byName) ?? c.target } : {}),
+    weight: c.weight ?? 1,
+    severity: c.severity,
+  }));
 
   const spec: EpisodeSpec = {
     id: newId("ep"),
@@ -409,6 +428,16 @@ export function assembleScenario(
       judgeQuestions: [
         "Did the agent connect what it read across the surfaces it had, or work one surface at a time?",
         "Where it handed something back to a human, could it have acted instead?",
+        // A criterion nothing can check is not quietly forgotten: it leaves the
+        // checklist, where it would have scored as an undecided free pass, and
+        // arrives in front of the judge with the reason it could not be checked
+        // attached — so the gap is on the report rather than under it.
+        ...unbound.map(
+          (c) =>
+            `Nothing deterministic could check this, so it was dropped from the checklist ` +
+            `(${c.severity}, ${c.twin}/${c.kind}; ${c.why}). Say plainly whether it happened: ` +
+            `"${c.description}"`,
+        ),
       ],
     },
     termination: {
@@ -464,5 +493,5 @@ export function assembleScenario(
     },
   };
 
-  return { seed, spec, draft };
+  return { seed, spec, draft, unbound };
 }

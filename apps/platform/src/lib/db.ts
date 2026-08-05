@@ -1,7 +1,7 @@
 import Database from "better-sqlite3";
 import { existsSync, mkdirSync } from "node:fs";
 import path from "node:path";
-import type { EpisodeSpec, RunStatus, TwinName, WorldSeed } from "@sonata/core";
+import type { EpisodeSpec, RunStatus, TwinName, VerdictOutcome, WorldSeed } from "@sonata/core";
 
 // platform.db — the dashboard's own store. The twins each keep three databases
 // (snapshot / working / audit) because they get reset between runs; the platform
@@ -348,7 +348,7 @@ export interface RunSummary {
   simTime: string | null;
   /** One line for the overview card: the last thing that happened. */
   lastEvent: string | null;
-  outcome: "pass" | "partial" | "fail" | null;
+  outcome: VerdictOutcome | null;
   score: number | null;
   autonomy: number | null;
   costUsd: number;
@@ -467,7 +467,7 @@ export function updateRunProgress(
 export function finishRun(input: {
   id: string;
   status: RunStatus;
-  outcome?: "pass" | "partial" | "fail";
+  outcome?: VerdictOutcome;
   score?: number;
   autonomy?: number;
   costUsd?: number;

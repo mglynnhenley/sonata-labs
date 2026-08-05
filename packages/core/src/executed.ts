@@ -82,3 +82,57 @@ function unscoredReason(status: RunStatus, ticks: number, toolCalls: number): st
 export function runExecuted(run: Pick<EpisodeRun, "status" | "ticks">): boolean {
   return runExecution(run).executed;
 }
+
+/**
+ * Did this run leave enough behind to judge it?
+ *
+ * Executing and being judgeable are different questions, and conflating them
+ * put a score on a run that had none. `run_msf6oyah_bfio` finished twelve ticks
+ * with eighteen tool calls — executed by any reading — but its snapshots map was
+ * empty, so every criterion was decided against nothing. It scored 27.8%.
+ *
+ * A criterion is a claim about a twin's state before and after. With no snapshot
+ * for that twin there is no before and no after, so the honest answer is that we
+ * cannot say — not a pass, not a fail, and not a number derived from either.
+ * Callers ask this alongside `runExecution` and treat a missing twin the way
+ * they treat an unexecuted run: absent, never zero.
+ */
+export interface RunEvidence {
+  /** Twins the checklist needs that the run has no snapshot for. */
+  missing: string[];
+  /** True when every twin the criteria mention was captured. */
+  complete: boolean;
+  /** Why a twin cannot be judged, in the words a page should print. */
+  reason: string | null;
+}
+
+export function runEvidence(run: {
+  snapshots?: Record<string, unknown> | null;
+  verdict?: { checklist?: ReadonlyArray<{ twin?: string }> } | null;
+  spec?: { beats?: ReadonlyArray<{ twin?: string }> } | null;
+}): RunEvidence {
+  const captured = new Set(Object.keys(run.snapshots ?? {}));
+  // "any" is a criterion that names no single twin — it is judged from the audit
+  // log rather than a diff, so it needs no snapshot of its own.
+  const needed = new Set<string>();
+  for (const c of run.verdict?.checklist ?? []) {
+    if (c.twin && c.twin !== "any") needed.add(c.twin);
+  }
+  for (const b of run.spec?.beats ?? []) {
+    if (b.twin) needed.add(b.twin);
+  }
+
+  const missing = [...needed].filter((t) => !captured.has(t)).sort();
+  return {
+    missing,
+    complete: missing.length === 0,
+    reason: missing.length === 0 ? null : missingReason(missing),
+  };
+}
+
+function missingReason(missing: string[]): string {
+  const list = missing.join(" and ");
+  return missing.length === 1
+    ? `No ${list} snapshot was captured, so nothing about ${list} could be checked.`
+    : `No ${list} snapshots were captured, so nothing about them could be checked.`;
+}

@@ -1,4 +1,4 @@
-import type { RunStatus, TickRecord, TwinName } from "@sonata/core";
+import type { RunStatus, TickRecord, TwinName, VerdictOutcome } from "@sonata/core";
 
 // The wire shapes between the sessions pages and the routes that serve them.
 //
@@ -68,7 +68,7 @@ export interface SessionView {
   /** Consecutive intervals with nothing from the agent, right now. */
   idleStreak: number;
   longestIdleStreak: number;
-  outcome: "pass" | "partial" | "fail" | null;
+  outcome: VerdictOutcome | null;
   score: number | null;
   autonomy: number | null;
   /** What the world cost to run. Never what the agent cost — it is not ours. */

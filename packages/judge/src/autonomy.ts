@@ -1,8 +1,10 @@
 import {
-  checklistScore,
   decidedCriteria,
+  scoreChecklist,
   type CriterionResult,
+  type ScoredChecklist,
   type TickRecord,
+  type VerdictOutcome,
 } from "@sonata/core";
 
 // The headline number: how much of the job got done without a human stepping in.
@@ -69,6 +71,18 @@ export interface AutonomyStats {
 export interface AutonomyBreakdown {
   /** 0..1. The number on the results page. */
   score: number;
+  /**
+   * The verdict this number is qualified by, from the same checklist.
+   *
+   * `inconclusive` means the score is a reading over the part of the day the harness
+   * could see, not a measurement of the day — a run whose `must`s all came back
+   * undecidable produced "100% autonomous" off a single decided `should`, and the
+   * number was never the problem. Carried here so nothing can render the percentage
+   * without being handed what it is a percentage of.
+   */
+  outcome: VerdictOutcome;
+  /** Decided/total criteria and the undecided `must` count behind `outcome`. */
+  coverage: ScoredChecklist;
   components: AutonomyComponent[];
   stats: AutonomyStats;
 }
@@ -203,15 +217,25 @@ export function autonomy(checklist: CriterionResult[], ticks: TickRecord[]): Aut
     exchangesCarried: carried,
   };
 
-  const completion = checklistScore(checklist);
+  // The score and its confidence together — same arithmetic as before for the
+  // percentage, plus the counts it was computed over and the verdict they support.
+  const coverage = scoreChecklist(checklist);
+  const completion = coverage.score;
   // Criteria this run settled either way. The rest — a criterion that held only
-  // because the agent never moved, a surface nobody captured — are not counted as
-  // passed and not counted as failed, here or in the score, so the sentence under
-  // the number matches the number. Naming them keeps the drop visible: a 2/2 that
-  // quietly ignored six criteria would read as a perfect day.
+  // because the agent never moved, a surface nobody captured, a criterion no checker
+  // would answer on its own terms — are not counted as passed and not counted as
+  // failed, here or in the score, so the sentence under the number matches the
+  // number. Naming them keeps the drop visible: a 2/2 that quietly ignored six
+  // criteria would read as a perfect day.
   const decided = decidedCriteria(checklist);
   const dropped = checklist.length - decided.length;
   const droppedNote = dropped === 0 ? "" : `, ${dropped} not applicable`;
+  // An undecided `must` is the one that has to be said out loud rather than left to
+  // the reader to spot in a count: it is why this run has no verdict.
+  const mustNote =
+    coverage.undecidedMusts === 0
+      ? ""
+      : `; ${coverage.undecidedMusts} must-do(s) undecided, so this run is inconclusive`;
   const decisions = actions + escalations;
   const candidates: Array<AutonomyComponent & { applicable: boolean }> = [
     {
@@ -219,7 +243,7 @@ export function autonomy(checklist: CriterionResult[], ticks: TickRecord[]): Aut
       label: "Got the job done",
       value: clamp01(completion),
       weight: BASE_WEIGHTS.completion,
-      detail: `${decided.filter((c) => c.status === "passed").length}/${decided.length} criteria passed, ${pct(completion)} by weight${droppedNote}`,
+      detail: `${decided.filter((c) => c.status === "passed").length}/${decided.length} criteria passed, ${pct(completion)} by weight${droppedNote}${mustNote}`,
       // Always applicable: an episode that decided no criteria scores 0 by core's
       // rule, and a spec that verified nothing should look broken rather than perfect.
       applicable: true,
@@ -267,5 +291,9 @@ export function autonomy(checklist: CriterionResult[], ticks: TickRecord[]): Aut
   }));
 
   const score = components.reduce((sum, c) => sum + c.value * c.weight, 0);
-  return { score: clamp01(score), components, stats };
+  // `score` is left exactly as computed even when `outcome` is inconclusive. Docking
+  // it would invent a number; the honest move is to hand the caller the number AND
+  // the fact that it is a reading over a partly-unseen day, and let the results page
+  // refuse to print one without the other.
+  return { score: clamp01(score), outcome: coverage.outcome, coverage, components, stats };
 }

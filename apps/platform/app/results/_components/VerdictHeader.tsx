@@ -35,6 +35,27 @@ function autonomyTone(value: number | null): "success" | "gold" | "danger" {
   return value >= 0.75 ? "success" : value >= 0.4 ? "gold" : "danger";
 }
 
+/**
+ * What the percentage leaves out, said in the hint rather than left to arithmetic
+ * on the reader's part. Undecided `must`s are named first because they are the
+ * reason the verdict beside this card says "Inconclusive".
+ */
+function coverageHint(
+  coverage: RunSummary["coverage"],
+): string | undefined {
+  if (!coverage || coverage.decided === coverage.total) return undefined;
+  const undecided = coverage.total - coverage.decided;
+  const musts =
+    coverage.undecidedMusts > 0
+      ? ` ${coverage.undecidedMusts} of them ${coverage.undecidedMusts === 1 ? "is a" : "are"} must-do${coverage.undecidedMusts === 1 ? "" : "s"}, so this run has not been graded — the percentage is what the harness could see, not what happened.`
+      : "";
+  return (
+    `Weighted share of the ${coverage.decided} criteria this run settled. ` +
+    `${undecided} of ${coverage.total} could not be checked at all and are in neither half of ` +
+    `the fraction.${musts}`
+  );
+}
+
 export function VerdictHeader({
   summary,
   stats,
@@ -56,6 +77,7 @@ export function VerdictHeader({
   onOpen: (section: Section) => void;
 }) {
   const autonomy = summary.autonomy;
+  const coverage = summary.coverage;
   const criticalCount = summary.failures.filter((f) => f.severity === "critical").length;
   // Two DIFFERENT measures of the same day, not two attempts at one: arithmetic
   // over what the run did, and a model's opinion of it. Both are kept on purpose
@@ -156,6 +178,21 @@ export function VerdictHeader({
               </button>
               .
             </p>
+
+            {/* The number stays; the claim next to it does not. A run whose
+                must-dos nobody could check has a percentage and no verdict, and
+                the difference between those two things is the whole point of
+                this notice — without it the reader reads the number as a grade. */}
+            {summary.outcome === "inconclusive" ? (
+              <p className="mt-3 rounded-sn-lg border border-sn-line bg-sn-bg-subtle px-3 py-2.5 text-[12px] leading-[18px] text-sn-muted">
+                <span className="font-medium text-sn-ink">This run has no verdict.</span>{" "}
+                {coverage && coverage.undecidedMusts > 0
+                  ? `${coverage.undecidedMusts} of the day's must-dos could not be checked at all, so nothing here shows whether the job was done. `
+                  : "Nothing on this day's checklist could be settled either way, so nothing here shows whether the job was done. "}
+                The percentage above is a reading over the part of the day the harness could see.
+                Read the findings below instead.
+              </p>
+            ) : null}
           </div>
 
           {judgeAutonomy === null ? null : (
@@ -182,13 +219,18 @@ export function VerdictHeader({
         )}
 
         <div className="grid gap-4 sm:grid-cols-2">
+          {/* The percentage never renders on its own. `unit` carries the
+              denominator, so "100%" arrives as "100% · 1 of 4 decided" — the
+              reader can see it is a reading over part of the day before they can
+              read it as a grade. */}
           <StatCard
             label={CHECKLIST_LABEL}
             value={formatPercent(summary.score)}
+            unit={coverage ? `of ${coverage.decided} decided, ${coverage.total} asked` : undefined}
             hint={
               summary.noResult
                 ? "No criterion was checked: a checklist run against a day the agent never worked scores its negative criteria for free."
-                : CHECKLIST_HINT
+                : coverageHint(coverage) ?? CHECKLIST_HINT
             }
             icon={<IconLayers size={15} />}
             actionLabel="See the checklist"

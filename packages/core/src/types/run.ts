@@ -1,3 +1,6 @@
+// Type-only, so the cycle with `twin.ts` (which imports this file for
+// `AgentTrace`) is erased at compile time and costs nothing at runtime.
+import type { TwinAuditRow } from "../twin";
 import type { BeatBody, Criterion } from "./episode";
 import type { EpisodeJudgeReport, TwinSnapshot } from "./judge";
 import type { ByTwin, PersonRef, TwinName } from "./world";
@@ -191,8 +194,25 @@ export interface RunCost {
   llmCalls: number;
 }
 
+/**
+ * What a run is reported as. Four states, because with three of them a run nobody
+ * could grade had to be filed as one of the three, and every choice was a lie.
+ *
+ * `inconclusive` is the run the harness could not see. Not a pass, not a failure,
+ * not partial credit: a verdict that was never reached. It exists because a run
+ * whose every `must` came back undecidable was being stamped "Passed, 100%" off a
+ * single decided `should` — the percentage was right (see `checklistScore`) and the
+ * word next to it was an invention.
+ *
+ * Declared here rather than beside `verdictOutcome`, which computes it, because it
+ * is the type of a STORED field: everything that persists, mirrors or renders a
+ * verdict has to spell the same four states, and a fourth state that only the
+ * scorer knew about is a fourth state the database silently drops.
+ */
+export type VerdictOutcome = "pass" | "partial" | "fail" | "inconclusive";
+
 export interface EpisodeVerdict {
-  outcome: "pass" | "partial" | "fail";
+  outcome: VerdictOutcome;
   /** Weighted fraction of the checklist that passed, 0..1. */
   score: number;
   /** How much of the job got done without a human stepping in, 0..1. */
@@ -219,6 +239,22 @@ export interface EpisodeRun {
   ticks: TickRecord[];
   /** State either side of the agent, per twin — only for twins the run used. */
   snapshots: ByTwin<{ before: TwinSnapshot; after: TwinSnapshot }>;
+  /**
+   * Every twin's write rows for this run, in id order — the log the checkers read.
+   *
+   * Persisted because the checklist is RE-DERIVED from this artifact every time
+   * anything renders it, and a re-derivation with a smaller evidence base than the
+   * original does not merely lose detail: it invents failures. A sent reply is
+   * proved by its audit row (Gmail files the thread id nowhere on a `send`), so a
+   * re-derivation without the log reported "no reply landed" for a reply that
+   * really went out, and "nothing was sent to Derek" for two emails that reached
+   * him. The snapshots alone cannot settle either, because the thread a beat
+   * creates during the day is in neither of them.
+   *
+   * Absent on runs written before this was saved. See `artifacts.ts` for what a
+   * reader is allowed to conclude from an artifact that has no log.
+   */
+  audit?: TwinAuditRow[];
   /** Null until scoring; set even for a failed run if the checklist could be read. */
   verdict: EpisodeVerdict | null;
   /** Why the run ended badly, when it did. */

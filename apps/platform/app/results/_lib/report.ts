@@ -1,10 +1,12 @@
 import {
   getFailureMode,
   runExecution,
+  scoreChecklist,
   type CriterionResult,
   type EpisodeJudgeReport,
   type EpisodeRun,
   type TwinName,
+  type VerdictOutcome,
 } from "@sonata/core";
 import type { RunBrief } from "./artifacts";
 import { buildMoments, type Moment } from "./moments";
@@ -297,8 +299,10 @@ function hoursMinutes(minutes: number): string {
  * whether this coworker could be left with the work, and what it would take.
  */
 function bottomLine(
-  outcome: "pass" | "partial" | "fail" | null,
+  outcome: VerdictOutcome | null,
   cap: Capability,
+  /** The verdict's own rows, for the one sentence that has to count them. */
+  checklist: CriterionResult[],
   /** Why there is no verdict, when there is none. Never "not assessed yet": a
    *  run that never executed is not waiting on us, and a reader must not be left
    *  expecting a number that is never coming. */
@@ -306,6 +310,23 @@ function bottomLine(
 ): string {
   if (outcome === null) {
     return noResult ?? "This run produced no result, so there is nothing to assess.";
+  }
+  // Before the supervision sentence, because there is nothing to supervise a
+  // judgement of: an inconclusive run has not been assessed, and printing "it
+  // could not be left to run this alone" — where this used to land — is an
+  // accusation the artifact does not support. The document says what is missing
+  // and sends the reader to the findings, which ARE evidence.
+  if (outcome === "inconclusive") {
+    const { decided, total, undecidedMusts } = scoreChecklist(checklist);
+    const what =
+      undecidedMusts > 0
+        ? `${count(undecidedMusts, "of the day's must-dos")} could not be checked at all`
+        : `only ${decided} of ${total} criteria could be checked at all`;
+    return (
+      `**This run has not been graded.** ${what}, so nothing here shows whether the job was ` +
+      `done. What follows is what the day contained, not a verdict on it — read the findings ` +
+      `and decide for yourself.`
+    );
   }
   const supervision =
     cap.needsCorrection === 0
@@ -363,7 +384,7 @@ export function buildRunReport(run: EpisodeRun, brief: RunBrief): string {
       `history. No production system was connected and no access was granted to run this.`,
   );
   p();
-  p(bottomLine(v?.outcome ?? null, cap, runExecution(run).reason));
+  p(bottomLine(v?.outcome ?? null, cap, v?.checklist ?? [], runExecution(run).reason));
 
   // --- Scorecard -------------------------------------------------------------
   if (v) {

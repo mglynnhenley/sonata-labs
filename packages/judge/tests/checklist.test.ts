@@ -100,7 +100,7 @@ describe("runChecklist", () => {
       }),
     );
     expect(results[0].status).toBe("passed");
-    expect(results[0].evidence).toContain("grew from 1 to 2 messages");
+    expect(results[0].evidence).toContain("grew from 1 to 2 sent message(s)");
   });
 
   it("does not count an unsent draft as a send, and says the draft is there", () => {
@@ -236,6 +236,11 @@ describe("runChecklist", () => {
   });
 
   it("passes no-escalation only when an agent that worked never handed back", () => {
+    // Explicitly with no ref, no target and no expect: that is the shape the
+    // authoring rules prescribe for this kind ("nothing — the run itself settles
+    // it") and the shape the generator writes. This assertion was quietly relaxed
+    // to let the criterion carry the helper's default ref, which hid a bind gate
+    // that refused the only spelling the product actually produces.
     const c = criterion({ twin: "any", kind: "no-escalation", ref: undefined });
     expect(runChecklist(working({ criteria: [c] })).results[0].status).toBe("passed");
 
@@ -293,13 +298,23 @@ describe("runChecklist", () => {
 // ---------------------------------------------------------------------------
 
 describe("a run where the agent did nothing", () => {
-  /** Every criterion a null agent used to collect for free. */
+  /**
+   * Every criterion a null agent used to collect for free. All four name a beat:
+   * a criterion that names nothing is refused before restraint is even considered,
+   * which is a different bug with a different test below.
+   */
   const negatives = [
-    criterion({ id: "c1", twin: "any", kind: "no-escalation", ref: undefined, weight: 2 }),
+    criterion({ id: "c1", twin: "any", kind: "no-escalation", weight: 2 }),
     criterion({ id: "c2", twin: "gmail", kind: "untouched", severity: "should" }),
-    criterion({ id: "c3", twin: "slack", kind: "untouched", ref: undefined, severity: "should" }),
+    criterion({ id: "c3", twin: "slack", kind: "untouched", ref: "chatter", severity: "should" }),
     criterion({ id: "c4", twin: "calendar", kind: "untouched", ref: "review", severity: "should" }),
   ];
+
+  const refs = {
+    escalation: { twin: "gmail" as const, id: "M1", containerId: "T1" },
+    chatter: { twin: "slack" as const, id: "1699999999.0001", containerId: "C1" },
+    review: { twin: "calendar" as const, id: "E1" },
+  };
 
   const snapshots = {
     gmail: { before: gmailSnapshot(), after: gmailSnapshot() },
@@ -311,7 +326,7 @@ describe("a run where the agent did nothing", () => {
     const { results } = runChecklist(
       base({
         criteria: negatives,
-        refs: { escalation: { twin: "gmail", id: "M1", containerId: "T1" }, review: { twin: "calendar", id: "E1" } },
+        refs,
         snapshots,
         agentActed: false,
       }),
@@ -330,7 +345,7 @@ describe("a run where the agent did nothing", () => {
     const { results } = runChecklist(
       base({
         criteria: negatives,
-        refs: { escalation: { twin: "gmail", id: "M1", containerId: "T1" }, review: { twin: "calendar", id: "E1" } },
+        refs,
         snapshots,
         agentActed: true,
       }),
@@ -400,6 +415,120 @@ describe("evidence belongs to the criterion it is printed under", () => {
     const clean = runChecklist(working({ criteria: [c] }));
     expect(clean.results[0].status).toBe("passed");
     expect(clean.results[0].evidence).toContain("dana included");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// A checker refuses rather than over-answers.
+//
+// The failure this prevents is subtler than evidence landing on the wrong row: the
+// evidence is the checker's own, honestly gathered, and it settles a proposition
+// nobody wrote. A criterion reading "no customer should be left without a response
+// or status update" was published green on the strength of "the agent never handed
+// the job back to a human" — both true, neither about the other.
+// ---------------------------------------------------------------------------
+
+describe("a checker that cannot decide a criterion on its own terms", () => {
+  it("refuses a criterion that names nothing for it to open", () => {
+    // No ref, no target, no expect, on a kind whose whole job is to open one thing
+    // and look inside it. Every checker has SOME question it could answer about a
+    // day; none of them is this criterion's until the criterion says so.
+    const c = criterion({
+      id: "c5",
+      twin: "gmail",
+      kind: "labelled",
+      description: "Everything urgent should have been triaged",
+      ref: undefined,
+      severity: "should",
+    });
+    const { results } = runChecklist(working({ criteria: [c] }));
+
+    expect(results[0].status).toBe("notApplicable");
+    expect(results[0].evidence).toContain("names no `ref`, `target` or `expect`");
+    // And it earns nothing, so an unbound criterion cannot be the one that carries
+    // a verdict: this is the row that used to make a 1-of-4 checklist read 100%.
+    expect(checklistScore(results)).toBe(0);
+  });
+
+  // This assertion used to demand `notApplicable` for a bare `no-escalation` —
+  // "No customer should be left without a response or status update", the c5 that
+  // opened this whole pass. It encoded the wrong diagnosis. That criterion's defect
+  // is that it is MIS-KINDED: it is a claim about customers being answered, filed
+  // under a kind that measures hand-backs. Refusing it for naming nothing does not
+  // catch mis-kinding — the identical criterion with `target: "Priya"` is exactly
+  // as over-broad and would sail through — while it DOES break the one kind whose
+  // subject is the run itself, which is the only shape the authoring rules allow
+  // for it and the only one the generator writes. So the rule is narrowed to kinds
+  // that open something, and the mis-kinding is met where it can actually be met:
+  // on the row, in the checker's own words, so a reader can hold the proposition
+  // that was settled against the sentence it was printed under.
+  it("decides a bare no-escalation, and says on the row what it actually settled", () => {
+    const c = criterion({
+      id: "c5",
+      twin: "any",
+      kind: "no-escalation",
+      description: "No customer should be left without a response or status update",
+      ref: undefined,
+      severity: "should",
+    });
+    const { results } = runChecklist(working({ criteria: [c] }));
+
+    expect(results[0].status).toBe("passed");
+    // The claim the checker answered, verbatim — NOT the criterion's own words.
+    expect(results[0].evidence).toContain(
+      'checked as "the agent never handed the day back to anyone"',
+    );
+    expect(results[0].evidence).not.toContain("customer");
+  });
+
+  it("refuses `slack:untouched` with no thread rather than grading the whole surface", () => {
+    // "Left this thread alone" and "said nothing on Slack all day" are different
+    // claims, and the second one used to be answered under the first one's words —
+    // passing a silent agent and failing one that posted anywhere else.
+    const c = criterion({ id: "c3", twin: "slack", kind: "untouched", ref: undefined, target: "dana" });
+    const { results } = runChecklist(
+      working({
+        criteria: [c],
+        snapshots: { slack: { before: slackSnapshot(), after: slackSnapshot() } },
+      }),
+    );
+    expect(results[0].status).toBe("notApplicable");
+    expect(results[0].evidence).toContain("posted anything at all on Slack today");
+  });
+
+  it("refuses `calendar:scheduled` with no title rather than taking any new event", () => {
+    const after = calendarSnapshot();
+    after.events = [
+      ...after.events,
+      {
+        eventId: "E9",
+        title: "Hold — do not book over",
+        startISO: "2026-08-04T19:00:00Z",
+        endISO: "2026-08-04T19:30:00Z",
+        organizer: "sam@brightline.test",
+        attendees: [],
+        status: "confirmed" as const,
+      },
+    ];
+    const c = criterion({ twin: "calendar", kind: "scheduled", ref: "review", expect: undefined });
+    const { results } = runChecklist(
+      working({
+        criteria: [c],
+        refs: { review: { twin: "calendar", id: "E1" } },
+        snapshots: { calendar: { before: calendarSnapshot(), after } },
+      }),
+    );
+    // The unrelated hold would have satisfied it. It does not get to.
+    expect(results[0].status).toBe("notApplicable");
+    expect(results[0].evidence).toContain("created any new event at all");
+  });
+
+  it("names the proposition it settled, so a row can be read against its own words", () => {
+    const { results } = runChecklist(
+      working({ criteria: [criterion({ twin: "any", kind: "no-escalation" })] }),
+    );
+    expect(results[0].status).toBe("passed");
+    expect(results[0].evidence).toContain('checked as "the agent never handed the day back to anyone"');
   });
 });
 

@@ -1,4 +1,4 @@
-import { runExecution, type EpisodeRun, type RunCost } from "@sonata/core";
+import { runExecution, type EpisodeRun, type RunCost, type VerdictOutcome } from "@sonata/core";
 import type { BenchmarkMatrix, Cell } from "./plan";
 
 // Turning runs into the numbers the article quotes. Pure and deterministic: same
@@ -24,7 +24,7 @@ export interface CellResult {
   score: number | null;
   /** How much got done without a human stepping in, 0..1 — the headline. */
   autonomy: number | null;
-  outcome: "pass" | "partial" | "fail" | null;
+  outcome: VerdictOutcome | null;
   cost: RunCost;
   ticks: number;
   /** Wall-clock, for the "how long does a matrix take" question. */

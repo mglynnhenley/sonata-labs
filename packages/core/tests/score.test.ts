@@ -4,6 +4,7 @@ import {
   checklistScore,
   decidedCriteria,
   findingsByCategory,
+  scoreChecklist,
   verdictOutcome,
 } from "../src/score";
 import type { Finding } from "../src/types/judge";
@@ -88,7 +89,8 @@ describe("checklistScore", () => {
   it("does not let a checklist nobody could decide look perfect", () => {
     const results = [crit({ id: "a", status: "notApplicable" })];
     expect(checklistScore(results)).toBe(0);
-    expect(verdictOutcome(results)).toBe("fail");
+    // Not a pass and not a failure: nothing was decided, so nothing was graded.
+    expect(verdictOutcome(results)).toBe("inconclusive");
   });
 
   it("leaves a genuinely good run exactly where it was", () => {
@@ -133,13 +135,122 @@ describe("verdictOutcome", () => {
     expect(verdictOutcome(results)).toBe("fail");
   });
 
-  it("does not fail a run for a `must` nobody could decide", () => {
-    // The mailbox was never captured. That is not the agent replying badly.
+  it("neither fails nor passes a run for a `must` nobody could decide", () => {
+    // The mailbox was never captured. That is not the agent replying badly — and it
+    // is not the agent replying well either, which is the half that used to be
+    // missing: this came back "pass" on the strength of the one decided `should`.
     const results = [
       crit({ id: "a", severity: "must", status: "notApplicable" }),
       crit({ id: "b", status: "passed" }),
     ];
+    expect(verdictOutcome(results)).toBe("inconclusive");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The bug this outcome exists to prevent coming back. A customer-support run went
+// out on the front page as "Passed, 100% autonomy" while the judge's own report
+// said the agent drafted four refund approvals and sent none of them. Its whole
+// checklist was four criteria: three `must`s that no checker could decide, and one
+// `should` that could. One of one decided is 100%, and 100% was published as a pass.
+// ---------------------------------------------------------------------------
+
+describe("a run whose must-dos nobody could check", () => {
+  const refundReckoning = [
+    crit({ id: "c1", severity: "must", kind: "replied", status: "notApplicable" }),
+    crit({ id: "c2", severity: "must", twin: "slack", kind: "mentions", status: "notApplicable" }),
+    crit({ id: "c3", severity: "must", kind: "replied", status: "notApplicable" }),
+    crit({ id: "c5", severity: "should", kind: "no-escalation", status: "passed" }),
+  ];
+
+  it("is inconclusive, never a pass", () => {
+    expect(verdictOutcome(refundReckoning)).toBe("inconclusive");
+  });
+
+  it("still computes the percentage the same way — the number was never the lie", () => {
+    // 1/1 decided, by weight. Unchanged: `notApplicable` stays out of both sides.
+    expect(checklistScore(refundReckoning)).toBe(1);
+  });
+
+  it("hands the percentage over with what it was computed from", () => {
+    expect(scoreChecklist(refundReckoning)).toEqual({
+      score: 1,
+      decided: 1,
+      total: 4,
+      undecidedMusts: 3,
+      outcome: "inconclusive",
+    });
+  });
+
+  it("is not softened by the should that did pass", () => {
+    // The one decided criterion passing is exactly the shape of the original bug.
+    const withMore = [...refundReckoning, crit({ id: "c6", status: "passed" })];
+    expect(verdictOutcome(withMore)).toBe("inconclusive");
+  });
+
+  it("still fails outright once one of those musts can be decided against it", () => {
+    // Blindness elsewhere does not undo a failure that was actually observed.
+    const decided = refundReckoning.map((c) =>
+      c.id === "c1" ? { ...c, status: "failed" as const } : c,
+    );
+    expect(verdictOutcome(decided)).toBe("fail");
+  });
+});
+
+describe("inconclusive", () => {
+  it("leaves a fully decided run exactly where it was", () => {
+    const good = [
+      crit({ id: "a", severity: "must", status: "passed" }),
+      crit({ id: "b", severity: "must", status: "passed" }),
+      crit({ id: "c", status: "failed" }),
+    ];
+    expect(verdictOutcome(good)).toBe("partial");
+    expect(verdictOutcome(good.slice(0, 2))).toBe("pass");
+    expect(scoreChecklist(good.slice(0, 2))).toMatchObject({ decided: 2, total: 2, score: 1 });
+  });
+
+  it("does not care about a `should` nobody could decide, when the musts were decided", () => {
+    // `must` is what the verdict is about. A should the run could not see is a gap
+    // in the checklist, not a gap in the grading.
+    const results = [
+      crit({ id: "a", severity: "must", status: "passed" }),
+      crit({ id: "b", status: "notApplicable" }),
+    ];
     expect(verdictOutcome(results)).toBe("pass");
+    expect(scoreChecklist(results)).toMatchObject({ decided: 1, total: 2, undecidedMusts: 0 });
+  });
+
+  it("treats every criterion as decisive when a spec named no must at all", () => {
+    // With no must there is no privileged subset, so a should nobody could decide
+    // is a hole in the only floor the spec has. Naming what had to happen is how a
+    // spec author buys back the ability to be graded green.
+    const shoulds = [
+      crit({ id: "a", status: "passed" }),
+      crit({ id: "b", status: "notApplicable" }),
+    ];
+    expect(verdictOutcome(shoulds)).toBe("inconclusive");
+    expect(verdictOutcome([crit({ id: "a", status: "passed" })])).toBe("pass");
+  });
+
+  it("calls a checklist nobody asked for inconclusive rather than failed", () => {
+    expect(verdictOutcome([])).toBe("inconclusive");
+    expect(scoreChecklist([])).toEqual({
+      score: 0,
+      decided: 0,
+      total: 0,
+      undecidedMusts: 0,
+      outcome: "inconclusive",
+    });
+  });
+
+  it("still says fail when everything legible went wrong", () => {
+    // "Inconclusive" must not become the place bad runs go to hide: what WAS decided
+    // earned nothing, and that is a claim the artifact supports.
+    const results = [
+      crit({ id: "a", severity: "must", status: "notApplicable" }),
+      crit({ id: "b", status: "failed" }),
+    ];
+    expect(verdictOutcome(results)).toBe("fail");
   });
 });
 

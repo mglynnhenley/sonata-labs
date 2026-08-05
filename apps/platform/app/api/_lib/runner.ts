@@ -16,6 +16,7 @@ import {
   type EpisodeSpec,
   type TickRecord,
   type TwinName,
+  type VerdictOutcome,
 } from "@sonata/core";
 import { autonomy } from "@sonata/judge";
 // The timeline projection is shared on purpose: the one line the overview card
@@ -580,7 +581,7 @@ function finish(doc: RunDoc, spec: EpisodeSpec | undefined): void {
  * empty checklist for a run that never executed — there is nothing to report.
  */
 export function verdictFor(doc: RunDoc): {
-  outcome: "pass" | "partial" | "fail" | null;
+  outcome: VerdictOutcome | null;
   checklist: CriterionResult[];
 } {
   if (!runExecution({ status: doc.status, ticks: doc.ticks }).executed) {

@@ -17,6 +17,11 @@ function statusOf(run: RunSummary): { tone: BadgeStatus; label: string } {
     if (run.outcome === "pass") return { tone: "passed", label: "Passed" };
     if (run.outcome === "fail") return { tone: "failed", label: "Failed" };
     if (run.outcome === "partial") return { tone: "warning", label: "Partial" };
+    // Grey, not amber, and never green: a run whose must-dos nothing could check
+    // has not been graded. Amber would put it on the scale between pass and fail,
+    // which is the one thing this state is not. This is the row that used to read
+    // "Passed" over an agent that drafted four refunds and sent none of them.
+    if (run.outcome === "inconclusive") return { tone: "neutral", label: "Inconclusive" };
     // Finished with no outcome: the agent never acted, so there is nothing to
     // call passed, partial or failed. It used to fall through to "Partial".
     return { tone: "neutral", label: NO_RESULT };

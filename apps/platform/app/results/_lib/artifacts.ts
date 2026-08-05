@@ -2,6 +2,7 @@ import { readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import {
   agentToolCalls,
+  asVerdictOutcome,
   checklistScore,
   runExecution,
   verdictOutcome,
@@ -17,6 +18,7 @@ import {
   type RunCost,
   type RunStatus,
   type TickRecord,
+  type TwinAuditRow,
 } from "@sonata/core";
 import {
   autonomy,
@@ -175,17 +177,29 @@ function normalizeCriterion(raw: unknown): CriterionResult | null {
  * checker decides at all. Mapping those booleans forward republishes both lies —
  * an accusation on the results page and weight in the score.
  *
- * The artifact holds the spec, the world, the beats' handles, both snapshots and
- * every tick, which is all `runChecklist` reads bar the audit log; the providers
- * fall back to snapshot deltas without it, so the worst a missing log can do is
- * leave a criterion unproven rather than invent a failure.
+ * The artifact holds the spec, the world, the beats' handles, both snapshots,
+ * every tick AND — since `EpisodeRun.audit` — the log, which together are every
+ * input `runChecklist` takes. With all of them the re-derivation sees exactly what
+ * the original scoring saw, and this is a pure recomputation.
+ *
+ * THE LOG IS NOT OPTIONAL, and the sentence that used to sit here — "the worst a
+ * missing log can do is leave a criterion unproven rather than invent a failure" —
+ * was simply false. Gmail records a `send` with the NEW MESSAGE's id and puts the
+ * thread it joined nowhere on the row, and the thread a beat creates during the
+ * day is in neither snapshot, so without the log a reply that really went out
+ * reads as "no reply landed" and two emails that reached Derek read as "nothing
+ * was sent to derek.park@momentum.com". Both were observed, on a real run, against
+ * an artifact whose own stored rows said `passed` and quoted the audit id.
+ *
+ * So when the log is absent — every artifact written before it was saved — this
+ * refuses to publish a failure it cannot support: see `reconcile`.
  *
  * Returns null when the run predates embedded specs — then the stored rows are
  * the only record there is.
  */
 function rederiveChecklist(
   spec: EpisodeSpec | null,
-  run: { ticks: TickRecord[]; snapshots: EpisodeRun["snapshots"] },
+  run: { ticks: TickRecord[]; snapshots: EpisodeRun["snapshots"]; audit: TwinAuditRow[] },
 ): CriterionResult[] | null {
   const criteria = list<Criterion>(spec?.success?.checklist);
   if (!spec?.world || criteria.length === 0) return null;
@@ -195,7 +209,7 @@ function rederiveChecklist(
       world: spec.world,
       refs: refsFromTicks(run.ticks),
       snapshots: run.snapshots,
-      audit: [],
+      audit: run.audit,
       escalations: escalationsFromTicks(run.ticks),
       written: writtenFromTicks(run.ticks),
       agentActed: agentToolCalls(run.ticks) > 0,
@@ -205,6 +219,73 @@ function rederiveChecklist(
     // A malformed spec must not 500 the page it is being read for.
     return null;
   }
+}
+
+/**
+ * Today's rows, except where today's checker was reading less than the writer did.
+ *
+ * Only ever applied to an artifact with NO saved audit log, which means every run
+ * from before it was persisted. Those runs were scored by a checker that could
+ * read the twins' logs; this process cannot, and the gap is not symmetric — the
+ * providers prove a positive FROM the log, so what re-derivation loses is
+ * evidence for passes, and every row it loses turns into a failure.
+ *
+ * A re-derived `failed` over a stored `passed` is therefore not a correction. It
+ * is this reader knowing less, and the only honest row is `notApplicable`: not the
+ * old pass, which might have been one of the two-valued checker's lies, and not
+ * the new failure, which rests on evidence that was thrown away. The run comes out
+ * inconclusive, which is what a run nobody can re-check now actually is.
+ *
+ * Every other transition is a real correction and passes through untouched — a
+ * stored `passed` becoming `notApplicable` is the two-valued fix this function
+ * exists alongside, and a stored `failed` can go anywhere, since a failure was
+ * never the thing the missing log was holding up.
+ */
+/**
+ * The checklist any reader of this artifact should see, from the raw record.
+ *
+ * One function, because the read path and the re-judge WRITE path both re-derive,
+ * and the write path persists what it derives. If the two ever disagreed, opening
+ * a run would show one checklist and re-judging it would bake in another.
+ */
+function checklistFrom(raw: Record<string, unknown>): CriterionResult[] | null {
+  const ticks = list<TickRecord>(raw.ticks);
+  const snapshots = (asRecord(raw.snapshots) ?? {}) as EpisodeRun["snapshots"];
+  const spec = (asRecord(raw.spec) as unknown as EpisodeSpec | null) ?? null;
+  const audit = list<TwinAuditRow>(raw.audit);
+  const derived = rederiveChecklist(spec, { ticks, snapshots, audit });
+  if (!derived) return null;
+  if (audit.length > 0) return derived;
+  const stored = storedChecklist(raw);
+  return stored.length > 0 ? reconcile(derived, stored) : derived;
+}
+
+function storedChecklist(raw: Record<string, unknown>): CriterionResult[] {
+  return list<unknown>(asRecord(raw.verdict)?.checklist).flatMap((row) => {
+    const c = normalizeCriterion(row);
+    return c ? [c] : [];
+  });
+}
+
+function reconcile(
+  fresh: CriterionResult[],
+  stored: CriterionResult[],
+): CriterionResult[] {
+  const before = new Map(stored.map((c) => [c.id, c]));
+  return fresh.map((c) => {
+    const was = before.get(c.id);
+    if (!was || was.status !== "passed" || c.status !== "failed") return c;
+    return {
+      ...c,
+      status: "notApplicable" as const,
+      evidence:
+        `this run's audit log was not saved with it, so today's checker is reading less than the ` +
+        `one that scored it — which recorded: "${was.evidence ?? "passed"}". Re-checking now ` +
+        `reports "${c.evidence ?? "failed"}", and that failure rests on the missing evidence ` +
+        `rather than on anything in the artifact. Neither can be published, so this criterion is ` +
+        `left undecided`,
+    };
+  });
 }
 
 /**
@@ -238,11 +319,7 @@ function normalizeVerdict(
   const judge = normalizeJudge(v.judge, runId);
   const derivable = checklist.length > 0;
   return {
-    outcome: derivable
-      ? verdictOutcome(checklist)
-      : v.outcome === "pass" || v.outcome === "partial" || v.outcome === "fail"
-        ? v.outcome
-        : verdictOutcome(checklist),
+    outcome: derivable ? verdictOutcome(checklist) : (asVerdictOutcome(v.outcome) ?? verdictOutcome(checklist)),
     score: derivable ? checklistScore(checklist) : num(v.score, 0),
     autonomy: derivable ? autonomy(checklist, ticks).score : num(v.autonomy, 0),
     checklist,
@@ -287,12 +364,8 @@ function normalizeRun(raw: unknown, fallbackId: string): EpisodeRun | null {
   const ticks = list<TickRecord>(r.ticks);
   const snapshots = (asRecord(r.snapshots) ?? {}) as EpisodeRun["snapshots"];
   const spec = (asRecord(r.spec) as unknown as EpisodeSpec | null) ?? null;
-  const saved = normalizeVerdict(
-    r.verdict,
-    runId,
-    ticks,
-    rederiveChecklist(spec, { ticks, snapshots }),
-  );
+  const audit = list<TwinAuditRow>(r.audit);
+  const saved = normalizeVerdict(r.verdict, runId, ticks, checklistFrom(r));
   const status = RUN_STATUSES.find((s) => s === r.status);
   // A verdict is only read back for a run that was in a state to have earned
   // one. Artifacts written before scoring learned to refuse still carry numbers
@@ -312,6 +385,7 @@ function normalizeRun(raw: unknown, fallbackId: string): EpisodeRun | null {
     endedAt: typeof r.endedAt === "number" ? r.endedAt : null,
     ticks,
     snapshots,
+    ...(audit.length > 0 ? { audit } : {}),
     verdict,
     ...(typeof r.error === "string" ? { error: r.error } : {}),
   };
@@ -429,13 +503,7 @@ export function updateRunJudge(runId: string, report: EpisodeJudgeReport): Episo
   // falling back to the stored rows normalized. Not the raw rows: the scorers
   // read `status`, and an older row carrying only `passed` would otherwise weigh
   // nothing and write a zero over a real headline.
-  const fresh = rederiveChecklist(spec, { ticks, snapshots });
-  const checklist =
-    fresh ??
-    list<unknown>(verdict.checklist).flatMap((row) => {
-      const c = normalizeCriterion(row);
-      return c ? [c] : [];
-    });
+  const checklist = checklistFrom(raw) ?? storedChecklist(raw);
   verdict.judge = report;
   // Autonomy is derived from the checklist and the shape of the day, not from the
   // findings, so re-judging deliberately leaves it where it was. Recomputed
@@ -445,5 +513,5 @@ export function updateRunJudge(runId: string, report: EpisodeJudgeReport): Episo
   raw.verdict = verdict;
 
   writeFileSync(file, `${JSON.stringify(raw, null, 2)}\n`, "utf8");
-  return normalizeVerdict(verdict, runId, ticks, fresh);
+  return normalizeVerdict(verdict, runId, ticks, checklist);
 }

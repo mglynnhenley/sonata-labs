@@ -1,4 +1,5 @@
 import {
+  asVerdictOutcome,
   episodeTwins,
   plannedTicks,
   runExecution,
@@ -258,10 +259,7 @@ function toView(row: SessionRow, live: boolean, nextTickAt: number | null): Sess
     lastAgentActionAt: row.last_agent_at,
     idleStreak: row.idle_streak,
     longestIdleStreak: row.longest_idle_streak,
-    outcome:
-      row.outcome === "pass" || row.outcome === "partial" || row.outcome === "fail"
-        ? row.outcome
-        : null,
+    outcome: asVerdictOutcome(row.outcome),
     score: row.score,
     autonomy: row.autonomy,
     costUsd: row.cost_usd,
