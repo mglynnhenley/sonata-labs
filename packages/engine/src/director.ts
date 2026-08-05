@@ -359,6 +359,11 @@ export function directorSystemPrompt(spec: EpisodeSpec): string {
     `- At most ${spec.director.maxEventsPerTick} events per tick, and at most one per person.`,
     "- Silence is the common case. Return an empty list unless someone has a real reason to act now.",
     "- Only react to what has actually happened. Never answer a question nobody asked.",
+    // The world may be hard on the assistant, but it may not be wrong about it.
+    // An external agent acts between ticks, so most ticks show no activity even
+    // when the day has been handled — see `quietLine`.
+    "- Never claim the assistant failed to do something the history shows it did. If it replied, " +
+      "chased or booked, the people in this world have seen that and react to THAT, not to silence.",
     "- Never do what a scripted upcoming beat is going to do, and never contradict or pre-empt one.",
     "- Nobody in this world knows they are simulated, and nobody mentions the assistant being an AI.",
     "- People write short. An email is a few sentences; a Slack message is a line or two.",
@@ -370,6 +375,36 @@ function deltaLines(deltas: TwinAuditRow[], refName: (row: TwinAuditRow) => stri
     const ref = refName(row);
     return `- [${row.twin}] ${row.summary}${ref ? ` (reply to this with replyToRef "${ref}")` : ""}`;
   });
+}
+
+/**
+ * What to say when the agent did nothing THIS tick.
+ *
+ * "nothing; it has taken no action in the world" is true of the tick and false
+ * of the day, and the difference is not academic. In a session the agent works
+ * between ticks and is then quiet for long stretches, so this heading is empty
+ * far more often than it is full — and a flat "it has taken no action" sitting
+ * directly under a history that says it replied an hour ago is a contradiction
+ * the model resolves the wrong way.
+ *
+ * Observed, not theorised: an external agent answered the client at 08:30
+ * through MCP, the reply was in the prompt's history verbatim, and from 10:30
+ * onward the world sent escalation after escalation reasoning "Nadia has not
+ * replied to his 08:00 email". The day was then scored against a transcript in
+ * which the world behaved as though the agent had never been there.
+ *
+ * So the quiet line stays quiet about the tick and points at the day: silence
+ * now is not absence, and the history above is the record of what was done.
+ */
+export function quietLine(history: readonly TimelineEntry[]): string {
+  const acted = [...history].reverse().find((h) => h.source === "agent");
+  if (!acted) return "- nothing; it has taken no action in the world at any point today";
+  const when = acted.simTimeISO.slice(11, 16);
+  return (
+    `- nothing since the last tick. It HAS acted earlier today — most recently at ${when} ` +
+    `(“${acted.text}”), and everything it has done is in the history above. Do not treat this ` +
+    `as an assistant who has ignored the day.`
+  );
 }
 
 export function directorPrompt(
@@ -396,9 +431,7 @@ export function directorPrompt(
   sections.push(
     "",
     "WHAT THE ASSISTANT DID SINCE THE LAST TICK",
-    ...(ctx.deltas.length
-      ? deltaLines(ctx.deltas, refName)
-      : ["- nothing; it has taken no action in the world"]),
+    ...(ctx.deltas.length ? deltaLines(ctx.deltas, refName) : [quietLine(ctx.history)]),
   );
 
   if (ctx.upcoming.length) {

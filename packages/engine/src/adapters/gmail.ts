@@ -263,7 +263,7 @@ export function createGmailAdapter(opts: GmailAdapterOptions = {}): TwinAdapter 
 // can make; subjects and labels do not.
 // ---------------------------------------------------------------------------
 
-const bySubject = byKey<{ subject: string; threadId: string }>((t) => `${t.subject} ${t.threadId}`);
+const bySubject = byKey<{ subject: string; threadId: string }>((t) => `${t.subject}\0${t.threadId}`);
 
 export function diffGmail(before: GmailSnapshot, after: GmailSnapshot): GmailDiff {
   const beforeById = new Map(before.threads.map((t) => [t.threadId, t]));

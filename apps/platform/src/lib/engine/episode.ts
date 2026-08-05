@@ -20,6 +20,7 @@ import { createRun, finishRun, getRun, markWorldSeeded, updateRunProgress } from
 import { getSettings } from "../settings";
 import type { EngineRunResult, RunEpisodeFn } from "./contract";
 import { engineLoop } from "./loop";
+import { applyStoredApiKey } from "./apiKey";
 import { ensureTwins, loadClone, twinUrlMap } from "./preflight";
 import { resolveScenario, specForRun } from "./scenarios";
 import { briefFor, judgeRun, scoreRun } from "./verdict";
@@ -314,6 +315,9 @@ async function drive(
 ): Promise<EpisodeRun> {
   const loop = input.runEpisode ?? engineLoop;
   const settings = getSettings();
+  // The agent loop and the director both reach a model; a key typed into
+  // Settings lives in platform.db and the engine cannot see it on its own.
+  applyStoredApiKey();
 
   try {
     entry.status = "running";

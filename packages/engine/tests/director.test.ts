@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import type { DirectorPolicy, TwinAuditRow } from "@sonata/core";
+import type { DirectorPolicy, TimelineEntry, TwinAuditRow } from "@sonata/core";
 import type { CompleteJSONOptions } from "../src/llm";
 import {
   auditRefName,
@@ -7,6 +7,7 @@ import {
   createDirector,
   directorPrompt,
   directorSystemPrompt,
+  quietLine,
   quietWindow,
   reactionDecision,
   type DirectorContext,
@@ -296,5 +297,56 @@ describe("auditRefName", () => {
   it("offers a ref only for rows that point at something", () => {
     expect(auditRefName(auditRow({ id: 7, twin: "gmail" }))).toBe("act:gmail:7");
     expect(auditRefName(auditRow({ id: 7, twin: "gmail", targetId: null }))).toBe("");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The quiet line
+//
+// From a real session: an external agent replied to the client at 08:30 through
+// MCP, the reply was in the director's prompt history verbatim, and from 10:30
+// the world sent escalation after escalation reasoning "Nadia has not replied to
+// his 08:00 email". The plumbing was right — the prompt carried the reply — but
+// the line under it said "nothing; it has taken no action in the world", and the
+// model resolved the contradiction the wrong way. An agent that did the job was
+// then scored against a day in which the world behaved as if it had not.
+// ---------------------------------------------------------------------------
+
+describe("what the world is told when the agent is quiet this tick", () => {
+  const entry = (source: "agent" | "world", text: string, simTimeISO: string): TimelineEntry => ({
+    tick: 2,
+    simTimeISO,
+    source,
+    twin: "gmail",
+    text,
+  });
+
+  it("says the day is empty when the agent has genuinely never acted", () => {
+    const line = quietLine([entry("world", "Clive emailed", "2026-09-15T08:00:00.000Z")]);
+    expect(line).toContain("at any point today");
+  });
+
+  it("does not claim inaction when the history shows the agent acted", () => {
+    const line = quietLine([
+      entry("world", "Clive emailed", "2026-09-15T08:00:00.000Z"),
+      entry("agent", 'send → Sent "Re: Hero film" to Clive Barrow', "2026-09-15T08:30:00.000Z"),
+    ]);
+    expect(line).toContain("nothing since the last tick");
+    expect(line).toContain("It HAS acted earlier today");
+    expect(line).toContain("08:30");
+    expect(line).toContain("Re: Hero film");
+    // The exact phrase that caused the escalations must not survive.
+    expect(line).not.toContain("it has taken no action in the world at any point today");
+  });
+
+  it("quotes the most recent agent action, not the first", () => {
+    const line = quietLine([
+      entry("agent", "first thing", "2026-09-15T08:30:00.000Z"),
+      entry("world", "someone posted", "2026-09-15T09:00:00.000Z"),
+      entry("agent", "latest thing", "2026-09-15T09:30:00.000Z"),
+    ]);
+    expect(line).toContain("09:30");
+    expect(line).toContain("latest thing");
+    expect(line).not.toContain("first thing");
   });
 });

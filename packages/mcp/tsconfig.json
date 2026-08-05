@@ -1,0 +1,27 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "isolatedModules": true,
+    "skipLibCheck": true,
+    "verbatimModuleSyntax": false,
+    "resolveJsonModule": true,
+    // Resolve the workspace siblings by path as well as by name, as every other
+    // package here does: the tools are consumed as TypeScript source, and a
+    // typecheck that only passes after an install is a typecheck nobody runs.
+    "baseUrl": ".",
+    "paths": {
+      "@sonata/core": ["../core/src/index.ts"],
+      "@sonata/core/*": ["../core/src/*.ts"],
+      "@sonata/engine": ["../engine/src/index.ts"],
+      "@sonata/engine/*": ["../engine/src/*.ts"]
+    }
+  },
+  "include": ["src/**/*.ts", "tests/**/*.ts"],
+  "exclude": ["node_modules"]
+}

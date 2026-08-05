@@ -1,0 +1,33 @@
+{
+  "name": "@sonata/mcp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "The plug: one stdio MCP server fronting the Gmail, Slack and Calendar twins, so any external agent can work inside the fake company.",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./*": "./src/*.ts"
+  },
+  "bin": {
+    "sonata-mcp": "./bin/sonata-mcp.js"
+  },
+  "scripts": {
+    "start": "tsx src/cli.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.30.0",
+    "@sonata/core": "*",
+    "@sonata/engine": "*",
+    "tsx": "^4.19.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.7",
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.2"
+  }
+}

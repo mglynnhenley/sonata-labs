@@ -262,7 +262,7 @@ export function createSlackAdapter(opts: SlackAdapterOptions = {}): TwinAdapter 
 const byChannelTs = byKey<{ channelName: string; ts: string }>((m) => `${m.channelName} ${m.ts}`);
 
 function key(m: { channelId: string; ts: string }): string {
-  return `${m.channelId} ${m.ts}`;
+  return `${m.channelId}\0${m.ts}`;
 }
 
 export function diffSlack(before: SlackSnapshot, after: SlackSnapshot): SlackDiff {

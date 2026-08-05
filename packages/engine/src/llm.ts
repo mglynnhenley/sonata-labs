@@ -21,6 +21,18 @@ export const DEFAULT_MODEL = process.env.OPENROUTER_MODEL || "anthropic/claude-h
 
 let client: OpenAI | null = null;
 
+/**
+ * The key, when the host supplies one instead of an environment variable.
+ *
+ * The engine is imported by a long-lived Next process as well as by the CLI, and
+ * in that process the key is a row in platform.db that a user typed into the
+ * Settings page — there is no environment variable to read, and there must not
+ * be one, because writing a secret into `process.env` at runtime leaks it to
+ * every other module in the process. So the host hands the key over explicitly
+ * and this module keeps `process.env` as the fallback the CLI still uses.
+ */
+let configuredKey: string | null = null;
+
 function parseJson(text: string | undefined): unknown {
   if (!text) return undefined;
   try {
@@ -97,16 +109,38 @@ const tracingFetch: typeof globalThis.fetch = async (input, init) => {
   }
 };
 
+/**
+ * Supply the key from somewhere other than the environment — a settings store,
+ * a secret manager. Passing null clears it and returns to `process.env`.
+ *
+ * Dropping the memoized client is the whole point of doing this through a
+ * function: the client captures its key at construction, so a key that changed
+ * after the first model call would otherwise be ignored for the life of the
+ * process, which in a dev server is "until someone restarts it".
+ */
+export function setApiKey(key: string | null): void {
+  const next = key?.trim() || null;
+  if (next === configuredKey) return;
+  configuredKey = next;
+  client = null;
+}
+
+/** The key that will be used, from the host first and the environment second. */
+export function apiKey(): string | null {
+  return configuredKey ?? process.env.OPENROUTER_API_KEY ?? null;
+}
+
 export function getClient(): OpenAI {
   if (!client) {
-    const apiKey = process.env.OPENROUTER_API_KEY;
-    if (!apiKey) {
+    const key = apiKey();
+    if (!key) {
       throw new Error(
-        "OPENROUTER_API_KEY is not set. Get a key at https://openrouter.ai/keys and export it.",
+        "No OpenRouter key is set. Add one on the Settings page, or export OPENROUTER_API_KEY " +
+          "(get a key at https://openrouter.ai/keys).",
       );
     }
     client = new OpenAI({
-      apiKey,
+      apiKey: key,
       baseURL: OPENROUTER_BASE_URL,
       fetch: tracingFetch,
       defaultHeaders: {
