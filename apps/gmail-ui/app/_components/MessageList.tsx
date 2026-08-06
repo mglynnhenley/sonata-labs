@@ -39,8 +39,14 @@ export function MessageList({
           <span className="material-symbols-outlined text-[20px]">more_vert</span>
         </button>
         <div className="ml-auto flex items-center gap-1 text-[13px]">
+          {/* No count until one is known. Rendering "0–0 of 0" while the fetch is
+              in flight states something false about the mailbox. */}
           <span className="mr-1">
-            {start}–{end} of <span className="font-medium">{total.toLocaleString()}</span>
+            {view && (
+              <>
+                {start}–{end} of <span className="font-medium">{total.toLocaleString()}</span>
+              </>
+            )}
           </span>
           <button
             onClick={onPrev}
@@ -61,6 +67,7 @@ export function MessageList({
 
       {/* Rows */}
       <div className="min-h-0 flex-1 overflow-y-auto gm-scroll">
+        {!view && <SkeletonRows />}
         {view && view.rows.length === 0 && (
           <div className="flex h-40 items-center justify-center text-sm text-[#5f6368]">
             No conversations{title ? ` in ${title}` : ""}.
@@ -70,6 +77,35 @@ export function MessageList({
           <Row key={r.threadId} row={r} onOpen={() => onOpen(r.threadId)} />
         ))}
       </div>
+    </div>
+  );
+}
+
+/**
+ * Placeholder rows shown while the list is loading. They sit on the same 40px
+ * grid and the same column offsets as a real Row, so content landing swaps text
+ * in without moving anything. The list BFF fans out one thread fetch per row, so
+ * this window is real and grows with page size.
+ */
+function SkeletonRows() {
+  return (
+    <div aria-hidden>
+      {Array.from({ length: 8 }, (_, i) => (
+        <div
+          key={i}
+          className="flex h-[40px] items-center gap-3 border-b border-[#f1f3f4] pl-3 pr-4"
+        >
+          <div className="h-[18px] w-[18px] shrink-0 rounded-sm bg-[#f1f3f4]" />
+          <div className="h-[18px] w-[20px] shrink-0" />
+          <div className="h-[18px] w-[18px] shrink-0" />
+          <div className="h-[10px] w-[168px] shrink-0 animate-pulse rounded bg-[#e8eaed] motion-reduce:animate-none" />
+          <div
+            className="h-[10px] min-w-0 flex-1 animate-pulse rounded bg-[#f1f3f4] motion-reduce:animate-none"
+            style={{ maxWidth: `${52 - (i % 4) * 9}%` }}
+          />
+          <div className="ml-2 h-[10px] w-[70px] shrink-0 animate-pulse rounded bg-[#f1f3f4] motion-reduce:animate-none" />
+        </div>
+      ))}
     </div>
   );
 }
