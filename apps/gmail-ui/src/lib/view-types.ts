@@ -1,3 +1,8 @@
+// View-model shapes the Gmail-replica UI consumes. These are the exact shapes
+// the API app's old /api/ui routes returned — reproduced here so the relocated
+// React components need no changes. The BFF (gmail-views.ts) builds these from
+// the public /gmail/v1 surface; the activity proxy supplies ActivityData.
+
 export interface LabelChip {
   name: string;
   textColor: string;
@@ -79,33 +84,4 @@ export interface ActivityData {
   currentSessionId: string | null;
   actions: ActionRow[];
   outbox: Array<{ id: string; messageId: string; envelopeTo: string[]; createdAt: number }>;
-}
-
-// Gmail-style smart date: time if today, "MMM D" otherwise, "M/D/YY" if old.
-export function smartDate(ms: number): string {
-  const d = new Date(ms);
-  const now = new Date();
-  const sameDay =
-    d.getFullYear() === now.getFullYear() &&
-    d.getMonth() === now.getMonth() &&
-    d.getDate() === now.getDate();
-  if (sameDay) {
-    return d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
-  }
-  const sameYear = d.getFullYear() === now.getFullYear();
-  if (sameYear) {
-    return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-  }
-  return d.toLocaleDateString(undefined, { month: "numeric", day: "numeric", year: "2-digit" });
-}
-
-export function fullDate(ms: number): string {
-  return new Date(ms).toLocaleString(undefined, {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
 }

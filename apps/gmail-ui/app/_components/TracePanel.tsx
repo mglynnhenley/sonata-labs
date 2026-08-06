@@ -1,10 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { FAILURE_MODES } from "@/lib/eval/judge/failureModes";
-import type { JudgeReport } from "@/lib/eval/judge/types";
-import type { RunSummary } from "@/lib/eval/runs";
-import type { LlmCall, RunTrace, ToolCall } from "@/lib/eval/trace";
+import { FAILURE_MODES } from "@/lib/eval-types";
+import type { JudgeReport, RunSummary, LlmCall, RunTrace, ToolCall } from "@/lib/eval-types";
 
 // Replay of a finished eval run: every model call and every tool call, in the
 // order they happened, with the judge's read of it on top.
