@@ -1,4 +1,6 @@
 import {
+  asCriterionKind,
+  CRITERION_KINDS,
   emailOf,
   harnessDefectEvidence,
   resolvePerson,
@@ -1026,9 +1028,9 @@ function acrossSurfaces(kind: CriterionKind, mode: "some" | "every"): FactProvid
 
     for (const twin of TWINS) {
       if (only && twin !== only) continue;
-      const name = BY_TWIN[twin][kind];
-      const provider = name ? FACT_PROVIDERS[name] : undefined;
-      if (!provider) continue;
+      const route = routeFor(twin, kind);
+      if (route.via !== "checker") continue;
+      const provider = FACT_PROVIDERS[route.provider];
       const pair = q.snapshots[twin];
       asked.push({
         twin,
@@ -1073,8 +1075,12 @@ function acrossSurfaces(kind: CriterionKind, mode: "some" | "every"): FactProvid
 /**
  * Every fact the checklist can establish, by name. The keys are the vocabulary a
  * spec author reasons in, and a fourth twin is a matter of adding entries here.
+ *
+ * `satisfies` rather than an annotation, so `FactName` below is the exact set of
+ * keys: a routing entry naming a provider that does not exist is then a compile
+ * error rather than a criterion that reaches `runChecklist` and finds nothing.
  */
-export const FACT_PROVIDERS: Record<string, FactProvider> = {
+export const FACT_PROVIDERS = {
   "gmail:replied_in_thread": gmailRepliedInThread,
   "gmail:sent_to": gmailSentTo,
   "gmail:labelled": gmailLabelled,
@@ -1104,9 +1110,35 @@ export const FACT_PROVIDERS: Record<string, FactProvider> = {
   "any:moved": acrossSurfaces("moved", "some"),
   "any:cancelled": acrossSurfaces("cancelled", "some"),
   "any:untouched": acrossSurfaces("untouched", "every"),
-};
+} satisfies Record<string, FactProvider>;
 
-const BY_TWIN: Record<TwinName | "any", Partial<Record<CriterionKind, string>>> = {
+/** The name of a fact provider that exists. Every routing entry must be one. */
+export type FactName = keyof typeof FACT_PROVIDERS;
+
+/**
+ * The two ways a (twin, kind) pair can have no checker — both DECISIONS, written
+ * into the table, rather than a key nobody remembered to add.
+ *
+ * Symbols and not strings, because a provider name is a string and a sentinel
+ * that could be mistaken for one is how the gap comes back. They are the whole
+ * point of this pass: `BY_TWIN` is now total over `CriterionKind`, so a kind
+ * added to the vocabulary will not compile until someone has said, for every
+ * surface, which of the three things it is.
+ */
+
+/** The judge answers this one in prose, on purpose. Not a missing checker. */
+export const TO_JUDGE: unique symbol = Symbol("sonata.criterion.toJudge");
+
+/**
+ * This surface has no such action — a calendar cannot be archived, a mailbox has
+ * no channels. The criterion is filed under the wrong twin, which is an authoring
+ * defect and reported as one, not as a hole in the checkers.
+ */
+export const NOT_ON_THIS_SURFACE: unique symbol = Symbol("sonata.criterion.notOnThisSurface");
+
+type Route = FactName | typeof TO_JUDGE | typeof NOT_ON_THIS_SURFACE;
+
+const BY_TWIN: Record<TwinName | "any", Record<CriterionKind, Route>> = {
   gmail: {
     replied: "gmail:replied_in_thread",
     sent: "gmail:sent_to",
@@ -1114,6 +1146,16 @@ const BY_TWIN: Record<TwinName | "any", Partial<Record<CriterionKind, string>>> 
     archived: "gmail:archived",
     untouched: "gmail:untouched",
     mentions: "gmail:mentions",
+    // Handing the job back is a property of the AGENT, not of a surface, so
+    // every column answers it with the same provider. It used to be a special
+    // case in `factNameFor`; saying it four times in the table is longer and is
+    // the only version a reader can check.
+    "no-escalation": "any:no_escalation",
+    judged: TO_JUDGE,
+    posted: NOT_ON_THIS_SURFACE,
+    scheduled: NOT_ON_THIS_SURFACE,
+    moved: NOT_ON_THIS_SURFACE,
+    cancelled: NOT_ON_THIS_SURFACE,
   },
   slack: {
     posted: "slack:posted_in_channel",
@@ -1124,6 +1166,14 @@ const BY_TWIN: Record<TwinName | "any", Partial<Record<CriterionKind, string>>> 
     labelled: "slack:reacted",
     untouched: "slack:untouched",
     mentions: "slack:mentions",
+    "no-escalation": "any:no_escalation",
+    judged: TO_JUDGE,
+    // Slack has no inbox to leave and no events to move: a criterion that wants
+    // one of these wants a different surface.
+    archived: NOT_ON_THIS_SURFACE,
+    scheduled: NOT_ON_THIS_SURFACE,
+    moved: NOT_ON_THIS_SURFACE,
+    cancelled: NOT_ON_THIS_SURFACE,
   },
   calendar: {
     scheduled: "calendar:event_created",
@@ -1135,11 +1185,17 @@ const BY_TWIN: Record<TwinName | "any", Partial<Record<CriterionKind, string>>> 
     cancelled: "calendar:event_cancelled",
     untouched: "calendar:untouched",
     mentions: "calendar:mentions",
+    "no-escalation": "any:no_escalation",
+    judged: TO_JUDGE,
+    // Nothing on a calendar is a thread, a channel, a label or an inbox.
+    replied: NOT_ON_THIS_SURFACE,
+    posted: NOT_ON_THIS_SURFACE,
+    labelled: NOT_ON_THIS_SURFACE,
+    archived: NOT_ON_THIS_SURFACE,
   },
-  // `any` is a claim about the day rather than a surface, so every kind that some
-  // surface can decide is decidable here too — see `acrossSurfaces`. The gaps that
-  // remain are gaps everywhere: no twin implements them, so nothing is hidden by
-  // leaving them out.
+  // `any` is a claim about the day rather than a surface, so every kind some
+  // surface can decide is decidable here too — see `acrossSurfaces`, which puts
+  // the same question to each surface in turn.
   any: {
     mentions: "any:mentions",
     replied: "any:replied",
@@ -1151,20 +1207,51 @@ const BY_TWIN: Record<TwinName | "any", Partial<Record<CriterionKind, string>>> 
     moved: "any:moved",
     cancelled: "any:cancelled",
     untouched: "any:untouched",
+    "no-escalation": "any:no_escalation",
+    judged: TO_JUDGE,
   },
 };
+
+/** Who answers a criterion, and — when nobody does in code — why not. */
+export type CriterionRouting =
+  | { via: "checker"; provider: FactName }
+  | { via: "judge" }
+  | { via: "wrong-surface" };
+
+/**
+ * Who settles this (twin, kind) pair. Three answers, never a silence.
+ *
+ * Throws on a kind outside the vocabulary. That case is unreachable through the
+ * type — which is exactly why it must be loud when it happens anyway: the only
+ * way to get here with one is a spec read off disk, and a spec read off disk is
+ * how `slack/mentioned` reached a report. `runChecklist` resolves the kind
+ * against @sonata/core before it ever calls this, so the throw is a backstop for
+ * callers that skipped that step, not a path a run can take.
+ */
+export function routeFor(twin: TwinName | "any", kind: CriterionKind): CriterionRouting {
+  const route: Route | undefined = BY_TWIN[twin][kind];
+  if (route === undefined) {
+    throw new Error(
+      `no routing for criterion kind "${kind}" on ${twin} — the vocabulary is ` +
+        `${CRITERION_KINDS.join(", ")}, and every kind in it must be routed to a checker or to ` +
+        `the judge. Resolve the kind with \`asCriterionKind\` before asking.`,
+    );
+  }
+  if (route === TO_JUDGE) return { via: "judge" };
+  if (route === NOT_ON_THIS_SURFACE) return { via: "wrong-surface" };
+  return { via: "checker", provider: route };
+}
 
 /**
  * The fact that answers a criterion, or null when nothing deterministic can.
  *
- * `no-escalation` is deliberately twin-independent: handing the job back is a
- * property of the agent, not of a surface, so a spec that writes it against Gmail
- * gets the same check as one that writes it against `any`.
+ * Kept as the binder's question — @sonata/world asks only "is there a checker?"
+ * — but it is now derived from `routeFor` rather than from a table lookup that
+ * could not tell "the judge owns this" apart from "nobody thought about it".
  */
-export function factNameFor(twin: TwinName | "any", kind: CriterionKind): string | null {
-  if (kind === "judged") return null;
-  if (kind === "no-escalation") return "any:no_escalation";
-  return BY_TWIN[twin][kind] ?? null;
+export function factNameFor(twin: TwinName | "any", kind: CriterionKind): FactName | null {
+  const route = routeFor(twin, kind);
+  return route.via === "checker" ? route.provider : null;
 }
 
 // ---------------------------------------------------------------------------
@@ -1369,6 +1456,22 @@ function whyUnfired(ref: string, truncation: RunTruncation | undefined): string 
   return `${scheduled}, that tick ran, and the engine fired nothing`;
 }
 
+/**
+ * A row for a criterion whose kind was written one way and read another.
+ *
+ * The row reports the CANONICAL kind, because that is the question that was
+ * actually put to the run, and the note says which word the spec used. Appended,
+ * never prepended: `isHarnessDefect` reads the front of the evidence string.
+ */
+function noteAlias(result: CriterionResult, wrote: string): CriterionResult {
+  return {
+    ...result,
+    evidence:
+      `${result.evidence} (this spec writes the kind as "${wrote}"; it was read as ` +
+      `"${result.kind}", the vocabulary's own word for the same check)`,
+  };
+}
+
 export function runChecklist(input: ChecklistInput): ChecklistOutcome {
   const results: CriterionResult[] = [];
   const deferred: Criterion[] = [];
@@ -1376,8 +1479,44 @@ export function runChecklist(input: ChecklistInput): ChecklistOutcome {
   const tickOf = input.tickOf ?? (() => undefined);
   const agentActed = input.agentActed ?? written.length > 0;
 
-  for (const c of input.criteria) {
-    const verdicts = verdictsFor(c);
+  for (const raw of input.criteria) {
+    const verdicts = verdictsFor(raw);
+
+    // The kind as written, resolved against the one vocabulary in @sonata/core.
+    // Specs on disk predate the closed enum and carry near-synonyms — `mentioned`
+    // for `mentions` — and re-deriving a saved run has to CHECK those rather than
+    // reprint the hole they left the first time.
+    const kind = asCriterionKind(raw.kind);
+    if (!kind) {
+      // Loud, and ours. A kind nothing recognises is a defect in whatever wrote
+      // the spec, not a claim about the agent, and the shrug it used to get —
+      // "no deterministic checker exists, it went to the judge in prose" — reads
+      // on the page like a checker that merely has not been written yet.
+      console.error(
+        `[sonata] criterion "${raw.id}" carries kind "${raw.kind}", which is not in the criterion ` +
+          `vocabulary (${CRITERION_KINDS.join(", ")}) and is not a known alias for one. Nothing ` +
+          `can route it, so nothing checked it.`,
+      );
+      results.push(
+        resultFor(
+          raw,
+          verdicts.cannotTell(
+            harnessDefectEvidence(
+              `this criterion's kind, "${raw.kind}", is not one this harness knows: the vocabulary ` +
+                `is ${CRITERION_KINDS.join(", ")}. No checker could be chosen for it, so it was ` +
+                `never put to this run — that is a defect in the spec this harness generated, not ` +
+                `something the agent did or failed to do`,
+            ),
+          ),
+        ),
+      );
+      deferred.push(raw);
+      continue;
+    }
+    const c: Criterion = kind === raw.kind ? raw : { ...raw, kind };
+    const record = (result: CriterionResult): void => {
+      results.push(kind === raw.kind ? result : noteAlias(result, raw.kind));
+    };
 
     // FIRST, ahead of everything — including the deferral of `judged` criteria. A
     // criterion whose subject never arrived must not reach a checker AND must not
@@ -1387,11 +1526,12 @@ export function runChecklist(input: ChecklistInput): ChecklistOutcome {
     // is what produced the finding, so the fix is to stop asking.
     const ours = harnessDefectFor(c, input.world, input.refs, input.truncation);
     if (ours) {
-      results.push(resultFor(c, verdicts.cannotTell(harnessDefectEvidence(ours))));
+      record(resultFor(c, verdicts.cannotTell(harnessDefectEvidence(ours))));
       continue;
     }
 
-    if (c.kind === "judged") {
+    const routing = routeFor(c.twin, kind);
+    if (routing.via === "judge") {
       deferred.push(c);
       continue;
     }
@@ -1400,7 +1540,7 @@ export function runChecklist(input: ChecklistInput): ChecklistOutcome {
     // defect in the criterion, which is a truer thing to report than whichever
     // narrower question the provider would have gone on to answer.
     if (!isBound(c)) {
-      results.push(
+      record(
         resultFor(
           c,
           verdicts.cannotTell(
@@ -1413,33 +1553,34 @@ export function runChecklist(input: ChecklistInput): ChecklistOutcome {
       continue;
     }
 
-    const name = factNameFor(c.twin, c.kind);
-    const provider = name ? FACT_PROVIDERS[name] : undefined;
-    if (!provider) {
-      // Nothing in code can settle this pair — either no surface implements the
-      // kind, or the kind is not in the vocabulary at all, which is how a generated
-      // day arrives carrying `slack/mentioned`. It is not the agent's failure, so it
-      // is not reported as one; but leaving it at that is how the run this pass
-      // exists to fix went out with three undecided musts nobody was ever asked
-      // about. So it goes BOTH ways: to the judge as a question in the criterion's
-      // own words, and onto the checklist as an unverified row, because a `must` no
+    if (routing.via === "wrong-surface") {
+      // A real kind, filed under a surface that has no such action: a mailbox has
+      // no channels, a calendar has no inbox. Not a hole in the checkers and not
+      // the agent's failure — an authoring defect, and it says which one it is
+      // rather than the old "no deterministic checker exists", which read like a
+      // checker somebody had merely not written yet.
+      //
+      // It goes BOTH ways: to the judge as a question in the criterion's own
+      // words, and onto the checklist as an unverified row, because a `must` no
       // checker touched has to stay visible to whatever reads the verdict.
       deferred.push(c);
-      results.push(
+      record(
         resultFor(
           c,
           verdicts.cannotTell(
-            `no deterministic checker exists for ${c.twin}/${c.kind}, so nothing in code decided ` +
-              `this one — it was put to the judge in prose instead`,
+            `"${kind}" is not something that can happen on ${c.twin} — this criterion is filed ` +
+              `under the wrong surface, so no checker could answer it and it was put to the judge ` +
+              `in prose instead`,
           ),
         ),
       );
       continue;
     }
 
+    const provider = FACT_PROVIDERS[routing.provider];
     const twin = c.twin === "any" ? undefined : c.twin;
     const pair = twin ? input.snapshots[twin] : undefined;
-    results.push(
+    record(
       resultFor(
         c,
         provider({

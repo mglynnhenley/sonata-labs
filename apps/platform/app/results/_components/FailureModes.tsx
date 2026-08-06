@@ -1,12 +1,18 @@
 "use client";
 
 import { getFailureMode, type EpisodeJudgeReport, type Severity } from "@sonata/core";
-import { Badge, Card, IconArrowRight, IconCheck } from "@sonata/ui";
+import { Badge, Card, IconAlert, IconArrowRight, IconCheck } from "@sonata/ui";
 import { SEVERITY_BADGE, SEVERITY_ORDER } from "../_lib/summary";
+import { judgeSight, sliceSentence, type JudgeSight } from "./harness";
 
 // What went wrong, and where. Every finding the judge returns points at a moment
 // — a tick, or the exact steps — so a finding is never a verdict you have to take
 // on trust: click it and the replay parks on the thing being described.
+//
+// And how much of the day these were formed on, at the top of the list rather
+// than in a footnote. A findings list is read as an inventory of what went wrong;
+// one drawn from a sample is an inventory of what went wrong in the sample, and
+// the difference has to be met before the first row, not after the last.
 
 interface Row {
   key: string;
@@ -60,6 +66,7 @@ export function FailureModes({
 }) {
   if (!judge) return null;
   const rows = rowsOf(judge);
+  const sight = judgeSight(judge);
 
   return (
     <Card
@@ -73,6 +80,8 @@ export function FailureModes({
       }
       className="scroll-mt-6"
     >
+      {sight ? <PartialSightNote sight={sight} empty={rows.length === 0} /> : null}
+
       {rows.length === 0 ? (
         <div className="flex items-center gap-2.5 px-5 pb-5 text-[13px] text-sn-muted">
           <span className="grid h-6 w-6 place-items-center rounded-full border border-sn-passed-line bg-sn-passed-soft text-sn-passed-ink">
@@ -88,6 +97,53 @@ export function FailureModes({
         </ul>
       )}
     </Card>
+  );
+}
+
+/**
+ * How much of the day these findings were formed on, stated before them.
+ *
+ * Two things to say and they are not the same. A measured sample is a known
+ * shortfall: we can name what was left out. An unrecorded one is worse — the
+ * report predates the counting, so nobody can say what it read, and the one thing
+ * that must not happen is a silent report being read as a complete one.
+ */
+function PartialSightNote({
+  sight,
+  empty,
+}: {
+  sight: JudgeSight;
+  empty: boolean;
+}) {
+  return (
+    <div className="flex items-start gap-2.5 border-t border-sn-gold/30 bg-sn-gold-soft/35 px-5 py-3">
+      <IconAlert size={14} className="mt-0.5 shrink-0 text-sn-gold-ink" />
+      <p className="max-w-[78ch] text-[12.5px] leading-[19px] text-sn-muted">
+        {sight.kind === "partial" ? (
+          <>
+            <span className="font-medium text-sn-gold-ink">
+              Formed on {sight.portion} of this day.
+            </span>{" "}
+            The day was too large to put in front of the assessor whole, so it read{" "}
+            {sliceSentence(sight.missing[0])}, sampled evenly across the day.{" "}
+            {empty
+              ? "Finding nothing is a claim about that sample, not about the run."
+              : "Anything the agent did inside a gap is missing from this list."}{" "}
+            Ours, not the agent&rsquo;s — the full account is at the top of the page.
+          </>
+        ) : (
+          <>
+            <span className="font-medium text-sn-gold-ink">
+              How much of this day the assessor read was not recorded.
+            </span>{" "}
+            This report predates the counting, so we cannot tell you whether{" "}
+            {empty ? "it found nothing in the whole run" : "this list was formed on the whole run"}{" "}
+            or on part of it. Not recorded is not the same as complete — re-judge the run to find
+            out.
+          </>
+        )}
+      </p>
+    </div>
   );
 }
 

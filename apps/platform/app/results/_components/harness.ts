@@ -114,18 +114,14 @@ export function criterionFault(c: CriterionResult): Fault | null {
   if (NEVER_SHOWN.some((p) => p.test(evidence))) {
     return {
       kind: "never-shown",
-      why:
-        "the beat this is about never fired, so the agent was never shown the thing it is " +
-        "being checked on",
+      why: "the beat this is about never fired, so the agent was never shown it",
       fromChecker: false,
     };
   }
   if (NOT_CAPTURED.some((p) => p.test(evidence))) {
     return {
       kind: "not-captured",
-      why:
-        "we did not save enough of this run to re-check it — the clone's state either side of " +
-        "the agent, or the log of what it wrote, is missing from the file",
+      why: "we saved neither the clone's state either side of the agent nor the log of what it wrote, so there is nothing to check this against",
       fromChecker: false,
     };
   }
@@ -219,10 +215,10 @@ function unlocatable(truncation: RunTruncation): Fault {
   return {
     kind: "unlocatable",
     why:
-      `this points at no moment of the ${truncation.executedTicks} ticks that ran, and this day ` +
-      `was cut at ${truncation.executedTicks} of ${truncation.scheduledTicks}. The assessor was ` +
-      `handed the day as though it were whole, so a complaint that names nothing in it cannot be ` +
-      `told apart from a complaint about the hours we never played`,
+      `this names no moment of the ${truncation.executedTicks} ticks that ran, on a day we cut at ` +
+      `${truncation.executedTicks} of ${truncation.scheduledTicks}. The assessor was handed it as ` +
+      `whole, so a complaint naming nothing in it cannot be told from one about the hours we ` +
+      `never played`,
     fromChecker: false,
   };
 }
@@ -300,6 +296,109 @@ export function specDescribes(run: EpisodeRun, spec: { beats: ReadonlyArray<{ id
 }
 
 // ---------------------------------------------------------------------------
+// How much of the day the assessor was actually shown
+// ---------------------------------------------------------------------------
+
+// A DEFECT OF OURS THAT READS AS CONFIDENCE.
+//
+// A day can outgrow the judge's context window, so `@sonata/judge` samples the
+// long lists and says so in `coverage`. What it cannot do is stop the prose it
+// gets back sounding like a reading of the whole run — the summary is a
+// paragraph of plain English either way, and a reader has no way to tell one
+// formed on every step from one formed on two steps in three.
+//
+// So it is said here, next to the findings, in the same first person as
+// everything else in this file: not "coverage 0.66" but "we showed it two
+// thirds of this day".
+
+/** One list the judge was shown, named the way a reader would name it. */
+export interface SightSlice {
+  /** "things the agent did" — never "steps". */
+  what: string;
+  shown: number;
+  total: number;
+}
+
+export type JudgeSight =
+  /**
+   * The report predates the counting. Absent is NOT complete: it is a verdict of
+   * unknown provenance, and saying nothing here is how the last one got read as a
+   * reading of the whole day.
+   */
+  | { kind: "unrecorded" }
+  | {
+      kind: "partial";
+      /** The judge's own worst-of-three ratio, 0..1. */
+      share: number;
+      /** "two thirds" — the share as it is said out loud. */
+      portion: string;
+      /** Only the lists that did not fit, worst first. */
+      missing: SightSlice[];
+    };
+
+/** Fractions a reader says in words. Anything else is given as a percentage. */
+const PORTIONS: ReadonlyArray<{ at: number; words: string }> = [
+  { at: 1 / 10, words: "a tenth" },
+  { at: 1 / 4, words: "a quarter" },
+  { at: 1 / 3, words: "a third" },
+  { at: 1 / 2, words: "half" },
+  { at: 2 / 3, words: "two thirds" },
+  { at: 3 / 4, words: "three quarters" },
+  { at: 9 / 10, words: "nine tenths" },
+];
+
+export function portionWords(share: number): string {
+  const near = PORTIONS.find((p) => Math.abs(share - p.at) < 0.04);
+  return near ? near.words : `${Math.round(share * 100)}%`;
+}
+
+const SLICE_WORDS: Record<"steps" | "timeline" | "narration", string> = {
+  steps: "things the agent did",
+  timeline: "things the day and the people in it did",
+  narration: "the agent's own notes to itself",
+};
+
+/** A count off disk is a claim, not a fact — a malformed one must not print. */
+function sliceOf(what: string, raw: { shown: number; total: number } | undefined): SightSlice | null {
+  if (!raw || !Number.isFinite(raw.shown) || !Number.isFinite(raw.total)) return null;
+  if (raw.total <= 0 || raw.shown >= raw.total) return null;
+  return { what, shown: Math.max(0, Math.floor(raw.shown)), total: Math.floor(raw.total) };
+}
+
+/**
+ * What to tell the reader about the assessor's sight of this run.
+ *
+ * Null in the one case that needs no words: the judge counted, and it read all of
+ * it. Everything else — a sample, or a report from before we counted — is
+ * something the reader has to be told before they read the prose.
+ */
+export function judgeSight(judge: EpisodeJudgeReport | null): JudgeSight | null {
+  if (!judge) return null;
+  const c = judge.coverage;
+  if (!c) return { kind: "unrecorded" };
+  const share = Number.isFinite(c.fraction) ? Math.min(1, Math.max(0, c.fraction)) : 0;
+  if (c.complete && share >= 1) return null;
+
+  const missing = [
+    sliceOf(SLICE_WORDS.steps, c.steps),
+    sliceOf(SLICE_WORDS.timeline, c.timeline),
+    sliceOf(SLICE_WORDS.narration, c.narration),
+  ]
+    .filter((s): s is SightSlice => s !== null)
+    .sort((a, b) => a.shown / a.total - b.shown / b.total);
+
+  // Flags disagreeing with counts is still a run we cannot vouch for, and the
+  // honest answer to "how much?" is then that we do not know.
+  if (missing.length === 0) return { kind: "unrecorded" };
+  return { kind: "partial", share, portion: portionWords(share), missing };
+}
+
+/** "200 of the 304 things the agent did" — the same clause everywhere it is said. */
+export function sliceSentence(slice: SightSlice): string {
+  return `${slice.shown} of the ${slice.total} ${slice.what}`;
+}
+
+// ---------------------------------------------------------------------------
 // The whole account, assembled once on the server
 // ---------------------------------------------------------------------------
 
@@ -327,13 +426,28 @@ export interface HarnessReport {
   } | null;
   /** What this run failed to save, in the artifact's own words. Null when whole. */
   capture: string | null;
+  /** How much of it the assessor read. Null when it read all of it. */
+  sight: JudgeSight | null;
   criteria: FaultedCriterion[];
   findings: FaultedFinding[];
 }
 
-/** Anything to own up to? A report with nothing in it is not rendered at all. */
+/**
+ * Anything to own up to? A report with nothing in it is not rendered at all.
+ *
+ * An unrecorded sight is deliberately not enough on its own. It is true of every
+ * run judged before we started counting, and opening this card on all of them
+ * would spend the reader's attention on "we do not know" until it stopped being
+ * read at all — the note beside the prose says it, and a re-judge answers it.
+ */
 export function hasFaults(r: HarnessReport): boolean {
-  return Boolean(r.day) || r.capture !== null || r.criteria.length > 0 || r.findings.length > 0;
+  return (
+    Boolean(r.day) ||
+    r.capture !== null ||
+    r.sight?.kind === "partial" ||
+    r.criteria.length > 0 ||
+    r.findings.length > 0
+  );
 }
 
 /** What this module reads off a spec. Structural, so an `EpisodeSpec` fits as-is. */
@@ -402,6 +516,9 @@ export function harnessReport(input: {
     report: {
       day,
       capture: input.capture.complete ? null : input.capture.summary,
+      // Off the report the page will show, not the one on disk: the findings we
+      // have re-filed are gone from it, and the sight note sits over what is left.
+      sight: judgeSight(findings.agent),
       criteria: checklist.ours,
       findings: findings.ours,
     },
@@ -471,6 +588,19 @@ export function harnessMarkdown(r: HarnessReport): string {
   if (r.capture) {
     p();
     p(`**We did not record enough of this run to check it.** ${r.capture}`);
+  }
+
+  // The sample is stated in the document too, because the document is the copy
+  // that gets quoted — and a paragraph of assessor prose quoted out of here reads
+  // as a reading of the whole day unless the page it came from said otherwise.
+  if (r.sight?.kind === "partial") {
+    p();
+    p(
+      `**The assessor read ${r.sight.portion} of this day.** The day was too large to put in ` +
+        `front of it whole, so we sampled it — ${sliceSentence(r.sight.missing[0])}, taken evenly ` +
+        `across the day rather than cut off at lunchtime. Everything it writes below is a reading ` +
+        `of that sample.`,
+    );
   }
 
   if (r.criteria.length > 0) {

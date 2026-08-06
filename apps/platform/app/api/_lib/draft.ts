@@ -1,14 +1,19 @@
-import type { EpisodeSpec, WorldSeed } from "@sonata/core";
+import { isCriterionKind, type CriterionKind, type EpisodeSpec, type WorldSeed } from "@sonata/core";
 import {
+  AUTHORABLE_KINDS,
   CRITERIA_SCHEMA,
   CRITERION_SCHEMA,
   checklistShortfall,
   criteriaRules,
   type BindableBeat,
   type DraftCriterion,
-  type UnboundCriterion,
 } from "@sonata/world";
-import { assembleScenario, type AssembledScenario, type AuthoredScenario } from "./authored";
+import {
+  assembleScenario,
+  type AssembledScenario,
+  type AuthoredScenario,
+  type RejectedCriterion,
+} from "./authored";
 import { completeJson, hasModelAccess } from "./llm";
 import { getDoc, putDoc } from "./store";
 import { TEMPLATES, assembleTemplate, type Template } from "./templates";
@@ -45,6 +50,50 @@ Hard rules:
 - Write like a real workplace: short, specific, slightly impatient. No lorem ipsum, no placeholder names like "John Doe".
 
 ${criteriaRules({ beats: [], channels: [], people: [] })}`;
+
+// ---------------------------------------------------------------------------
+// The kind enum the model is handed.
+//
+// @sonata/world derives `AUTHORABLE_KINDS` by splitting its rule table's
+// `${twin}/${kind}` keys on "/", so a typo in a key would widen the enum the
+// model is offered and make the typo authorable — which is one step from how
+// `mentioned` got into a stored spec in the first place. It is intersected with
+// @sonata/core's closed vocabulary here, so the enum on the wire is a subset of
+// what the judge can route, whatever the rule table says.
+//
+// The drift is reported rather than swallowed: the schema is already correct by
+// the time anyone reads the log, and the log is the only thing that will say the
+// two lists have come apart.
+// ---------------------------------------------------------------------------
+
+const ROUTABLE_KINDS: CriterionKind[] = AUTHORABLE_KINDS.filter((k): k is CriterionKind =>
+  isCriterionKind(k),
+);
+const UNROUTABLE_KINDS: string[] = AUTHORABLE_KINDS.filter((k) => !isCriterionKind(k));
+if (UNROUTABLE_KINDS.length > 0) {
+  console.error(
+    `[sonata] @sonata/world offers criterion kinds @sonata/core does not define: ` +
+      `${UNROUTABLE_KINDS.join(", ")}. They are excluded from the generation schema — nothing ` +
+      `could route a criterion authored with one — but the two vocabularies have drifted.`,
+  );
+}
+
+/** `CRITERION_SCHEMA` with `kind` pinned to the kinds the judge can actually route. */
+const CRITERION_ITEM: Record<string, unknown> = {
+  ...CRITERION_SCHEMA,
+  properties: {
+    ...CRITERION_SCHEMA.properties,
+    kind: { type: "string", enum: ROUTABLE_KINDS },
+  },
+};
+
+/** The same pinning, for the criteria-only repair call. */
+const CRITERIA_ONLY_SCHEMA: Record<string, unknown> = {
+  ...CRITERIA_SCHEMA,
+  properties: {
+    criteria: { ...CRITERIA_SCHEMA.properties.criteria, items: CRITERION_ITEM },
+  },
+};
 
 const SCHEMA: Record<string, unknown> = {
   type: "object",
@@ -183,8 +232,13 @@ export interface DraftDoc {
    * scenario and is written into the record, warned about on the server, and
    * handed to the judge as a question rather than left to surface as a row
    * reading "could not be checked" on a report someone is sharing.
+   *
+   * `RejectedCriterion`, not `UnboundCriterion`: a criterion can now be dropped
+   * for a kind nothing can route, and that reason has to carry the word the
+   * model actually wrote — "mentioned" is the diagnosis, and it is not a
+   * `CriterionKind`, so it cannot survive the narrower type.
    */
-  unbound: UnboundCriterion[];
+  unbound: RejectedCriterion[];
 }
 
 /**

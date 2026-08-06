@@ -294,7 +294,7 @@ function onTick(entry: LiveRun, record: TickRecord): void {
 // is missing. A twin that will not answer is written down as a twin that would
 // not answer, at the time it would not.
 
-interface Capture {
+export interface Capture {
   before: ByTwin<TwinSnapshot>;
   after: ByTwin<TwinSnapshot>;
   audit: TwinAuditRow[];
@@ -387,10 +387,32 @@ async function closeCapture(
     capture.after[name] = pair.after;
   }
   await snapshotInto(capture.after, used, capture);
+  explainUnpaired(capture, Object.keys(used) as TwinName[]);
 
   if (result && result.audit.length > 0) capture.audit = result.audit;
   else capture.audit = await auditFrom(used, entry.ticks[0]?.startedAt ?? entry.startedAt, capture);
   return capture;
+}
+
+/**
+ * Say why a twin has a closing shot and no opening one.
+ *
+ * The `before` is taken in exactly two places — here, before the loop, or by the
+ * loop itself after it seeds — and BOTH are skipped when a seeding loop unwinds
+ * before its own capture, which is what a cancel at tick 0 does. `snapshotsOf`
+ * then drops the half pair and the artifact files an empty map: a day nobody
+ * photographed, wearing the face of a day in which nothing happened. Nothing
+ * threw, so `snapshotInto` had nothing to report; the silence has to be named
+ * here or it is never named at all.
+ */
+export function explainUnpaired(capture: Capture, twins: readonly TwinName[]): void {
+  for (const twin of twins) {
+    if (capture.notes[twin]) continue;
+    if (capture.before[twin] && capture.after[twin]) continue;
+    capture.notes[twin] = capture.before[twin]
+      ? `the ${twin} clone gave no closing snapshot, so the opening one has nothing to be diffed against`
+      : `the day ended before an opening snapshot of ${twin} was taken, so there is nothing to diff the closing one against`;
+  }
 }
 
 /** Only pairs. A lone snapshot cannot be diffed, and half a pair reads as a whole one. */
@@ -581,7 +603,17 @@ async function complete(
 
   // One terminal write for the row and the artifact together, through the same
   // function the rest of the dashboard finishes runs with.
-  mirrorRunFinish({ run: scored, spec, checklist, cost: result.cost, twins, captureNotes: capture.notes });
+  // `observed` because `closeCapture` always runs before this line: whatever is
+  // missing from the map above, the clones were asked for it.
+  mirrorRunFinish({
+    run: scored,
+    spec,
+    checklist,
+    cost: result.cost,
+    twins,
+    captureNotes: capture.notes,
+    observed: true,
+  });
 
   const wantsJudge = input.judge !== false && execution.executed && !entry.cancelled;
   if (wantsJudge) {
@@ -645,7 +677,16 @@ function fail(
   entry.autonomy = verdict?.autonomy ?? null;
   // One write, not two: `mirrorRunFinish` finishes the row itself, and the second
   // call is where a score could creep back in behind the artifact's back.
-  mirrorRunFinish({ run: { ...run, verdict }, spec, checklist, twins, captureNotes: capture.notes });
+  mirrorRunFinish({
+    run: { ...run, verdict },
+    spec,
+    checklist,
+    twins,
+    captureNotes: capture.notes,
+    // The catch in `drive` closes the capture before it calls this, so even a day
+    // that fell over at 09:15 asked the clones on its way down.
+    observed: true,
+  });
   return run;
 }
 

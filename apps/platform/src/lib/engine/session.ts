@@ -605,6 +605,27 @@ function noteForAll(twins: readonly TwinName[], why: string): Partial<Record<Twi
   return notes;
 }
 
+/**
+ * Which attached twins came back without a usable pair, and that they did.
+ *
+ * The session's snapshots are the engine's, and @sonata/engine takes them with a
+ * swallowed catch — one clone that will not answer is deliberately not allowed to
+ * cost the whole day. The cost lands here instead: a twin missing from the map
+ * with nothing said about it reads as a surface the agent never touched.
+ */
+function unpairedNotes(
+  twins: readonly TwinName[],
+  snapshots: EpisodeRun["snapshots"],
+): Partial<Record<TwinName, string>> {
+  const notes: Partial<Record<TwinName, string>> = {};
+  for (const twin of twins) {
+    const pair = snapshots[twin];
+    if (pair?.before && pair.after) continue;
+    notes[twin] = `no snapshot pair came back from the ${twin} clone while the session ran, so its criteria cannot be decided from this file`;
+  }
+  return notes;
+}
+
 // ---------------------------------------------------------------------------
 // Finishing — the same scoring a run gets, and deliberately no other
 // ---------------------------------------------------------------------------
@@ -644,7 +665,15 @@ async function settle(entry: LiveSession, record: SessionRecord): Promise<void> 
   // writer to disagree with it. Its other half, the `runs` row, is a no-op here:
   // a session never had one, on purpose (see the DDL above), and the update
   // simply matches nothing.
-  mirrorRunFinish({ run: scored, spec: entry.spec, checklist, cost, twins: entry.twins });
+  mirrorRunFinish({
+    run: scored,
+    spec: entry.spec,
+    checklist,
+    cost,
+    twins: entry.twins,
+    captureNotes: unpairedNotes(entry.twins, run.snapshots),
+    observed: true,
+  });
 
   finishRow(entry.sessionId, {
     status,
@@ -715,6 +744,7 @@ function fail(entry: LiveSession, err: unknown): void {
     checklist,
     twins: entry.twins,
     captureNotes: noteForAll(entry.twins, `the session stopped before the day began: ${reason}`),
+    observed: false,
   });
 
   finishRow(entry.sessionId, {
@@ -820,6 +850,7 @@ export function sweepOrphanSessions(): void {
         checklist,
         twins,
         captureNotes: noteForAll(twins, `${reason}, so the closing snapshot was never taken`),
+        observed: false,
       });
     }
     finishRow(row.id, {

@@ -183,16 +183,33 @@ export function describeEvidence(input: {
   audit: readonly TwinAuditRow[];
   /** Per twin, why capture failed. The clone's own words, when it gave any. */
   notes?: Partial<Record<TwinName, string>>;
+  /**
+   * False when nothing ever asked the clones for their state.
+   *
+   * A run played without live twins and a run whose twins went quiet file the
+   * same empty map, and only the first is a fact about the harness — so the
+   * writer says which it was rather than leaving a reader to guess. Absent means
+   * "asked": a reader deriving this block from an old artifact cannot know
+   * either way, and accusing a run of never looking is the same lie backwards.
+   */
+  observed?: boolean;
 }): RunEvidence {
   const attached = TWIN_ORDER.filter((t) => input.twins.includes(t));
   const rows = input.twins.length === 0 ? [] : input.audit;
+  const observed = input.observed !== false;
   const twins: TwinEvidence[] = attached.map((twin) => {
     const pair = input.snapshots[twin];
-    const note = input.notes?.[twin];
+    const before = Boolean(pair?.before);
+    const after = Boolean(pair?.after);
+    // A blank pair with no reason beside it is the whole failure: it reads as a
+    // clone the agent left untouched. When the caller gave no reason, state the
+    // only one we can stand behind — which is at minimum "this file does not
+    // hold that observation, and here is who was supposed to take it".
+    const note = input.notes?.[twin] ?? (before && after ? undefined : whyBlank(twin, before, after, observed));
     return {
       twin,
-      before: Boolean(pair?.before),
-      after: Boolean(pair?.after),
+      before,
+      after,
       auditRows: rows.filter((r) => r.twin === twin).length,
       ...(note ? { note } : {}),
     };
@@ -202,15 +219,29 @@ export function describeEvidence(input: {
   const auditWindow =
     stamps.length > 0 ? { fromMs: Math.min(...stamps), toMs: Math.max(...stamps) } : null;
   const missing = twins.filter((t) => !t.before || !t.after);
-  const complete = attached.length > 0 && missing.length === 0 && auditWindow !== null;
+  const complete = observed && attached.length > 0 && missing.length === 0 && auditWindow !== null;
 
-  return { twins, auditWindow, complete, summary: evidenceSummary(twins, auditWindow, attached) };
+  return {
+    twins,
+    auditWindow,
+    complete,
+    summary: evidenceSummary(twins, auditWindow, attached, observed),
+  };
+}
+
+/** The default reason a twin has no usable pair, when the caller offered none. */
+function whyBlank(twin: TwinName, before: boolean, after: boolean, observed: boolean): string {
+  if (!observed) return `nothing asked the ${twin} clone for its state during this run`;
+  if (!before && !after) return `the ${twin} clone was asked at both ends of the day and neither snapshot came back`;
+  if (!before) return `no opening snapshot of ${twin} came back, so the closing one has nothing to be diffed against`;
+  return `no closing snapshot of ${twin} came back, so the opening one has nothing to be diffed against`;
 }
 
 function evidenceSummary(
   twins: TwinEvidence[],
   auditWindow: RunEvidence["auditWindow"],
   attached: readonly TwinName[],
+  observed = true,
 ): string {
   if (attached.length === 0) {
     return (
@@ -228,6 +259,17 @@ function evidenceSummary(
       `row${total === 1 ? "" : "s"} between ${clockTime(auditWindow.fromMs)} and ` +
       `${clockTime(auditWindow.toMs)}. Every deterministic criterion here can be re-checked from ` +
       "this file alone."
+    );
+  }
+
+  // Nobody looked. Said first and said as ours, because the checklist under it is
+  // about to say "nothing to check against" on every objective row, and a reader
+  // who has not been told this banks all of them as findings about the agent.
+  if (!observed && missing.length === attached.length) {
+    return (
+      `No clone was ever asked for its state during this run (${attached.join(", ")}), so nothing ` +
+      "in this file was observed in a live twin. Every deterministic criterion below is " +
+      "undecidable, and that is a fact about the harness, not about the agent."
     );
   }
 

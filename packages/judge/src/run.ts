@@ -57,8 +57,13 @@ export interface JudgeOptions {
   now?: () => number;
 }
 
-/** The fields the model is asked for. The other three are stamped here. */
-type JudgeResponse = Omit<EpisodeJudgeReport, "runId" | "judgedAt" | "model">;
+/**
+ * The fields the model is asked for. The other four are stamped here — and
+ * `coverage` is stamped rather than asked for on purpose: how much of the run
+ * reached the prompt is a fact about the prompt, known before the call, and a
+ * model asked to report its own blind spot is the last witness to trust about it.
+ */
+type JudgeResponse = Omit<EpisodeJudgeReport, "runId" | "judgedAt" | "model" | "coverage">;
 
 const DEFAULT_MODEL = "anthropic/claude-haiku-4.5";
 
@@ -198,7 +203,7 @@ export async function judge(
   input: EpisodeJudgeInput,
   opts: JudgeOptions,
 ): Promise<EpisodeJudgeReport> {
-  const { system, prompt } = buildEpisodePrompt(input);
+  const { system, prompt, coverage } = buildEpisodePrompt(input);
   const model = opts.model ?? DEFAULT_MODEL;
   const call = () =>
     opts.complete<JudgeResponse>({
@@ -216,6 +221,7 @@ export async function judge(
     runId: input.runId,
     judgedAt: (opts.now ?? Date.now)(),
     model,
+    coverage,
     taskUnderstanding: typeof raw.taskUnderstanding === "string" ? raw.taskUnderstanding : "",
     autonomyScore: clamp01(raw.autonomyScore),
     summary: typeof raw.summary === "string" ? raw.summary : "",

@@ -70,8 +70,8 @@ export function SuccessChecklist({
                   Ours, not the agent&rsquo;s — {ours.length} {faultPhrase(ours)}
                 </h3>
                 <p className="mt-0.5 max-w-[76ch] text-[12.5px] leading-[18px] text-sn-muted">
-                  The moment each of these is about never reached the agent, or we saved too little
-                  of the run to check it. They score nothing either way. See the top of the page.
+                  Never put to the agent, or saved too thinly to check. They score nothing either
+                  way — the full account is at the top of the page.
                 </p>
               </div>
               <ul>
@@ -108,12 +108,10 @@ function subtitle(
     return `Not one criterion here is about the agent: all ${ours} are defects in this harness.`;
   }
   if (decided === 0) {
-    return `Nothing here could be decided from what the run left behind — all ${total} are unchecked, and none counts either way.${mine}`;
+    return `Nothing here could be decided from what the run left behind — all ${total} unchecked, none counted.${mine}`;
   }
   const undecidedNote =
-    undecided > 0
-      ? ` ${undecided} more could not be decided ${undecided === 1 ? "and is" : "and are"} not counted either way.`
-      : "";
+    undecided > 0 ? ` ${undecided} more could not be decided, and count${undecided === 1 ? "s" : ""} neither way.` : "";
   return `${passed} of ${decided} criteria passed — ${formatPercent(score)} by weight.${undecidedNote}${mine}`;
 }
 
@@ -244,10 +242,10 @@ function CriterionRow({
             <p className="flex items-start gap-2 text-[13px] text-sn-muted">
               <IconAlert size={14} className="mt-0.5 shrink-0 text-sn-subtle" />
               {undecided
-                ? "Nothing in the run settles this either way, so it is neither passed nor failed and takes no part in the score."
+                ? "Nothing in the run settles this, so it counts neither way."
                 : passed
-                  ? "The checker passed this without quoting anything — it matched on state, not on a message."
-                  : "Nothing in the world satisfied this criterion, so there is nothing to quote."}
+                  ? "Passed on the state it found, not on anything quotable."
+                  : "Nothing in the world satisfied this, so there is nothing to quote."}
             </p>
           )}
 

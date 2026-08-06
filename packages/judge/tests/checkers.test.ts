@@ -431,7 +431,10 @@ describe("a (twin, kind) pair the table does not implement", () => {
 
     expect(deferred.map((d) => d.id)).toEqual(["c1"]);
     expect(results[0].status).toBe("notApplicable");
-    expect(results[0].evidence).toContain("no deterministic checker exists for gmail/scheduled");
+    // And it says WHICH of the two it is. `scheduled` is a real kind with a real
+    // checker; what it cannot be is a thing that happens in a mailbox. "No
+    // deterministic checker exists" read like a checker nobody had written yet.
+    expect(results[0].evidence).toContain('"scheduled" is not something that can happen on gmail');
     expect(results[0].evidence).toContain("put to the judge");
   });
 });

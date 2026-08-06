@@ -1,4 +1,4 @@
-import type { EpisodeJudgeInput } from "@sonata/core";
+import type { EpisodeJudgeInput, JudgeStep } from "@sonata/core";
 import { describe, expect, it } from "vitest";
 import { judge, type CompleteJSON } from "../src/run";
 
@@ -170,5 +170,58 @@ describe("judge", () => {
       otherFindings: [],
     });
     expect(report.answers).toHaveLength(2);
+  });
+});
+
+describe("judge coverage", () => {
+  /** `n` tool calls with bodies fat enough to price the day out of one prompt. */
+  function fatSteps(n: number): JudgeStep[] {
+    return Array.from({ length: n }, (_, i) => ({
+      seq: i + 1,
+      tick: i,
+      twin: "gmail" as const,
+      name: "send_reply",
+      args: { body: "x".repeat(400) },
+      resultSummary: "sent",
+      isMutation: true,
+    }));
+  }
+
+  it("lands on the report, so a reader is never left to assume the judge saw it all", async () => {
+    const { complete } = stub(OK);
+    const report = await judge(INPUT, { complete });
+    expect(report.coverage).toEqual({
+      steps: { shown: 0, total: 0 },
+      timeline: { shown: 0, total: 0 },
+      narration: { shown: 0, total: 0 },
+      fraction: 1,
+      complete: true,
+    });
+  });
+
+  it("carries the partial figure when the day did not fit", async () => {
+    const { complete } = stub(OK);
+    const report = await judge(
+      { ...INPUT, trace: { steps: fatSteps(4000), turns: [], escalations: [] } },
+      { complete },
+    );
+
+    expect(report.coverage?.complete).toBe(false);
+    expect(report.coverage?.steps.total).toBe(4000);
+    expect(report.coverage?.fraction).toBeLessThan(1);
+    expect(report.coverage?.fraction).toBeGreaterThan(0);
+  });
+
+  it("is the harness's own count, not something the model could talk us out of", async () => {
+    // A model that claims full coverage does not get to overwrite the measurement.
+    const { complete } = stub({
+      ...OK,
+      coverage: { steps: { shown: 4000, total: 4000 }, fraction: 1, complete: true },
+    });
+    const report = await judge(
+      { ...INPUT, trace: { steps: fatSteps(4000), turns: [], escalations: [] } },
+      { complete },
+    );
+    expect(report.coverage?.complete).toBe(false);
   });
 });

@@ -6,11 +6,17 @@ import { Card, IconChevronDown, cn } from "@sonata/ui";
 import type { ReactNode } from "react";
 import type { RunBrief } from "../_lib/artifacts";
 import { formatWhen } from "../_lib/summary";
+import { judgeSight, sliceSentence } from "./harness";
 
 // First on the page, before any score: the judge restates the task in its own
 // words. If the restatement is not the task, the brief was ambiguous — and that
 // is the finding, not the run's score. Everything below this section is only
 // worth reading once this paragraph is right.
+//
+// "How it went" is the most quotable paragraph on the page and the one with the
+// least visible provenance, so what it was written from is stamped on it. A
+// summary formed on a sample of the day reads exactly like one formed on all of
+// it, and that resemblance is the whole problem.
 
 export function JudgeUnderstanding({
   judge,
@@ -87,6 +93,7 @@ export function JudgeUnderstanding({
             How it went
           </h3>
           <p className="mt-1.5 text-[13.5px] leading-[21px] text-sn-ink">{judge.summary}</p>
+          <SightNote judge={judge} />
         </div>
       ) : null}
 
@@ -101,6 +108,19 @@ export function JudgeUnderstanding({
         </dl>
       ) : null}
     </Card>
+  );
+}
+
+/** What the paragraph above was written from. Silent only when it was the whole day. */
+function SightNote({ judge }: { judge: EpisodeJudgeReport }) {
+  const sight = judgeSight(judge);
+  if (!sight) return null;
+  return (
+    <p className="mt-2 text-[12px] leading-[18px] text-sn-gold-ink">
+      {sight.kind === "partial"
+        ? `Written from ${sight.portion} of this day — the assessor read ${sliceSentence(sight.missing[0])}, sampled evenly across it. Ours, not the agent's.`
+        : "How much of this day the assessor read was not recorded, so this paragraph cannot be taken as a reading of all of it."}
+    </p>
   );
 }
 

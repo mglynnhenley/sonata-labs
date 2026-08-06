@@ -180,31 +180,94 @@ export interface DirectorPolicy {
 // the same split that keeps the Gmail eval cheap and reproducible.
 // ---------------------------------------------------------------------------
 
-export type CriterionKind =
-  /** A reply landed on the thread/message named by `ref`. */
-  | "replied"
-  /** A new email or DM went to `target`. */
-  | "sent"
-  /** Something was posted in the channel named by `target`. */
-  | "posted"
-  /** The item named by `ref` carries the label in `expect`. */
-  | "labelled"
-  /** The item named by `ref` left the inbox/queue. */
-  | "archived"
-  /** A calendar event matching `expect` exists that did not before. */
-  | "scheduled"
-  /** The event named by `ref` changed time. */
-  | "moved"
-  /** The event named by `ref` is cancelled. */
-  | "cancelled"
-  /** The item named by `ref` was deliberately left alone. */
-  | "untouched"
-  /** Something the agent wrote contains `expect`. */
-  | "mentions"
-  /** The agent never handed the job back to its owner. */
-  | "no-escalation"
-  /** No deterministic check exists — the judge decides this one. */
-  | "judged";
+/**
+ * The whole vocabulary of criterion kinds, and the only one.
+ *
+ * A VALUE, not merely a type, because every consumer needs the list at runtime:
+ * the generator's JSON schema is built from it so a model cannot author outside
+ * it, the judge's routing table is keyed by it so a kind cannot exist without a
+ * decision about who answers it, and a spec read back off disk is checked
+ * against it rather than trusted.
+ *
+ * It is a value because it was free text, and free text produced near-synonyms.
+ * A model wrote `mentioned` where the checkers implement `mentions`; nothing
+ * matched, nothing complained, and the criterion — a `must`, on a report someone
+ * was reading — came back "no deterministic checker exists for slack/mentioned"
+ * and quietly became judge prose. One word out of place cost a run its only
+ * deterministic answer to the question it was really about.
+ *
+ *   replied        a reply landed on the thread/message named by `ref`
+ *   sent           a new email, DM or invitation reached `target`
+ *   posted         something was posted in the channel named by `expect`
+ *   labelled       the item named by `ref` carries the label in `expect`
+ *   archived       the item named by `ref` left the inbox/queue
+ *   scheduled      an event matching `expect` exists that did not before
+ *   moved          the event named by `ref` changed time
+ *   cancelled      the event named by `ref` is cancelled
+ *   untouched      the item named by `ref` was deliberately left alone
+ *   mentions       something the agent wrote contains `expect`, or names `target`
+ *   no-escalation  the agent never handed the job back to a human
+ *   judged         nothing deterministic can settle it — the judge answers it
+ *
+ * `judged` is the one deliberate hole, and it is deliberate: a kind with no
+ * checker has to say so in the vocabulary, where a reader sees it, rather than
+ * by being missing from a table, where nobody does.
+ */
+export const CRITERION_KINDS = [
+  "replied",
+  "sent",
+  "posted",
+  "labelled",
+  "archived",
+  "scheduled",
+  "moved",
+  "cancelled",
+  "untouched",
+  "mentions",
+  "no-escalation",
+  "judged",
+] as const;
+
+export type CriterionKind = (typeof CRITERION_KINDS)[number];
+
+const KIND_SET: ReadonlySet<string> = new Set<string>(CRITERION_KINDS);
+
+/**
+ * Near-synonyms that saved artifacts already carry, and the kind each one meant.
+ *
+ * Evidence-driven, and exactly as long as the evidence. A census of every
+ * criterion in every spec under `apps/platform/data/runs` and in the `episodes`
+ * table turned up one word outside the vocabulary — `mentioned`, in three saved
+ * specs, once as a `must`. Aliasing it is what makes those artifacts re-derive
+ * as CHECKED rather than stay permanently undecided; without it, closing the
+ * vocabulary would only convert a silent hole into a loud one.
+ *
+ * Nothing speculative belongs here. A kind nobody has ever written is a guess,
+ * and a guess in this map silently accepts a word the generator should have been
+ * refused for — which is the defect, not the fix.
+ */
+export const CRITERION_KIND_ALIASES: Readonly<Record<string, CriterionKind>> = {
+  mentioned: "mentions",
+};
+
+export function isCriterionKind(value: string): value is CriterionKind {
+  return KIND_SET.has(value);
+}
+
+/**
+ * The canonical kind for whatever an artifact or a model actually wrote, or null.
+ *
+ * Null is the point of the signature: it is the difference between a word that
+ * can be routed and a word that cannot, and it forces every caller to say out
+ * loud what it does with the second case — reject it at authoring time, or
+ * report it as this harness's defect at check time. What no caller can do any
+ * more is treat it as an ordinary kind that merely happens to have no checker.
+ */
+export function asCriterionKind(value: string): CriterionKind | null {
+  const key = value.trim().toLowerCase();
+  if (isCriterionKind(key)) return key;
+  return CRITERION_KIND_ALIASES[key] ?? null;
+}
 
 export interface Criterion {
   id: string;

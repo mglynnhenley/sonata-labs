@@ -146,6 +146,20 @@ export function mirrorRunFinish(input: {
   twins?: readonly TwinName[];
   /** Per twin, why capture failed. The clone's own words when it gave any. */
   captureNotes?: Partial<Record<TwinName, string>>;
+  /**
+   * True when this caller actually asked the clones for their state — whatever
+   * came back.
+   *
+   * Defaults to FALSE, and the default is the point. Not every writer that
+   * reaches this funnel drives live twins: the stand-in tick loop behind
+   * `POST /api/runs` plays a scripted day with no clone attached at all, and it
+   * files `snapshots: {}` through here exactly like an engine run whose capture
+   * failed. Same status, no error, an empty map — indistinguishable, which is
+   * how a day nobody photographed came to be read as a day in which nothing
+   * happened. A caller that took a capture says so; one that did not is written
+   * down as one that did not.
+   */
+  observed?: boolean;
 }): void {
   const { run, checklist } = input;
   const cost = run.verdict?.cost ?? input.cost ?? { usd: 0, promptTokens: 0, completionTokens: 0, llmCalls: 0 };
@@ -192,6 +206,7 @@ export function mirrorRunFinish(input: {
       twins: input.twins ?? episodeTwins(spec),
       snapshots: run.snapshots,
       audit,
+      observed: input.observed === true,
       ...(input.captureNotes ? { notes: input.captureNotes } : {}),
     });
     const artifact: RunArtifact = { ...run, verdict, spec, evidence };

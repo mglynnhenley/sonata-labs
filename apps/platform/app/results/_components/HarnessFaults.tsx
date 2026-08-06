@@ -7,9 +7,11 @@ import {
   FAULT_LABEL,
   faultPhrase,
   sentence,
+  sliceSentence,
   type FaultedCriterion,
   type FaultedFinding,
   type HarnessReport,
+  type JudgeSight,
   type MissedMoment,
 } from "./harness";
 
@@ -40,7 +42,7 @@ const TWIN_LABEL: Record<MissedMoment["twin"], string> = {
 };
 
 export function HarnessFaults({ report }: { report: HarnessReport }) {
-  const { day, capture, criteria, findings } = report;
+  const { day, capture, sight, criteria, findings } = report;
 
   return (
     <Card padding="none" radius="2xl" className="border-sn-gold/45 bg-sn-gold-soft/35">
@@ -65,6 +67,7 @@ export function HarnessFaults({ report }: { report: HarnessReport }) {
       <div className="divide-y divide-sn-gold/30 border-t border-sn-gold/30">
         {day ? <ShortDay day={day} /> : null}
         {capture ? <Capture summary={capture} /> : null}
+        {sight?.kind === "partial" ? <PartialSight sight={sight} /> : null}
         {criteria.length > 0 ? <Criteria rows={criteria} /> : null}
         {findings.length > 0 ? <Findings rows={findings} /> : null}
       </div>
@@ -159,6 +162,52 @@ function Capture({ summary }: { summary: string }) {
         </>
       }
     />
+  );
+}
+
+/**
+ * The assessor read a sample of this day and its prose does not say so.
+ *
+ * The same admission as a short day, one layer in: there the agent was given part
+ * of a day, here the assessor was shown part of what the agent did. Both produce a
+ * confident paragraph about a run neither of them saw whole, and the reader is the
+ * one who pays for the difference.
+ */
+function PartialSight({ sight }: { sight: Extract<JudgeSight, { kind: "partial" }> }) {
+  const worst = sight.missing[0];
+  const rest = sight.missing.slice(1);
+
+  return (
+    <Section
+      title={`The assessor read ${sight.portion} of this day`}
+      lead={
+        <>
+          Its findings, its summary and its answers below were written from{" "}
+          <strong className="font-medium text-sn-ink">{sliceSentence(worst)}</strong>
+          {rest.length > 0 ? <> — and {rest.map(sliceSentence).join(", and ")}</> : null}. The day
+          was too large to put in front of it whole, so we sampled it: evenly across the day, each
+          gap marked, never cut off at lunchtime. Read what it wrote as {sight.portion} of the
+          story, not as the story.
+        </>
+      }
+    >
+      <ul className="mt-2.5 space-y-1">
+        {sight.missing.map((slice) => (
+          <li
+            key={slice.what}
+            className="flex flex-wrap items-baseline gap-x-2.5 rounded-sn-lg border border-sn-gold/30 bg-sn-surface/70 px-3 py-2 text-[13px] leading-[19px]"
+          >
+            <span className="min-w-0 flex-1 text-sn-ink">{slice.what}</span>
+            <span data-numeric className="text-sn-muted">
+              {slice.shown} of {slice.total}
+            </span>
+            <span className="w-[76px] shrink-0 text-right text-[11.5px] text-sn-gold-ink">
+              {slice.total - slice.shown} unread
+            </span>
+          </li>
+        ))}
+      </ul>
+    </Section>
   );
 }
 

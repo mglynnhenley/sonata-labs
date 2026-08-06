@@ -2,8 +2,10 @@ import {
   FAILURE_MODES,
   failureModeIds,
   type ByTwin,
+  type CoverageSlice,
   type CriterionResult,
   type EpisodeJudgeInput,
+  type JudgeCoverage,
   type JudgeTrace,
   type TimelineEntry,
   type TwinDiff,
@@ -22,6 +24,10 @@ import {
 //                                    them and rates any internally coherent run as
 //                                    correct; and if the restatement comes out wrong,
 //                                    the brief was ambiguous, which IS a finding
+//   2b. how much of the run this is — only on a day too big to send whole, and before
+//                                    any of the evidence: a caveat that arrives after
+//                                    the evidence is a caveat the judge has already
+//                                    formed its findings without
 //   3. the day                     — what the world put in front of the agent
 //   4. what the agent did          — actions before effects, so a call that errored
 //                                    reads as a failed attempt and not an omission
@@ -34,11 +40,95 @@ import {
 //   9. the question                — do these actions make sense, and how much did it
 //                                    handle without a human
 
-/** Steps past this are counted, not listed — an indiscriminate sweep runs to hundreds. */
-const MAX_LISTED_STEPS = 200;
+/**
+ * Character budgets for the three lists that grow with the length of a day. They
+ * are budgets and not row counts because a row is not a fixed price: measured over
+ * every run in `apps/platform/data/runs`, one tool call costs 99 chars on a day of
+ * reads and 381 on a day of long replies, so any row cap is wrong by 4x on one of
+ * them. The context window is spent in characters, so the cap is set in characters.
+ *
+ * The evidence. The largest day on disk is `run_msg8vldg_l9hj` — 32 ticks, 141 tool
+ * calls, 162 turns, 47 timeline rows — and it projects to 130k chars (~33k tokens):
+ * 53.7k of steps, 53.1k of turns, 5.6k of timeline. The caps these replaced (200
+ * steps, 400 timeline rows) were not measured against that: 200 is 1.4x the largest
+ * day we have ever run, which is no headroom at all, and turns were not capped by
+ * anything, so a talkative agent could blow the window with prose while the steps
+ * that matter stayed inside a cap.
+ *
+ * The judge's default model holds 200k tokens. These three lists are allowed at most
+ * 520k chars — ~130k tokens — which leaves the system prompt, the story, the diffs,
+ * the checklist and the reply bodies (never truncated) room to grow inside it:
+ *
+ *   steps      240k chars ≈ 60k tokens ≈   630 calls at 381/call, 2,400 at 99/call
+ *   narration  200k chars ≈ 50k tokens ≈   610 turns at 328/turn
+ *   timeline    40k chars ≈ 10k tokens ≈   307 rows  at 130/row, charged twice — the
+ *                                           scripted day and the world's reactions
+ *                                           are budgeted separately
+ *
+ * Headroom over the largest real day: 4.5x on steps, 3.8x on narration, 13x on the
+ * timeline. Measured on that day repeated end to end, the whole prompt is 54k tokens
+ * at 2x, 91k at 5x and asymptotes at 113k — a day cannot make this call too big for
+ * the window, only too sparse, and `JudgeCoverage` is how it says which.
+ *
+ * Steps and narration are deliberately sized to run out at about the same length of
+ * day, so a low coverage figure means "this day was enormous" rather than "one list
+ * had a stingy budget".
+ */
+const STEP_BUDGET = 240_000;
+const NARRATION_BUDGET = 200_000;
+const TIMELINE_BUDGET = 40_000;
 
-/** Timeline rows past this are counted, not listed. A full day is well under it. */
-const MAX_TIMELINE_ROWS = 400;
+/** What a gap marker costs; charged per kept row so the budget still holds with them in. */
+const GAP_COST = 40;
+
+/** A rendered list, plus how much of it survived the budget. */
+interface Fitted {
+  text: string;
+  shown: number;
+  total: number;
+}
+
+function whole(text: string, count: number): Fitted {
+  return { text, shown: count, total: count };
+}
+
+/**
+ * Fit rendered lines into a character budget by sampling EVENLY across the list.
+ *
+ * `slice(0, n)` — what this replaced — is the single worst choice available. A day
+ * is chronological, so keeping the head and dropping the tail hands the judge the
+ * morning and hides the afternoon, which is exactly where deadline criteria, late
+ * disputes and the close of the day live. An even sample is missing pieces
+ * everywhere instead of everything in one place, and every skip is marked, so the
+ * judge can see it is reading a sample rather than a day that ended early.
+ *
+ * Endpoints are always kept: the first row and the last row of a day are the two
+ * rows most likely to carry a criterion.
+ */
+export function fitLines(lines: string[], budget: number, noun: string): Fitted {
+  const total = lines.length;
+  const size = lines.reduce((n, l) => n + l.length + 1, 0);
+  if (total === 0 || size <= budget) return { text: lines.join("\n"), shown: total, total };
+
+  const keep = Math.max(2, Math.min(total - 1, Math.floor(budget / (size / total + GAP_COST))));
+  const out: string[] = [];
+  const gap = (n: number): void => {
+    if (n > 0) out.push(`… ${n} ${noun}${n === 1 ? "" : "s"} not shown here …`);
+  };
+
+  let previous = -1;
+  let shown = 0;
+  for (let i = 0; i < keep; i++) {
+    const index = Math.round((i * (total - 1)) / (keep - 1));
+    if (index === previous) continue;
+    gap(index - previous - 1);
+    out.push(lines[index]);
+    previous = index;
+    shown += 1;
+  }
+  gap(total - 1 - previous);
+  return { text: out.join("\n"), shown, total };
+}
 
 function renderArgs(args: unknown): string {
   if (args === undefined || args === null) return "";
@@ -48,47 +138,47 @@ function renderArgs(args: unknown): string {
   return typeof s === "string" ? s : String(args);
 }
 
-function elide(shown: number, total: number): string {
-  return total > shown ? `\n… and ${total - shown} more` : "";
-}
-
-function renderDay(timeline: TimelineEntry[]): string {
+function renderDay(timeline: TimelineEntry[]): Fitted {
   const rows = timeline.filter((e) => e.source === "world");
-  if (rows.length === 0) return "(nothing was scripted into this day)";
-  const shown = rows.slice(0, MAX_TIMELINE_ROWS);
-  const lines = shown.map(
+  if (rows.length === 0) return whole("(nothing was scripted into this day)", 0);
+  const lines = rows.map(
     (e) => `t${e.tick} ${e.simTimeISO}${e.twin ? ` [${e.twin}]` : ""} ${e.text}`,
   );
-  return lines.join("\n") + elide(shown.length, rows.length);
+  return fitLines(lines, TIMELINE_BUDGET, "scripted moment");
 }
 
-function renderSteps(trace: JudgeTrace): string {
-  if (trace.steps.length === 0) return "(the agent made no tool calls at all)";
+function renderSteps(trace: JudgeTrace): Fitted {
+  if (trace.steps.length === 0) return whole("(the agent made no tool calls at all)", 0);
 
-  const shown = trace.steps.slice(0, MAX_LISTED_STEPS);
-  const lines = shown.map((s) => {
+  const lines = trace.steps.map((s) => {
     // A failed mutation left the world untouched, so say so on the same line.
     const result = s.error ? `FAILED: ${s.error} (nothing changed)` : s.resultSummary;
     const where = s.twin ? `${s.twin}.` : "";
     return `[${s.seq}] t${s.tick ?? "?"} ${s.isMutation ? "WRITE " : ""}${where}${s.name}(${renderArgs(s.args)}) -> ${result}`;
   });
+  const fitted = fitLines(lines, STEP_BUDGET, "tool call");
   // The total matters independently of the listing: reading three threads is
   // attention, reading nine hundred is a sweep.
-  return (
-    `${trace.steps.length} tool call(s) total, in order:\n${lines.join("\n")}` +
-    elide(shown.length, trace.steps.length)
-  );
+  const header =
+    fitted.shown === fitted.total
+      ? `${fitted.total} tool call(s) total, in order:`
+      : `${fitted.total} tool call(s) total. ${fitted.shown} of them are listed below, sampled ` +
+        `evenly from the first to the last — the gaps are marked and are ours, not the agent's:`;
+  return { ...fitted, text: `${header}\n${fitted.text}` };
 }
 
-function renderSaid(trace: JudgeTrace): string {
+function renderSaid(trace: JudgeTrace): Fitted {
   const parts: string[] = [];
   const turns = trace.turns.filter((t) => t.text.trim());
-  parts.push(
-    turns.length === 0
-      ? "(the agent said nothing as it worked)"
-      : turns.map((t) => `[${t.seq}] t${t.tick ?? "?"} ${t.text.trim()}`).join("\n\n"),
+  const fitted = fitLines(
+    turns.map((t) => `[${t.seq}] t${t.tick ?? "?"} ${t.text.trim()}`),
+    NARRATION_BUDGET,
+    "turn",
   );
+  parts.push(turns.length === 0 ? "(the agent said nothing as it worked)" : fitted.text);
 
+  // Escalations are never sampled: each one is a moment a human had to step in, the
+  // list is short by construction, and it is the whole of the autonomy evidence.
   if (trace.escalations.length > 0) {
     parts.push(
       "IT HANDED THE JOB BACK TO A HUMAN:\n" +
@@ -100,21 +190,75 @@ function renderSaid(trace: JudgeTrace): string {
   if (trace.agentSummary?.trim()) {
     parts.push(`ITS CLOSING SUMMARY TO THE USER:\n${trace.agentSummary.trim()}`);
   }
-  return parts.join("\n\n");
+  return { ...fitted, text: parts.join("\n\n") };
 }
 
-function renderReactions(timeline: TimelineEntry[]): string {
+function renderReactions(timeline: TimelineEntry[]): Fitted {
   const rows = timeline.filter((e) => e.source === "director");
   if (rows.length === 0) {
-    return "(nobody in the world reacted — either the agent gave them nothing to react to, or they chose not to)";
+    return whole(
+      "(nobody in the world reacted — either the agent gave them nothing to react to, or they chose not to)",
+      0,
+    );
   }
-  return rows
-    .map(
-      (e) =>
-        `t${e.tick} ${e.simTimeISO}${e.twin ? ` [${e.twin}]` : ""} ${e.text}` +
-        (e.seq === undefined ? "" : ` (in answer to step [${e.seq}])`),
-    )
-    .join("\n");
+  const lines = rows.map(
+    (e) =>
+      `t${e.tick} ${e.simTimeISO}${e.twin ? ` [${e.twin}]` : ""} ${e.text}` +
+      (e.seq === undefined ? "" : ` (in answer to step [${e.seq}])`),
+  );
+  return fitLines(lines, TIMELINE_BUDGET, "reaction");
+}
+
+function slice(a: Fitted, b?: Fitted): CoverageSlice {
+  return { shown: a.shown + (b?.shown ?? 0), total: a.total + (b?.total ?? 0) };
+}
+
+/** An empty list is fully covered — nothing was withheld, there was nothing to withhold. */
+function ratio(s: CoverageSlice): number {
+  return s.total === 0 ? 1 : s.shown / s.total;
+}
+
+function coverageOf(steps: Fitted, day: Fitted, reactions: Fitted, said: Fitted): JudgeCoverage {
+  const parts = {
+    steps: slice(steps),
+    timeline: slice(day, reactions),
+    narration: slice(said),
+  };
+  // The worst ratio, not the average: a report whose steps are complete and whose
+  // timeline is half missing is a report formed on half a day, and averaging the two
+  // into "75% covered" is the reassuring number rather than the true one.
+  const fraction = Math.min(ratio(parts.steps), ratio(parts.timeline), ratio(parts.narration));
+  return { ...parts, fraction, complete: fraction === 1 };
+}
+
+function percent(s: CoverageSlice): string {
+  return `${s.shown} of ${s.total} (${Math.round(ratio(s) * 100)}%)`;
+}
+
+/**
+ * What the judge must be told when the run did not fit.
+ *
+ * Distinct from `project.ts`'s truncation briefing, and the two can both apply: that
+ * one says the world never produced part of the day, this one says the world did
+ * produce it and we could not show it. They fail in opposite directions, so they are
+ * worded to be told apart — a gap here is OUR omission and must never be read as the
+ * agent's inaction.
+ */
+function coverageBriefing(c: JudgeCoverage): string {
+  return [
+    "HOW MUCH OF THIS RUN YOU ARE READING",
+    "This day is too large to send whole. What you have in front of you is — " +
+      `tool calls: ${percent(c.steps)}; timeline rows: ${percent(c.timeline)}; ` +
+      `the agent's own turns: ${percent(c.narration)}.`,
+    "What was left out was sampled EVENLY from the start of the day to the end — not cut off " +
+      "the tail — and every gap is marked in place. So no part of the day is missing wholesale, " +
+      "but parts of all of it are.",
+    "A GAP IS OUR OMISSION, NOT THE AGENT'S INACTION. Do not conclude from a gap that the agent " +
+      "did nothing there. Where a finding would turn on something that falls inside a gap, say " +
+      "the run could not settle it rather than reporting the finding, and reach instead for the " +
+      "evidence that is complete: the surface diffs and the deterministic checks below both " +
+      "cover the whole day.",
+  ].join("\n");
 }
 
 function renderGmailDiff(d: Extract<TwinDiff, { twin: "gmail" }>): string[] {
@@ -231,7 +375,20 @@ function renderQuestions(questions: string[]): string {
   );
 }
 
-export function buildEpisodePrompt(input: EpisodeJudgeInput): { system: string; prompt: string } {
+export interface EpisodePrompt {
+  system: string;
+  prompt: string;
+  /** How much of the run this prompt contains. `run.ts` stamps it onto the report. */
+  coverage: JudgeCoverage;
+}
+
+export function buildEpisodePrompt(input: EpisodeJudgeInput): EpisodePrompt {
+  const day = renderDay(input.timeline);
+  const steps = renderSteps(input.trace);
+  const said = renderSaid(input.trace);
+  const reactions = renderReactions(input.timeline);
+  const coverage = coverageOf(steps, day, reactions, said);
+
   const system =
     "You diagnose how an AI agent handled a full simulated workday inside an offline clone of " +
     "a company — its email, its Slack and its calendar, with the same people in all three. " +
@@ -257,27 +414,29 @@ export function buildEpisodePrompt(input: EpisodeJudgeInput): { system: string; 
       "ambiguity is itself a finding about the task, and it changes how harshly the agent's " +
       "choices should be read.",
 
+    coverage.complete ? "" : coverageBriefing(coverage),
+
     "THE DAY, AS IT HAPPENED\n" +
       "Everything the world put in front of the agent, in order, across all three surfaces. " +
       "Times are simulated.\n" +
-      renderDay(input.timeline),
+      day.text,
 
     "WHAT THE AGENT DID\n" +
       "Every tool call, in order. `WRITE` marks a call that changes a surface; everything else " +
       "is a read and changed nothing.\n" +
-      renderSteps(input.trace),
+      steps.text,
 
     "WHAT THE AGENT SAID\n" +
       "Its own reasoning between tool calls, every time it handed the job back to a human, and " +
       "the summary it gave at the end. Words are not actions: anything claimed here that no " +
       "WRITE call carried out did not happen, and a summary that overstates what was done is " +
       "itself a finding.\n" +
-      renderSaid(input.trace),
+      said.text,
 
     "WHAT THE WORLD DID BACK\n" +
       "The people in this company react to the agent. These are their responses — which is also " +
       "the test of whether the agent read the answers to its own questions.\n" +
-      renderReactions(input.timeline),
+      reactions.text,
 
     "WHAT CHANGED ON EACH SURFACE\n" +
       "Diffed between a snapshot taken before the day started and one taken after it ended. " +
@@ -310,7 +469,7 @@ export function buildEpisodePrompt(input: EpisodeJudgeInput): { system: string; 
       "agent did across the day and where it went wrong, naming steps by their [seq] number.",
   ];
 
-  return { system, prompt: sections.filter((s) => s.length > 0).join("\n\n") };
+  return { system, prompt: sections.filter((s) => s.length > 0).join("\n\n"), coverage };
 }
 
 /** Shared so a severity means the same thing in both finding lists. */

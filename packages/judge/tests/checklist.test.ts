@@ -270,7 +270,7 @@ describe("runChecklist", () => {
       base({ criteria: [criterion({ twin: "gmail", kind: "scheduled" })] }),
     );
     expect(results[0].status).toBe("notApplicable");
-    expect(results[0].evidence).toContain("no deterministic checker exists for gmail/scheduled");
+    expect(results[0].evidence).toContain('"scheduled" is not something that can happen on gmail');
     // Unverifiable earns nothing, so a typo cannot silently award the criterion either.
     expect(checklistScore(results)).toBe(0);
   });

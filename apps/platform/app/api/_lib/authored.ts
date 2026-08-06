@@ -1,4 +1,6 @@
 import {
+  asCriterionKind,
+  CRITERION_KINDS,
   tickLabel,
   tickToISO,
   type Beat,
@@ -77,6 +79,67 @@ export interface AuthoredBeat {
  * unanswerable `must` is what let a run where nothing was sent score 100%.
  */
 export type AuthoredCriterion = DraftCriterion;
+
+/**
+ * A criterion as it comes off the wire, before anything has vouched for `kind`.
+ *
+ * `DraftCriterion.kind` is typed `CriterionKind`, and the value is whatever a
+ * model put in a JSON field. The two are the same thing only because something
+ * checks, and until this file that something did not exist: the model wrote
+ * `mentioned`, TypeScript believed it, the criterion was stored, and the judge
+ * found no checker for it months later on a report someone was already reading.
+ */
+type RawCriterion = Omit<AuthoredCriterion, "kind"> & { kind: string };
+
+/**
+ * Why a criterion will not be checked — @sonata/world's `UnboundCriterion` with
+ * `kind` left as the author WROTE it.
+ *
+ * An unknown kind is precisely the thing that cannot be typed as a
+ * `CriterionKind`, and losing the word loses the diagnosis: "no criterion of kind
+ * `mentioned`" is a sentence someone can act on, and a rejected criterion filed
+ * under a kind we substituted for it is not.
+ */
+export interface RejectedCriterion extends Omit<UnboundCriterion, "kind"> {
+  kind: string;
+}
+
+/**
+ * Resolve every criterion's `kind` against the one vocabulary, before anything
+ * else in this file looks at one.
+ *
+ * Two outcomes and no third. A near-synonym the census found in real artifacts —
+ * `mentioned` for `mentions` — is resolved, because refusing a word we know the
+ * meaning of would spend a regeneration to fix a spelling. Anything else is
+ * REJECTED, which is what puts it in front of `repairCriteria` and keeps it out
+ * of storage: a criterion whose kind nothing can route is unanswerable, and an
+ * unanswerable `must` is how a day scores 100% for work nobody verified.
+ */
+export function vetCriterionKinds(criteria: AuthoredCriterion[]): {
+  ok: AuthoredCriterion[];
+  rejected: RejectedCriterion[];
+} {
+  const ok: AuthoredCriterion[] = [];
+  const rejected: RejectedCriterion[] = [];
+
+  for (const raw of criteria as RawCriterion[]) {
+    const kind = asCriterionKind(String(raw.kind ?? ""));
+    if (kind) {
+      ok.push({ ...raw, kind });
+      continue;
+    }
+    rejected.push({
+      description: raw.description,
+      twin: raw.twin,
+      kind: String(raw.kind ?? ""),
+      severity: raw.severity,
+      why:
+        `"${raw.kind}" is not a criterion kind. The whole vocabulary is ` +
+        `${CRITERION_KINDS.join(", ")} — pick the one whose check actually answers this claim`,
+    });
+  }
+  return { ok, rejected };
+}
 
 export interface AuthoredEpisode {
   title: string;
@@ -328,8 +391,12 @@ export interface AssembledScenario {
    * the reason for each. Empty is the only acceptable steady state: the caller
    * regenerates on a non-empty one, and only says it out loud when regenerating
    * has stopped helping.
+   *
+   * `RejectedCriterion` rather than `UnboundCriterion` because one of the reasons
+   * is now "that is not a kind", and that reason has to carry the word the model
+   * actually used.
    */
-  unbound: UnboundCriterion[];
+  unbound: RejectedCriterion[];
 }
 
 export interface AssembleOptions {
@@ -410,16 +477,29 @@ export function assembleScenario(
     });
   }
 
+  // The kind first, because everything after it assumes one that can be routed:
+  // `bindCriteria` looks up a rule by `${twin}/${kind}` and the judge looks up a
+  // checker the same way, so an unknown kind would fall out of both as an absent
+  // table entry — the exact accident this pass exists to abolish. Rejected here,
+  // by name, it becomes a repair the model is asked to make.
+  const vetted = vetCriterionKinds(authored.episode.criteria);
+
   // Every criterion is bound against the day that actually assembled — these
   // beats, these channels, this cast — before the scenario exists. A criterion
   // that will not bind is dropped here rather than saved to be discovered as
   // "could not be checked" on a report someone is already sharing.
-  const { bound, unbound } = bindCriteria(authored.episode.criteria, {
+  const { bound, unbound: notBound } = bindCriteria(vetted.ok, {
     beats: bindableBeats(beats),
     channels: channels.map((c) => c.name),
     person: (ref) => byName.get(ref.trim().toLowerCase())?.id,
     hasChecker: (twin, kind) => factNameFor(twin, kind) !== null,
   });
+
+  // One list, both reasons: a kind nothing can route, and a criterion that names
+  // nothing to route it at. The repair loop and the judge questions below treat
+  // them identically, because from the day's point of view they are the same
+  // loss — a claim about this workday that nothing will ever answer.
+  const unbound: RejectedCriterion[] = [...vetted.rejected, ...notBound];
 
   const checklist: Criterion[] = bound.map((c, index) => ({
     id: `c${index + 1}`,

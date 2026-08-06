@@ -1,6 +1,6 @@
-import type { EpisodeJudgeInput } from "@sonata/core";
+import type { EpisodeJudgeInput, JudgeStep } from "@sonata/core";
 import { describe, expect, it } from "vitest";
-import { buildEpisodePrompt, EPISODE_JUDGE_SCHEMA } from "../src/prompt";
+import { buildEpisodePrompt, EPISODE_JUDGE_SCHEMA, fitLines } from "../src/prompt";
 
 // The prompt is the judge's whole instrument. These tests guard the two properties
 // that are easy to break by accident and expensive to notice: that it is pure, and
@@ -170,6 +170,150 @@ describe("buildEpisodePrompt", () => {
     );
     expect(prompt).toContain("the agent made no tool calls at all");
     expect(prompt).toContain("the agent said nothing as it worked");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Coverage. A judge that reads two thirds of a day and reports as if it read all
+// of it is the defect these guard: the report has to carry what it did not see.
+// ---------------------------------------------------------------------------
+
+/** `n` tool calls, each with a body of `bodyChars` — the knob that blows a budget. */
+function steps(n: number, bodyChars: number): JudgeStep[] {
+  return Array.from({ length: n }, (_, i) => ({
+    seq: i + 1,
+    tick: i,
+    twin: "gmail" as const,
+    name: "send_reply",
+    args: { threadId: `T${i}`, body: "x".repeat(bodyChars) },
+    resultSummary: `sent reply M${i}`,
+    isMutation: true,
+  }));
+}
+
+/** Every `[seq]` the step listing actually printed, in the order it printed them. */
+function listedSeqs(prompt: string): number[] {
+  const section = prompt.slice(prompt.indexOf("WHAT THE AGENT DID"), prompt.indexOf("WHAT THE AGENT SAID"));
+  return [...section.matchAll(/^\[(\d+)\] t/gm)].map((m) => Number(m[1]));
+}
+
+describe("buildEpisodePrompt coverage", () => {
+  it("reports full coverage, and lists every step, on a 400-step day", () => {
+    // 400 calls at 381 chars each is the fattest real day we have measured, scaled
+    // past 3x its length. It has to fit whole; anything less is a cap set by guess.
+    const { prompt, coverage } = buildEpisodePrompt(
+      input({ trace: { steps: steps(400, 330), turns: [], escalations: [] } }),
+    );
+
+    expect(coverage.steps).toEqual({ shown: 400, total: 400 });
+    expect(coverage.fraction).toBe(1);
+    expect(coverage.complete).toBe(true);
+    expect(listedSeqs(prompt)).toHaveLength(400);
+    expect(prompt).not.toContain("HOW MUCH OF THIS RUN YOU ARE READING");
+  });
+
+  it("counts an empty run as fully covered rather than as nothing seen", () => {
+    const { coverage } = buildEpisodePrompt(
+      input({ timeline: [], trace: { steps: [], turns: [], escalations: [] } }),
+    );
+    expect(coverage.fraction).toBe(1);
+    expect(coverage.complete).toBe(true);
+  });
+
+  it("drops below full coverage rather than silently truncating a day that will not fit", () => {
+    const { coverage } = buildEpisodePrompt(
+      input({ trace: { steps: steps(4000, 400), turns: [], escalations: [] } }),
+    );
+
+    expect(coverage.steps.total).toBe(4000);
+    expect(coverage.steps.shown).toBeLessThan(4000);
+    expect(coverage.complete).toBe(false);
+    expect(coverage.fraction).toBeCloseTo(coverage.steps.shown / 4000, 6);
+  });
+
+  it("samples the whole day evenly instead of keeping the head — the afternoon survives", () => {
+    const total = 4000;
+    const { prompt } = buildEpisodePrompt(
+      input({ trace: { steps: steps(total, 400), turns: [], escalations: [] } }),
+    );
+    const listed = listedSeqs(prompt);
+
+    // The two endpoints of a day are the rows most likely to carry a criterion.
+    expect(listed[0]).toBe(1);
+    expect(listed[listed.length - 1]).toBe(total);
+
+    // Uniform, not head-biased: half the sample lies in the second half of the day,
+    // which `slice(0, n)` — the old behaviour — fails outright.
+    const afternoon = listed.filter((seq) => seq > total / 2).length;
+    expect(afternoon / listed.length).toBeGreaterThan(0.45);
+    expect(afternoon / listed.length).toBeLessThan(0.55);
+
+    // And the stride never wanders: no two kept steps are further apart than one
+    // gap plus a rounding error, so there is no hole big enough to hide an hour.
+    const gaps = listed.slice(1).map((seq, i) => seq - listed[i]);
+    expect(Math.max(...gaps) - Math.min(...gaps)).toBeLessThanOrEqual(1);
+  });
+
+  it("marks every gap in place, so a sample never reads as a day that ended early", () => {
+    const { prompt } = buildEpisodePrompt(
+      input({ trace: { steps: steps(4000, 400), turns: [], escalations: [] } }),
+    );
+    expect(prompt).toMatch(/… \d+ tool calls not shown here …/);
+  });
+
+  it("warns the judge before it reads any evidence, and blames the harness not the agent", () => {
+    const { prompt, coverage } = buildEpisodePrompt(
+      input({ trace: { steps: steps(4000, 400), turns: [], escalations: [] } }),
+    );
+
+    const warning = prompt.indexOf("HOW MUCH OF THIS RUN YOU ARE READING");
+    expect(warning).toBeGreaterThanOrEqual(0);
+    expect(warning).toBeLessThan(prompt.indexOf("THE DAY, AS IT HAPPENED"));
+    expect(warning).toBeLessThan(prompt.indexOf("WHAT THE AGENT DID"));
+    expect(prompt).toContain("A GAP IS OUR OMISSION, NOT THE AGENT'S INACTION");
+    expect(prompt).toContain(`${coverage.steps.shown} of ${coverage.steps.total}`);
+  });
+
+  it("never samples away an escalation — the autonomy evidence stays whole", () => {
+    const escalations = Array.from({ length: 40 }, (_, i) => ({
+      seq: i,
+      tick: i,
+      text: `escalation ${i}`,
+    }));
+    const { prompt, coverage } = buildEpisodePrompt(
+      input({
+        trace: { steps: steps(4000, 400), turns: [], escalations },
+      }),
+    );
+
+    expect(coverage.complete).toBe(false);
+    for (const e of escalations) expect(prompt).toContain(e.text);
+  });
+
+  it("counts the scripted day and the world's reactions as one timeline", () => {
+    const { coverage } = buildEpisodePrompt(input());
+    // The fixture has one world row and one director row; the agent row is neither.
+    expect(coverage.timeline).toEqual({ shown: 2, total: 2 });
+  });
+});
+
+describe("fitLines", () => {
+  it("keeps a list that fits, byte for byte", () => {
+    const lines = ["a", "b", "c"];
+    expect(fitLines(lines, 1000, "row")).toEqual({ text: "a\nb\nc", shown: 3, total: 3 });
+  });
+
+  it("keeps both endpoints even when the budget only pays for two rows", () => {
+    const lines = Array.from({ length: 100 }, (_, i) => `row ${i}`);
+    const fitted = fitLines(lines, 1, "row");
+    expect(fitted.shown).toBe(2);
+    expect(fitted.text.startsWith("row 0")).toBe(true);
+    expect(fitted.text.endsWith("row 99")).toBe(true);
+    expect(fitted.text).toContain("… 98 rows not shown here …");
+  });
+
+  it("says nothing about gaps when there are none", () => {
+    expect(fitLines(["only"], 1000, "row").text).toBe("only");
   });
 });
 

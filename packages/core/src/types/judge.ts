@@ -206,10 +206,44 @@ export interface OtherFinding {
   tick?: number;
 }
 
+/** One unbounded list the judge was shown, and how much of it reached the prompt. */
+export interface CoverageSlice {
+  shown: number;
+  total: number;
+}
+
+/**
+ * How much of the run the judge actually read.
+ *
+ * A day can outgrow any context window, so the prompt samples the long lists — and
+ * a verdict formed on a sample is not the same claim as a verdict formed on the
+ * whole day. This is the report's own record of which one it is, kept next to the
+ * findings rather than buried in the prompt that produced them, because the reader
+ * of the report is the person whose confidence is at stake.
+ */
+export interface JudgeCoverage {
+  /** Tool calls listed in WHAT THE AGENT DID. */
+  steps: CoverageSlice;
+  /** Timeline rows across THE DAY, AS IT HAPPENED and WHAT THE WORLD DID BACK. */
+  timeline: CoverageSlice;
+  /** The agent's own turns. Escalations are never dropped and never counted here. */
+  narration: CoverageSlice;
+  /** The worst of the three ratios — the honest headline. 1 means nothing was dropped. */
+  fraction: number;
+  /** `fraction === 1`. Stored so a reader never has to trust a float comparison. */
+  complete: boolean;
+}
+
 export interface EpisodeJudgeReport {
   runId: string;
   judgedAt: number;
   model: string;
+  /**
+   * Absent on reports written before coverage was tracked, and absent is NOT the
+   * same as complete: an old report is a verdict of unknown provenance, so a UI
+   * must say "not recorded" rather than assume the judge saw the whole day.
+   */
+  coverage?: JudgeCoverage;
   /**
    * The judge restates the task BEFORE assessing anything. If the restatement is
    * wrong, the brief is ambiguous — and that is itself the finding.
