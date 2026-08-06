@@ -22,6 +22,7 @@ import {
 } from "@sonata/judge";
 import { getApiKey, getSettings } from "@/lib/settings";
 import { readTrace } from "../../../results/_lib/artifacts";
+import { recordJudgeCall, type JudgeSpend } from "./judgeAttempt";
 
 // The offline re-judge. A finished run carries the whole day — every beat, every
 // step, both snapshots of every twin — so it can be read again by a different
@@ -44,8 +45,17 @@ import { readTrace } from "../../../results/_lib/artifacts";
 
 const OPENROUTER_BASE_URL = process.env.OPENROUTER_BASE_URL || "https://openrouter.ai/api/v1";
 
-/** A judge pass reasons for a long time before it writes; this is not a small answer. */
-const MAX_TOKENS = 16_000;
+/**
+ * A judge pass reasons for a long time before it writes; this is not a small answer.
+ *
+ * It was 16k, and at 16k the two most expensive real runs in this repo both paid
+ * for a full pass and got nothing back: one `finish_reason=length` with an empty
+ * body, one with JSON severed mid-sentence. A reasoning model spends this budget
+ * on thinking before it spends any of it on the report, so the ceiling has to
+ * clear both. Nothing is billed for room that goes unused; a truncated answer is
+ * billed in full and is worth zero.
+ */
+const MAX_TOKENS = 48_000;
 
 /** Beyond this the request is hung, not slow. Matches the route's `maxDuration`. */
 const TIMEOUT_MS = 240_000;
@@ -161,6 +171,20 @@ export function buildJudgeInput(run: EpisodeRun, spec: EpisodeSpec | null): Epis
 interface ChatCompletion {
   choices?: Array<{ message?: { content?: string | null }; finish_reason?: string }>;
   error?: { message?: string };
+  /** OpenRouter prices the call on the body itself, in USD. */
+  usage?: { prompt_tokens?: number; completion_tokens?: number; cost?: number };
+}
+
+function num(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function spendOf(body: ChatCompletion | null): JudgeSpend {
+  return {
+    usd: num(body?.usage?.cost),
+    promptTokens: num(body?.usage?.prompt_tokens) ?? 0,
+    completionTokens: num(body?.usage?.completion_tokens) ?? 0,
+  };
 }
 
 /** Strip the markdown fence some models wrap JSON in, then parse. */
@@ -186,8 +210,15 @@ function parseJsonLoose<T>(text: string): T {
  * Plain `fetch` rather than the OpenAI SDK: the dashboard has no model dependency
  * of its own, and a judge pass is one request — carrying a client library for it
  * would be the tail wagging the dog.
+ *
+ * It meters itself. The engine's transport lifts `usage` off every call it makes
+ * (see `packages/engine/src/llm.ts`); this one is outside that seam, so it does
+ * the same job here — the call goes onto the run's trace as a `judge` call, and
+ * `onSpend` fires the moment the body is read, BEFORE it is parsed. A pass that
+ * answers with truncated JSON was paid for exactly like one that answered well,
+ * and the run has to be able to say so.
  */
-function openRouter(signal: AbortSignal) {
+function openRouter(runId: string, signal: AbortSignal, onSpend: (spend: JudgeSpend) => void) {
   return async function complete<T>(opts: {
     system?: string;
     prompt: string;
@@ -208,38 +239,114 @@ function openRouter(signal: AbortSignal) {
     }
 
     const model = opts.model ?? getSettings().models.judge;
-    const res = await fetch(`${OPENROUTER_BASE_URL}/chat/completions`, {
-      method: "POST",
-      signal,
-      headers: {
-        authorization: `Bearer ${apiKey}`,
-        "content-type": "application/json",
-        "X-Title": "Sonata Labs",
-      },
-      body: JSON.stringify({
-        model,
-        max_tokens: opts.maxTokens ?? MAX_TOKENS,
-        messages: [
-          ...(opts.system ? [{ role: "system", content: opts.system }] : []),
-          { role: "user", content: opts.prompt },
-        ],
-        response_format: {
-          type: "json_schema",
-          json_schema: {
-            name: opts.schemaName ?? "episode_judge_report",
-            strict: true,
-            schema: opts.schema,
-          },
+    const buildRequest = (maxTokens: number) => ({
+      model,
+      max_tokens: maxTokens,
+      messages: [
+        ...(opts.system ? [{ role: "system", content: opts.system }] : []),
+        { role: "user", content: opts.prompt },
+      ],
+      response_format: {
+        type: "json_schema",
+        json_schema: {
+          name: opts.schemaName ?? "episode_judge_report",
+          strict: true,
+          schema: opts.schema,
         },
-      }),
+      },
+      // Ask for the price explicitly rather than relying on the account default:
+      // an unpriced judge call would show up as a blank in the run's own bill.
+      usage: { include: true },
     });
 
-    const body = (await res.json().catch(() => null)) as ChatCompletion | null;
+    const send = async (maxTokens: number) => {
+      const request = buildRequest(maxTokens);
+      const startedAt = Date.now();
+      let res: Response;
+      try {
+        res = await fetch(`${OPENROUTER_BASE_URL}/chat/completions`, {
+          method: "POST",
+          signal,
+          headers: {
+            authorization: `Bearer ${apiKey}`,
+            "content-type": "application/json",
+            "X-Title": "Sonata Labs",
+          },
+          body: JSON.stringify(request),
+        });
+      } catch (err) {
+        // Nothing came back, so nothing was billed — but the attempt is still
+        // part of the day's record, exactly as a failed agent call is.
+        recordJudgeCall(runId, {
+          model,
+          request,
+          response: undefined,
+          startedAt,
+          endedAt: Date.now(),
+          error: (err as Error).message,
+        });
+        throw err;
+      }
+
+      const body = (await res.json().catch(() => null)) as ChatCompletion | null;
+      const spend = spendOf(body);
+      onSpend(spend);
+      // Only what a model actually did goes on the trace. A request the gateway
+      // turned away — no credit, bad slug — ran nothing and was billed nothing,
+      // and filing it here would put an unpriced call in the ledger, which is how
+      // the whole day's total stops being trustworthy: `costBreakdown` can no
+      // longer say every call carried a price, so it falls back to the figure the
+      // run closed with, which is the one figure that excludes the judge. The
+      // refusal is not lost — it is the reason on the attempt record.
+      const billed = res.ok || spend.usd !== null || spend.promptTokens > 0;
+      if (billed) {
+        recordJudgeCall(runId, {
+          model,
+          request,
+          response: body,
+          startedAt,
+          endedAt: Date.now(),
+          ...(spend.usd === null ? {} : { costUsd: spend.usd }),
+          ...(spend.promptTokens || spend.completionTokens
+            ? { tokens: { prompt: spend.promptTokens, completion: spend.completionTokens } }
+            : {}),
+          ...(res.ok ? {} : { error: `HTTP ${res.status}` }),
+        });
+      }
+      return { res, body, maxTokens };
+    };
+
+    let sent = await send(opts.maxTokens ?? MAX_TOKENS);
+    // A ceiling is RESERVED against the key's remaining credit, not billed — so a
+    // key with a few dollars left refuses a request it could easily have paid
+    // for, and the whole judging feature goes dark rather than degrading. The
+    // provider says in the refusal exactly what it will allow; take it. A cramped
+    // pass that gets cut off says so plainly below, which is a better answer than
+    // no pass at all.
+    const affordable = affordableTokens(sent.res, sent.body);
+    if (affordable !== null && affordable < sent.maxTokens) {
+      sent = await send(affordable);
+    }
+
+    const { res, body, maxTokens } = sent;
     if (!res.ok) {
       throw new Error(body?.error?.message || `${model} refused the request (HTTP ${res.status}).`);
     }
     // OpenRouter can answer 200 with an error body instead of choices.
     const text = body?.choices?.[0]?.message?.content ?? "";
+    // Said in full, because it is shown to the person deciding what to do next:
+    // running out of room is fixed by a bigger ceiling or a terser model, and it
+    // reads nothing like a refusal or a bad key.
+    if (body?.choices?.[0]?.finish_reason === "length") {
+      throw new Error(
+        `${model} ran out of room: it used all ${maxTokens.toLocaleString()} tokens it was allowed ` +
+          `and its answer was cut off${text.trim() ? " mid-sentence" : " before it wrote anything"}, ` +
+          "so there is no report to read. A shorter-winded judge model, or a smaller day, gets through" +
+          (maxTokens < MAX_TOKENS
+            ? " — and this pass was already capped short by the credit left on the key."
+            : "."),
+      );
+    }
     if (!text.trim()) {
       throw new Error(
         body?.error?.message ||
@@ -250,9 +357,42 @@ function openRouter(signal: AbortSignal) {
   };
 }
 
+/**
+ * The ceiling the key can actually reserve, read off the provider's own refusal.
+ *
+ * Parsing a message is not something to do lightly, and this one is narrow on
+ * purpose: it only fires on the payment status, and anything it does not
+ * recognise leaves the original refusal to be reported as-is. The alternative is
+ * a judge that stops working entirely whenever the key runs low, which is the
+ * moment a benchmark's owner most needs to know what their day was worth.
+ */
+function affordableTokens(res: Response, body: ChatCompletion | null): number | null {
+  if (res.status !== 402) return null;
+  const match = /can only afford ([\d,]+)/i.exec(body?.error?.message ?? "");
+  if (!match) return null;
+  const affordable = Number(match[1].replace(/,/g, ""));
+  // Below this there is no room for a report worth reading, and a pass that is
+  // certain to be cut off is not worth paying for.
+  return Number.isFinite(affordable) && affordable >= 4000 ? affordable : null;
+}
+
 export interface RejudgeOptions {
   model?: string;
   signal?: AbortSignal;
+  /** Told what the pass cost as soon as the provider says, success or not. */
+  onSpend?: (spend: JudgeSpend) => void;
+}
+
+/**
+ * Which model will read the day.
+ *
+ * Falls back to the judge model chosen in Settings, so a bare POST with no body
+ * re-judges with whatever the dashboard would have used anyway. Exported because
+ * the attempt is recorded before the call goes out, and a record that could not
+ * name the model would be no use to the person asking why it failed.
+ */
+export function judgeModelFor(model?: string): string {
+  return model?.trim() || getSettings().models.judge;
 }
 
 export async function rejudgeRun(
@@ -260,19 +400,34 @@ export async function rejudgeRun(
   spec: EpisodeSpec | null,
   opts: RejudgeOptions = {},
 ): Promise<EpisodeJudgeReport> {
-  // Falls back to the judge model chosen in Settings, so a bare POST with no
-  // body re-judges with whatever the dashboard would have used anyway.
-  const model = opts.model?.trim() || getSettings().models.judge;
+  const model = judgeModelFor(opts.model);
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, TIMEOUT_MS);
   opts.signal?.addEventListener("abort", () => controller.abort());
 
   try {
     return await judge(buildJudgeInput(run, spec), {
-      complete: openRouter(controller.signal),
+      complete: openRouter(run.runId, controller.signal, opts.onSpend ?? (() => undefined)),
       model,
       effort: "high",
     });
+  } catch (err) {
+    // "This operation was aborted" is what the platform says; it tells the reader
+    // nothing about which of the two clocks ran out.
+    if (timedOut) {
+      throw new Error(
+        `${model} was still reading this day after ${Math.round(TIMEOUT_MS / 60_000)} minutes, so the ` +
+          "call was given up on. A faster judge model, or a shorter day, gets through.",
+      );
+    }
+    if ((err as Error).name === "AbortError") {
+      throw new Error("The judge call was stopped before it answered, so nothing came back.");
+    }
+    throw err;
   } finally {
     clearTimeout(timer);
   }

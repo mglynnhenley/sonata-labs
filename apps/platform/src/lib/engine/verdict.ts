@@ -19,7 +19,12 @@ import {
   tickIndexer,
   writtenFromTicks,
 } from "@sonata/judge";
-import { rejudgeRun } from "../../../app/api/results/_lib/rejudge";
+import {
+  beginJudgeAttempt,
+  finishJudgeAttempt,
+  type JudgeSpend,
+} from "../../../app/api/results/_lib/judgeAttempt";
+import { judgeModelFor, rejudgeRun } from "../../../app/api/results/_lib/rejudge";
 import { readRun, readSpec, updateRunJudge } from "../../../app/results/_lib/artifacts";
 import { finishRun, getRun } from "../db";
 
@@ -108,7 +113,18 @@ export interface JudgeResult {
   report: EpisodeJudgeReport;
   /** The run's own autonomy, re-read off the artifact the report was written to. */
   autonomy: number;
+  /** What this pass cost. Null when the provider priced nothing. */
+  spend: JudgeSpend | null;
 }
+
+/**
+ * How the engine and a session note a judge that fell over, verbatim.
+ *
+ * Owned by them (`episode.ts`, `session.ts`), matched here for one purpose: a
+ * pass that has now SUCCEEDED has to be able to take that note back down. See
+ * where it is used.
+ */
+const JUDGE_FAILED_NOTE = "The day finished, but the judge did not";
 
 /**
  * Judge a day, write the report to `<runId>.judge.json`, and fold it back into
@@ -119,24 +135,56 @@ export interface JudgeResult {
  * file and the day never re-runs — and the run file is read-modify-written
  * rather than rebuilt, because the engine owns it and may have put fields in it
  * this dashboard does not model.
+ *
+ * EVERY judge pass in the product comes through here: the engine at the close of
+ * a run, a session settling, `sonata judge`, and the Re-judge button. So this is
+ * the one place that has to open and close the attempt record — the file that
+ * lets a page distinguish "reading it now" from "it answered and was cut off"
+ * from "nobody ever asked". A trigger of its own for the dashboard would have
+ * been a second way to judge, and this product has exactly one.
  */
 export async function judgeRun(
   run: EpisodeRun,
   spec: EpisodeSpec | null,
-  opts: { model?: string; signal?: AbortSignal } = {},
+  opts: { model?: string; signal?: AbortSignal; manual?: boolean } = {},
 ): Promise<JudgeResult> {
   // The same bar the score uses. A judge reading a day the agent never worked
   // would write a diagnosis of nothing, and that diagnosis would then be quoted
-  // as a finding about a model.
+  // as a finding about a model. Nothing is recorded for it either: a day with no
+  // work in it was never a candidate, so it has no failed attempt to explain.
   const execution = runExecution(run);
   if (!execution.executed) {
     throw new Error(`There is nothing for a judge to read. ${execution.reason ?? ""}`.trim());
   }
 
-  const report = await rejudgeRun(run, spec, {
-    ...(opts.model ? { model: opts.model } : {}),
-    ...(opts.signal ? { signal: opts.signal } : {}),
+  const attempt = beginJudgeAttempt({
+    runId: run.runId,
+    model: judgeModelFor(opts.model),
+    // The default is automatic because the callers that pass nothing are the
+    // engine and the CLI finishing a day. Only the button says otherwise.
+    automatic: opts.manual !== true,
   });
+  // Held outside the try: a pass that answered and then failed to parse was paid
+  // for, and the bill is part of what the failure has to be able to say.
+  let spend: JudgeSpend | null = null;
+
+  let report: EpisodeJudgeReport;
+  try {
+    report = await rejudgeRun(run, spec, {
+      ...(opts.model ? { model: opts.model } : {}),
+      ...(opts.signal ? { signal: opts.signal } : {}),
+      onSpend: (s) => (spend = s),
+    });
+  } catch (err) {
+    finishJudgeAttempt(attempt, {
+      state: "failed",
+      reason: err instanceof Error ? err.message : String(err),
+      spend,
+    });
+    throw err;
+  }
+  finishJudgeAttempt(attempt, { state: "judged", spend });
+
   const verdict = updateRunJudge(run.runId, report);
   const headline = verdict?.autonomy ?? autonomy(run.verdict?.checklist ?? [], run.ticks).score;
 
@@ -144,18 +192,22 @@ export async function judgeRun(
   // has to move in both places or the two pages disagree about the same run.
   const row = getRun(run.runId);
   if (row) {
+    // A note saying the judge did not finish, on a run that has just been
+    // judged, is the runs list flagging a day whose diagnosis is on screen. Only
+    // that note is dropped; any other error belongs to the day itself.
+    const keepError = row.error && !row.error.startsWith(JUDGE_FAILED_NOTE) ? row.error : null;
     finishRun({
       id: run.runId,
       status: row.status === "judging" ? "done" : row.status,
       ...(row.outcome ? { outcome: row.outcome } : {}),
       ...(row.score === null ? {} : { score: row.score }),
       autonomy: headline,
-      ...(row.error ? { error: row.error } : {}),
+      ...(keepError ? { error: keepError } : {}),
       endedAt: row.endedAt ?? Date.now(),
     });
   }
 
-  return { report, autonomy: headline };
+  return { report, autonomy: headline, spend };
 }
 
 /**

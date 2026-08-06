@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  CACHE_READ_MULTIPLIER,
   DEFAULT_ROLES,
+  cachesPrompts,
   estimateCell,
+  estimateEpisode,
   estimatePlan,
   estimateRole,
   formatDuration,
@@ -135,6 +138,88 @@ describe("estimateCell", () => {
     expect(e.usd).toBeGreaterThan(0);
     expect(e.roles.every((r) => r.priced)).toBe(true);
     expect(DEFAULT_ROLES.map((r) => r.role)).toEqual(["agent", "director", "judge"]);
+  });
+});
+
+describe("prompt caching", () => {
+  const CACHED: RoleProfile = { ...AGENT, cachedPromptFraction: 0.8 };
+  const ANTHROPIC = { "anthropic/x": PRICES.cheap } as Record<string, ModelPrice>;
+  const OTHER = { "openai/x": PRICES.cheap } as Record<string, ModelPrice>;
+
+  it("bills a cached prefix at the read rate without moving the token count", () => {
+    const e = estimateRole(CACHED, 4, "anthropic/x", ANTHROPIC);
+    // The context read is the same 9200 tokens either way; only the bill moves.
+    expect(e.promptTokens).toBe(9200);
+    expect(e.billedPromptTokens).toBeCloseTo(9200 * (0.2 + 0.8 * CACHE_READ_MULTIPLIER), 9);
+    expect(e.usd).toBeCloseTo((e.billedPromptTokens * 1 + 400 * 5) / 1_000_000, 12);
+  });
+
+  it("charges full price where the provider does not cache", () => {
+    const e = estimateRole(CACHED, 4, "openai/x", OTHER);
+    expect(cachesPrompts("openai/x")).toBe(false);
+    // The safe direction: a model that ignores the breakpoint is quoted at list.
+    expect(e.billedPromptTokens).toBe(e.promptTokens);
+    expect(e.usd).toBeCloseTo((9200 * 1 + 400 * 5) / 1_000_000, 12);
+  });
+
+  it("leaves a profile that says nothing about caching priced at list", () => {
+    const e = estimateRole(AGENT, 4, "anthropic/x", ANTHROPIC);
+    expect(e.billedPromptTokens).toBe(e.promptTokens);
+  });
+});
+
+describe("estimateEpisode", () => {
+  const opts = { roles: [AGENT, JUDGE], prices: PRICES, harnessModel: "dear" };
+
+  it("prices one day: the agent on its own model, the rest on the harness", () => {
+    const e = estimateEpisode(4, "cheap", opts);
+    expect(e.ticks).toBe(4);
+    expect(e.roles.map((r) => [r.role, r.model])).toEqual([
+      ["agent", "cheap"],
+      ["judge", "dear"],
+    ]);
+    expect(e.calls).toBe(9);
+    expect(e.promptTokens).toBe(9200 + 8800);
+    expect(e.usd).toBeCloseTo(
+      (9200 * 1 + 400 * 5) / 1_000_000 + (8800 * 10 + 1500 * 50) / 1_000_000,
+      12,
+    );
+  });
+
+  it("takes a model per role, for a caller whose judge is not its director", () => {
+    const e = estimateEpisode(4, "cheap", { ...opts, models: { judge: "cheap" } });
+    expect(e.roles.map((r) => r.model)).toEqual(["cheap", "cheap"]);
+  });
+
+  it("is the unit estimateCell is made of, so the two can never disagree", () => {
+    const cell = estimateCell(CELL, { ...opts, ticksPerEpisode: 4 });
+    const episode = estimateEpisode(4, CELL.model, opts);
+    expect(cell.usd).toBe(episode.usd);
+    expect(cell.calls).toBe(episode.calls);
+    expect(cell.seconds).toBe(episode.seconds);
+  });
+
+  it("names an unpriced model rather than quoting a total that omits it", () => {
+    const e = estimateEpisode(4, "mystery", opts);
+    expect(e.unpriced).toEqual(["mystery"]);
+    // The judge is still priced, so the total is real but incomplete — which is
+    // exactly why the caller is handed the name rather than a silent shortfall.
+    expect(e.usd).toBeGreaterThan(0);
+  });
+
+  it("makes a short day cost materially less, which is the point of offering one", () => {
+    const short = estimateEpisode(4, "cheap", opts);
+    const long = estimateEpisode(32, "cheap", opts);
+    expect(short.usd).toBeLessThan(long.usd / 2);
+  });
+
+  it("grows faster than the day does, on the shipped profile", () => {
+    // Eight times the ticks, more than eight times the money: the agent re-reads
+    // a transcript that is itself eight times longer. This is why a smoke test is
+    // worth having and why a full day cannot be guessed from one.
+    const short = estimateEpisode(4, "anthropic/claude-haiku-4.5");
+    const long = estimateEpisode(32, "anthropic/claude-haiku-4.5");
+    expect(long.usd).toBeGreaterThan(short.usd * 8);
   });
 });
 

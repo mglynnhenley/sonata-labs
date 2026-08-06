@@ -355,23 +355,39 @@ export function beatSummary(beat: AuthoredBeat, byName: Map<string, Person>): st
 }
 
 /**
- * What the seeder will write into the three twins. Derived from the cast and the
- * day rather than asked for, so the preview's numbers are the numbers — a model
- * that guesses "about 20 threads" and a seeder that writes 14 is exactly the
- * kind of small lie that makes a product feel untrustworthy.
+ * What this scenario is known to hold, and nothing it merely hopes for.
+ *
+ * Every number is counted off something that already exists in this process: the
+ * cast and the channels were assembled above, in code, and the rest are the
+ * day's own beats, which are written before anyone sees them. So these are
+ * facts, and they stay true however the company's history turns out.
+ *
+ * What is deliberately absent is that history — the inbox, the Slack backlog and
+ * the calendar the agent finds already there. Nothing here can know it:
+ * @sonata/world writes it with a model call at SEED time, and `actualCounts`
+ * counts the result, which is the number the world record then carries and the
+ * only one anybody should print as the company's size.
+ *
+ * This function used to forecast it — `people * 2 + 4` threads, `channels * 8`
+ * Slack messages — and the preview printed the forecast under the word
+ * "exactly". The three previews still on record promised 19-20 threads and 35-38
+ * emails; the six companies actually seeded hold 6-7 threads and 10-21 emails.
+ * No arithmetic over the cast could have landed closer: the seeder is asked for
+ * "5 to 8 threads" and "6 to 12 events" in prose, and obeys. On the screen where
+ * someone commits two minutes, an unverifiable number is worse than no number.
  */
 export function plannedCounts(seed: WorldSeed, beats: Beat[]): WorldCounts {
-  const people = seed.cast.length;
-  const channels = seed.channels.length;
-  const backlogThreads = people * 2 + 4;
-  const beatEmails = beats.filter((b) => b.twin === "gmail").length;
+  const emails = beats.flatMap((b) => (b.twin === "gmail" && b.kind === "email" ? [b.payload] : []));
   return {
-    people,
-    threads: backlogThreads + beatEmails,
-    messages: backlogThreads * 2 + beatEmails,
-    channels,
-    slackMessages: channels * 8 + beats.filter((b) => b.twin === "slack").length,
-    events: people * 2 + beats.filter((b) => b.twin === "calendar").length,
+    people: seed.cast.length,
+    // A reply lands on a thread that already exists; only a fresh email opens one.
+    threads: emails.filter((p) => !p.inReplyTo).length,
+    messages: emails.length,
+    channels: seed.channels.length,
+    slackMessages: beats.filter((b) => b.twin === "slack" && b.kind === "message").length,
+    // `move` reschedules an invite an earlier beat already created, so it adds
+    // nothing to the calendar.
+    events: beats.filter((b) => b.twin === "calendar" && b.kind === "invite").length,
   };
 }
 

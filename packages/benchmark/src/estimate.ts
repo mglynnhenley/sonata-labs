@@ -59,41 +59,89 @@ export interface RoleProfile {
   completionTokens: number;
   /** Wall-clock seconds one call of this shape takes, end to end. */
   secondsPerCall: number;
+  /**
+   * Share of this role's prompt tokens that arrive as a cache READ rather than a
+   * fresh prompt, on a provider that caches at all. Optional, and absent means
+   * zero — a profile written before caching existed must not be quietly repriced.
+   *
+   * This is not a detail. The engine puts cache breakpoints on the system message
+   * and the current tick's prompt, so the agent re-reads the whole settled day at
+   * a tenth of list price; quoting list price for all of it overstated a 12-tick
+   * day by roughly 3x, which is exactly the kind of wrong that stops someone
+   * pressing start.
+   */
+  cachedPromptFraction?: number;
 }
 
 /**
- * Defaults measured off the Gmail eval's runs, rounded to the nearest hundred
- * tokens. The agent calls twice a tick (a turn, then a tool-result turn); the
- * director once, and only when something addressed it, which averages out below
- * one; the judge once at the end over the whole timeline.
+ * What a cache read costs relative to a fresh prompt token. Anthropic's ephemeral
+ * cache reads at a tenth; the write premium is ignored because it is paid once
+ * over a prefix that is then read on every remaining call of the day.
+ */
+export const CACHE_READ_MULTIPLIER = 0.1;
+
+/**
+ * Whether a model's prompts are cached at all.
+ *
+ * Mirrors `cachesByBreakpoint` in @sonata/engine rather than importing it: this
+ * module is pure arithmetic that a dry-run runs offline, and reaching into the
+ * engine for one predicate would drag an HTTP client into it. The two are checked
+ * against each other by name, and the failure mode of drift is an OVER-estimate
+ * for a provider that started caching — the safe direction.
+ */
+export function cachesPrompts(model: string): boolean {
+  return model.startsWith("anthropic/");
+}
+
+/**
+ * Measured off Sonata's own saved run artifacts — 3-, 4-, 12- and 32-tick days on
+ * anthropic/claude-haiku-4.5 with a Sonnet judge — and fitted, not guessed.
+ *
+ * The agent is five calls a tick plus a fixed handful at the top of the day (it
+ * orients itself before doing anything), and its prompt is an 8k brief that grows
+ * ~1.7k a tick as the transcript accumulates. The director speaks under once a
+ * tick. The judge reads the finished day once.
+ *
+ * ACCURACY, stated because a number quoted before someone spends money has to
+ * say how much to trust it: the fit lands within about 25% of all four, and the
+ * residual is not noise to be tuned away. Two 3-4 tick days on different
+ * scenarios differed from each other by 2x in prompt tokens at the SAME length,
+ * because scenarios differ in how much inbox there is to read. Any single profile
+ * is a centre line through that spread, and quoting a tighter band than the spread
+ * would be the same lie as quoting no band at all.
  */
 export const DEFAULT_ROLES: RoleProfile[] = [
   {
     role: "agent",
-    callsPerTick: 2,
-    callsPerEpisode: 0,
-    promptTokens: 4000,
-    promptGrowthPerTick: 900,
-    completionTokens: 400,
-    secondsPerCall: 9,
+    callsPerTick: 5,
+    callsPerEpisode: 4,
+    promptTokens: 8000,
+    promptGrowthPerTick: 1700,
+    completionTokens: 180,
+    secondsPerCall: 4,
+    // Almost everything the agent sends is the settled prefix of its own day.
+    cachedPromptFraction: 0.8,
   },
   {
     role: "director",
-    callsPerTick: 0.6,
+    callsPerTick: 0.7,
     callsPerEpisode: 0,
-    promptTokens: 2500,
-    promptGrowthPerTick: 250,
+    promptTokens: 6000,
+    promptGrowthPerTick: 400,
     completionTokens: 300,
-    secondsPerCall: 6,
+    secondsPerCall: 3,
+    cachedPromptFraction: 0.5,
   },
   {
     role: "judge",
     callsPerTick: 0,
     callsPerEpisode: 1,
-    promptTokens: 6000,
-    promptGrowthPerTick: 700,
+    promptTokens: 8000,
+    promptGrowthPerTick: 1500,
     completionTokens: 1500,
-    secondsPerCall: 30,
+    secondsPerCall: 20,
+    // One call. There is no earlier call for it to be a cache hit against.
+    cachedPromptFraction: 0,
   },
 ];
 
@@ -123,6 +171,13 @@ export interface RoleEstimate {
   model: string;
   calls: number;
   promptTokens: number;
+  /**
+   * Prompt tokens as the provider will BILL them: cache reads counted at
+   * `CACHE_READ_MULTIPLIER`. Kept beside the raw count rather than replacing it,
+   * because "how much context did this role read" and "what does that cost" are
+   * two different questions and only one of them moves when caching does.
+   */
+  billedPromptTokens: number;
   completionTokens: number;
   usd: number;
   seconds: number;
@@ -196,39 +251,104 @@ export function estimateRole(
   const completionTokens = calls * profile.completionTokens;
   const price = prices[model];
 
+  // Only where the provider actually caches. A model that ignores the breakpoint
+  // is billed for every token every time, and pretending otherwise would quote a
+  // GPT run at a third of its price — the one direction an estimate must not err.
+  const cached = cachesPrompts(model) ? (profile.cachedPromptFraction ?? 0) : 0;
+  const billedPromptTokens = promptTokens * (1 - cached + cached * CACHE_READ_MULTIPLIER);
+
   return {
     role: profile.role,
     model,
     calls,
     promptTokens,
+    billedPromptTokens,
     completionTokens,
-    usd: price ? tokenCost(price, promptTokens, completionTokens) : 0,
+    usd: price ? tokenCost(price, billedPromptTokens, completionTokens) : 0,
     seconds: calls * profile.secondsPerCall,
     priced: price !== undefined,
   };
 }
 
-/** Every role in one cell. The agent runs on the cell's model; nothing else does. */
-export function estimateCell(cell: Cell, opts: EstimateOptions = {}): CellEstimate {
+/** Model per role, for a caller that does not run one harness model for both. */
+export type RoleModels = Partial<Record<BenchRole, string>>;
+
+export interface EpisodeEstimateOptions {
+  roles?: RoleProfile[];
+  prices?: Record<string, ModelPrice>;
+  /** Overrides per role. Anything unnamed falls back to `harnessModel`. */
+  models?: RoleModels;
+  harnessModel?: string;
+}
+
+/** What one episode will cost and how long it will take. */
+export interface EpisodeEstimate {
+  ticks: number;
+  roles: RoleEstimate[];
+  calls: number;
+  promptTokens: number;
+  billedPromptTokens: number;
+  completionTokens: number;
+  usd: number;
+  seconds: number;
+  /** Models with no price row. Their spend is missing from `usd` entirely. */
+  unpriced: string[];
+}
+
+/**
+ * One episode, priced.
+ *
+ * The unit `estimateCell` was always made of, pulled out and named because a
+ * single run is a question the dashboard asks too — and asks on every keystroke,
+ * before the user has committed to anything. A second estimator living next to
+ * the run button is how the dashboard and the CLI would come to quote two
+ * different prices for the same day.
+ */
+export function estimateEpisode(
+  ticks: number,
+  agentModel: string,
+  opts: EpisodeEstimateOptions = {},
+): EpisodeEstimate {
   const roles = opts.roles ?? DEFAULT_ROLES;
   const prices = opts.prices ?? MODEL_PRICES;
   const harness = opts.harnessModel ?? DEFAULT_HARNESS_MODEL;
-  const ticks = opts.ticksByScenario?.[cell.scenarioId] ?? opts.ticksPerEpisode ?? DEFAULT_TICKS;
+  const modelFor = (role: BenchRole): string =>
+    role === "agent" ? agentModel : (opts.models?.[role] ?? harness);
 
-  const estimates = roles.map((p) =>
-    estimateRole(p, ticks, p.role === "agent" ? cell.model : harness, prices),
-  );
+  const estimates = roles.map((p) => estimateRole(p, ticks, modelFor(p.role), prices));
   const sum = (pick: (r: RoleEstimate) => number) => estimates.reduce((a, r) => a + pick(r), 0);
 
   return {
-    cell,
     ticks,
     roles: estimates,
     calls: sum((r) => r.calls),
     promptTokens: sum((r) => r.promptTokens),
+    billedPromptTokens: sum((r) => r.billedPromptTokens),
     completionTokens: sum((r) => r.completionTokens),
     usd: sum((r) => r.usd),
     seconds: sum((r) => r.seconds),
+    unpriced: [...new Set(estimates.filter((r) => !r.priced).map((r) => r.model))].sort(),
+  };
+}
+
+/** Every role in one cell. The agent runs on the cell's model; nothing else does. */
+export function estimateCell(cell: Cell, opts: EstimateOptions = {}): CellEstimate {
+  const ticks = opts.ticksByScenario?.[cell.scenarioId] ?? opts.ticksPerEpisode ?? DEFAULT_TICKS;
+  const episode = estimateEpisode(ticks, cell.model, {
+    ...(opts.roles ? { roles: opts.roles } : {}),
+    ...(opts.prices ? { prices: opts.prices } : {}),
+    ...(opts.harnessModel ? { harnessModel: opts.harnessModel } : {}),
+  });
+
+  return {
+    cell,
+    ticks,
+    roles: episode.roles,
+    calls: episode.calls,
+    promptTokens: episode.promptTokens,
+    completionTokens: episode.completionTokens,
+    usd: episode.usd,
+    seconds: episode.seconds,
   };
 }
 

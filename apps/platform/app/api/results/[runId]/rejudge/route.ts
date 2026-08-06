@@ -55,11 +55,14 @@ export async function POST(req: Request, { params }: { params: Promise<{ runId: 
   }
 
   try {
-    const { report, autonomy } = await judgeRun(run, readSpec(runId), {
+    const { report, autonomy, spend } = await judgeRun(run, readSpec(runId), {
       ...(model ? { model } : {}),
       signal: req.signal,
+      // Somebody pressed a button. Every other caller of `judgeRun` is a day
+      // ending, and the page says which of the two it is looking at.
+      manual: true,
     });
-    return NextResponse.json({ report, autonomy });
+    return NextResponse.json({ report, autonomy, spend });
   } catch (err) {
     // The message is shown verbatim in the dialog, so it has to say what to do
     // next: a missing key, a bad slug and a timeout are all recoverable.

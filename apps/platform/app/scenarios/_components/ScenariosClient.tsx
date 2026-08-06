@@ -10,7 +10,6 @@ import {
   PageHeader,
   useToast,
 } from "@sonata/ui";
-import type { TwinName } from "@sonata/core";
 import { useGo } from "../../_components/useGo";
 import { apiGet, apiSend } from "../../api/_lib/client";
 import type { EpisodeRecord, EpisodeSummary, TemplateSummary, WorldSummary } from "../../api/_lib/types";
@@ -49,18 +48,19 @@ export function ScenariosClient({ initialEpisodes, templates }: ScenariosClientP
     setBusy({ id: template.id, action });
     try {
       if (action === "environment") {
-        const { world, twins } = await apiSend<{
-          world: WorldSummary;
-          twins: Array<{ twin: TwinName; url: string }>;
-        }>("/api/worlds", "POST", { templateId: template.id });
-        const first = twins[0];
+        // This route saves the company; it does not touch the clones. Saying
+        // "the same cast in all three clones" here — and offering to open an
+        // inbox still holding whatever was seeded last — was two promises this
+        // click does not keep. The cast and the channels are what exists now;
+        // the inbox, the backlog and the calendar are written by seeding.
+        const { world } = await apiSend<{ world: WorldSummary }>("/api/worlds", "POST", {
+          templateId: template.id,
+        });
         toast({
-          title: `${world.name} is standing by`,
-          description: `${world.counts.people} people, ${world.counts.threads} threads, ${world.counts.channels} channels and ${world.counts.events} meetings — the same cast in all three clones.`,
+          title: `${world.name} is saved`,
+          description: `${world.counts.people} people and ${world.counts.channels} channels. Seed it from Companies to write its inbox, Slack and calendar into the clones.`,
           tone: "success",
-          ...(first
-            ? { action: { label: "Open the inbox", onClick: () => window.open(first.url, "_blank") } }
-            : {}),
+          action: { label: "Go to Companies", onClick: () => router.push("/companies") },
         });
         return;
       }

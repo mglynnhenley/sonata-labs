@@ -20,16 +20,24 @@ import type { ScenarioDraft, WorldCounts } from "../../api/_lib/types";
 // What will be generated, before anything is written. This is the moment the
 // product either feels effortless or does not, so it shows the whole thing: the
 // company, the people, the channels, every beat of the day and the criteria it
-// will be scored against — and the counts here are the counts the seeder writes,
-// not an estimate.
+// will be scored against.
+//
+// Every number below is counted off this draft — the cast and channels were
+// assembled in code, the rest are the day's own beats — so none of them can come
+// apart from what gets built. The company's HISTORY is not here and must not be:
+// it is written by a model when the company is seeded, and its counts come back
+// from the clones then. This screen used to forecast it and print the forecast
+// as fact, promising 20 threads where the seeder wrote 6.
 
-const COUNTS: readonly { key: keyof WorldCounts; label: string; twin: TwinName | null }[] = [
+const WORLD_COUNTS: readonly { key: keyof WorldCounts; label: string; twin: TwinName | null }[] = [
   { key: "people", label: "People", twin: null },
-  { key: "threads", label: "Email threads", twin: "gmail" },
-  { key: "messages", label: "Emails", twin: "gmail" },
   { key: "channels", label: "Slack channels", twin: "slack" },
+];
+
+const DAY_COUNTS: readonly { key: keyof WorldCounts; label: string; twin: TwinName }[] = [
+  { key: "messages", label: "Emails arrive", twin: "gmail" },
   { key: "slackMessages", label: "Slack messages", twin: "slack" },
-  { key: "events", label: "Meetings", twin: "calendar" },
+  { key: "events", label: "Meetings land", twin: "calendar" },
 ];
 
 const TWIN_ICON: Record<TwinName, ReactNode> = {
@@ -41,6 +49,20 @@ const TWIN_ICON: Record<TwinName, ReactNode> = {
 export type ScenarioPreviewProps = {
   draft: ScenarioDraft;
 };
+
+function Stat({ label, twin, value }: { label: string; twin: TwinName | null; value: number }) {
+  return (
+    <div>
+      <dt className="flex items-center gap-1.5 text-[11px] font-medium tracking-[0.06em] text-sn-subtle uppercase">
+        {twin ? TWIN_ICON[twin] : null}
+        {label}
+      </dt>
+      <dd data-numeric className="mt-1 text-[28px] leading-none text-sn-ink">
+        {value}
+      </dd>
+    </div>
+  );
+}
 
 export function ScenarioPreview({ draft }: ScenarioPreviewProps) {
   const { business, counts, cast, channels, episode } = draft;
@@ -70,19 +92,36 @@ export function ScenarioPreview({ draft }: ScenarioPreviewProps) {
           {business.description}
         </p>
 
-        <dl className="mt-7 grid grid-cols-2 gap-x-6 gap-y-5 border-t border-sn-line pt-6 sm:grid-cols-3 lg:grid-cols-6">
-          {COUNTS.map((row) => (
-            <div key={row.key}>
-              <dt className="flex items-center gap-1.5 text-[11px] font-medium tracking-[0.06em] text-sn-subtle uppercase">
-                {row.twin ? TWIN_ICON[row.twin] : null}
-                {row.label}
-              </dt>
-              <dd data-numeric className="mt-1 text-[28px] leading-none text-sn-ink">
-                {counts[row.key]}
-              </dd>
-            </div>
-          ))}
-        </dl>
+        <div className="mt-7 grid gap-x-10 gap-y-6 border-t border-sn-line pt-6 sm:grid-cols-[minmax(0,auto)_minmax(0,1fr)]">
+          <section>
+            <p className="text-[11px] font-medium tracking-[0.08em] text-sn-subtle uppercase">
+              Who is in it
+            </p>
+            <dl className="mt-3 grid grid-cols-2 gap-x-8 gap-y-5">
+              {WORLD_COUNTS.map((row) => (
+                <Stat key={row.key} label={row.label} twin={row.twin} value={counts[row.key]} />
+              ))}
+            </dl>
+          </section>
+
+          <section>
+            <p className="text-[11px] font-medium tracking-[0.08em] text-sn-subtle uppercase">
+              What the day itself delivers
+            </p>
+            <dl className="mt-3 grid grid-cols-2 gap-x-8 gap-y-5 sm:grid-cols-3">
+              {DAY_COUNTS.map((row) => (
+                <Stat key={row.key} label={row.label} twin={row.twin} value={counts[row.key]} />
+              ))}
+            </dl>
+          </section>
+        </div>
+
+        <p className="mt-6 max-w-[76ch] text-[12.5px] leading-[19px] text-sn-subtle">
+          The clones are loaded with the days behind this one as well — the inbox already sitting
+          there, the Slack backlog, the meetings already booked. That history is written when you
+          seed the company, and how much of it there is comes back from the clones themselves.
+          Nothing on this screen estimates it.
+        </p>
       </Card>
 
       <div className="grid gap-6 lg:grid-cols-2">
