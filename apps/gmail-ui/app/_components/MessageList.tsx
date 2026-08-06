@@ -26,7 +26,7 @@ export function MessageList({
   const end = Math.min(total, (page + 1) * pageSize);
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       {/* Toolbar */}
       <div className="flex h-12 shrink-0 items-center gap-1 px-3 text-[#5f6368]">
         <span className="flex items-center rounded-sm p-2">
@@ -153,7 +153,9 @@ function Row({ row, onOpen }: { row: ThreadRow; onOpen: () => void }) {
             {l.name}
           </span>
         ))}
-        <span className={`shrink-0 ${weight}`}>{row.subject}</span>
+        {/* Subject outranks the snippet, so it shrinks far more reluctantly —
+            but it still has to yield rather than shove the date off the row. */}
+        <span className={`shrink-[0.2] truncate ${weight}`}>{row.subject}</span>
         <span className="truncate font-normal text-[#5f6368]">
           {row.snippet ? `- ${row.snippet}` : ""}
         </span>

@@ -229,7 +229,9 @@ export function GmailApp() {
         {/* Main content */}
         <main className="flex min-h-0 min-w-0 flex-1 flex-col pb-3 pr-3">
           <div className="flex min-h-0 flex-1 overflow-hidden rounded-2xl bg-white shadow-sm">
-            <div className="flex min-h-0 flex-1 flex-col">
+            {/* min-w-0: without it this column takes the max-content width of the
+                rows, pushing the date, count and pager off the right edge. */}
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col">
               {view.kind === "list" ? (
                 <MessageList
                   view={list}
