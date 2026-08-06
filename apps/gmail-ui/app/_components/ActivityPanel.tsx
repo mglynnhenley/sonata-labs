@@ -54,7 +54,7 @@ export function ActivityPanel({
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto gm-scroll">
-        {!data && <div className="p-4 text-xs text-[#5f6368]">Loading…</div>}
+        {!data && <SkeletonActions />}
         {data && tab === "actions" && (
           <>
             {data.actions.length === 0 && (
@@ -96,6 +96,33 @@ export function ActivityPanel({
         </div>
       )}
     </aside>
+  );
+}
+
+/**
+ * Placeholder action rows for the first poll. Matches the real ActionItem
+ * geometry (icon gutter, summary line, method + endpoint line) so the feed does
+ * not jump when the first batch lands.
+ */
+function SkeletonActions() {
+  return (
+    <div aria-hidden>
+      {Array.from({ length: 4 }, (_, i) => (
+        <div key={i} className="flex items-start gap-2 border-b border-[#f1f3f4] px-4 py-2.5">
+          <div className="mt-0.5 h-[18px] w-[18px] shrink-0 rounded bg-[#f1f3f4]" />
+          <div className="min-w-0 flex-1">
+            <div
+              className="h-[11px] animate-pulse rounded bg-[#e8eaed] motion-reduce:animate-none"
+              style={{ width: `${88 - (i % 3) * 14}%` }}
+            />
+            <div className="mt-1.5 flex items-center gap-2">
+              <div className="h-[10px] w-[34px] shrink-0 animate-pulse rounded bg-[#f1f3f4] motion-reduce:animate-none" />
+              <div className="h-[10px] w-[42%] animate-pulse rounded bg-[#f1f3f4] motion-reduce:animate-none" />
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }
 
