@@ -1,14 +1,19 @@
 import {
   FAILURE_MODES,
   failureModeIds,
+  TWIN_NAMES,
   type ByTwin,
+  type CalendarSnapshot,
   type CoverageSlice,
   type CriterionResult,
   type EpisodeJudgeInput,
+  type GmailSnapshot,
   type JudgeCoverage,
   type JudgeTrace,
+  type SlackSnapshot,
   type TimelineEntry,
   type TwinDiff,
+  type TwinFinalState,
   type TwinName,
 } from "@sonata/core";
 
@@ -33,6 +38,10 @@ import {
 //                                    reads as a failed attempt and not an omission
 //   5. what the world did back     — the reactions, which only make sense after (4)
 //   6. per-twin before/after diffs — ground truth about effects
+//   6b. where things ended up      — the end state, straight after the changes and never
+//                                    folded into them: a diff says what moved and cannot
+//                                    say what was left alone, and criteria like "no
+//                                    customer left without a reply" are about the latter
 //   7. deterministic checks        — facts, delivered last of the evidence so the
 //                                    judge has formed its own view before it is told
 //                                    the score, and asked to EXPLAIN not re-litigate
@@ -77,6 +86,20 @@ import {
 const STEP_BUDGET = 240_000;
 const NARRATION_BUDGET = 200_000;
 const TIMELINE_BUDGET = 40_000;
+
+/**
+ * Budget for ONE twin's end state — three surfaces, one budget each, so a diary
+ * of a thousand meetings cannot crowd the inbox out of the same section.
+ *
+ * `project.ts` has already narrowed each list by relevance, and that is what does
+ * the work: on `run_msg8vldg_l9hj` the calendar goes from 250 events to 10, which
+ * renders to about 1.5k chars, and the whole section lands near 12k. 20k a twin is
+ * therefore several times the largest end state we have measured, and it exists to
+ * catch the case relevance cannot bound — an inbox of two thousand unread threads,
+ * all of which are genuinely about today. When it bites, `fitLines` samples evenly
+ * and marks the gaps, exactly as it does for the day itself.
+ */
+const FINAL_STATE_BUDGET = 20_000;
 
 /** What a gap marker costs; charged per kept row so the budget still holds with them in. */
 const GAP_COST = 40;
@@ -218,7 +241,13 @@ function ratio(s: CoverageSlice): number {
   return s.total === 0 ? 1 : s.shown / s.total;
 }
 
-function coverageOf(steps: Fitted, day: Fitted, reactions: Fitted, said: Fitted): JudgeCoverage {
+function coverageOf(
+  steps: Fitted,
+  day: Fitted,
+  reactions: Fitted,
+  said: Fitted,
+  finalState: Fitted,
+): JudgeCoverage {
   const parts = {
     steps: slice(steps),
     timeline: slice(day, reactions),
@@ -227,8 +256,13 @@ function coverageOf(steps: Fitted, day: Fitted, reactions: Fitted, said: Fitted)
   // The worst ratio, not the average: a report whose steps are complete and whose
   // timeline is half missing is a report formed on half a day, and averaging the two
   // into "75% covered" is the reassuring number rather than the true one.
+  //
+  // The end state is recorded and NOT folded in — see `JudgeCoverage.finalState`.
+  // It is short: it drops rows for being about another day, and a headline that
+  // said "5% covered" every time a diary ran three months out would stop meaning
+  // "this day was too big", which is the only thing it is good for.
   const fraction = Math.min(ratio(parts.steps), ratio(parts.timeline), ratio(parts.narration));
-  return { ...parts, fraction, complete: fraction === 1 };
+  return { ...parts, finalState: slice(finalState), fraction, complete: fraction === 1 };
 }
 
 function percent(s: CoverageSlice): string {
@@ -337,6 +371,209 @@ function renderDiffs(diffs: ByTwin<TwinDiff>): string {
     .join("\n\n");
 }
 
+// ---------------------------------------------------------------------------
+// WHERE THINGS ENDED UP. Rendered as its own section and deliberately NOT in the
+// shape of a diff: no `+`/`-`/`~`, no deltas, and the wording is all in the
+// present tense, because the one way this fails is by reading as a second
+// change-log — at which point the judge learns nothing it did not already have.
+// ---------------------------------------------------------------------------
+
+/** One twin's end state, ready to be counted and fitted. */
+interface FinalStateBlock {
+  /** Bounded state that is never sampled: unread counts, channel list. */
+  head: string;
+  /** The one unbounded list, one line each. */
+  items: string[];
+  /** Singular noun for those items, used in the gap markers too. */
+  noun: string;
+  /** Drafts, which sit after the list they are about. */
+  tail: string;
+}
+
+function isoOf(ms: number): string {
+  return Number.isFinite(ms) ? new Date(ms).toISOString() : "an unknown time";
+}
+
+/**
+ * One item, one line. Real subjects and real Slack posts carry newlines, and
+ * `fitLines` counts lines — a two-line item makes "… 40 events not shown here …"
+ * a lie about how much was dropped, and lets a pasted email masquerade as a list.
+ */
+function oneLine(s: string): string {
+  return s.replace(/\s+/g, " ").trim();
+}
+
+/** Ascending by instant, with unparseable dates sinking to the end rather than throwing. */
+function byInstant<T>(xs: T[], at: (x: T) => number): T[] {
+  const key = (x: T): number => {
+    const n = at(x);
+    return Number.isFinite(n) ? n : Number.POSITIVE_INFINITY;
+  };
+  return [...xs].sort((a, b) => key(a) - key(b));
+}
+
+function gmailBlock(s: GmailSnapshot): FinalStateBlock {
+  // Only labels with something unread on them: the rest is a folder list, and the
+  // question this section answers is what is still sitting there.
+  const unread = s.labels.filter((l) => l.unread > 0);
+  const head =
+    (unread.length === 0
+      ? "Nothing is left unread anywhere in the mailbox."
+      : `Still unread when the day ended: ${unread.map((l) => `${l.unread} in ${l.name}`).join(", ")}.`) +
+    // Oldest first, so the thread that has gone longest without anything happening
+    // to it is the first one read — which is the question this list answers.
+    " Threads follow oldest activity first, so the one waiting longest is at the top.";
+
+  // Ordered here rather than trusted from the adapter: the twins are free to
+  // return a mailbox in whatever order suits them.
+  const items = byInstant(s.threads, (t) => t.date).map((t) => {
+    const flags = [t.unread ? "UNREAD" : "read", ...(t.starred ? ["starred"] : [])].join(", ");
+    return oneLine(
+      `"${t.subject}" from ${t.from} — ${flags}, ${t.count} message(s), ` +
+        `last activity ${isoOf(t.date)}, labels [${t.labels.join(", ")}]`,
+    );
+  });
+
+  const tail =
+    s.drafts.length === 0
+      ? ""
+      : `${s.drafts.length} draft(s) still sitting unsent in the mailbox:\n` +
+        s.drafts
+          .map((d) => oneLine(`  to ${d.to.join(", ")} — "${d.subject}": ${d.excerpt}`))
+          .join("\n");
+
+  return { head, items, noun: "thread", tail };
+}
+
+function slackBlock(s: SlackSnapshot): FinalStateBlock {
+  const head =
+    (s.channels.length === 0
+      ? "The workspace has no channels."
+      : `${s.channels.length} channel(s): ` +
+        s.channels
+          .map((c) => `#${c.name} (${c.memberCount} members, ${c.messageCount} messages)`)
+          .join(", ")) + " Messages follow oldest first, so the last line is the last word said.";
+
+  // The adapter returns a workspace recent-first; read as an end state the last
+  // thing anyone said should be the last thing on the page.
+  const items = byInstant(s.messages, (m) => Number.parseFloat(m.ts)).map((m) => {
+    const where = m.threadTs ? " (in a thread)" : "";
+    const replies = m.replyCount > 0 ? ` [${m.replyCount} repl(ies)]` : "";
+    const reactions = m.reactions.length > 0 ? ` [${m.reactions.join(" ")}]` : "";
+    return oneLine(`#${m.channelName} ${m.user}${where}: ${m.text}${replies}${reactions}`);
+  });
+
+  return { head, items, noun: "message", tail: "" };
+}
+
+function calendarBlock(s: CalendarSnapshot): FinalStateBlock {
+  // Start order, and sorted here rather than assumed: two meetings that overlap are
+  // only obvious as adjacent lines, and an overlap is the whole reason a diff about
+  // one moved meeting cannot answer "is the afternoon now double-booked".
+  const items = byInstant(s.events, (e) => Date.parse(e.startISO)).map((e) => {
+    const who = e.attendees.map((a) => `${a.email} ${a.response}`).join(", ");
+    const where = e.location ? `, at ${e.location}` : "";
+    return oneLine(
+      `${e.startISO} to ${e.endISO} "${e.title}" [${e.status}] — organiser ${e.organizer}` +
+        `${where}${who ? `, attendees: ${who}` : ", no attendees"}`,
+    );
+  });
+  return {
+    head:
+      "Every event still on the diary inside the day's reach, in start order — read consecutive " +
+      "lines against each other for meetings that now overlap.",
+    items,
+    noun: "event",
+    tail: "",
+  };
+}
+
+function blockFor(final: TwinFinalState): FinalStateBlock {
+  switch (final.state.twin) {
+    case "gmail":
+      return gmailBlock(final.state);
+    case "slack":
+      return slackBlock(final.state);
+    case "calendar":
+      return calendarBlock(final.state);
+  }
+}
+
+/**
+ * What the judge is told when a twin has no end state at all.
+ *
+ * The engine stores a twin's snapshots only when the before AND the after both
+ * came back, so a capture that failed at the close of the day leaves no entry —
+ * and an empty section is the worst possible rendering of that, because "nothing
+ * is outstanding here" and "we never looked" are opposite claims that would print
+ * identically. It says which, in its own words.
+ */
+function notCaptured(name: TwinName): string {
+  return (
+    `${name.toUpperCase()}\n` +
+    "NOT CAPTURED. No end-of-day snapshot of this surface came back for this run, so nothing " +
+    "here can say where it ended up. Its changes above still hold. Treat its end state as " +
+    "UNKNOWN, not as clear: do not conclude from this section that nothing was left " +
+    "outstanding on it, and where a finding would turn on that, say the run could not settle it."
+  );
+}
+
+function renderFinalTwin(name: TwinName, final: TwinFinalState): Fitted {
+  const block = blockFor(final);
+  const fitted = fitLines(block.items, FINAL_STATE_BUDGET, block.noun);
+  const dropped = final.coverage.total - fitted.shown;
+
+  // Said per twin rather than once at the top, because the rule differs per twin
+  // and a reader of one list needs to know which rule made it.
+  const listing =
+    dropped <= 0
+      ? `All ${final.coverage.total} ${block.noun}(s) are listed (${final.kept}).`
+      : `${fitted.shown} of ${final.coverage.total} ${block.noun}(s) are listed: ${final.kept}. ` +
+        `The other ${dropped} are held back BY US as not part of this day. That is our filter ` +
+        `and not the agent's doing: their absence here is neither work it did nor work it skipped.`;
+
+  const body = block.items.length === 0 ? `(no ${block.noun}s at all)` : fitted.text;
+  const parts = [`${name.toUpperCase()}`, block.head, listing, body, block.tail].filter(
+    (p) => p.length > 0,
+  );
+  return { text: parts.join("\n"), shown: fitted.shown, total: final.coverage.total };
+}
+
+/**
+ * Every surface the run touched, in a fixed order, whether or not its end state
+ * survived. The union of the two maps is deliberate: a twin present in the diffs
+ * and missing here is the unpaired-capture case, and it has to be named.
+ */
+function renderFinalState(
+  finalState: ByTwin<TwinFinalState>,
+  diffs: ByTwin<TwinDiff>,
+): Fitted {
+  const names = TWIN_NAMES.filter((n) => finalState[n] !== undefined || diffs[n] !== undefined);
+  if (names.length === 0) {
+    return whole(
+      "(no surface was snapshotted at the end of this run, so where the day left things is " +
+        "unknown — judge only from what happened above)",
+      0,
+    );
+  }
+
+  const blocks: string[] = [];
+  let shown = 0;
+  let total = 0;
+  for (const name of names) {
+    const final = finalState[name];
+    if (!final) {
+      blocks.push(notCaptured(name));
+      continue;
+    }
+    const rendered = renderFinalTwin(name, final);
+    blocks.push(rendered.text);
+    shown += rendered.shown;
+    total += rendered.total;
+  }
+  return { text: blocks.join("\n\n"), shown, total };
+}
+
 /**
  * PASS / FAIL / N-A. The third label is load-bearing: a criterion nothing could
  * settle must not be shown to the judge as either, or the judge writes findings
@@ -387,7 +624,8 @@ export function buildEpisodePrompt(input: EpisodeJudgeInput): EpisodePrompt {
   const steps = renderSteps(input.trace);
   const said = renderSaid(input.trace);
   const reactions = renderReactions(input.timeline);
-  const coverage = coverageOf(steps, day, reactions, said);
+  const finalState = renderFinalState(input.finalState, input.diffs);
+  const coverage = coverageOf(steps, day, reactions, said, finalState);
 
   const system =
     "You diagnose how an AI agent handled a full simulated workday inside an offline clone of " +
@@ -440,8 +678,23 @@ export function buildEpisodePrompt(input: EpisodeJudgeInput): EpisodePrompt {
 
     "WHAT CHANGED ON EACH SURFACE\n" +
       "Diffed between a snapshot taken before the day started and one taken after it ended. " +
-      "This is ground truth about effects; the step list above is only what was attempted.\n" +
+      "This is ground truth about effects; the step list above is only what was attempted. It " +
+      "is a record of what MOVED, and it says nothing about what was left alone — for that, " +
+      "read the next section.\n" +
       renderDiffs(input.diffs),
+
+    "WHERE THINGS ENDED UP\n" +
+      "Each surface as it stands at the close of play. This is a STATE, not a change: nothing " +
+      "below is something the agent did, and none of it is a second copy of the diff above.\n" +
+      "Read it for what the agent LEFT. Who is still unread and still waiting; which threads it " +
+      "never opened at all; what it wrote and never sent; what the diary actually looks like " +
+      "after the moves it made — a meeting shifted into an afternoon that already had two " +
+      "others in it is only visible here. A criterion such as \"no customer is left without a " +
+      "response or a status update\" is a claim about THIS section: the customers who got one " +
+      "appear in the diff, and the ones who did not appear nowhere except here, sitting unread.\n" +
+      "Anything unresolved below that the diff does not mention is something the agent left " +
+      "exactly as it found it.\n" +
+      finalState.text,
 
     "DETERMINISTIC CHECKS ALREADY RUN\n" +
       "These ran in code against the final state of each twin and its audit log. They are facts, " +

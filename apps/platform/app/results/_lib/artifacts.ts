@@ -706,9 +706,24 @@ export function readTrace(runId: string): AgentTrace | null {
   };
 }
 
-export function readBrief(runId: string): RunBrief {
+/**
+ * The whole spec the run was written with, or null on an artifact that predates
+ * embedded specs.
+ *
+ * SERVER ONLY, and deliberately not folded into `RunBrief`: a spec carries the
+ * world, the cast and every beat, and `RunBrief` is handed to a client component
+ * — putting it there would ship a scenario down the wire to render a heading.
+ * The judge is the one caller that genuinely needs all of it, because the clock
+ * and the beats are what date the day and say how much of it actually fired.
+ */
+export function readSpec(runId: string): EpisodeSpec | null {
   const file = resolveArtifact(runId, ".json");
-  const spec = file ? (asRecord(asRecord(readJson(file))?.spec) as unknown as EpisodeSpec | null) : null;
+  if (!file) return null;
+  return (asRecord(asRecord(readJson(file))?.spec) as unknown as EpisodeSpec | null) ?? null;
+}
+
+export function readBrief(runId: string): RunBrief {
+  const spec = readSpec(runId);
   const startISO = spec?.clock?.startISO;
   return {
     ...(typeof spec?.task === "string" ? { task: spec.task } : {}),

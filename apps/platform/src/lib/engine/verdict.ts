@@ -1,6 +1,5 @@
 import {
   checklistScore,
-  offsetMinutes,
   runExecution,
   verdictOutcome,
   type CriterionResult,
@@ -21,7 +20,7 @@ import {
   writtenFromTicks,
 } from "@sonata/judge";
 import { rejudgeRun } from "../../../app/api/results/_lib/rejudge";
-import { readBrief, readRun, updateRunJudge, type RunBrief } from "../../../app/results/_lib/artifacts";
+import { readRun, readSpec, updateRunJudge } from "../../../app/results/_lib/artifacts";
 import { finishRun, getRun } from "../db";
 
 // What a finished day is worth.
@@ -105,32 +104,6 @@ export function scoreRun(run: EpisodeRun, spec: EpisodeSpec, input: ScoreInput =
   };
 }
 
-/** `offsetMinutes` throws on an offsetless string; a bad spec must not lose a run. */
-function safeOffset(iso: string): number {
-  try {
-    return offsetMinutes(iso);
-  } catch {
-    return 0;
-  }
-}
-
-/**
- * The brief the judge reads, built from the spec in hand. The disk equivalent is
- * `readBrief`, which digs the same four fields out of a saved artifact — this is
- * for the run that has only just ended and still has its spec.
- */
-export function briefFor(spec: EpisodeSpec): RunBrief {
-  const people: Record<string, string> = {};
-  for (const person of spec.world.cast) people[person.id] = person.name;
-  return {
-    task: spec.task,
-    story: spec.story,
-    judgeQuestions: spec.success.judgeQuestions,
-    offsetMinutes: safeOffset(spec.clock.startISO),
-    people,
-  };
-}
-
 export interface JudgeResult {
   report: EpisodeJudgeReport;
   /** The run's own autonomy, re-read off the artifact the report was written to. */
@@ -149,7 +122,7 @@ export interface JudgeResult {
  */
 export async function judgeRun(
   run: EpisodeRun,
-  brief: RunBrief,
+  spec: EpisodeSpec | null,
   opts: { model?: string; signal?: AbortSignal } = {},
 ): Promise<JudgeResult> {
   // The same bar the score uses. A judge reading a day the agent never worked
@@ -160,7 +133,7 @@ export async function judgeRun(
     throw new Error(`There is nothing for a judge to read. ${execution.reason ?? ""}`.trim());
   }
 
-  const report = await rejudgeRun(run, brief, {
+  const report = await rejudgeRun(run, spec, {
     ...(opts.model ? { model: opts.model } : {}),
     ...(opts.signal ? { signal: opts.signal } : {}),
   });
@@ -198,5 +171,8 @@ export async function judgeSavedRun(
   if (run.status === "queued" || run.status === "running") {
     throw new Error("This run is still going. Let the day finish, then judge it.");
   }
-  return judgeRun(run, readBrief(runId), opts);
+  // The spec, not the brief: the judge reads the clock and the beats too, and
+  // `RunBrief` is the four fields a PAGE needs. Null on an artifact written
+  // before specs were embedded — see `buildJudgeInput` for what that costs.
+  return judgeRun(run, readSpec(runId), opts);
 }

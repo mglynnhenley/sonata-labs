@@ -137,6 +137,46 @@ export interface CalendarDiff {
 export type TwinDiff = GmailDiff | SlackDiff | CalendarDiff;
 
 // ---------------------------------------------------------------------------
+// Final state. The after-snapshot, narrowed — where each twin ENDED UP, as
+// opposed to what moved in it.
+//
+// A diff and an end state answer different questions and the judge is asked
+// both. "Three threads changed" is the diff; "and eleven did not, four of them
+// still unread, two from customers who wrote at 09:15" is the end state. A
+// criterion like "no customer is left without a response" is a claim about
+// where things finished, and what the agent never touched leaves no mark in a
+// diff at all — its absence is exactly the thing being asked about. Same on the
+// calendar: a diff shows one meeting moved, only the end state shows the
+// afternoon it moved into is now double-booked.
+//
+// Narrowed by RELEVANCE and not by a flat cap: an after-snapshot of the diary
+// carries every event the world was seeded with, most of them weeks from the
+// day the run simulated, and an event three weeks out cannot bear on today's
+// criteria. See `@sonata/judge`'s `project.ts` for the rule each twin uses.
+// ---------------------------------------------------------------------------
+
+export interface TwinFinalState {
+  /**
+   * The after-snapshot with its unbounded list narrowed. Bounded fields — a
+   * label list, a channel list — survive whole; they are small and the unread
+   * counts on them are half the point of this section.
+   */
+  state: TwinSnapshot;
+  /**
+   * Items kept against items the after-snapshot held, where "item" is the one
+   * list per twin that grows without bound: gmail threads, slack messages,
+   * calendar events.
+   */
+  coverage: CoverageSlice;
+  /**
+   * The rule that decided, phrased for the judge to read verbatim — "the inbox,
+   * plus every thread the run touched". Per-twin because the rules differ:
+   * relevance on a mailbox is a label, on a diary it is a date.
+   */
+  kept: string;
+}
+
+// ---------------------------------------------------------------------------
 // Trace, projected. `AgentTrace` carries verbatim provider bodies and runs to
 // megabytes, so it never reaches the judge directly — each adapter's
 // `projectTrace` shrinks its own calls to these steps.
@@ -181,6 +221,15 @@ export interface EpisodeJudgeInput {
   timeline: TimelineEntry[];
   /** What changed in each twin the run used. */
   diffs: ByTwin<TwinDiff>;
+  /**
+   * Where each twin ended up, narrowed to the day. Kept alongside `diffs`, never
+   * instead of it — see `TwinFinalState` for why one cannot answer for the other.
+   *
+   * A twin the run used whose after-snapshot never landed is absent HERE while
+   * still present in `diffs`, and the prompt says so in words: an end state we
+   * failed to capture must not render as a surface with nothing left on it.
+   */
+  finalState: ByTwin<TwinFinalState>;
   trace: JudgeTrace;
   /** What the deterministic checks concluded — the judge need not re-derive it. */
   checklistResults: CriterionResult[];
@@ -228,7 +277,26 @@ export interface JudgeCoverage {
   timeline: CoverageSlice;
   /** The agent's own turns. Escalations are never dropped and never counted here. */
   narration: CoverageSlice;
-  /** The worst of the three ratios — the honest headline. 1 means nothing was dropped. */
+  /**
+   * Items listed in WHERE THINGS ENDED UP against items the after-snapshots held.
+   * Absent on reports written before the end state reached the judge at all.
+   *
+   * Recorded like the others and excluded from `fraction` on purpose, because it
+   * measures a different thing. The three above drop rows because the DAY did not
+   * fit, and a low figure there means the verdict was formed on a sample of what
+   * happened. This one drops rows because they are not about this day — a meeting
+   * three weeks out, a thread filed months ago — and folding a relevance filter
+   * into the headline would report every ordinary run as two-thirds unseen and
+   * leave no number free to mean "this day was too big". It is still here because
+   * a filtered end state is a filtered end state, and the reader is entitled to
+   * know the judge was shown one.
+   */
+  finalState?: CoverageSlice;
+  /**
+   * The worst of `steps`, `timeline` and `narration` — the honest headline for the
+   * question those three answer, which is how much of the day itself was shown. 1
+   * means nothing was dropped. See `finalState` for what this deliberately omits.
+   */
   fraction: number;
   /** `fraction === 1`. Stored so a reader never has to trust a float comparison. */
   complete: boolean;

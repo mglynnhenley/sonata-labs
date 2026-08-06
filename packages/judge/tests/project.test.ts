@@ -1,7 +1,23 @@
-import type { EpisodeRun } from "@sonata/core";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import type {
+  CalendarSnapshot,
+  Clock,
+  EpisodeRun,
+  GmailSnapshot,
+  SlackSnapshot,
+} from "@sonata/core";
 import { beforeEach, describe, expect, it } from "vitest";
-import { buildTimeline, buildTrace, projectEpisode } from "../src/project";
-import { directorEvent, gmailSnapshot, resetSeq, tickRecord, toolStep } from "./fixtures";
+import { buildFinalState, buildTimeline, buildTrace, projectEpisode } from "../src/project";
+import {
+  calendarSnapshot,
+  directorEvent,
+  gmailSnapshot,
+  resetSeq,
+  slackSnapshot,
+  tickRecord,
+  toolStep,
+} from "./fixtures";
 
 // Projection is the only path by which a run reaches the judge, so the thing worth
 // testing is what it refuses to pass through: unbounded results, unbounded prose,
@@ -223,5 +239,298 @@ describe("projectEpisode on a day that did not finish", () => {
     const { clock: _clock, beats: _beats, ...bare } = SPEC;
     const input = projectEpisode({ spec: bare, run: twelveTicks, diffs: {}, checklist: [] });
     expect(input.story).toBe(SPEC.story);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// WHERE THINGS ENDED UP. The diffs say what moved; nothing said what was LEFT,
+// and a criterion like "no customer is left without a response" is a claim about
+// exactly that. The end state answers it — and the only hard part is that an
+// after-snapshot of the diary carries every event the world was seeded with.
+//
+// So these run against a real one. `tests/artifacts/run_msg8vldg_l9hj.after.json`
+// is that run's three after-snapshots lifted verbatim out of the artifact —
+// 20 gmail threads (8,189 chars), 30 slack messages (10,566) and 250 calendar
+// events (101,912), of which the run's own day can only be about ten. It is
+// committed rather than read from `apps/platform/data/runs`, which is gitignored:
+// a measurement nobody else can reproduce is not a test.
+// ---------------------------------------------------------------------------
+
+interface AfterArtifact {
+  clock: Clock;
+  snapshots: {
+    gmail: { after: GmailSnapshot };
+    slack: { after: SlackSnapshot };
+    calendar: { after: CalendarSnapshot };
+  };
+}
+
+const REAL = JSON.parse(
+  readFileSync(path.join(import.meta.dirname, "artifacts/run_msg8vldg_l9hj.after.json"), "utf8"),
+) as AfterArtifact;
+
+const REAL_SPEC = {
+  id: "vertex-escalation",
+  task: "Work the escalations.",
+  story: "Two disputes and a refund.",
+  success: { checklist: [], judgeQuestions: [] },
+  clock: REAL.clock,
+};
+
+/** The artifact's snapshots, as `EpisodeRun` holds them. `before` is never read here. */
+function realRun(): EpisodeRun {
+  return run({
+    snapshots: {
+      gmail: { before: REAL.snapshots.gmail.after, after: REAL.snapshots.gmail.after },
+      slack: { before: REAL.snapshots.slack.after, after: REAL.snapshots.slack.after },
+      calendar: { before: REAL.snapshots.calendar.after, after: REAL.snapshots.calendar.after },
+    },
+  });
+}
+
+describe("buildFinalState on a real run's after-snapshots", () => {
+  it("puts every surface the run captured into the judge input", () => {
+    const input = projectEpisode({
+      spec: REAL_SPEC,
+      run: realRun(),
+      diffs: {},
+      checklist: [],
+    });
+
+    expect(Object.keys(input.finalState).sort()).toEqual(["calendar", "gmail", "slack"]);
+    // The end state is kept ALONGSIDE the diffs, never instead of them: they answer
+    // different questions and the judge is asked both.
+    expect(input.diffs).toEqual({});
+  });
+
+  it("windows the diary to the day, dropping the 240 events that are not about it", () => {
+    const { calendar } = buildFinalState({
+      spec: REAL_SPEC,
+      run: realRun(),
+      diffs: {},
+      checklist: [],
+    });
+
+    expect(calendar?.coverage).toEqual({ shown: 10, total: 250 });
+    // 101,912 chars of diary down to under 4k — and the 96% that went was days the
+    // run never reached, not detail about the day it did.
+    expect(JSON.stringify(REAL.snapshots.calendar.after).length).toBe(101_912);
+    expect(JSON.stringify(calendar?.state).length).toBeLessThan(5_000);
+  });
+
+  it("keeps the day's own meetings and drops the ones weeks out", () => {
+    const { calendar } = buildFinalState({
+      spec: REAL_SPEC,
+      run: realRun(),
+      diffs: {},
+      checklist: [],
+    });
+    const state = calendar?.state;
+    if (state?.twin !== "calendar") throw new Error("expected the calendar's end state");
+
+    // The escalation call the day is about, and the standups either side of it.
+    expect(state.events.map((e) => e.title)).toContain("Status Check - Customer Escalations");
+    expect(state.events.every((e) => e.startISO < "2026-08-08")).toBe(true);
+    // 189 of the dropped events are September or later. A meeting three weeks out
+    // cannot bear on a criterion about today.
+    expect(state.events.some((e) => e.startISO >= "2026-09-01")).toBe(false);
+  });
+
+  it("cuts the mailbox to the inbox and keeps every draft and unread count", () => {
+    const { gmail } = buildFinalState({
+      spec: REAL_SPEC,
+      run: realRun(),
+      diffs: {},
+      checklist: [],
+    });
+    const state = gmail?.state;
+    if (state?.twin !== "gmail") throw new Error("expected the mailbox's end state");
+
+    expect(gmail?.coverage).toEqual({ shown: 11, total: 20 });
+    expect(state.threads.every((t) => t.labels.includes("INBOX"))).toBe(true);
+    // Four still unread when the day ended — invisible in a diff, which is the point.
+    expect(state.threads.filter((t) => t.unread).length).toBeGreaterThan(0);
+    // Drafts are never windowed: "wrote it but would not send it" is the autonomy
+    // question, and the list is short by nature.
+    expect(state.drafts).toHaveLength(8);
+    expect(state.labels.find((l) => l.name === "INBOX")?.unread).toBe(15);
+  });
+
+  it("cuts slack to the day's messages and keeps the whole channel list", () => {
+    const { slack } = buildFinalState({
+      spec: REAL_SPEC,
+      run: realRun(),
+      diffs: {},
+      checklist: [],
+    });
+    const state = slack?.state;
+    if (state?.twin !== "slack") throw new Error("expected the workspace's end state");
+
+    expect(slack?.coverage).toEqual({ shown: 26, total: 30 });
+    expect(state.channels).toHaveLength(3);
+  });
+
+  it("says which rule narrowed each surface, in the words the judge is shown", () => {
+    const final = buildFinalState({
+      spec: REAL_SPEC,
+      run: realRun(),
+      diffs: {},
+      checklist: [],
+    });
+    expect(final.gmail?.kept).toContain("the inbox");
+    expect(final.calendar?.kept).toContain("2026-08-05T08:00:00.000Z");
+    expect(final.calendar?.kept).toContain("2026-08-07T16:00:00.000Z");
+  });
+});
+
+describe("buildFinalState windowing", () => {
+  const SPEC = {
+    id: "s1",
+    task: "t",
+    story: "s",
+    success: { checklist: [], judgeQuestions: [] },
+    clock: { startISO: "2026-08-06T09:00:00Z", ticks: 32, simMinutesPerTick: 15 },
+  };
+
+  function diary(...events: CalendarSnapshot["events"]): EpisodeRun {
+    const after = calendarSnapshot({ events });
+    return run({ snapshots: { calendar: { before: after, after } } });
+  }
+
+  function event(over: Partial<CalendarSnapshot["events"][number]>): CalendarSnapshot["events"][number] {
+    return {
+      eventId: "E",
+      title: "Some meeting",
+      startISO: "2026-08-06T14:00:00Z",
+      endISO: "2026-08-06T15:00:00Z",
+      organizer: "sam@northwind.test",
+      attendees: [],
+      status: "confirmed",
+      ...over,
+    };
+  }
+
+  it("keeps an event the agent moved out of the window — that move is its doing", () => {
+    const today = event({ eventId: "E1" });
+    const pushed = event({ eventId: "E2", startISO: "2026-09-14T14:00:00Z", endISO: "2026-09-14T15:00:00Z" });
+    const stranger = event({ eventId: "E3", startISO: "2026-09-15T14:00:00Z", endISO: "2026-09-15T15:00:00Z" });
+
+    const { calendar } = buildFinalState({
+      spec: SPEC,
+      run: diary(today, pushed, stranger),
+      diffs: {
+        calendar: {
+          twin: "calendar",
+          created: [],
+          cancelled: [],
+          moved: [{ eventId: "E2", title: "Some meeting", fromISO: "x", toISO: "y" }],
+          attendeesChanged: [],
+          rsvpChanged: [],
+          unchangedCount: 2,
+        },
+      },
+      checklist: [],
+    });
+    const state = calendar?.state;
+    if (state?.twin !== "calendar") throw new Error("expected the calendar's end state");
+
+    // A meeting the agent pushed to next month stays visible wherever it landed;
+    // the identical meeting it never touched does not.
+    expect(state.events.map((e) => e.eventId)).toEqual(["E1", "E2"]);
+  });
+
+  it("keeps a thread the agent worked even though it has been filed out of the inbox", () => {
+    const after = gmailSnapshot({
+      threads: [
+        { threadId: "T1", subject: "in the inbox", from: "a@x.test", date: 1, labels: ["INBOX"], unread: true, starred: false, count: 1 },
+        { threadId: "T2", subject: "archived by the agent", from: "b@x.test", date: 2, labels: ["Client"], unread: false, starred: false, count: 3 },
+        { threadId: "T3", subject: "filed long ago", from: "c@x.test", date: 3, labels: ["Archive"], unread: false, starred: false, count: 1 },
+      ],
+    });
+
+    const { gmail } = buildFinalState({
+      spec: SPEC,
+      run: run({ snapshots: { gmail: { before: after, after } } }),
+      diffs: {
+        gmail: {
+          twin: "gmail",
+          added: [],
+          removed: [],
+          changed: [{ threadId: "T2", subject: "archived by the agent", labelsAdded: ["Client"], labelsRemoved: ["INBOX"], messagesAdded: 1 }],
+          draftsAdded: [],
+          unchangedCount: 2,
+        },
+      },
+      checklist: [],
+    });
+    const state = gmail?.state;
+    if (state?.twin !== "gmail") throw new Error("expected the mailbox's end state");
+
+    expect(state.threads.map((t) => t.threadId)).toEqual(["T1", "T2"]);
+    expect(gmail?.coverage).toEqual({ shown: 2, total: 3 });
+  });
+
+  it("dates the window off the run's own ticks when the spec carries no clock", () => {
+    const { clock: _clock, ...noClock } = SPEC;
+    // The ticks are dated 2026-08-04; the clock this spec no longer carries said
+    // 2026-08-06. Only E1 survives, so the window provably came from the ticks.
+    const inside = event({ eventId: "E1", startISO: "2026-08-04T14:00:00Z", endISO: "2026-08-04T15:00:00Z" });
+    const outside = event({ eventId: "E2", startISO: "2026-08-06T14:00:00Z", endISO: "2026-08-06T15:00:00Z" });
+
+    const { calendar } = buildFinalState({
+      spec: noClock,
+      // The simulated clock, never `capturedAt`: on the real artifact the snapshots
+      // were taken on 2026-08-05 for a day set on 2026-08-06, so anchoring on the
+      // wall clock would window the day out of its own diary.
+      run: { ...diary(inside, outside), ticks: [tickRecord({ tick: 0 })] },
+      diffs: {},
+      checklist: [],
+    });
+    const state = calendar?.state;
+    if (state?.twin !== "calendar") throw new Error("expected the calendar's end state");
+
+    expect(state.events.map((e) => e.eventId)).toEqual(["E1"]);
+  });
+
+  it("narrows nothing when neither a clock nor a tick dates the day", () => {
+    const { clock: _clock, ...noClock } = SPEC;
+    const far = event({ eventId: "E9", startISO: "2027-01-01T14:00:00Z", endISO: "2027-01-01T15:00:00Z" });
+
+    const { calendar } = buildFinalState({
+      spec: noClock,
+      run: diary(far),
+      diffs: {},
+      checklist: [],
+    });
+
+    // A filter that cannot tell what the day is must not be the thing that hides it.
+    expect(calendar?.coverage).toEqual({ shown: 1, total: 1 });
+    expect(calendar?.kept).toBe("every event the snapshot held");
+  });
+
+  it("leaves out a twin whose after-snapshot never came back, rather than inventing an empty one", () => {
+    const before = slackSnapshot();
+    const { slack, gmail } = buildFinalState({
+      spec: SPEC,
+      // The engine stores a twin's snapshots only when the before AND the after both
+      // came back, so a capture that failed at the close of the day leaves no entry.
+      run: run({ snapshots: { gmail: { before: gmailSnapshot(), after: gmailSnapshot() } } }),
+      diffs: {
+        slack: {
+          twin: "slack",
+          posted: [{ channelName: "ops", ts: "1.0", user: "U01SAM", text: "on it" }],
+          edited: [],
+          deleted: [],
+          reactionsAdded: [],
+          channelsCreated: [],
+          unchangedCount: 0,
+        },
+      },
+      checklist: [],
+    });
+
+    expect(before.twin).toBe("slack");
+    expect(slack).toBeUndefined();
+    expect(gmail).toBeDefined();
   });
 });

@@ -6,6 +6,8 @@ import { twinUrls } from "../../api/_lib/twins";
 import { readBrief, readRun, readTrace, type SavedRun } from "../../results/_lib/artifacts";
 import { costBreakdown } from "../../results/_lib/cost";
 import { RunDetail } from "../../results/[runId]/RunDetail";
+import { EndOfDay } from "../../results/_components/EndOfDay";
+import { endOfDay, hasEndState } from "../../results/_components/endstate";
 import { HarnessFaults } from "../../results/_components/HarnessFaults";
 import { harnessReport, hasFaults, specDescribes, withFindings } from "../../results/_components/harness";
 import { LiveEpisode } from "../_components/LiveEpisode";
@@ -48,18 +50,34 @@ export default async function RunPage({ params }: { params: Promise<{ runId: str
     // the wire.
     const cost = costBreakdown(readTrace(runId), run.verdict?.cost ?? null);
     const brief = readBrief(runId);
+    const spec = scheduledDay(run);
     // Our own defects come out of the run BEFORE the run page sees it, so the
     // sections below can be read as what they claim to be: the agent's record.
     const { report, judge } = harnessReport({
       run,
-      spec: scheduledDay(run),
+      spec,
       capture: run.evidence,
       offsetMinutes: brief.offsetMinutes,
+    });
+    // Everything above answers "what did it do". This answers "where did it
+    // leave things" — off the closing snapshots, which no other section reads.
+    // Built here rather than inside `RunDetail` so a quarter-megabyte of
+    // snapshot stays on the server and only the counts cross the wire.
+    const closing = endOfDay({
+      snapshots: run.snapshots,
+      ticks: run.ticks,
+      // The cast is only taken from a scenario that still describes this run: a
+      // mis-cast "self" would name the wrong person as the one left waiting.
+      cast: spec?.world.cast ?? [],
+      evidence: run.evidence.twins,
+      offsetMinutes: brief.offsetMinutes,
+      judge,
     });
     return (
       <div className="flex flex-col gap-6">
         {hasFaults(report) ? <HarnessFaults report={report} /> : null}
         <RunDetail run={withFindings(run, judge)} brief={brief} cost={cost} />
+        {hasEndState(closing) ? <EndOfDay report={closing} /> : null}
       </div>
     );
   }

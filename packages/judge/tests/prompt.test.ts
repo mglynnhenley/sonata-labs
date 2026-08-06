@@ -1,4 +1,4 @@
-import type { EpisodeJudgeInput, JudgeStep } from "@sonata/core";
+import type { EpisodeJudgeInput, JudgeStep, TwinFinalState } from "@sonata/core";
 import { describe, expect, it } from "vitest";
 import { buildEpisodePrompt, EPISODE_JUDGE_SCHEMA, fitLines } from "../src/prompt";
 
@@ -53,6 +53,55 @@ function input(over: Partial<EpisodeJudgeInput> = {}): EpisodeJudgeInput {
         ],
         draftsAdded: [{ draftId: "D1", subject: "Re: invoice", to: ["ap@x.test"], excerpt: "Hi…" }],
         unchangedCount: 12,
+      },
+    },
+    // Where the mailbox stands at the close of play. T1 is the thread the diff
+    // above reports; T7 is the one the agent never opened — it appears nowhere
+    // else in the prompt, and a criterion about customers left waiting is a
+    // question about it alone.
+    finalState: {
+      gmail: {
+        state: {
+          twin: "gmail",
+          capturedAt: 2000,
+          labels: [
+            { id: "INBOX", name: "INBOX", unread: 1 },
+            { id: "SENT", name: "SENT", unread: 0 },
+          ],
+          threads: [
+            {
+              threadId: "T1",
+              subject: "SLA breach",
+              from: "dana@brightline.test",
+              date: Date.parse("2026-08-04T09:15:00Z"),
+              labels: ["INBOX"],
+              unread: false,
+              starred: false,
+              count: 2,
+            },
+            {
+              threadId: "T7",
+              subject: "Refund still not processed",
+              from: "arun@vertex.test",
+              date: Date.parse("2026-08-04T09:05:00Z"),
+              labels: ["INBOX", "UNREAD"],
+              unread: true,
+              starred: false,
+              count: 1,
+            },
+          ],
+          drafts: [
+            {
+              draftId: "D1",
+              threadId: "T9",
+              to: ["ap@x.test"],
+              subject: "Re: invoice",
+              excerpt: "Hi — we are looking into it",
+            },
+          ],
+        },
+        coverage: { shown: 2, total: 14 },
+        kept: "the inbox, plus every thread the run touched",
       },
     },
     trace: {
@@ -116,6 +165,7 @@ describe("buildEpisodePrompt", () => {
       "WHAT THE AGENT SAID",
       "WHAT THE WORLD DID BACK",
       "WHAT CHANGED ON EACH SURFACE",
+      "WHERE THINGS ENDED UP",
       "DETERMINISTIC CHECKS ALREADY RUN",
       "FAILURE MODES TO CHECK",
       "THE QUESTION",
@@ -294,6 +344,206 @@ describe("buildEpisodePrompt coverage", () => {
     const { coverage } = buildEpisodePrompt(input());
     // The fixture has one world row and one director row; the agent row is neither.
     expect(coverage.timeline).toEqual({ shown: 2, total: 2 });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// WHERE THINGS ENDED UP. The judge is asked end-state questions and used to be
+// handed a change-log: a diff says three threads changed and cannot say that
+// eleven did not, four of them still unread. What the agent left alone is
+// invisible in a diff, and that is precisely what "no customer left without a
+// response" is about.
+// ---------------------------------------------------------------------------
+
+/** The section under test, cut out of the prompt by its neighbours. */
+function endedUp(prompt: string): string {
+  return prompt.slice(
+    prompt.indexOf("WHERE THINGS ENDED UP"),
+    prompt.indexOf("DETERMINISTIC CHECKS ALREADY RUN"),
+  );
+}
+
+/** A mailbox of `n` threads, all unread and all in the inbox. */
+function bigMailbox(n: number): TwinFinalState {
+  return {
+    state: {
+      twin: "gmail",
+      capturedAt: 2000,
+      labels: [{ id: "INBOX", name: "INBOX", unread: n }],
+      threads: Array.from({ length: n }, (_, i) => ({
+        threadId: `T${i}`,
+        subject: `still waiting ${i}`,
+        from: `person${i}@x.test`,
+        date: 1,
+        labels: ["INBOX", "UNREAD"],
+        unread: true,
+        starred: false,
+        count: 1,
+      })),
+      drafts: [],
+    },
+    coverage: { shown: n, total: n },
+    kept: "the inbox, plus every thread the run touched",
+  };
+}
+
+describe("buildEpisodePrompt final state", () => {
+  it("shows the thread nothing else in the prompt mentions, still unread at the close", () => {
+    const section = endedUp(buildEpisodePrompt(input()).prompt);
+
+    // T7 appears in no diff, no step and no timeline row — this section is the only
+    // place the judge can learn that a customer is still sitting there unanswered.
+    expect(section).toContain("Refund still not processed");
+    expect(section).toContain("UNREAD");
+    expect(section).toContain("Still unread when the day ended: 1 in INBOX");
+    expect(section).toContain("1 draft(s) still sitting unsent");
+  });
+
+  it("reads as a state and not as a second diff", () => {
+    const { prompt } = buildEpisodePrompt(input());
+    const section = endedUp(prompt);
+
+    expect(section).toContain("This is a STATE, not a change");
+    expect(section).toContain("what the agent LEFT");
+    // The diff's own vocabulary stays in the diff. If this section grew `+`/`~`
+    // rows it would read as a change-log and teach the judge nothing new.
+    expect(section).not.toContain("+ new thread");
+    expect(section).not.toContain("other item(s) unchanged");
+
+    // And the section it must not be confused with says which is which.
+    const diffs = prompt.slice(
+      prompt.indexOf("WHAT CHANGED ON EACH SURFACE"),
+      prompt.indexOf("WHERE THINGS ENDED UP"),
+    );
+    expect(diffs).toContain("read the next section");
+  });
+
+  it("says in place what the window left out, and whose omission it is", () => {
+    const section = endedUp(buildEpisodePrompt(input()).prompt);
+
+    expect(section).toContain("2 of 14 thread(s) are listed");
+    expect(section).toContain("the inbox, plus every thread the run touched");
+    expect(section).toContain("The other 12 are held back BY US");
+    expect(section).toContain("not the agent's doing");
+  });
+
+  it("records the elision on the report's coverage without dragging the headline down", () => {
+    const { coverage } = buildEpisodePrompt(input());
+
+    // The reader of the verdict can see the judge was shown a filtered end state.
+    expect(coverage.finalState).toEqual({ shown: 2, total: 14 });
+    // But the headline still answers the question it was built for — how much of
+    // the DAY fitted. A relevance filter is not a context-window failure, and
+    // folding it in would report every ordinary run as two-thirds unseen.
+    expect(coverage.fraction).toBe(1);
+    expect(coverage.complete).toBe(true);
+    expect(buildEpisodePrompt(input()).prompt).not.toContain(
+      "HOW MUCH OF THIS RUN YOU ARE READING",
+    );
+  });
+
+  it("samples an end state too big for its budget, and marks the gaps", () => {
+    const { prompt, coverage } = buildEpisodePrompt(
+      input({ finalState: { gmail: bigMailbox(4000) } }),
+    );
+    const section = endedUp(prompt);
+
+    expect(coverage.finalState?.total).toBe(4000);
+    expect(coverage.finalState?.shown).toBeLessThan(4000);
+    expect(section).toMatch(/… \d+ threads not shown here …/);
+    // The endpoints of any sampled list survive, here as elsewhere.
+    expect(section).toContain("still waiting 0");
+    expect(section).toContain("still waiting 3999");
+  });
+
+  it("keeps one item to a line, so a pasted post cannot forge a list", () => {
+    const section = endedUp(
+      buildEpisodePrompt(
+        input({
+          finalState: {
+            slack: {
+              state: {
+                twin: "slack",
+                capturedAt: 2000,
+                channels: [],
+                messages: [
+                  {
+                    channelId: "C1",
+                    channelName: "ops",
+                    ts: "1.0",
+                    user: "U01SAM",
+                    text: "status:\n\n1. vertex\n2. streamline",
+                    replyCount: 0,
+                    reactions: [],
+                  },
+                ],
+              },
+              coverage: { shown: 1, total: 1 },
+              kept: "messages posted today",
+            },
+          },
+        }),
+      ).prompt,
+    );
+
+    // `fitLines` counts lines, so a two-line item would make its gap markers lie.
+    expect(section).toContain("#ops U01SAM: status: 1. vertex 2. streamline");
+  });
+
+  it("puts the diary in start order, so two meetings that now clash sit next to each other", () => {
+    const at = (startISO: string, endISO: string, title: string, eventId: string) => ({
+      eventId,
+      title,
+      startISO,
+      endISO,
+      organizer: "sam@northwind.test",
+      attendees: [],
+      status: "confirmed" as const,
+    });
+    const section = endedUp(
+      buildEpisodePrompt(
+        input({
+          finalState: {
+            calendar: {
+              state: {
+                twin: "calendar",
+                capturedAt: 2000,
+                events: [
+                  at("2026-08-06T16:00:00Z", "2026-08-06T17:00:00Z", "Retro", "E3"),
+                  at("2026-08-06T14:00:00Z", "2026-08-06T15:00:00Z", "Board prep", "E1"),
+                  at("2026-08-06T14:30:00Z", "2026-08-06T15:30:00Z", "Moved here by the agent", "E2"),
+                ],
+              },
+              coverage: { shown: 3, total: 3 },
+              kept: "events in the day",
+            },
+          },
+        }),
+      ).prompt,
+    );
+
+    const order = ["Board prep", "Moved here by the agent", "Retro"].map((t) => section.indexOf(t));
+    expect(order).toEqual([...order].sort((a, b) => a - b));
+    // The clash is only readable as two adjacent lines — no diff can show it.
+    expect(section).toContain("read consecutive lines against each other");
+  });
+
+  it("names a surface whose after-snapshot never came back rather than rendering it empty", () => {
+    // The run used gmail — its diff proves it — but no end-of-day snapshot landed.
+    const section = endedUp(buildEpisodePrompt(input({ finalState: {} })).prompt);
+
+    expect(section).toContain("GMAIL");
+    expect(section).toContain("NOT CAPTURED");
+    expect(section).toContain("Treat its end state as UNKNOWN, not as clear");
+    // "nothing is outstanding here" and "we never looked" are opposite claims.
+    expect(section).not.toContain("Nothing is left unread");
+  });
+
+  it("says so in its own words when no surface was snapshotted at all", () => {
+    const section = endedUp(buildEpisodePrompt(input({ finalState: {}, diffs: {} })).prompt);
+
+    expect(section).toContain("no surface was snapshotted at the end of this run");
+    expect(section).toContain("where the day left things is unknown");
   });
 });
 

@@ -62,6 +62,10 @@ export interface JudgeOptions {
  * `coverage` is stamped rather than asked for on purpose: how much of the run
  * reached the prompt is a fact about the prompt, known before the call, and a
  * model asked to report its own blind spot is the last witness to trust about it.
+ * That now covers the end state too: `coverage.finalState` says how much of each
+ * twin's closing state the judge was shown, and it rides onto the report by the
+ * same route, so the reader of a verdict about what was LEFT undone can see how
+ * much of what was left the judge actually had in front of it.
  */
 type JudgeResponse = Omit<EpisodeJudgeReport, "runId" | "judgedAt" | "model" | "coverage">;
 

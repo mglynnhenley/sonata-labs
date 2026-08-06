@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { runExecution } from "@sonata/core";
 import { judgeRun } from "@/lib/engine/verdict";
 import { isModelId } from "@/lib/models";
-import { readBrief, readRun } from "../../../../results/_lib/artifacts";
+import { readRun, readSpec } from "../../../../results/_lib/artifacts";
 
 // Re-judge a saved run with a different model. Nothing is re-run: the day on
 // disk is read again, so the only thing that can change is the judge's half of
@@ -55,7 +55,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ runId: 
   }
 
   try {
-    const { report, autonomy } = await judgeRun(run, readBrief(runId), {
+    const { report, autonomy } = await judgeRun(run, readSpec(runId), {
       ...(model ? { model } : {}),
       signal: req.signal,
     });

@@ -12,6 +12,7 @@ const INPUT: EpisodeJudgeInput = {
   story: "Dana escalates.",
   timeline: [],
   diffs: {},
+  finalState: {},
   trace: { steps: [], turns: [], escalations: [] },
   checklistResults: [],
   judgeQuestions: ["Was the tone right?", "Did it tell the team?"],
@@ -194,6 +195,10 @@ describe("judge coverage", () => {
       steps: { shown: 0, total: 0 },
       timeline: { shown: 0, total: 0 },
       narration: { shown: 0, total: 0 },
+      // How much of the end state the judge read rides onto the report by the same
+      // route: a verdict about what was LEFT undone is worth what the judge was
+      // shown of what was left.
+      finalState: { shown: 0, total: 0 },
       fraction: 1,
       complete: true,
     });

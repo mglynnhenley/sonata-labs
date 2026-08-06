@@ -6,6 +6,7 @@ import { getEpisode } from "../../../api/_lib/records";
 import { readBrief, readRun, type SavedRun } from "../../../results/_lib/artifacts";
 import { buildRunReport } from "../../../results/_lib/report";
 import { ReportView } from "../../../results/_components/ReportView";
+import { endOfDay, endStateMarkdown, hasEndState } from "../../../results/_components/endstate";
 import {
   harnessMarkdown,
   harnessReport,
@@ -53,22 +54,56 @@ function withHarnessSection(markdown: string, section: string): string {
   return `${markdown.slice(0, at + 1)}${section}\n\n${markdown.slice(at + 1)}`;
 }
 
+/** `buildRunReport`'s section on what the coworker did, hour by hour. */
+const DID = "\n## How it worked the day";
+
+/**
+ * Put where-it-ended-up directly after what-it-did.
+ *
+ * The two are read as one thought — the hours, then what was left standing at the
+ * end of them — and adjacency is what stops the counts being taken for more
+ * activity. If that heading ever moves, the section appends: last is a worse
+ * position than second-to-last, and both are better than dropping it.
+ */
+function withEndStateSection(markdown: string, section: string): string {
+  const at = markdown.indexOf(DID);
+  const next = at < 0 ? -1 : markdown.indexOf("\n## ", at + DID.length);
+  if (next < 0) return `${markdown}\n\n${section}\n`;
+  return `${markdown.slice(0, next + 1)}${section}\n\n${markdown.slice(next + 1)}`;
+}
+
 export default async function ReportPage({ params }: { params: Promise<{ runId: string }> }) {
   const { runId } = await params;
   const run = readRun(runId);
   if (!run) notFound();
 
   const brief = readBrief(runId);
+  const spec = scheduledDay(run);
   const { report, judge } = harnessReport({
     run,
-    spec: scheduledDay(run),
+    spec,
     capture: run.evidence,
     offsetMinutes: brief.offsetMinutes,
   });
+  // The assessment is a document about what the coworker DID. Several of the
+  // criteria it reports on are claims about where things finished — and what
+  // was never touched leaves no trace in any of it — so the closing state of
+  // each system is set down beside it, off the artifact's own snapshots.
+  const closing = endOfDay({
+    snapshots: run.snapshots,
+    ticks: run.ticks,
+    cast: spec?.world.cast ?? [],
+    evidence: run.evidence.twins,
+    offsetMinutes: brief.offsetMinutes,
+    judge,
+  });
   const assessment = buildRunReport(withFindings(run, judge), brief);
-  const markdown = hasFaults(report)
-    ? withHarnessSection(assessment, harnessMarkdown(report))
+  const withEndState = hasEndState(closing)
+    ? withEndStateSection(assessment, endStateMarkdown(closing))
     : assessment;
+  const markdown = hasFaults(report)
+    ? withHarnessSection(withEndState, harnessMarkdown(report))
+    : withEndState;
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">

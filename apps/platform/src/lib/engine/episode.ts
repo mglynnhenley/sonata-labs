@@ -29,7 +29,7 @@ import { engineLoop } from "./loop";
 import { applyStoredApiKey } from "./apiKey";
 import { ensureTwins, loadClone, twinUrlMap } from "./preflight";
 import { resolveScenario, specForRun } from "./scenarios";
-import { briefFor, judgeRun, scoreRun } from "./verdict";
+import { judgeRun, scoreRun } from "./verdict";
 
 // STARTING A DAY, AND WATCHING IT.
 //
@@ -620,7 +620,7 @@ async function complete(
     entry.status = "judging";
     updateRunProgress(entry.runId, { status: "judging" });
     try {
-      const judged = await judgeRun(scored, briefFor(spec), {
+      const judged = await judgeRun(scored, spec, {
         ...(input.judgeModel?.trim() ? { model: input.judgeModel.trim() } : {}),
         signal: entry.controller.signal,
       });

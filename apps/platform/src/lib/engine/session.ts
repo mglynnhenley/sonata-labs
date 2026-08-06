@@ -34,7 +34,7 @@ import { getSettings } from "../settings";
 import { applyStoredApiKey } from "./apiKey";
 import { ensureTwins, loadClone, twinUrlMap } from "./preflight";
 import { listScenarios, resolveScenario, specForRun } from "./scenarios";
-import { briefFor, judgeRun, scoreRun } from "./verdict";
+import { judgeRun, scoreRun } from "./verdict";
 
 // PLUGGING AN AGENT IN, FROM THE DASHBOARD.
 //
@@ -698,7 +698,7 @@ async function settle(entry: LiveSession, record: SessionRecord): Promise<void> 
 
   db().prepare("UPDATE sessions SET status = 'judging' WHERE id = ?").run(entry.sessionId);
   try {
-    const judged = await judgeRun(scored, briefFor(entry.spec));
+    const judged = await judgeRun(scored, entry.spec);
     db()
       .prepare("UPDATE sessions SET status = ?, autonomy = ? WHERE id = ?")
       .run(status, judged.autonomy, entry.sessionId);

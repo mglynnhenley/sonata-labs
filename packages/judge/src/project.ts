@@ -1,19 +1,24 @@
-import { runTruncation, type RunTruncation } from "@sonata/core";
+import { endISO, runTruncation, TWIN_NAMES, type RunTruncation } from "@sonata/core";
 import type {
   AgentStep,
   BeatBody,
   ByTwin,
+  CalendarSnapshot,
+  Clock,
   Criterion,
   CriterionResult,
   DirectorEvent,
   EpisodeJudgeInput,
   EpisodeRun,
   EpisodeSpec,
+  GmailSnapshot,
   JudgeStep,
   JudgeTrace,
+  SlackSnapshot,
   TickRecord,
   TimelineEntry,
   TwinDiff,
+  TwinFinalState,
 } from "@sonata/core";
 
 // Compress a finished run into the object the judge reads.
@@ -26,9 +31,10 @@ import type {
 // long before it reads a finding, and `completeJSON` caps output tokens, not input.
 //
 // What survives: one line per thing that happened (the timeline), what the agent did
-// with results summarized to a line, what it said, and the per-twin diffs — which are
+// with results summarized to a line, what it said, the per-twin diffs — which are
 // ground truth about effects and cost almost nothing, because a diff lists what
-// changed and counts what did not.
+// changed and counts what did not — and where each twin ended up, narrowed to the
+// day, because a diff cannot answer a question about what was left untouched.
 
 /** Cap on a projected tool result. Past this a result is a payload, not a signal. */
 const MAX_SUMMARY = 300;
@@ -258,6 +264,203 @@ function truncationOf(input: ProjectInput): RunTruncation | null {
   });
 }
 
+// ---------------------------------------------------------------------------
+// WHERE THINGS ENDED UP. The after-snapshot, narrowed.
+//
+// The diffs answer "what moved". They cannot answer "what was left", because
+// what the agent never touched leaves no row in a diff — and a criterion like
+// "no customer is left without a response" is a question about exactly that.
+// So the end state goes in alongside, and the only real problem is size.
+//
+// Measured on `run_msg8vldg_l9hj`'s own after-snapshots: gmail 8,189 chars over
+// 20 threads, slack 10,566 over 30 messages, calendar 101,912 over 250 events.
+// Attached raw that is ~30k tokens, 85% of it diary from days the run never
+// reached, and it would crowd out the trace.
+//
+// The rule is RELEVANCE, not a flat cap — keep what the day could plausibly be
+// about, drop what it demonstrably was not:
+//
+//   calendar  events inside the simulated day plus a margin, and every event the
+//             run touched wherever it landed (a meeting pushed to next week is
+//             the agent's doing and has to stay visible)
+//   gmail     the inbox, plus every thread the run touched. Not time-windowed:
+//             a thread that has sat unanswered since last month is precisely the
+//             signal this section exists to carry
+//   slack     every channel — the list is short and its counts are state — plus
+//             messages inside the same window
+//
+// The window's ends come from the spec's clock, so a scenario simulating three
+// days gets a three-day window with nobody editing this file.
+//
+// What that costs, measured on the same run: gmail 8,189 -> 6,231 (11 of 20
+// threads), slack 10,566 -> 9,279 (26 of 30 messages), calendar 101,912 -> 3,892
+// (10 of 250 events). 120,667 chars of snapshot down to 19,402, and the whole
+// rendered section lands at 14.7k — about 3.7k tokens, next to the ~30k that
+// attaching the three raw would have cost. Almost all of the saving is diary the
+// run never reached, which is the point: relevance pays for itself here and a
+// flat cap would have been paid for out of the day the judge is assessing.
+// ---------------------------------------------------------------------------
+
+/**
+ * How far either side of the simulated day an end state still counts as today's.
+ *
+ * A day, because that is the reach of a criterion about a day: "did it push the
+ * 3pm to tomorrow morning", "was this the follow-up to yesterday's review". Only
+ * the shoulder is fixed; the ends it hangs off are the clock's.
+ */
+const WINDOW_MARGIN_MS = 24 * 60 * 60 * 1000;
+
+/** Gmail's own name for the inbox — a thread out of it is a thread filed away. */
+const INBOX = "INBOX";
+
+interface DayWindow {
+  from: number;
+  to: number;
+  /** As the judge is shown it, so the prompt never re-formats these two instants. */
+  label: string;
+}
+
+/** Milliseconds, or null for anything unparseable. */
+function instant(iso: string): number | null {
+  const ms = Date.parse(iso);
+  return Number.isFinite(ms) ? ms : null;
+}
+
+/** The scheduled day. Null on a clock the core rejects — an offsetless start. */
+function clockSpan(clock: Clock | undefined): { from: number; to: number } | null {
+  if (!clock) return null;
+  try {
+    const from = instant(clock.startISO);
+    const to = instant(endISO(clock));
+    return from === null || to === null ? null : { from, to };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The day the run actually simulated, from the ticks themselves. The fallback for
+ * a caller that passes no clock — and it has to be the SIMULATED time, never
+ * `capturedAt`: on `run_msg8vldg_l9hj` the snapshots were captured on 2026-08-05
+ * for a day set on 2026-08-06, so anchoring on the wall clock would window the day
+ * out of its own diary.
+ */
+function tickSpan(ticks: TickRecord[]): { from: number; to: number } | null {
+  const times = ticks.map((t) => instant(t.simTimeISO)).filter((n): n is number => n !== null);
+  return times.length === 0 ? null : { from: Math.min(...times), to: Math.max(...times) };
+}
+
+/** Null when nothing dates the day; the caller then narrows by nothing. */
+function dayWindow(input: ProjectInput): DayWindow | null {
+  const span = clockSpan(input.spec.clock) ?? tickSpan(input.run.ticks);
+  if (!span) return null;
+  const from = span.from - WINDOW_MARGIN_MS;
+  const to = span.to + WINDOW_MARGIN_MS;
+  return {
+    from,
+    to,
+    label: `${new Date(from).toISOString()} to ${new Date(to).toISOString()}`,
+  };
+}
+
+function inWindow(ms: number | null, w: DayWindow | null): boolean {
+  // Undateable, or nothing to date it against: keep it. A filter that cannot tell
+  // must not be the thing that hides the day.
+  if (w === null || ms === null) return true;
+  return ms >= w.from && ms <= w.to;
+}
+
+/** Every thread id the diff says the run reached, however it reached it. */
+function touchedThreads(d: TwinDiff | undefined): Set<string> {
+  if (d?.twin !== "gmail") return new Set();
+  return new Set([...d.added, ...d.removed, ...d.changed].map((t) => t.threadId));
+}
+
+/** Every event id the diff says the run reached. */
+function touchedEvents(d: TwinDiff | undefined): Set<string> {
+  if (d?.twin !== "calendar") return new Set();
+  return new Set([
+    ...d.created.map((e) => e.eventId),
+    ...d.cancelled.map((e) => e.eventId),
+    ...d.moved.map((e) => e.eventId),
+    ...d.attendeesChanged.map((e) => e.eventId),
+    ...d.rsvpChanged.map((e) => e.eventId),
+  ]);
+}
+
+function gmailFinalState(s: GmailSnapshot, touched: Set<string>): TwinFinalState {
+  const threads = s.threads.filter((t) => t.labels.includes(INBOX) || touched.has(t.threadId));
+  return {
+    state: {
+      ...s,
+      threads: threads.map((t) => ({ ...t, subject: truncate(t.subject, MAX_LINE) })),
+      // Drafts stay whole: a draft is the tell for "wrote it but would not send
+      // it", which is the autonomy question, and the list is short by nature.
+      drafts: s.drafts.map((d) => ({ ...d, excerpt: truncate(d.excerpt, MAX_LINE) })),
+    },
+    coverage: { shown: threads.length, total: s.threads.length },
+    kept: "the inbox, plus every thread the run touched",
+  };
+}
+
+/** Slack stamps a message with epoch SECONDS as a string, e.g. "1786013100.000003". */
+function slackInstant(ts: string): number | null {
+  const seconds = Number.parseFloat(ts);
+  return Number.isFinite(seconds) ? seconds * 1000 : null;
+}
+
+function slackFinalState(s: SlackSnapshot, w: DayWindow | null): TwinFinalState {
+  const messages = s.messages.filter((m) => inWindow(slackInstant(m.ts), w));
+  return {
+    state: {
+      ...s,
+      messages: messages.map((m) => ({ ...m, text: truncate(m.text, MAX_LINE) })),
+    },
+    coverage: { shown: messages.length, total: s.messages.length },
+    kept: w ? `messages posted ${w.label}` : "every message the snapshot held",
+  };
+}
+
+function calendarFinalState(
+  s: CalendarSnapshot,
+  w: DayWindow | null,
+  touched: Set<string>,
+): TwinFinalState {
+  const events = s.events.filter(
+    (e) => touched.has(e.eventId) || inWindow(instant(e.startISO), w),
+  );
+  return {
+    state: { ...s, events: events.map((e) => ({ ...e, title: truncate(e.title, MAX_LINE) })) },
+    coverage: { shown: events.length, total: s.events.length },
+    kept: w
+      ? `events starting ${w.label}, plus every event the run touched wherever it landed`
+      : "every event the snapshot held",
+  };
+}
+
+/**
+ * The end of the day on each surface, narrowed.
+ *
+ * A twin whose after-snapshot never landed is simply absent, and the engine's
+ * pairing is why: it stores a twin's snapshots only when BOTH the before and the
+ * after came back, so a capture that failed at the end of the day leaves no entry
+ * at all. Absent is the honest answer — the prompt turns it into a sentence rather
+ * than a surface with nothing on it.
+ */
+export function buildFinalState(input: ProjectInput): ByTwin<TwinFinalState> {
+  const w = dayWindow(input);
+  const out: ByTwin<TwinFinalState> = {};
+  for (const name of TWIN_NAMES) {
+    const after = input.run.snapshots[name]?.after;
+    if (!after) continue;
+    const diff = input.diffs[name];
+    if (after.twin === "gmail") out.gmail = gmailFinalState(after, touchedThreads(diff));
+    else if (after.twin === "slack") out.slack = slackFinalState(after, w);
+    else out.calendar = calendarFinalState(after, w, touchedEvents(diff));
+  }
+  return out;
+}
+
 /**
  * A `judged` criterion becomes a question, keeping its severity visible: a `must`
  * the checklist cannot decide is exactly the thing the judge must not gloss over.
@@ -275,6 +478,7 @@ export function projectEpisode(input: ProjectInput): EpisodeJudgeInput {
     story: storyFor(input, truncation),
     timeline: buildTimeline(input.run.ticks),
     diffs: input.diffs,
+    finalState: buildFinalState(input),
     trace: buildTrace(input.run.ticks, input.agentSummary),
     checklistResults: input.checklist,
     judgeQuestions: [
