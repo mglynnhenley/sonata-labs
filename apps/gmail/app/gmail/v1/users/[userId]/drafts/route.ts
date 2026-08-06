@@ -1,4 +1,5 @@
 import { handleGmail, json, runMutation } from "@/lib/gmail/route-helpers";
+import { GMAIL_SCOPE } from "@/lib/oauth/scopes";
 import { badRequest } from "@/lib/gmail/errors";
 import { b64urlDecode } from "@/lib/gmail/base64";
 import { listDraftRows, countDrafts } from "@/lib/store/drafts";
@@ -15,7 +16,7 @@ export async function GET(
   { params }: { params: Promise<{ userId: string }> },
 ) {
   const { userId } = await params;
-  return handleGmail(req, userId, ({ db }) => {
+  return handleGmail(req, userId, GMAIL_SCOPE.readonly, ({ db }) => {
     const sp = new URL(req.url).searchParams;
     const limit = clampMaxResults(sp.get("maxResults"));
     const { offset } = decodePageToken(sp.get("pageToken"));
@@ -42,7 +43,7 @@ export async function POST(
   { params }: { params: Promise<{ userId: string }> },
 ) {
   const { userId } = await params;
-  return handleGmail(req, userId, async ({ db }) => {
+  return handleGmail(req, userId, GMAIL_SCOPE.compose, async ({ db }) => {
     const body = (await req.json().catch(() => ({}))) as {
       message?: { raw?: string; threadId?: string };
       raw?: string;

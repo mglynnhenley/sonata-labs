@@ -8,11 +8,14 @@
 
 import { google } from "googleapis";
 import { b64urlEncode } from "../src/lib/gmail/base64.js";
+import { obtainAccessToken } from "../src/lib/eval/client.js";
 
 const PORT = process.env.PORT || "3100";
 const ROOT = `http://localhost:${PORT}`;
+// /gmail/v1/* is behind OAuth now — mint a provider access token via the
+// admin-gated bridge, then hand it to the SDK the way a real agent would.
 const auth = new google.auth.OAuth2();
-auth.setCredentials({ access_token: process.env.SANDBOX_TOKEN || "sandbox-token" });
+auth.setCredentials({ access_token: await obtainAccessToken(ROOT) });
 const gmail = google.gmail({ version: "v1", auth, rootUrl: ROOT });
 const userId = "me";
 

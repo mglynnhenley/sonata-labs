@@ -1,4 +1,5 @@
 import { handleGmail, json } from "@/lib/gmail/route-helpers";
+import { GMAIL_SCOPE } from "@/lib/oauth/scopes";
 import { listMessages } from "@/lib/store/messages";
 import { compileQuery } from "@/lib/search/compile";
 import { clampMaxResults, decodePageToken, encodePageToken } from "@/lib/gmail/pagination";
@@ -11,7 +12,7 @@ export async function GET(
   { params }: { params: Promise<{ userId: string }> },
 ) {
   const { userId } = await params;
-  return handleGmail(req, userId, ({ db }) => {
+  return handleGmail(req, userId, GMAIL_SCOPE.readonly, ({ db }) => {
     const url = new URL(req.url);
     const sp = url.searchParams;
 

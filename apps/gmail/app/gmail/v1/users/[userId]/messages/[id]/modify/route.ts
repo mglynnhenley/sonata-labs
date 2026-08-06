@@ -1,4 +1,5 @@
 import { handleGmail, json, runMutation } from "@/lib/gmail/route-helpers";
+import { GMAIL_SCOPE } from "@/lib/oauth/scopes";
 import { modifyMessage } from "@/lib/gmail/mutations";
 
 export const runtime = "nodejs";
@@ -9,7 +10,7 @@ export async function POST(
   { params }: { params: Promise<{ userId: string; id: string }> },
 ) {
   const { userId, id } = await params;
-  return handleGmail(req, userId, async ({ db }) => {
+  return handleGmail(req, userId, GMAIL_SCOPE.modify, async ({ db }) => {
     const body = (await req.json().catch(() => ({}))) as {
       addLabelIds?: string[];
       removeLabelIds?: string[];

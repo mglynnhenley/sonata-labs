@@ -1,4 +1,5 @@
 import { handleGmail, json, runMutation, noContent } from "@/lib/gmail/route-helpers";
+import { GMAIL_SCOPE } from "@/lib/oauth/scopes";
 import { notFound, badRequest } from "@/lib/gmail/errors";
 import { b64urlDecode } from "@/lib/gmail/base64";
 import { getDraftRow, deleteDraftRow } from "@/lib/store/drafts";
@@ -15,7 +16,7 @@ export async function GET(
   { params }: { params: Promise<{ userId: string; id: string }> },
 ) {
   const { userId, id } = await params;
-  return handleGmail(req, userId, ({ db }) => {
+  return handleGmail(req, userId, GMAIL_SCOPE.readonly, ({ db }) => {
     const draft = getDraftRow(db, id);
     if (!draft) return notFound();
     const row = getMessageRow(db, draft.message_id);
@@ -29,7 +30,7 @@ async function update(
   params: Promise<{ userId: string; id: string }>,
 ) {
   const { userId, id } = await params;
-  return handleGmail(req, userId, async ({ db }) => {
+  return handleGmail(req, userId, GMAIL_SCOPE.compose, async ({ db }) => {
     const body = (await req.json().catch(() => ({}))) as {
       message?: { raw?: string };
       raw?: string;
@@ -65,7 +66,7 @@ export async function DELETE(
   { params }: { params: Promise<{ userId: string; id: string }> },
 ) {
   const { userId, id } = await params;
-  return handleGmail(req, userId, ({ db }) => {
+  return handleGmail(req, userId, GMAIL_SCOPE.compose, ({ db }) => {
     const draft = getDraftRow(db, id);
     if (!draft) return notFound();
     const endpoint = new URL(req.url).pathname;

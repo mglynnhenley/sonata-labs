@@ -4,6 +4,7 @@ import {
   defaultRootUrl,
   defaultToken,
   injectFixture,
+  obtainAccessToken,
   latestActionId,
   resetSandbox,
   sandboxIsUp,
@@ -120,7 +121,9 @@ async function runTracedEval(opts: RunEvalOptions): Promise<EvalReportWithJudge>
     await resetSandbox(`before eval: ${scenario.id}`, rootUrl);
   }
 
-  const gmail = connectGmail(rootUrl, token);
+  // /gmail/v1/* is behind OAuth now: mint a provider access token with the admin
+  // token, then connect the SDK the same way an agent would.
+  const gmail = connectGmail(rootUrl, await obtainAccessToken(rootUrl, token));
   const userId = "me";
 
   // 1. Context — who this mailbox belongs to and who they talk to.

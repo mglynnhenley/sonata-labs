@@ -92,6 +92,50 @@ CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5 (
 );
 
 -- ---------------------------------------------------------------------------
+-- OAuth2 (snapshot.db / working.db) — the sandbox's authorization server.
+--
+-- Additive to the mailbox schema so a `reset` (which copies snapshot.db over
+-- working.db) carries the registered clients along: the well-known dev client is
+-- seeded into BOTH files at db:init, and re-seeded after every reset, so the UI
+-- can always complete its flow. Access/refresh tokens are ephemeral and
+-- re-mintable, so losing them on reset is fine (the harness re-acquires on 401).
+-- No `users` table — the sandbox is single-persona; identity is getProfileEmail().
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS oauth_clients (
+  client_id     TEXT PRIMARY KEY,
+  client_secret TEXT,                          -- NULL for public clients (none today; PKCE required regardless)
+  name          TEXT NOT NULL,                 -- shown on the consent screen ("<name> wants access…")
+  redirect_uris TEXT NOT NULL,                 -- JSON array; validated by EXACT match
+  confidential  INTEGER NOT NULL DEFAULT 1,    -- 1 = has a secret used at the token endpoint
+  created_at    INTEGER NOT NULL               -- epoch ms
+);
+
+CREATE TABLE IF NOT EXISTS oauth_authorization_codes (
+  code                  TEXT PRIMARY KEY,
+  client_id             TEXT NOT NULL,
+  redirect_uri          TEXT NOT NULL,         -- the exact URI the code was issued against
+  scope                 TEXT NOT NULL,         -- space-delimited granted scopes
+  code_challenge        TEXT NOT NULL,         -- PKCE (S256 required on every authorize)
+  code_challenge_method TEXT NOT NULL DEFAULT 'S256',
+  expires_at            INTEGER NOT NULL,      -- epoch ms (~60s)
+  used_at               INTEGER                -- epoch ms; set on first exchange → single-use
+);
+
+CREATE TABLE IF NOT EXISTS oauth_tokens (
+  access_token             TEXT PRIMARY KEY,
+  refresh_token            TEXT UNIQUE,        -- NULL when a grant issues no refresh token
+  client_id                TEXT NOT NULL,
+  scope                    TEXT NOT NULL,      -- space-delimited granted scopes
+  access_token_expires_at  INTEGER NOT NULL,  -- epoch ms
+  refresh_token_expires_at INTEGER,           -- epoch ms; NULL = non-expiring
+  revoked_at               INTEGER,           -- epoch ms; set on revocation
+  created_at               INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_oauth_tokens_refresh ON oauth_tokens (refresh_token);
+
+-- ---------------------------------------------------------------------------
 -- Audit trail (audit.db) — separate file so it survives working.db resets.
 -- ---------------------------------------------------------------------------
 
