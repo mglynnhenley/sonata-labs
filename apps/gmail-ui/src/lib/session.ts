@@ -23,6 +23,20 @@ export interface FlowState {
   verifier: string;
   /** A nonce bound to the authorize page — echoed by the consent POST (CSRF). */
   nonce?: string;
+  /** Where to land after a successful exchange. Always a same-origin path. */
+  next?: string;
+}
+
+/**
+ * Only same-origin absolute paths may be used as a post-login destination.
+ * Rejects "//evil.com" (protocol-relative) and anything with a scheme, so a
+ * crafted link can't turn our own sign-in into an open redirect.
+ */
+export function safeNextPath(raw: string | null | undefined): string | undefined {
+  if (!raw) return undefined;
+  if (!raw.startsWith("/") || raw.startsWith("//")) return undefined;
+  if (/^\/\\/.test(raw)) return undefined; // "/\" is treated as protocol-relative by some parsers
+  return raw;
 }
 
 function key(): Buffer {

@@ -5,7 +5,7 @@ import {
   UI_CLIENT_SECRET,
   UI_REDIRECT_URI,
 } from "@/lib/oauth-config";
-import { setSession, takeFlow } from "@/lib/session";
+import { setSession, takeFlow, safeNextPath } from "@/lib/session";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -55,7 +55,9 @@ export async function GET(req: Request) {
     expires_at: Date.now() + (tok.expires_in ?? 3600) * 1000,
   });
 
-  return NextResponse.redirect(new URL("/", url.origin), 302);
+  // Re-validate on the way out: the cookie is sealed, but the destination is
+  // still user-supplied input and this is the redirect that actually fires.
+  return NextResponse.redirect(new URL(safeNextPath(flow.next) ?? "/", url.origin), 302);
 }
 
 function fail(origin: string, message: string): NextResponse {

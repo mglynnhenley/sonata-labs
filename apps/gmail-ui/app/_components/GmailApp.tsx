@@ -5,12 +5,11 @@ import type { RailLabel, ListView, ThreadView, ActivityData } from "./types";
 import { MessageList } from "./MessageList";
 import { ThreadPane } from "./ThreadView";
 import { ActivityPanel } from "./ActivityPanel";
-import { TracePanel } from "./TracePanel";
 
 type View = { kind: "list"; labelId: string; labelName: string } | { kind: "thread"; threadId: string };
 
-/** Right-hand panel, or none. Only one is useful at a time in 340px. */
-type Panel = "activity" | "trace" | null;
+/** Right-hand panel, or none. */
+type Panel = "activity" | null;
 
 const DEFAULT_VIEW: View = { kind: "list", labelId: "INBOX", labelName: "Inbox" };
 
@@ -66,10 +65,14 @@ export function GmailApp() {
     [refreshLabels],
   );
 
-  const inspectThread = useCallback(
-    (threadId: string) => openThread(threadId, { markRead: false }),
-    [openThread],
-  );
+  // Deep link: /?thread=<id> opens straight to a thread, so an outside surface
+  // (a run report showing what a step touched) can drop you into the mailbox in
+  // context. Read-only on purpose: inspecting must not mark the thread read, or
+  // the audit log the Activity panel is showing gains an action nobody took.
+  useEffect(() => {
+    const threadId = new URLSearchParams(window.location.search).get("thread");
+    if (threadId) openThread(threadId, { markRead: false });
+  }, [openThread]);
 
   const refreshActivity = useCallback(async () => {
     const r = await fetch("/api/activity").then((r) => r.json());
@@ -160,13 +163,6 @@ export function GmailApp() {
             label="Activity"
             title="Live agent action feed"
             onClick={() => setPanel((p) => (p === "activity" ? null : "activity"))}
-          />
-          <PanelToggle
-            active={panel === "trace"}
-            icon="route"
-            label="Traces"
-            title="Replay a recorded eval run"
-            onClick={() => setPanel((p) => (p === "trace" ? null : "trace"))}
           />
           <button className="rounded-full p-2.5 hover:bg-[#e9eef6]" aria-label="Support">
             <span className="material-symbols-outlined text-[#5f6368]">help</span>
@@ -260,7 +256,6 @@ export function GmailApp() {
             refreshLabels(); refreshActivity(); refreshList();
           }} />
         )}
-        {panel === "trace" && <TracePanel onOpenThread={inspectThread} />}
       </div>
     </div>
   );

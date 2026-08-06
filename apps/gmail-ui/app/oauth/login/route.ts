@@ -6,7 +6,7 @@ import {
   UI_SCOPES,
 } from "@/lib/oauth-config";
 import { randomUrlSafe, s256Challenge } from "@/lib/pkce";
-import { setFlow } from "@/lib/session";
+import { setFlow, safeNextPath } from "@/lib/session";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -14,10 +14,15 @@ export const dynamic = "force-dynamic";
 // Start the authorization-code flow. Generate PKCE + state, stash them in a
 // short-lived HttpOnly cookie, and redirect the browser to the API's consent
 // screen. The client_secret and code_verifier never leave the server.
-export async function GET() {
+//
+// `next` rides in the same cookie (not the OAuth `state`, which the API echoes
+// back verbatim) so a deep link survives the round trip. It is validated to a
+// same-origin path so sign-in can't be turned into an open redirect.
+export async function GET(req: Request) {
   const verifier = randomUrlSafe(32);
   const state = randomUrlSafe(16);
-  await setFlow({ state, verifier });
+  const next = safeNextPath(new URL(req.url).searchParams.get("next"));
+  await setFlow({ state, verifier, next });
 
   const authorize = new URL(`${API_URL}/oauth/authorize`);
   authorize.searchParams.set("response_type", "code");
