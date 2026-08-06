@@ -18,6 +18,7 @@ import { modelLabel } from "@/lib/models";
 import { ROUTES } from "@/lib/routes";
 import { StaleNotice } from "../../_components/StaleNotice";
 import { usePoll } from "../../_components/usePoll";
+import { useSimulated } from "../../_components/useSimulated";
 import { useGo } from "../../_components/useGo";
 import { apiSend } from "../../api/_lib/client";
 import type { EpisodeRecord, EpisodeSummary, RunSummary, StartRunInput } from "../../api/_lib/types";
@@ -60,6 +61,10 @@ export function RunsClient({
   const { toast } = useToast();
   const poll = usePoll<RunsFeed>("/api/runs", 3000, initial);
   const { data, refresh } = poll;
+  // Which of these rows no model ever played. /api/runs answers off the document
+  // store, which has no way to know — the question is only decidable from the
+  // artifacts, so it is asked once, where Home asks it.
+  const simulated = useSimulated();
 
   const [starting, setStarting] = useState(false);
   const [demoing, setDemoing] = useState(demo);
@@ -200,7 +205,7 @@ export function RunsClient({
           </div>
         </div>
         <div className="mt-5">
-          <PastRuns runs={data.runs} now={data.at} />
+          <PastRuns runs={data.runs} now={data.at} simulated={simulated} />
         </div>
       </section>
     </div>

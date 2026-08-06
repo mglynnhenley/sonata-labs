@@ -22,6 +22,7 @@ import {
   outcomeLabel,
   type RunSummary,
 } from "../_lib/summary";
+import { SIMULATED_LABEL } from "../_lib/simulated";
 import type { ReplayStats } from "../_lib/moments";
 
 // The verdict, at the top, big. Autonomy is the number the benchmark is about,
@@ -114,16 +115,22 @@ export function VerdictHeader({
                   Autonomy
                 </span>
                 <Badge status="neutral" size="sm">
-                  {NO_RESULT}
+                  {summary.simulated ? SIMULATED_LABEL : NO_RESULT}
                 </Badge>
               </div>
               <p className="mt-4 font-display-upright text-[34px] leading-[1.1] text-sn-ink">
-                No result
+                {summary.simulated ? "Simulated" : "No result"}
               </p>
               <p className="mt-3 text-[12.5px] leading-[19px] text-sn-muted">{summary.noResult}</p>
               <p className="mt-3 text-[12.5px] leading-[19px] text-sn-subtle">
-                Nothing is scored from a day like this — not zero, nothing. It is left out of
-                every mean and every table, and the day below is all there is to read.
+                {summary.simulated
+                  ? // Kept, not hidden: the replay below is a real record of what the
+                    // dashboard once showed the owner as a measurement, and deleting it
+                    // would make the product look cleaner than it was.
+                    "It is in no mean and no table. The day below is still worth reading — it is " +
+                      "exactly what this product used to present as a result."
+                  : "Nothing is scored from a day like this — not zero, nothing. It is left out of " +
+                    "every mean and every table, and the day below is all there is to read."}
               </p>
             </div>
             <p className="mt-5 border-t border-sn-line pt-3.5 text-[12px] text-sn-muted">
@@ -228,9 +235,11 @@ export function VerdictHeader({
             value={formatPercent(summary.score)}
             unit={coverage ? `of ${coverage.decided} decided, ${coverage.total} asked` : undefined}
             hint={
-              summary.noResult
-                ? "No criterion was checked: a checklist run against a day the agent never worked scores its negative criteria for free."
-                : coverageHint(coverage) ?? CHECKLIST_HINT
+              summary.simulated
+                ? "No criterion was checked. The day this checklist was scored against was scripted, so a pass here would have been a reading of the script."
+                : summary.noResult
+                  ? "No criterion was checked: a checklist run against a day the agent never worked scores its negative criteria for free."
+                  : coverageHint(coverage) ?? CHECKLIST_HINT
             }
             icon={<IconLayers size={15} />}
             actionLabel="See the checklist"

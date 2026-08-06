@@ -8,6 +8,7 @@ import {
   type ByTwin,
   type EpisodeRun,
   type EpisodeSpec,
+  type RunCost,
   type RunStatus,
   type Termination,
   type TickRecord,
@@ -18,7 +19,7 @@ import {
 } from "@sonata/core";
 import { createAdapters } from "@sonata/engine";
 import { mirrorRunFinish } from "../../../app/api/_lib/mirror";
-import { getWorld } from "../../../app/api/_lib/records";
+import { getEpisode as getScenario, getWorld } from "../../../app/api/_lib/records";
 import { newId } from "../../../app/api/_lib/store";
 import { readRun, runsDir } from "../../../app/results/_lib/artifacts";
 import { lastEventLine } from "../../../app/runs/_lib/story";
@@ -97,6 +98,11 @@ export interface RunView {
   /** Ticks recorded so far. */
   tick: number;
   plannedTicks: number;
+  /**
+   * The surfaces this run attached — narrowed from the scenario's by the caller,
+   * so it is the run's own answer rather than the scenario's.
+   */
+  twins: TwinName[];
   /** Simulated time at the head of the story. Drives the live clock. */
   simTimeISO: string;
   lastEvent: string | null;
@@ -104,7 +110,15 @@ export interface RunView {
   endedAt: number | null;
   score: number | null;
   autonomy: number | null;
-  costUsd: number;
+  /**
+   * What the day cost, in full.
+   *
+   * Summed from the run's own trace when the loop returns, so it is null while
+   * the day plays rather than a running $0.00 that reads as "free". A day that
+   * was stopped or that crashed still has one — it was paid either way — and it
+   * is the only place that figure survives for a run with no verdict.
+   */
+  cost: RunCost | null;
   error: string | null;
   /** True while this process still holds the run in memory. */
   live: boolean;
@@ -128,13 +142,14 @@ interface LiveRun {
   startedAt: number;
   endedAt: number | null;
   plannedTicks: number;
+  twins: TwinName[];
   ticks: TickRecord[];
   simTimeISO: string;
   lastEvent: string | null;
   error: string | null;
   score: number | null;
   autonomy: number | null;
-  costUsd: number;
+  cost: RunCost | null;
   /** Set by `cancel`, so the finish path can tell a stop from a natural end. */
   cancelled: boolean;
   controller: AbortController;
@@ -171,13 +186,14 @@ function toView(entry: LiveRun): RunView {
     status: entry.status,
     tick: entry.ticks.length,
     plannedTicks: entry.plannedTicks,
+    twins: entry.twins,
     simTimeISO: entry.simTimeISO,
     lastEvent: entry.lastEvent,
     startedAt: entry.startedAt,
     endedAt: entry.endedAt,
     score: entry.score,
     autonomy: entry.autonomy,
-    costUsd: entry.costUsd,
+    cost: entry.cost,
     error: entry.error,
     live: true,
   };
@@ -232,13 +248,14 @@ export function startEpisode(input: StartEpisodeInput): RunView {
     startedAt,
     endedAt: null,
     plannedTicks: total,
+    twins,
     ticks: [],
     simTimeISO: tickToISO(spec.clock, 0),
     lastEvent: null,
     error: null,
     score: null,
     autonomy: null,
-    costUsd: 0,
+    cost: null,
     cancelled: false,
     controller: new AbortController(),
   };
@@ -599,7 +616,7 @@ async function complete(
   // not know". The spend is known either way; it was paid either way.
   entry.score = verdict?.score ?? null;
   entry.autonomy = verdict?.autonomy ?? null;
-  entry.costUsd = result.cost.usd;
+  entry.cost = result.cost;
 
   // One terminal write for the row and the artifact together, through the same
   // function the rest of the dashboard finishes runs with.
@@ -663,7 +680,6 @@ function fail(
   twins: TwinName[],
 ): EpisodeRun {
   const status: RunStatus = entry.cancelled ? "aborted" : "failed";
-  entry.status = status;
   entry.error = message(err);
   entry.endedAt = Date.now();
 
@@ -687,6 +703,10 @@ function fail(
     // that fell over at 09:15 asked the clones on its way down.
     observed: true,
   });
+  // Terminal LAST. A poller that sees "failed" treats the run as finished and
+  // reads its artifact; saying so before the artifact exists is how a caller
+  // caches a broken day with no evidence attached to it.
+  entry.status = status;
   return run;
 }
 
@@ -709,13 +729,20 @@ function fromRow(runId: string): RunView | null {
     status: row.status,
     tick: row.tick,
     plannedTicks: row.totalTicks,
+    // The row does not record which surfaces were attached, and the process that
+    // knew died with the run — so this is the scenario's set, which is the most a
+    // reader can be told honestly rather than a guess dressed as a fact.
+    twins: getScenario(row.episodeId)?.twins ?? [],
     simTimeISO: row.simTime ?? "",
     lastEvent: row.lastEvent,
     startedAt: row.startedAt,
     endedAt: row.endedAt,
     score: row.score,
     autonomy: row.autonomy,
-    costUsd: row.costUsd,
+    // The row caches the dollars and nothing else. A breakdown with the tokens
+    // guessed at would read as measured, so the artifact answers this or nobody
+    // does — see `status`.
+    cost: null,
     error: row.error,
     live: false,
   };
@@ -742,8 +769,11 @@ export function status(runId: string, sinceTick = 0): RunPoll | null {
   if (!run) return null;
   const saved = readRun(runId);
   const ticks = saved?.ticks ?? [];
+  const verdict = saved?.verdict;
   return {
-    run: saved?.verdict ? { ...run, score: saved.verdict.score, autonomy: saved.verdict.autonomy } : run,
+    run: verdict
+      ? { ...run, score: verdict.score, autonomy: verdict.autonomy, cost: verdict.cost }
+      : run,
     ticks: ticks.filter((t) => t.tick >= from),
     nextSinceTick: ticks.length,
   };

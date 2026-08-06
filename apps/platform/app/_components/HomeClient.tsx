@@ -19,6 +19,7 @@ import type { Overview } from "@/lib/overview";
 // results pages cannot spell the same metric two ways.
 import { PASS_RATE_HINT, PASS_RATE_LABEL } from "../results/_lib/summary";
 import { FirstRun } from "./FirstRun";
+import { useSimulated } from "./useSimulated";
 import { QuickStart } from "./QuickStart";
 import { RecentRuns } from "./RecentRuns";
 import { RunningCard } from "./RunningCard";
@@ -35,11 +36,47 @@ export interface HomeClientProps {
   initial: Overview;
 }
 
+/**
+ * The footnote under the headline number: who is in the mean, and who is not.
+ *
+ * The two exclusions are named apart because they are different admissions. A
+ * run that never ran is a fact about that run. A run the stand-in fabricated is a
+ * fact about this product — it was in this mean until someone checked — and
+ * folding it into "never ran" would let the second hide inside the first on the
+ * one card that is read on every visit.
+ */
+function autonomyHint(stats: Overview["stats"], simulated: number): string {
+  if (stats.scored === 0) {
+    return simulated > 0
+      ? `How much gets done without a human. Nothing real has been scored yet — the ${simulated} saved run${simulated === 1 ? "" : "s"} here ${simulated === 1 ? "was" : "were"} simulated, with no model behind ${simulated === 1 ? "it" : "them"}.`
+      : "How much gets done without a human. Nothing scored yet.";
+  }
+
+  // Rows with no score, less the fabricated ones already named. Clamped because
+  // the two counts come from different stores — the rows and the artifacts — and
+  // a negative remainder would be a worse sentence than a missing one.
+  const never = Math.max(stats.unscored - simulated, 0);
+  const notes = [
+    ...(simulated > 0
+      ? [
+          `${simulated} ${simulated === 1 ? "was" : "were"} simulated — no model was ever called, so ${simulated === 1 ? "it is" : "they are"} not counted`,
+        ]
+      : []),
+    ...(never > 0 ? [`${never} more never ran, so ${never === 1 ? "it is" : "they are"} not counted`] : []),
+  ];
+
+  return (
+    `Mean across ${stats.scored} scored ${stats.scored === 1 ? "run" : "runs"} — mixes scenarios and models` +
+    notes.map((note) => ` · ${note}`).join("")
+  );
+}
+
 export function HomeClient({ initial }: HomeClientProps) {
   const go = useGo();
   const poll = usePoll<Overview>("/api/overview", 2500, initial);
   const { data, refresh } = poll;
   const { counts, stats, live, recent, twins } = data;
+  const simulated = useSimulated();
 
   if (data.firstRun) {
     return <FirstRun twins={twins} onTwinsChanged={refresh} />;
@@ -104,18 +141,12 @@ export function HomeClient({ initial }: HomeClientProps) {
             label="Autonomy"
             value={percent(stats.autonomy)}
             icon={<IconSpark size={15} />}
-            hint={
-              // The mean is over the runs that produced a result. Runs that never
-              // executed are named rather than averaged in — the count is the
-              // honest footnote to the number beside it. And a mean over unlike
-              // scenarios and models is barely a quantity, so it says so.
-              stats.scored === 0
-                ? "How much gets done without a human. Nothing scored yet."
-                : `Mean across ${stats.scored} scored ${stats.scored === 1 ? "run" : "runs"} — mixes scenarios and models` +
-                  (stats.unscored > 0
-                    ? ` · ${stats.unscored} more never ran, so ${stats.unscored === 1 ? "it is" : "they are"} not counted`
-                    : "")
-            }
+            // The mean is over the runs that produced a result. Runs that never
+            // executed, and runs no model ever touched, are named rather than
+            // averaged in — the counts are the honest footnote to the number
+            // beside them. And a mean over unlike scenarios and models is barely
+            // a quantity, so it says so.
+            hint={autonomyHint(stats, simulated.size)}
             href={ROUTES.compare}
             actionLabel="Compare properly, model by scenario"
             onClick={(e) => go(e, ROUTES.compare)}
@@ -148,9 +179,14 @@ export function HomeClient({ initial }: HomeClientProps) {
             label="Runs"
             value={counts.runs}
             icon={<IconPlay size={13} />}
-            hint={`${counts.worlds} ${counts.worlds === 1 ? "company" : "companies"} · ${counts.episodes} ${
-              counts.episodes === 1 ? "scenario" : "scenarios"
-            }`}
+            // The total counts everything on disk, fabricated days included —
+            // deleting them from the tally is how they got averaged in unnoticed.
+            // It just has to say how many of them there are.
+            hint={
+              `${counts.worlds} ${counts.worlds === 1 ? "company" : "companies"} · ${counts.episodes} ${
+                counts.episodes === 1 ? "scenario" : "scenarios"
+              }` + (simulated.size > 0 ? ` · ${simulated.size} simulated` : "")
+            }
             href={ROUTES.runs}
             actionLabel="Every run"
             onClick={(e) => go(e, ROUTES.runs)}
@@ -167,7 +203,7 @@ export function HomeClient({ initial }: HomeClientProps) {
         </div>
       </section>
 
-      <RecentRuns runs={recent} now={data.at} />
+      <RecentRuns runs={recent} now={data.at} simulated={simulated} />
 
       {twinsDown.length > 0 ? (
         <section>

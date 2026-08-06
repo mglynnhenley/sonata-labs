@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import {
   agentToolCalls,
@@ -33,6 +33,7 @@ import {
   writeJudgeReport,
   writtenFromTicks,
 } from "@sonata/judge";
+import { runSimulation } from "./simulated";
 
 // Read side of the run artifacts the engine writes to data/runs. Every
 // filesystem fact about results lives here — the pages and the API routes are
@@ -160,6 +161,11 @@ export interface RunEvidence {
  */
 export interface SavedRun extends EpisodeRun {
   evidence: RunEvidence;
+  /**
+   * True when the stand-in tick loop wrote this file rather than the engine —
+   * a demo of the dashboard, not a measurement of a model. See ./simulated.
+   */
+  simulated: boolean;
 }
 
 /** Stable order, so two artifacts of the same run read the same way. */
@@ -625,12 +631,23 @@ function normalizeRun(raw: unknown, fallbackId: string): SavedRun | null {
   const audit = list<TwinAuditRow>(r.audit);
   const saved = normalizeVerdict(r.verdict, runId, ticks, checklistFrom(r));
   const status = RUN_STATUSES.find((s) => s === r.status);
+  // Asked here, where the raw verdict is still in hand, because `cost.llmCalls`
+  // is one of its inputs and the next line is about to throw the verdict away.
+  const simulation = status
+    ? runSimulation({ status, ticks, audit, snapshots, verdict: saved })
+    : { simulated: false };
   // A verdict is only read back for a run that was in a state to have earned
   // one. Artifacts written before scoring learned to refuse still carry numbers
   // farmed off negative criteria by agents that never moved, and this page is
   // where those numbers would re-enter the product.
+  //
+  // A fabricated run is refused on the same grounds and by the same line: it has
+  // a checklist and a score, and both are readings of a coin flip. Dropping the
+  // verdict here is what keeps it out of every average downstream — `summarizeRun`
+  // has no score to publish, and `reconcileRunRows` writes the null through to the
+  // row Home reads — without a second notion of "excluded" existing anywhere.
   const verdict =
-    status && !runExecution({ status, ticks }).executed ? null : saved;
+    status && (simulation.simulated || !runExecution({ status, ticks }).executed) ? null : saved;
   return {
     runId,
     specId: str(r.specId, "unknown"),
@@ -645,6 +662,7 @@ function normalizeRun(raw: unknown, fallbackId: string): SavedRun | null {
     snapshots,
     ...(audit.length > 0 ? { audit } : {}),
     evidence: evidenceOf(r, spec, snapshots, audit),
+    simulated: simulation.simulated,
     verdict,
     ...(typeof r.error === "string" ? { error: r.error } : {}),
   };
@@ -781,6 +799,35 @@ export function repairEvidence(runIds?: readonly string[]): EvidenceRepair[] {
     }
   }
   return out;
+}
+
+/** Every artifact the stand-in wrote, newest first. */
+export function listSimulatedRuns(): SavedRun[] {
+  return listRuns().filter((run) => run.simulated);
+}
+
+/**
+ * Delete one run's files: the artifact, its trace and its judge report.
+ *
+ * Only ever called by `sonata prune`, and deliberately not by anything the
+ * dashboard can reach. A fabricated run is evidence of how the product misled
+ * its owner, and evidence is not something a page gets to tidy away — the owner
+ * asks for this at a terminal, having read the list, or it does not happen.
+ *
+ * Returns the files that were actually removed, so the caller can report the
+ * deletion rather than assert it.
+ */
+export function deleteRunArtifacts(runId: string): string[] {
+  const removed: string[] = [];
+  for (const suffix of [".json", TRACE_SUFFIX, JUDGE_SUFFIX]) {
+    const file = resolveArtifact(runId, suffix);
+    if (!file || !existsSync(file)) continue;
+    rmSync(file);
+    removed.push(file);
+  }
+  // The one-entry parse cache may still be holding a file that no longer exists.
+  if (removed.length > 0) lastRead = null;
+  return removed;
 }
 
 /** `offsetMinutes` throws on an offsetless string; a bad spec must not 500 a page. */
