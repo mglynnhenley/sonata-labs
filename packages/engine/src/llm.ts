@@ -144,7 +144,7 @@ export function getClient(): OpenAI {
       baseURL: OPENROUTER_BASE_URL,
       fetch: tracingFetch,
       defaultHeaders: {
-        "HTTP-Referer": "https://github.com/mglynnhenley/gmail-clone",
+        "HTTP-Referer": "https://github.com/mglynnhenley/sonata-labs",
         // ASCII only: a header value is a ByteString, and an em dash here made
         // every model call in the run throw before it left the process.
         "X-Title": "Sonata Labs: episode engine",

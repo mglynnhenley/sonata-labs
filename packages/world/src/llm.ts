@@ -50,7 +50,7 @@ function getClient(): OpenAI {
       apiKey,
       baseURL: OPENROUTER_BASE_URL,
       defaultHeaders: {
-        "HTTP-Referer": "https://github.com/mglynnhenley/gmail-clone",
+        "HTTP-Referer": "https://github.com/mglynnhenley/sonata-labs",
         "X-Title": "Sonata Labs World Seeder",
       },
     });
