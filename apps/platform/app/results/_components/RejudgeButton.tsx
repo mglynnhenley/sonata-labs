@@ -5,12 +5,19 @@ import { useRouter } from "next/navigation";
 import type { EpisodeJudgeReport } from "@sonata/core";
 import { Button, Chip, IconCheck, IconSpark, Modal, Spinner, cn } from "@sonata/ui";
 import { DEFAULT_MODELS, MODEL_CATALOG, modelLabel } from "@/lib/models";
-import { formatPercent, formatWhen } from "../_lib/summary";
+import { formatPercent, formatUsd, formatWhen } from "../_lib/summary";
+import { useJudgeState } from "./judgeState";
 
 // Re-judging is the payoff of keeping everything in the artifact: a run recorded
 // months ago can be read again by a different model, with no twin running and no
 // agent replayed. Only the judge's half of the verdict changes — the checklist
 // is deterministic and stays exactly as it was.
+//
+// It is a SECOND reading, not the only one. A run judges itself when it ends, so
+// this control means "read this day again, with a better model" — which is a real
+// feature and the reason it survives. It says "Judge this run" only in the two
+// cases where nothing has: a day whose automatic pass fell over, and a day
+// recorded before runs judged themselves.
 //
 // Three states, because pressing this used to look like pressing nothing. A
 // judge pass is a minute or more of somebody else's model reading a whole day,
@@ -31,7 +38,7 @@ const SUGGESTIONS = [...new Map(MODEL_CATALOG.map((m) => [m.vendor, m.id])).valu
 type Phase =
   | { kind: "form" }
   | { kind: "judging"; model: string }
-  | { kind: "done"; report: EpisodeJudgeReport };
+  | { kind: "done"; report: EpisodeJudgeReport; spendUsd: number | null };
 
 /** Live seconds, so a long wait reads as progress rather than as a hang. */
 function useElapsed(since: number | null): number {
@@ -64,10 +71,16 @@ export function RejudgeButton({
 
   const busy = phase.kind === "judging";
   const elapsed = useElapsed(busy ? startedAt.current : null);
+  const state = useJudgeState();
 
   // A run nobody has judged is not being *re*-judged, and calling it that is how
-  // a first-time user concludes they have missed a step somewhere.
-  const first = !currentModel;
+  // a first-time user concludes they have missed a step somewhere. A run whose
+  // own pass FAILED is a third case: there is nothing to re-read, and the honest
+  // word for pressing this is "again".
+  const first = !currentModel && state?.state !== "failed";
+  const retry = state?.state === "failed";
+  // A pass already in flight is not something to start a second of.
+  const inFlight = state?.state === "judging";
 
   async function submit() {
     const wanted = model.trim();
@@ -80,11 +93,15 @@ export function RejudgeButton({
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ model: wanted }),
       });
-      const data = (await res.json()) as { error?: string; report?: EpisodeJudgeReport };
+      const data = (await res.json()) as {
+        error?: string;
+        report?: EpisodeJudgeReport;
+        spend?: { usd: number | null } | null;
+      };
       if (!res.ok || !data.report) {
         throw new Error(data.error || `The judge call failed (HTTP ${res.status}).`);
       }
-      setPhase({ kind: "done", report: data.report });
+      setPhase({ kind: "done", report: data.report, spendUsd: data.spend?.usd ?? null });
       // Behind the dialog, so the verdict, the findings and the judged-at line
       // have already changed by the time the reader dismisses this.
       router.refresh();
@@ -107,19 +124,31 @@ export function RejudgeButton({
       ? "Judging this run"
       : phase.kind === "done"
         ? "Judged"
-        : first
-          ? "Judge this run"
-          : "Re-judge this run";
+        : retry
+          ? "Try judging this run again"
+          : first
+            ? "Judge this run"
+            : "Re-judge this run";
 
   return (
     <>
+      {/* A pass already in flight disables the button rather than putting it in
+          the loading state, which would hide the label behind a spinner — and the
+          label is the whole message. */}
       <Button
         variant={variant}
         icon={<IconSpark size={14} />}
         loading={busy}
+        disabled={inFlight}
         onClick={() => setOpen(true)}
       >
-        {first ? "Judge this run" : "Re-judge with another model"}
+        {inFlight
+          ? "A judge is reading this day"
+          : retry
+            ? "Try judging it again"
+            : first
+              ? "Judge this run"
+              : "Re-judge with another model"}
       </Button>
 
       <Modal
@@ -132,9 +161,11 @@ export function RejudgeButton({
             ? "The deterministic checklist is untouched — only the diagnosis below it changed."
             : phase.kind === "judging"
               ? "Nothing is being re-run. The saved day is being read back, start to finish."
-              : first
-                ? "A model reads the saved day and names what went wrong, with evidence for each finding. Nothing is re-run — the deterministic checklist stays exactly as it is."
-                : "The saved day is read again by a different model. Nothing is re-run: the checklist and the autonomy score are counted off the day itself and stay put — only the diagnosis changes."
+              : retry
+                ? "This run judged itself when the day ended and that pass did not come back. This is the same reading, attempted again — nothing is re-run, and the checklist is untouched either way."
+                : first
+                  ? "A model reads the saved day and names what went wrong, with evidence for each finding. Nothing is re-run — the deterministic checklist stays exactly as it is."
+                  : "The saved day is read again by a different model. Nothing is re-run: the checklist and the autonomy score are counted off the day itself and stay put — only the diagnosis changes."
         }
         footer={
           phase.kind === "done" ? (
@@ -152,7 +183,7 @@ export function RejudgeButton({
                 disabled={!model.trim()}
                 onClick={() => void submit()}
               >
-                {busy ? "Judging…" : first ? "Judge it" : "Judge it again"}
+                {busy ? "Judging…" : first ? "Judge it" : retry ? "Try again" : "Judge it again"}
               </Button>
             </>
           )
@@ -161,7 +192,7 @@ export function RejudgeButton({
         {phase.kind === "judging" ? (
           <Waiting model={phase.model} seconds={elapsed} />
         ) : phase.kind === "done" ? (
-          <Landed report={phase.report} />
+          <Landed report={phase.report} spendUsd={phase.spendUsd} />
         ) : (
           <>
             <label className="block text-[12px] font-medium text-sn-ink" htmlFor="rejudge-model">
@@ -230,7 +261,7 @@ function Waiting({ model, seconds }: { model: string; seconds: number }) {
   );
 }
 
-function Landed({ report }: { report: EpisodeJudgeReport }) {
+function Landed({ report, spendUsd }: { report: EpisodeJudgeReport; spendUsd: number | null }) {
   const findings = report.findings.length + report.otherFindings.length;
   const critical = [...report.findings, ...report.otherFindings].filter(
     (f) => f.severity === "critical",
@@ -246,13 +277,17 @@ function Landed({ report }: { report: EpisodeJudgeReport }) {
           <span className="font-mono text-[12.5px]">{report.model}</span> judged this run
         </span>
       </div>
-      <dl className="mt-3 grid grid-cols-3 gap-3 text-[12px]">
+      {/* What it cost, beside what it found: this reading was paid for on the
+          owner's key, and the figure belongs where the decision to press again
+          is made. It joins the run's cost breakdown too. */}
+      <dl className="mt-3 grid grid-cols-4 gap-3 text-[12px]">
         <Fact label="Judged" value={formatWhen(report.judgedAt)} />
         <Fact label="Its autonomy read" value={formatPercent(report.autonomyScore)} />
         <Fact
           label="Findings"
           value={`${findings}${critical > 0 ? ` · ${critical} critical` : ""}`}
         />
+        <Fact label="This pass cost" value={formatUsd(spendUsd)} />
       </dl>
       <p className="mt-3 text-[12.5px] leading-[19px] text-sn-muted">
         {report.summary?.trim()

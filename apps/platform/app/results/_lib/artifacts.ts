@@ -8,10 +8,12 @@ import {
   runExecution,
   verdictOutcome,
   type AgentTrace,
+  type CoverageSlice,
   type Criterion,
   type CriterionResult,
   type CriterionStatus,
   type EpisodeJudgeReport,
+  type JudgeCoverage,
   type EpisodeRun,
   type EpisodeSpec,
   type EpisodeVerdict,
@@ -368,13 +370,59 @@ function normalizeCost(raw: unknown): RunCost {
   };
 }
 
+/** One `shown of total`, or null when the pair is absent or not a pair. */
+function normalizeSlice(raw: unknown): CoverageSlice | null {
+  const s = asRecord(raw);
+  if (!s || typeof s.shown !== "number" || typeof s.total !== "number") return null;
+  if (!Number.isFinite(s.shown) || !Number.isFinite(s.total)) return null;
+  return { shown: s.shown, total: s.total };
+}
+
+/**
+ * How much of the day the judge was shown, carried forward from the file.
+ *
+ * Undefined means the report predates the counting, and the results page says so
+ * in those words. So this must return undefined ONLY for a report that really has
+ * none: rebuilding the report field by field and forgetting this line is how
+ * every judged run came to print "how much of this day the assessor read was not
+ * recorded — re-judge the run to find out" over a report whose own `coverage`
+ * said `complete: true`. That advice cost a model call and could never work,
+ * because the next read stripped the answer again.
+ *
+ * The three headline slices are required by `JudgeCoverage`; a file missing any
+ * of them is not a coverage record, and half of one would be worse than none.
+ */
+function normalizeCoverage(raw: unknown): JudgeCoverage | undefined {
+  const c = asRecord(raw);
+  if (!c) return undefined;
+  const steps = normalizeSlice(c.steps);
+  const timeline = normalizeSlice(c.timeline);
+  const narration = normalizeSlice(c.narration);
+  if (!steps || !timeline || !narration) return undefined;
+  const finalState = normalizeSlice(c.finalState);
+  const fraction = num(c.fraction, 0);
+  return {
+    steps,
+    timeline,
+    narration,
+    ...(finalState ? { finalState } : {}),
+    fraction,
+    // Trusted from the file when it is there, derived when it is not: `complete`
+    // is what the UI branches on, and defaulting it to false would republish the
+    // "not recorded" note on a report that did record a whole day.
+    complete: typeof c.complete === "boolean" ? c.complete : fraction >= 1,
+  };
+}
+
 function normalizeJudge(raw: unknown, runId: string): EpisodeJudgeReport | null {
   const j = asRecord(raw);
   if (!j) return null;
+  const coverage = normalizeCoverage(j.coverage);
   return {
     runId: str(j.runId, runId),
     judgedAt: num(j.judgedAt, 0),
     model: str(j.model, "unknown model"),
+    ...(coverage ? { coverage } : {}),
     taskUnderstanding: str(j.taskUnderstanding, ""),
     autonomyScore: num(j.autonomyScore, 0),
     summary: str(j.summary, ""),

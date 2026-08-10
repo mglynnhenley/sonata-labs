@@ -125,7 +125,7 @@ export function NewScenarioComposer() {
         <PageHeader
           eyebrow="Step 2 of 2 · Preview"
           title="Here is what will be built"
-          subtitle="Nothing has been written yet. Look it over — the counts below are exactly what the seeder will put into Gmail, Slack and the calendar."
+          subtitle="Nothing has been written yet. Look it over — the people, the channels and every beat below are exactly what gets built. The company's history is written when you seed it, and counted from the clones then."
           actions={
             <>
               <Button variant="ghost" onClick={() => setDraft(null)}>

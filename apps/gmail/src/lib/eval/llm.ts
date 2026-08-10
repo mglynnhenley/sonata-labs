@@ -84,7 +84,7 @@ export function getClient(): OpenAI {
       fetch: tracingFetch,
       // Optional OpenRouter attribution headers.
       defaultHeaders: {
-        "HTTP-Referer": "https://github.com/mglynnhenley/gmail-clone",
+        "HTTP-Referer": "https://github.com/mglynnhenley/sonata-labs",
         "X-Title": "Gmail Sandbox Triage Eval",
       },
     });

@@ -4,10 +4,18 @@ import { useState } from "react";
 import { Card, IconChevronDown, cn } from "@sonata/ui";
 import { ROLE_LABELS, headlineUsd, type CostReport, type RoleCost } from "../_lib/cost";
 import { formatDuration, formatTokens, formatUsd, UNKNOWN } from "../_lib/summary";
+import { useJudgeState } from "./judgeState";
 
 // A cost figure opens onto the calls it is the sum of: role first, because
 // "the judge cost more than the agent" is the finding that changes what you run
 // next, then every call inside it with what it was asked and what it said.
+//
+// The judge's own call is in here now. It has to be: a run judges itself when it
+// ends, so that call is spent on the owner's key without anyone pressing
+// anything, and a bill that leaves out the one charge nobody asked for is the
+// worst line to leave out. It also means the total here can exceed what the RUN
+// recorded — the run's figure was closed before the judge read it — which is a
+// difference the reader is told about rather than left to notice.
 
 const ROLE_BAR: Record<string, string> = {
   agent: "bg-sn-primary",
@@ -24,6 +32,7 @@ export function CostBreakdown({ cost }: { cost: CostReport }) {
   // trace would otherwise draw every bar short of the width it has earned.
   const shareBase = cost.totalUsd ?? 0;
   const unpriced = cost.calls - cost.pricedCalls;
+  const judge = cost.roles.find((role) => role.role === "judge");
 
   return (
     <Card
@@ -45,7 +54,12 @@ export function CostBreakdown({ cost }: { cost: CostReport }) {
         ) : cost.complete && cost.declaredUsd !== null &&
           Math.abs((cost.totalUsd ?? 0) - cost.declaredUsd) > 0.0005 ? (
           <span className="text-[12px] text-sn-subtle">
-            the run recorded {formatUsd(cost.declaredUsd)}
+            {/* Almost always the judge: the run's own figure was closed at the end
+                of the day, before anything read it back. Naming the difference is
+                better than two numbers a page apart with no relation stated. */}
+            {judge && judge.costUsd !== null
+              ? `${formatUsd(cost.declaredUsd)} of it was the day itself; ${formatUsd(judge.costUsd)} was judging it`
+              : `the run recorded ${formatUsd(cost.declaredUsd)}`}
           </span>
         ) : null}
       </div>
@@ -62,7 +76,38 @@ export function CostBreakdown({ cost }: { cost: CostReport }) {
           ))}
         </ul>
       )}
+
+      {judge ? null : <JudgeSpendNote />}
     </Card>
+  );
+}
+
+/**
+ * The judge's spend when the trace could not take it.
+ *
+ * A judge call is filed on the run's trace like any other, so the row above is
+ * normally the whole story. A run with no trace beside it has nowhere to file it
+ * — and since the pass is automatic, staying silent would hide a charge the owner
+ * did not ask for. The attempt record kept the figure; this says it is not in the
+ * total above rather than quietly adding it to a sum built from something else.
+ */
+function JudgeSpendNote() {
+  const state = useJudgeState();
+  const usd = state?.spend?.usd ?? null;
+  if (usd === null) return null;
+
+  return (
+    <p className="border-t border-sn-line px-5 py-3 text-[12.5px] leading-[19px] text-sn-muted">
+      Judging this day cost a further <span data-numeric>{formatUsd(usd)}</span>
+      {state?.model ? (
+        <>
+          {" "}
+          on <span className="font-mono text-[11.5px]">{state.model}</span>
+        </>
+      ) : null}
+      . It is not in the figure above: that one is summed from the trace, and this run has no
+      per-call trace to file the judge&rsquo;s own call on.
+    </p>
   );
 }
 

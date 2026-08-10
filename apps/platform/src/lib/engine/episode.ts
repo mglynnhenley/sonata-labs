@@ -23,7 +23,20 @@ import { getEpisode as getScenario, getWorld } from "../../../app/api/_lib/recor
 import { newId } from "../../../app/api/_lib/store";
 import { readRun, runsDir } from "../../../app/results/_lib/artifacts";
 import { lastEventLine } from "../../../app/runs/_lib/story";
-import { createRun, finishRun, getRun, markWorldSeeded, updateRunProgress } from "../db";
+import {
+  claimRun,
+  createRun,
+  finishRun,
+  getRun,
+  heartbeatRun,
+  markWorldSeeded,
+  reconcileLiveRuns,
+  reconcileRun,
+  thisProcess,
+  updateRunProgress,
+  HEARTBEAT_MS,
+  type DrivingClaim,
+} from "../db";
 import { getSettings } from "../settings";
 import type { EngineRunResult, RunEpisodeFn } from "./contract";
 import { engineLoop } from "./loop";
@@ -156,11 +169,48 @@ interface LiveRun {
   done: Promise<EpisodeRun>;
 }
 
-const g = globalThis as unknown as { __sonataEngineRuns?: Map<string, LiveRun> };
+const g = globalThis as unknown as {
+  __sonataEngineRuns?: Map<string, LiveRun>;
+  __sonataEngineReconciled?: boolean;
+};
 
 function registry(): Map<string, LiveRun> {
   if (!g.__sonataEngineRuns) g.__sonataEngineRuns = new Map();
   return g.__sonataEngineRuns;
+}
+
+// ---------------------------------------------------------------------------
+// Ownership. Which runs THIS process is driving, said out loud.
+// ---------------------------------------------------------------------------
+
+/**
+ * The claim this process can make: these ids, and no others, are being driven
+ * from here. Rows owned by this pid and missing from it lost their driver when
+ * the last incarnation of the process ended — the registry above lives in
+ * memory, and memory is what a crash takes.
+ */
+function claim(): DrivingClaim {
+  const runIds = new Set<string>();
+  for (const entry of registry().values()) if (entry.endedAt === null) runIds.add(entry.runId);
+  return { owner: thisProcess(), runIds };
+}
+
+/**
+ * Retire every run nothing is driving any more, here or anywhere.
+ *
+ * Safe to call from a page load: `reconcileLiveRuns` retires a run on evidence
+ * about its OWNER, so a day being driven from a terminal right now survives a
+ * dashboard that has never heard of it. Returns the ids it retired.
+ */
+export function reconcileRuns(): string[] {
+  return reconcileLiveRuns(claim());
+}
+
+/** The same, once per process, on the first thing that touches a run. */
+function reconcileOnStartup(): void {
+  if (g.__sonataEngineReconciled) return;
+  g.__sonataEngineReconciled = true;
+  reconcileRuns();
 }
 
 /** How long a finished run keeps its ticks in memory. After this, read the file. */
@@ -207,6 +257,9 @@ function toView(entry: LiveRun): RunView {
  * id to follow it with. Everything after this point happens on `entry.done`.
  */
 export function startEpisode(input: StartEpisodeInput): RunView {
+  // Before anything is written: a process that crashed mid-run leaves a row
+  // behind, and the next start is the most likely moment anyone notices.
+  reconcileOnStartup();
   const episode = resolveScenario(input.episodeId);
   const spec = specForRun(episode.spec, input.ticks, input.termination);
   const settings = getSettings();
@@ -223,9 +276,13 @@ export function startEpisode(input: StartEpisodeInput): RunView {
   const startedAt = Date.now();
 
   // A benchmark cell has a deterministic id, so re-running a cell that failed
-  // finds its own row already there. Reuse it rather than refusing the run.
-  if (getRun(runId)) updateRunProgress(runId, { status: "queued", tick: 0 });
-  else {
+  // finds its own row already there. Reuse it rather than refusing the run —
+  // and take ownership of it, because this process is the one driving it now.
+  const owner = thisProcess();
+  if (getRun(runId)) {
+    updateRunProgress(runId, { status: "queued", tick: 0 });
+    claimRun(runId, owner, startedAt);
+  } else {
     createRun({
       id: runId,
       episodeId: episode.id,
@@ -235,6 +292,7 @@ export function startEpisode(input: StartEpisodeInput): RunView {
       totalTicks: total,
       status: "queued",
       startedAt,
+      owner,
     });
   }
 
@@ -512,6 +570,17 @@ async function drive(
   // Settings lives in platform.db and the engine cannot see it on its own.
   applyStoredApiKey();
 
+  // PROOF OF LIFE, ON A TIMER RATHER THAN ON PROGRESS.
+  //
+  // A single tick can be minutes of model calls, so ticks are far too coarse to
+  // tell "thinking" from "gone". This beats every few seconds for as long as
+  // this process is driving the day, and stops the moment the day is over —
+  // which is what lets any other process, or this one after a restart, tell an
+  // interrupted run from one that is simply mid-call.
+  const beat = setInterval(() => heartbeatRun(entry.runId), HEARTBEAT_MS);
+  // The CLI must still be able to exit the instant its day is done.
+  beat.unref();
+
   try {
     entry.status = "running";
     updateRunProgress(entry.runId, { status: "running" });
@@ -567,6 +636,10 @@ async function drive(
     // to them, and this is the last moment anyone can ask them.
     await closeCapture(capture, used, entry, null).catch(() => capture);
     return fail(entry, spec, err, capture, twins);
+  } finally {
+    // Both paths above finish the row, which clears its ownership; a beat that
+    // outlived them would be this process vouching for a run it no longer has.
+    clearInterval(beat);
   }
 }
 
@@ -765,6 +838,11 @@ export function status(runId: string, sinceTick = 0): RunPoll | null {
     };
   }
 
+  // Not ours. That is not evidence of anything on its own — the row may belong
+  // to a live CLI — so the OWNER is checked, and only a run whose owner has gone
+  // away is retired here. This is the read that stops a polling browser from
+  // watching a clock tick on a day that ended when its process did.
+  reconcileRun(runId, claim());
   const run = fromRow(runId);
   if (!run) return null;
   const saved = readRun(runId);
@@ -789,6 +867,7 @@ export function whenDone(runId: string): Promise<EpisodeRun> | null {
 
 /** Every run this process is still driving, newest first. */
 export function liveRuns(): RunView[] {
+  reconcileOnStartup();
   return [...registry().values()]
     .filter((e) => e.endedAt === null)
     .sort((a, b) => b.startedAt - a.startedAt)

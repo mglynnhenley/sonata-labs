@@ -120,10 +120,17 @@ export function HomeClient({ initial }: HomeClientProps) {
               </span>
               <div>
                 <p className="text-[14px] font-medium text-sn-ink">Nothing is running</p>
+                {/* No clock here on purpose. This said "starts at 9am and runs
+                    24 fifteen-minute ticks" while the start time came from
+                    Settings, the length came from the scenario, and the run
+                    panel offered four lengths — three numbers, none of them
+                    this one. The panel states the day it is about to buy, in
+                    ticks and in dollars; a card with no run in front of it has
+                    nothing to be specific about. */}
                 <p className="mt-1 max-w-[54ch] text-[13px] leading-[20px] text-sn-muted">
-                  Pick a company, a scenario and a model. The workday starts at 9am and runs 24
-                  fifteen-minute ticks. Watch it here, or inside Gmail, Slack and Calendar as it
-                  happens.
+                  Pick a company, a scenario and a model. The run panel prices every length
+                  before you start one. Watch the day here, or inside Gmail, Slack and Calendar
+                  as it happens.
                 </p>
               </div>
             </div>

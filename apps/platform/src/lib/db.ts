@@ -1,5 +1,6 @@
 import Database from "better-sqlite3";
 import { existsSync, mkdirSync } from "node:fs";
+import { hostname } from "node:os";
 import path from "node:path";
 import type { EpisodeSpec, RunStatus, TwinName, VerdictOutcome, WorldSeed } from "@sonata/core";
 
@@ -62,7 +63,12 @@ CREATE TABLE IF NOT EXISTS runs (
   started_at INTEGER NOT NULL,
   ended_at INTEGER,
   error TEXT,
-  run_json TEXT
+  run_json TEXT,
+  -- Who is driving this run, and when they last said so. Both are cleared the
+  -- moment the run ends: a terminal row has no owner. See "Liveness" below.
+  owner_pid INTEGER,
+  owner_host TEXT,
+  heartbeat_at INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_runs_started ON runs (started_at DESC);
 CREATE INDEX IF NOT EXISTS idx_runs_status ON runs (status, started_at DESC);
@@ -85,23 +91,63 @@ CREATE TABLE IF NOT EXISTS twin_processes (
 );
 `;
 
+// Columns added to `runs` after the table shipped. `CREATE TABLE IF NOT EXISTS`
+// is a no-op on an existing database, so a new column has to be added here too
+// or every install that predates it reads as a database with no ownership at
+// all — which is how a run from yesterday claimed to still be running.
+const ADDED_RUN_COLUMNS: Readonly<Record<string, string>> = {
+  owner_pid: "owner_pid INTEGER",
+  owner_host: "owner_host TEXT",
+  heartbeat_at: "heartbeat_at INTEGER",
+};
+
+/** Bumped whenever `ADDED_RUN_COLUMNS` grows. See `getDb`. */
+const SCHEMA_VERSION = 2;
+
 type Db = Database.Database;
 
 // Next's dev server re-evaluates modules on every edit; without the singleton
 // each reload would leak a file handle.
-const g = globalThis as unknown as { __sonataPlatformDb?: Db };
+const g = globalThis as unknown as { __sonataPlatformDb?: Db; __sonataPlatformSchema?: number };
+
+function migrate(db: Db): void {
+  const present = new Set(
+    (db.prepare("PRAGMA table_info(runs)").all() as { name: string }[]).map((c) => c.name),
+  );
+  for (const [name, ddl] of Object.entries(ADDED_RUN_COLUMNS)) {
+    if (!present.has(name)) db.exec(`ALTER TABLE runs ADD COLUMN ${ddl}`);
+  }
+  g.__sonataPlatformSchema = SCHEMA_VERSION;
+}
 
 function open(): Db {
   if (!existsSync(DATA_DIR)) mkdirSync(DATA_DIR, { recursive: true });
   const db = new Database(PLATFORM_DB_PATH);
   db.pragma("journal_mode = WAL");
   db.pragma("foreign_keys = ON");
+  // The CLI, the benchmark runner and the web server all write this file. A
+  // writer that arrives mid-write should wait rather than fail the run.
+  db.pragma("busy_timeout = 5000");
   db.exec(SCHEMA);
+  migrate(db);
   return db;
 }
 
 export function getDb(): Db {
-  if (!g.__sonataPlatformDb) g.__sonataPlatformDb = open();
+  if (!g.__sonataPlatformDb) {
+    // Installed before reconciling, because the reconciler reads and writes
+    // through this same accessor.
+    g.__sonataPlatformDb = open();
+    // Start-up reconciliation, for whichever process opens the file first — a
+    // web server, a CLI, a test. A run interrupted by a crash must not have to
+    // wait for someone to visit the right page before it stops claiming to run.
+    reconcileLiveRuns();
+  } else if (g.__sonataPlatformSchema !== SCHEMA_VERSION) {
+    // The handle outlives the module that opened it, so a dev server that has
+    // hot-reloaded into this version is still holding a connection opened by the
+    // one before it — and would query a column that no ALTER has added yet.
+    migrate(g.__sonataPlatformDb);
+  }
   return g.__sonataPlatformDb;
 }
 
@@ -375,11 +421,15 @@ interface RunRow {
   started_at: number;
   ended_at: number | null;
   error: string | null;
+  owner_pid: number | null;
+  owner_host: string | null;
+  heartbeat_at: number | null;
 }
 
 const RUN_COLUMNS =
   "id, episode_id, episode_title, world_name, model, status, tick, total_ticks, sim_time, " +
-  "last_event, outcome, score, autonomy, cost_usd, started_at, ended_at, error";
+  "last_event, outcome, score, autonomy, cost_usd, started_at, ended_at, error, " +
+  "owner_pid, owner_host, heartbeat_at";
 
 function toRun(row: RunRow): RunSummary {
   return {
@@ -412,13 +462,16 @@ export function createRun(input: {
   totalTicks: number;
   status?: RunStatus;
   startedAt?: number;
+  /** The process that will drive it. Omitted ⇒ nobody claims to be. */
+  owner?: RunOwner;
 }): RunSummary {
+  const startedAt = input.startedAt ?? Date.now();
   getDb()
     .prepare(
       `INSERT INTO runs (id, episode_id, episode_title, world_name, model, status, tick,
-                         total_ticks, started_at)
+                         total_ticks, started_at, owner_pid, owner_host, heartbeat_at)
        VALUES (@id, @episode_id, @episode_title, @world_name, @model, @status, 0,
-               @total_ticks, @started_at)`,
+               @total_ticks, @started_at, @owner_pid, @owner_host, @heartbeat_at)`,
     )
     .run({
       id: input.id,
@@ -428,7 +481,12 @@ export function createRun(input: {
       model: input.model,
       status: input.status ?? "queued",
       total_ticks: input.totalTicks,
-      started_at: input.startedAt ?? Date.now(),
+      started_at: startedAt,
+      owner_pid: input.owner?.pid ?? null,
+      owner_host: input.owner?.host ?? null,
+      // The first beat is the moment of creation: a process that dies between
+      // the insert and its first timer tick has still been silent since here.
+      heartbeat_at: input.owner ? Date.now() : null,
     });
   const run = getRun(input.id);
   if (!run) throw new Error(`run ${input.id} vanished immediately after being created`);
@@ -457,6 +515,10 @@ export function updateRunProgress(
   if (patch.lastEvent !== undefined) (sets.push("last_event = ?"), values.push(patch.lastEvent));
   if (patch.costUsd !== undefined) (sets.push("cost_usd = ?"), values.push(patch.costUsd));
   if (sets.length === 0) return;
+  // Progress is proof of life, so it beats too — a run that ticks cannot be
+  // reconciled away between two beats of the timer.
+  sets.push("heartbeat_at = ?");
+  values.push(Date.now());
   values.push(id);
   getDb()
     .prepare(`UPDATE runs SET ${sets.join(", ")} WHERE id = ?`)
@@ -477,9 +539,13 @@ export function finishRun(input: {
 }): void {
   getDb()
     .prepare(
+      // Ownership is dropped with the same write that ends the run: a terminal
+      // row has nobody driving it, and a stale pid left behind is one process
+      // restart away from being somebody else's.
       `UPDATE runs SET status = @status, outcome = @outcome, score = @score, autonomy = @autonomy,
               cost_usd = COALESCE(@cost_usd, cost_usd), error = @error,
-              run_json = COALESCE(@run_json, run_json), ended_at = @ended_at
+              run_json = COALESCE(@run_json, run_json), ended_at = @ended_at,
+              owner_pid = NULL, owner_host = NULL, heartbeat_at = NULL
        WHERE id = @id`,
     )
     .run({
@@ -530,14 +596,205 @@ export function listRuns(options: { limit?: number; episodeId?: string } = {}): 
 /** Anything still moving — queued, running or being judged. */
 export const LIVE_STATUSES: readonly RunStatus[] = ["queued", "running", "judging"];
 
-export function listLiveRuns(): RunSummary[] {
-  const rows = getDb()
+// ---------------------------------------------------------------------------
+// Liveness. Who is driving a run, and how anyone else can tell.
+// ---------------------------------------------------------------------------
+
+// A ROW THAT SAYS "running" IS A CLAIM, AND A CLAIM NEEDS A CLAIMANT.
+//
+// This table is written by more than one process: the dashboard drives runs
+// started from the Start button, `sonata run` drives its own from a terminal,
+// and the benchmark runner drives a matrix of them. So a process CANNOT decide a
+// run is dead because it is not the one driving it — that reasoning would have
+// the web server declare a live CLI run finished the moment someone opened Home.
+//
+// Ownership is therefore recorded rather than inferred. Whoever drives a run
+// stamps its pid and host on the row and re-stamps `heartbeat_at` as it goes; a
+// run is interrupted when that mark goes cold. Two independent signals, either
+// of which is enough:
+//
+//   - SILENCE. Nothing has beaten for `HEARTBEAT_STALE_MS`. Works across hosts
+//     and across processes, and is the only signal available for a row written
+//     before ownership existed (the clock then runs from `started_at`).
+//   - A DEAD OWNER. The owner is on this host and its pid is gone. Cheap, exact
+//     and immediate, so a crashed run does not have to serve out the silence.
+//
+// The one thing neither signal will do is call a run dead for being somebody
+// else's, which is the whole point.
+
+export interface RunOwner {
+  pid: number;
+  host: string;
+}
+
+/** This process, as the row records an owner. */
+export function thisProcess(): RunOwner {
+  return { pid: process.pid, host: hostname() };
+}
+
+/** How often a driving process should stamp `heartbeat_at`. */
+export const HEARTBEAT_MS = 5_000;
+
+/**
+ * Silence longer than this and the run is treated as interrupted.
+ *
+ * Nine missed beats. Generous on purpose: a tick can be minutes of model calls,
+ * and the cost of retiring a live run early — a day's spend thrown away — is far
+ * higher than the cost of a stale row surviving another half minute.
+ */
+export const HEARTBEAT_STALE_MS = 45_000;
+
+/**
+ * The claim a process makes when it reconciles: "these are the runs I am
+ * driving". Any row owned by this same process and absent from the set has lost
+ * its driver — the registry that held it died with the last incarnation — so it
+ * can be retired at once without waiting for the heartbeat to go cold.
+ */
+export interface DrivingClaim {
+  owner: RunOwner;
+  runIds: ReadonlySet<string>;
+}
+
+/** Does this pid still exist? Signal 0 tests, it does not kill. */
+function processAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    // EPERM means the process is there and belongs to someone else — alive.
+    return (err as NodeJS.ErrnoException).code === "EPERM";
+  }
+}
+
+/** The last moment anyone can show the run was being driven. */
+function lastSeen(row: RunRow): number {
+  return row.heartbeat_at ?? row.started_at;
+}
+
+function ownerGone(row: RunRow, now: number, driving?: DrivingClaim): boolean {
+  const owner =
+    row.owner_pid !== null && row.owner_host !== null
+      ? { pid: row.owner_pid, host: row.owner_host }
+      : null;
+
+  if (owner && driving && owner.pid === driving.owner.pid && owner.host === driving.owner.host) {
+    return !driving.runIds.has(row.id);
+  }
+  if (owner && owner.host === hostname() && !processAlive(owner.pid)) return true;
+  return now - lastSeen(row) > HEARTBEAT_STALE_MS;
+}
+
+/** One line of it, short enough to sit inside a sentence. */
+function oneLine(text: string, max = 160): string {
+  const line = text.trim().split("\n")[0]?.trim() ?? "";
+  return line.length > max ? `${line.slice(0, max - 1).trimEnd()}…` : line;
+}
+
+function atClock(ms: number): string {
+  return new Date(ms).toLocaleString("en-GB", {
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+/**
+ * What an interrupted run says about itself.
+ *
+ * Its last known state and its last error, in words: the run did not finish, and
+ * the reader's next question is always "how far did it get, and on what".
+ */
+function interruptionNote(row: RunRow): string {
+  const parts = [
+    `Interrupted. Nothing has been driving this run since ${atClock(lastSeen(row))}, when it was on tick ${row.tick} of ${row.total_ticks}.`,
+  ];
+  if (row.last_event) parts.push(`Last event: ${oneLine(row.last_event)}`);
+  if (row.error) parts.push(`Last error: ${oneLine(row.error)}`);
+  return parts.join(" ");
+}
+
+function liveRows(): RunRow[] {
+  return getDb()
     .prepare(
       `SELECT ${RUN_COLUMNS} FROM runs WHERE status IN ('queued','running','judging')
        ORDER BY started_at DESC`,
     )
     .all() as RunRow[];
-  return rows.map(toRun);
+}
+
+/**
+ * Retire every live-looking run whose owner has gone away.
+ *
+ * Ends them where they were last seen rather than now — a run interrupted at
+ * 18:12 yesterday did not run for 23 hours, and the duration on the card is read
+ * as measured. Returns the ids it retired.
+ */
+export function reconcileLiveRuns(driving?: DrivingClaim): string[] {
+  const now = Date.now();
+  const retired: string[] = [];
+  for (const row of liveRows()) {
+    if (!ownerGone(row, now, driving)) continue;
+    finishRun({
+      id: row.id,
+      // There is no "interrupted" status to move to — a run stopped by something
+      // other than itself is aborted, and the note says who stopped it. Terminal
+      // either way, which is what stops the clock.
+      status: "aborted",
+      error: interruptionNote(row),
+      endedAt: lastSeen(row),
+    });
+    retired.push(row.id);
+  }
+  return retired;
+}
+
+/** The same check for one run, on the path that reads it. Did it retire it? */
+export function reconcileRun(id: string, driving?: DrivingClaim): boolean {
+  const row = getDb().prepare(`SELECT ${RUN_COLUMNS} FROM runs WHERE id = ?`).get(id) as
+    | RunRow
+    | undefined;
+  if (!row || !LIVE_STATUSES.includes(row.status as RunStatus)) return false;
+  if (!ownerGone(row, Date.now(), driving)) return false;
+  finishRun({
+    id: row.id,
+    status: "aborted",
+    error: interruptionNote(row),
+    endedAt: lastSeen(row),
+  });
+  return true;
+}
+
+/** Take ownership of an existing row — a benchmark cell being re-run into its own id. */
+export function claimRun(id: string, owner: RunOwner, at: number = Date.now()): void {
+  getDb()
+    .prepare("UPDATE runs SET owner_pid = ?, owner_host = ?, heartbeat_at = ? WHERE id = ?")
+    .run(owner.pid, owner.host, at, id);
+}
+
+/**
+ * "Still here." Ignored once the run is terminal, so a beat that lands after the
+ * finishing write cannot resurrect a finished run.
+ */
+export function heartbeatRun(id: string, at: number = Date.now()): void {
+  getDb()
+    .prepare(
+      `UPDATE runs SET heartbeat_at = ?
+       WHERE id = ? AND ended_at IS NULL AND status IN ('queued','running','judging')`,
+    )
+    .run(at, id);
+}
+
+/**
+ * Runs that are actually being driven.
+ *
+ * Reconciled first, every time. This is what Home and the sidebar count, so it
+ * is the one read that must never answer with a run that nothing is running —
+ * and the read is what finally retires a run nobody thought to look at.
+ */
+export function listLiveRuns(): RunSummary[] {
+  reconcileLiveRuns();
+  return liveRows().map(toRun);
 }
 
 export function countRuns(): number {

@@ -24,6 +24,8 @@ import {
 } from "../_lib/summary";
 import { SIMULATED_LABEL } from "../_lib/simulated";
 import type { ReplayStats } from "../_lib/moments";
+import { judgeCopy, judgeStateLabel } from "./judgeCopy";
+import { useJudgeState } from "./judgeState";
 
 // The verdict, at the top, big. Autonomy is the number the benchmark is about,
 // so it gets the display face and the whole left column; everything beside it is
@@ -79,6 +81,7 @@ export function VerdictHeader({
 }) {
   const autonomy = summary.autonomy;
   const coverage = summary.coverage;
+  const judgeState = useJudgeState();
   const criticalCount = summary.failures.filter((f) => f.severity === "critical").length;
   // Two DIFFERENT measures of the same day, not two attempts at one: arithmetic
   // over what the run did, and a model's opinion of it. Both are kept on purpose
@@ -245,29 +248,32 @@ export function VerdictHeader({
             actionLabel="See the checklist"
             onClick={() => onOpen("checklist")}
           />
+          {/* An un-diagnosed run says WHICH kind of un-diagnosed it is. "Not
+              judged" on its own was the same two words for a pass in flight, a
+              pass that fell over, and a day with nothing in it to read. */}
           <StatCard
             label="Failure modes"
             value={summary.judged ? summary.failures.length : "—"}
-            unit={summary.judged ? undefined : "not judged"}
+            unit={summary.judged ? undefined : judgeStateLabel(judgeState)}
             hint={
               summary.judged
                 ? criticalCount > 0
                   ? `${criticalCount} critical. Open one to jump to the moment.`
                   : "Open one to jump to the moment it happened."
-                : "No judge has read this run yet."
+                : judgeCopy(judgeState).detail
             }
             icon={<IconAlert size={15} />}
             actionLabel="See the findings"
             onClick={() => onOpen("failures")}
           />
-          {/* The hint names no role this figure may not contain. Judging is a
-              separate pass that records no cost of its own, so the old promise of
-              "agent, director and judge" was a third of a bill that was never
-              billed — the breakdown below names the roles actually in it. */}
+          {/* The hint still names no role by name — the breakdown below names the
+              ones actually in it. It no longer says "what the RUN spent", though:
+              the judge now meters itself onto the same trace, so this figure
+              covers the reading of the day as well as the day. */}
           <StatCard
             label="Cost"
             value={formatUsd(costUsd)}
-            hint="What the run recorded spending on model calls. Open it for the per-role split."
+            hint="Every model call filed against this run, the judge's included. Open it for the per-role split."
             icon={<IconBolt size={15} />}
             actionLabel="See the per-call breakdown"
             onClick={() => onOpen("cost")}

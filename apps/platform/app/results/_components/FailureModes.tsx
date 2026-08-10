@@ -1,9 +1,11 @@
 "use client";
 
 import { getFailureMode, type EpisodeJudgeReport, type Severity } from "@sonata/core";
-import { Badge, Card, IconAlert, IconArrowRight, IconCheck } from "@sonata/ui";
+import { Badge, Card, IconAlert, IconArrowRight, IconCheck, Spinner } from "@sonata/ui";
 import { SEVERITY_BADGE, SEVERITY_ORDER } from "../_lib/summary";
 import { judgeSight, sliceSentence, type JudgeSight } from "./harness";
+import { judgeCopy } from "./judgeCopy";
+import { useJudgeState, type JudgeState } from "./judgeState";
 
 // What went wrong, and where. Every finding the judge returns points at a moment
 // — a tick, or the exact steps — so a finding is never a verdict you have to take
@@ -13,6 +15,12 @@ import { judgeSight, sliceSentence, type JudgeSight } from "./harness";
 // than in a footnote. A findings list is read as an inventory of what went wrong;
 // one drawn from a sample is an inventory of what went wrong in the sample, and
 // the difference has to be met before the first row, not after the last.
+//
+// This section used to RENDER NOTHING when there was no report — a day that
+// crashed the judge, a day being judged in another process and a day nobody
+// asked about all came out as the same blank space on the page. A run judges
+// itself now, so an absent diagnosis is an event with a cause, and the section
+// says which one.
 
 interface Row {
   key: string;
@@ -64,7 +72,8 @@ export function FailureModes({
   judge: EpisodeJudgeReport | null;
   onJump: (target: { seq?: number[]; tick?: number }) => void;
 }) {
-  if (!judge) return null;
+  const state = useJudgeState();
+  if (!judge) return <NoDiagnosis state={state} />;
   const rows = rowsOf(judge);
   const sight = judgeSight(judge);
 
@@ -80,6 +89,21 @@ export function FailureModes({
       }
       className="scroll-mt-6"
     >
+      {/* A report on the page and a failed pass behind it: the findings below are
+          the older reading, and saying so is the difference between a stale
+          diagnosis and a current one. */}
+      {state?.state === "judged" && state.reason ? (
+        <div className="flex items-start gap-2.5 border-t border-sn-gold/30 bg-sn-gold-soft/35 px-5 py-3">
+          <IconAlert size={14} className="mt-0.5 shrink-0 text-sn-gold-ink" />
+          <p className="max-w-[78ch] text-[12.5px] leading-[19px] text-sn-muted">
+            <span className="font-medium text-sn-gold-ink">
+              These are the findings from the last judge pass that worked.
+            </span>{" "}
+            A later attempt to re-read this day did not finish: {state.reason}
+          </p>
+        </div>
+      ) : null}
+
       {sight ? <PartialSightNote sight={sight} empty={rows.length === 0} /> : null}
 
       {rows.length === 0 ? (
@@ -96,6 +120,56 @@ export function FailureModes({
           ))}
         </ul>
       )}
+    </Card>
+  );
+}
+
+/**
+ * The section with no findings in it, saying why — never an empty space.
+ *
+ * The three cases read differently on purpose. Waiting is progress and should
+ * feel like it. A failed pass is the one that costs the reader something: it
+ * names what broke, says the deterministic half is unharmed, and stops them
+ * concluding the day was clean.
+ */
+function NoDiagnosis({ state }: { state: JudgeState | null }) {
+  const copy = judgeCopy(state);
+
+  return (
+    <Card padding="none" radius="2xl" title="How it failed" className="scroll-mt-6">
+      <div
+        className={
+          copy.tone === "failed"
+            ? "flex items-start gap-3 border-t border-sn-failed-line bg-sn-failed-soft/40 px-5 py-4"
+            : "flex items-start gap-3 border-t border-sn-line px-5 py-4"
+        }
+      >
+        <span className="mt-0.5 shrink-0">
+          {copy.tone === "waiting" ? (
+            <Spinner size="sm" label="" />
+          ) : (
+            <IconAlert
+              size={15}
+              className={copy.tone === "failed" ? "text-sn-failed-ink" : "text-sn-subtle"}
+            />
+          )}
+        </span>
+        <div className="max-w-[78ch]">
+          <p
+            className={
+              copy.tone === "failed"
+                ? "text-[13.5px] font-medium text-sn-failed-ink"
+                : "text-[13.5px] font-medium text-sn-ink"
+            }
+          >
+            {copy.headline}
+          </p>
+          <p className="mt-1 text-[12.5px] leading-[19px] text-sn-muted">{copy.detail}</p>
+          {copy.footnote ? (
+            <p className="mt-2 text-[12.5px] leading-[19px] text-sn-subtle">{copy.footnote}</p>
+          ) : null}
+        </div>
+      </div>
     </Card>
   );
 }

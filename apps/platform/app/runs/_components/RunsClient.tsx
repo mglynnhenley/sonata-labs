@@ -43,6 +43,8 @@ export type RunsClientProps = {
   initial: RunsFeed;
   episodes: EpisodeSummary[];
   defaultModel: string;
+  /** Beat ticks per scenario — see the run panel's own prop doc. */
+  beatTicks: Record<string, number[]>;
   /** From `?scenario=` — the card that sent you here. */
   initialEpisodeId?: string;
   /** From `?demo=1` — set the demo up and start it, no questions asked. */
@@ -53,6 +55,7 @@ export function RunsClient({
   initial,
   episodes,
   defaultModel,
+  beatTicks,
   initialEpisodeId,
   demo,
 }: RunsClientProps) {
@@ -171,6 +174,7 @@ export function RunsClient({
           <StartRunPanel
             episodes={episodes}
             defaultModel={defaultModel}
+            beatTicks={beatTicks}
             initialEpisodeId={initialEpisodeId}
             starting={starting}
             onStart={(input) => void start(input)}

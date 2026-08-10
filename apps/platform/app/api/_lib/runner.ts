@@ -1,5 +1,11 @@
 import type { CriterionResult, RunStatus, VerdictOutcome } from "@sonata/core";
-import { cancel, startEpisode, status as engineStatus, type RunPoll as EnginePoll } from "@/lib/engine/episode";
+import {
+  cancel,
+  reconcileRuns,
+  startEpisode,
+  status as engineStatus,
+  type RunPoll as EnginePoll,
+} from "@/lib/engine/episode";
 import { readRun } from "../../results/_lib/artifacts";
 import { getEpisode } from "./records";
 import { getDoc, listDocs, putDoc } from "./store";
@@ -87,15 +93,16 @@ function project(stored: RunDoc, poll: EnginePoll): RunDoc {
 function refresh(stored: RunDoc): RunDoc {
   if (!isLive(stored.status)) return stored;
 
-  let poll = engineStatus(stored.runId);
-  // Nothing in this process is driving it. A day cannot be picked up where it
-  // left off — the agent's conversation, its trace and the twins' cursors all
-  // died with the process that held them — so it is stopped through the engine's
-  // own path rather than left claiming to be running with a frozen clock.
-  if (poll && !poll.run.live && isLive(poll.run.status)) {
-    cancel(stored.runId);
-    poll = engineStatus(stored.runId);
-  }
+  // `engineStatus` reconciles as it reads: a run whose OWNER has gone away comes
+  // back terminal, with the tick it reached and the last thing it said.
+  //
+  // What this must never do is retire a run because this process is not the one
+  // driving it. `poll.run.live` means only "in this process's registry", and the
+  // CLI drives runs of its own from another process entirely — reading that flag
+  // as death is how a day being played in a terminal would be declared over by
+  // somebody idly opening the runs list. Ownership is recorded on the row; the
+  // engine reads it there.
+  const poll = engineStatus(stored.runId);
   if (!poll) return orphaned(stored);
 
   const doc = project(stored, poll);
@@ -241,10 +248,17 @@ export function abortRun(runId: string): RunDoc | undefined {
  *
  * Named for what it used to do — re-arm the timers of the stand-in tick loop
  * across a dev-server reload. There are no timers now, and a real day cannot be
- * resumed: `refresh` stops any run this process is no longer driving, so the
- * list never shows a day that is not happening.
+ * resumed: this retires whatever nothing is driving any more, so the list never
+ * shows a day that is not happening.
+ *
+ * Two passes, because there are two kinds of stale record. `reconcileRuns` works
+ * on the rows — including runs started from the CLI, which this dashboard has no
+ * document for and would otherwise never look at, which is exactly how one sat
+ * on Home reading "Running · Tick 2 of 4" for twenty-three hours. `refresh` then
+ * brings the documents this dashboard does own into line with them.
  */
 export function resumeInterruptedRuns(): void {
+  reconcileRuns();
   for (const doc of listDocs<RunDoc>("run")) refresh(doc);
 }
 

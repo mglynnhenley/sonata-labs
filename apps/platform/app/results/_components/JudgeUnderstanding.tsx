@@ -2,11 +2,13 @@
 
 import { useState } from "react";
 import type { EpisodeJudgeReport } from "@sonata/core";
-import { Card, IconChevronDown, cn } from "@sonata/ui";
+import { Card, IconChevronDown, Spinner, cn } from "@sonata/ui";
 import type { ReactNode } from "react";
 import type { RunBrief } from "../_lib/artifacts";
 import { formatWhen } from "../_lib/summary";
 import { judgeSight, sliceSentence } from "./harness";
+import { judgeCopy } from "./judgeCopy";
+import { useJudgeState } from "./judgeState";
 
 // First on the page, before any score: the judge restates the task in its own
 // words. If the restatement is not the task, the brief was ambiguous — and that
@@ -29,17 +31,39 @@ export function JudgeUnderstanding({
   rejudge?: ReactNode;
 }) {
   const [briefOpen, setBriefOpen] = useState(false);
+  const state = useJudgeState();
 
   if (!judge) {
+    // The state, not the silence. A run judges itself when it ends, so this card
+    // is now the place a reader finds out what happened to a pass they never had
+    // to ask for — and the only one of the three that carries the button, so the
+    // action sits with the explanation instead of three sections offering it.
+    const copy = judgeCopy(state);
     return (
       <Card padding="lg" radius="2xl" className="scroll-mt-6">
-        <h2 className="font-display text-[26px] text-sn-ink">No judge has read this run yet</h2>
+        <div className="flex items-center gap-2.5">
+          {copy.tone === "waiting" ? <Spinner size="sm" label="" /> : null}
+          <h2
+            className={cn(
+              "font-display text-[26px]",
+              copy.tone === "failed" ? "text-sn-failed-ink" : "text-sn-ink",
+            )}
+          >
+            {copy.headline}
+          </h2>
+        </div>
         <p className="mt-2 max-w-[60ch] text-[13.5px] leading-[21px] text-sn-muted">
-          The checklist is deterministic and runs in code; the judge is a separate pass over the
-          same saved artifact. Run it and you get the task restated in its own words, the failure
-          modes it found, and the evidence for each one.
+          {copy.detail}
         </p>
-        {rejudge ? <div className="mt-5">{rejudge}</div> : null}
+        <p className="mt-2 max-w-[60ch] text-[13.5px] leading-[21px] text-sn-subtle">
+          {copy.footnote ??
+            "The checklist is deterministic and runs in code; the judge is a separate pass over the " +
+              "same saved artifact — the task restated in its own words, the failure modes it found, " +
+              "and the evidence for each one."}
+        </p>
+        {/* Nothing to press while a pass is in flight: a second one would be a
+            second bill for the same reading. */}
+        {rejudge && copy.tone !== "waiting" ? <div className="mt-5">{rejudge}</div> : null}
       </Card>
     );
   }
@@ -50,9 +74,16 @@ export function JudgeUnderstanding({
         <h2 className="text-[14px] font-medium text-sn-ink">
           What the judge thinks the task was
         </h2>
+        {/* Who read it, when, and whether anybody asked — the pass is automatic
+            now, and a reader who did not press anything is owed that fact. */}
         <span className="text-[11.5px] text-sn-subtle">
           <span className="font-mono">{judge.model}</span>
           {judge.judgedAt ? ` · judged ${formatWhen(judge.judgedAt)}` : ""}
+          {state?.state === "judged"
+            ? state.automatic
+              ? ", when the day ended"
+              : ", on request"
+            : ""}
         </span>
       </div>
 
