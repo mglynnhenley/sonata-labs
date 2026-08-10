@@ -10,6 +10,7 @@ import {
   type Severity,
   type VerdictOutcome,
 } from "@sonata/core";
+import { runSimulation, SIMULATED_LABEL } from "./simulated";
 
 // Pure projections of a run artifact: the row the results index shows, the pivot
 // the article's table is, and the formatters both use. No filesystem, no React —
@@ -60,6 +61,15 @@ export interface RunSummary {
    * a page never has to choose between rendering a 0 and rendering an empty card.
    */
   noResult: string | null;
+  /**
+   * True when the stand-in wrote this run and no model was ever called.
+   *
+   * Carried beside `noResult` rather than folded into it because the two say
+   * different things to the owner. "The agent never acted" is a finding about a
+   * run; "no agent was ever asked" is a finding about US, and a row that reads
+   * the same either way lets the second one hide inside the first.
+   */
+  simulated: boolean;
 }
 
 export const SEVERITY_ORDER: readonly Severity[] = ["critical", "major", "minor"];
@@ -116,9 +126,11 @@ function coverageOf(
 
 export function summarizeRun(run: EpisodeRun): RunSummary {
   const execution = runExecution(run);
+  const simulation = runSimulation(run);
   // The artifact decides, not the file's own verdict: a run that never executed
-  // is unscored even if an older writer left numbers on it.
-  const verdict = execution.executed ? run.verdict : null;
+  // — or one no model ever touched — is unscored even if an older writer left
+  // numbers on it.
+  const verdict = execution.executed && !simulation.simulated ? run.verdict : null;
   return {
     runId: run.runId,
     specId: run.specId,
@@ -138,7 +150,12 @@ export function summarizeRun(run: EpisodeRun): RunSummary {
     ticks: run.ticks.length,
     judged: Boolean(verdict?.judge),
     failures: failureChips(verdict?.judge ?? null),
-    noResult: execution.reason,
+    // The fabrication is named first when both are true. A stand-in day always
+    // also looks like a day the agent worked — it recorded tool calls — so
+    // `runExecution` would hand back "this run produced no result", which is the
+    // blandest true sentence available and the one that hid this for weeks.
+    noResult: simulation.reason ?? execution.reason,
+    simulated: simulation.simulated,
   };
 }
 
@@ -195,6 +212,12 @@ export interface Benchmark {
    * same lie in the other direction.
    */
   excluded: number;
+  /**
+   * Of those, the ones the stand-in fabricated. Counted apart because the two
+   * exclusions are different confessions: one says a run fell over, the other
+   * says this table used to compare models that were never called.
+   */
+  simulated: number;
 }
 
 function mean(values: number[]): number | null {
@@ -262,7 +285,12 @@ export function buildBenchmark(runs: RunSummary[]): Benchmark {
 
   // Best autonomy first — the ranking the article leads with.
   rows.sort((a, b) => (b.meanAutonomy ?? -1) - (a.meanAutonomy ?? -1));
-  return { scenarios, rows, excluded: runs.length - scored.length };
+  return {
+    scenarios,
+    rows,
+    excluded: runs.length - scored.length,
+    simulated: runs.filter((r) => r.simulated).length,
+  };
 }
 
 /** The same table as a Markdown block, ready to paste into the article draft. */
@@ -347,8 +375,12 @@ export function formatSimTime(iso: string, offsetMinutes = 0): string {
 export function badgeStatus(run: {
   status: RunStatus;
   outcome: Outcome | null;
+  simulated?: boolean;
 }): "running" | "passed" | "failed" | "pending" | "warning" | "neutral" {
   if (run.status === "running" || run.status === "judging") return "running";
+  // Grey and never red: a fabricated day is not a failed one. Red would read as
+  // a fact about the model, and there was no model.
+  if (run.simulated) return "neutral";
   if (run.status === "queued") return "pending";
   if (run.status === "failed" || run.status === "aborted") return "failed";
   if (run.outcome === "pass") return "passed";
@@ -360,7 +392,15 @@ export function badgeStatus(run: {
   return "neutral";
 }
 
-export function outcomeLabel(run: { status: RunStatus; outcome: Outcome | null }): string {
+export function outcomeLabel(run: {
+  status: RunStatus;
+  outcome: Outcome | null;
+  simulated?: boolean;
+}): string {
+  // Ahead of every other label, including the error states. "Errored" or "No
+  // result" on a stand-in run would be true of the run and silent about the
+  // product, and this badge is the only word most readers will see about it.
+  if (run.simulated) return SIMULATED_LABEL;
   if (run.status === "running") return "Running";
   if (run.status === "judging") return "Judging";
   if (run.status === "queued") return "Queued";

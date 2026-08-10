@@ -6,13 +6,18 @@ import { ago, percent } from "@/lib/format";
 import { modelLabel } from "@/lib/models";
 import { ROUTES } from "@/lib/routes";
 import type { RunSummary } from "@/lib/db";
+import { SIMULATED_LABEL } from "../results/_lib/simulated";
 import { useGo } from "./useGo";
 
 // Recent runs. Every row is a door onto its replay, and the autonomy figure sits
 // on the row rather than behind a click — it is the number the whole product is
 // about, and it should be readable at a glance from Home.
 
-function statusOf(run: RunSummary): { tone: BadgeStatus; label: string } {
+function statusOf(run: RunSummary, simulated: boolean): { tone: BadgeStatus; label: string } {
+  // Before every other reading of the row. A fabricated day reaches here as a
+  // finished run with no outcome, which is indistinguishable from a day the
+  // agent slept through — and the two are not the same admission.
+  if (simulated) return { tone: "neutral", label: SIMULATED_LABEL };
   if (run.status === "done") {
     if (run.outcome === "pass") return { tone: "passed", label: "Passed" };
     if (run.outcome === "fail") return { tone: "failed", label: "Failed" };
@@ -36,9 +41,11 @@ function statusOf(run: RunSummary): { tone: BadgeStatus; label: string } {
 export interface RecentRunsProps {
   runs: RunSummary[];
   now: number;
+  /** Run ids the stand-in fabricated. Empty until /api/results/simulated answers. */
+  simulated: ReadonlySet<string>;
 }
 
-export function RecentRuns({ runs, now }: RecentRunsProps) {
+export function RecentRuns({ runs, now, simulated }: RecentRunsProps) {
   const go = useGo();
 
   return (
@@ -80,7 +87,8 @@ export function RecentRuns({ runs, now }: RecentRunsProps) {
       ) : (
         <ul className="border-t border-sn-line">
           {runs.map((run) => {
-            const status = statusOf(run);
+            const isSimulated = simulated.has(run.id);
+            const status = statusOf(run, isSimulated);
             const href = ROUTES.run(run.id);
             return (
               <li key={run.id} className="border-b border-sn-line last:border-b-0">
@@ -98,7 +106,13 @@ export function RecentRuns({ runs, now }: RecentRunsProps) {
                       {run.episodeTitle}
                     </span>
                     <span className="block truncate text-[12px] text-sn-subtle">
-                      {modelLabel(run.model)}
+                      {/* The model name is the lie on a fabricated row — it was a
+                          hash seed, not a callee — so it is struck through rather
+                          than removed. The row still says which model it claimed. */}
+                      <span className={isSimulated ? "line-through" : undefined}>
+                        {modelLabel(run.model)}
+                      </span>
+                      {isSimulated ? " · never called" : ""}
                       {run.worldName ? ` · ${run.worldName}` : ""}
                     </span>
                   </span>

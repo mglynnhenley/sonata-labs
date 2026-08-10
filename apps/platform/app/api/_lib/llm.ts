@@ -5,14 +5,23 @@
 // description into one JSON object", so it asks with fetch and stays dependency-
 // free. Anything that runs an agent belongs in the engine, not here.
 
+import { getApiKey } from "@/lib/settings";
+
 export const OPENROUTER_BASE_URL =
   process.env.OPENROUTER_BASE_URL ?? "https://openrouter.ai/api/v1";
 
 /** Cheap by default: the seeder is prose generation, not reasoning. */
 export const DEFAULT_MODEL = process.env.OPENROUTER_MODEL ?? "anthropic/claude-haiku-4.5";
 
+// The key comes from the same place the engine's does — the settings row a user
+// typed on the Settings page, with the environment variable as the fallback.
+// Reading `process.env` directly here was the reason a first-time user who pasted
+// their key into Settings still had every generation fall back to a template: the
+// key was saved, Settings said so, and this file could not see it. There is no
+// environment variable to find in a UI-only install, which is the whole install
+// the product asks a newcomer to do.
 export function hasModelAccess(): boolean {
-  return Boolean(process.env.OPENROUTER_API_KEY);
+  return Boolean(getApiKey());
 }
 
 interface Choice {
@@ -75,7 +84,7 @@ async function post(body: unknown, signal?: AbortSignal): Promise<Completion> {
     method: "POST",
     headers: {
       "content-type": "application/json",
-      authorization: `Bearer ${process.env.OPENROUTER_API_KEY ?? ""}`,
+      authorization: `Bearer ${getApiKey() ?? ""}`,
       "x-title": "Sonata Labs",
     },
     body: JSON.stringify(body),

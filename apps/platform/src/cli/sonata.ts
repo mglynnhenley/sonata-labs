@@ -3,12 +3,17 @@ import "./env"; // must precede every import that reaches a model module or the 
 import path from "node:path";
 import { formatEstimate, renderReport, type BenchmarkEvent } from "@sonata/benchmark";
 import type { CriterionResult, EpisodeRun, Termination, TwinName } from "@sonata/core";
-import { TWIN_NAMES, offsetMinutes, runExecution } from "@sonata/core";
+import { TWIN_NAMES, agentToolCalls, offsetMinutes, runExecution } from "@sonata/core";
 import { reconcileRunRows } from "../../app/api/_lib/mirror";
-import { readRun } from "../../app/results/_lib/artifacts";
+import {
+  deleteRunArtifacts,
+  listSimulatedRuns,
+  readRun,
+} from "../../app/results/_lib/artifacts";
+import { SIMULATED_LABEL, SIMULATED_REASON } from "../../app/results/_lib/simulated";
 import { formatSimTime } from "../../app/results/_lib/summary";
 import { buildStory, type StoryRow } from "../../app/runs/_lib/story";
-import { countEpisodes, countWorlds, listRuns, runStats } from "../lib/db";
+import { countEpisodes, countWorlds, getDb, listRuns, runStats } from "../lib/db";
 import {
   benchDir,
   cancel,
@@ -72,6 +77,8 @@ const USAGE = `sonata — run agents inside a cloned business
   sonata status                         Twins, live runs, and what has been run
   sonata reconcile                      Re-read every artifact and repoint the
                                         runs list at what today's checker says
+  sonata prune --simulated              List the days the old stand-in fabricated
+      --yes                             Delete them — artifacts and rows alike
 `;
 
 // ---------------------------------------------------------------------------
@@ -537,6 +544,16 @@ async function statusCommand(): Promise<void> {
     );
   }
 
+  // Named here as well as on the dashboard, because this is the summary someone
+  // quotes from a terminal without opening the product.
+  const simulated = new Set(listSimulatedRuns().map((run) => run.runId));
+  if (simulated.size > 0) {
+    say(
+      `  ${simulated.size} of those never called a model — the old stand-in wrote them.` +
+        " They are in no average: sonata prune --simulated",
+    );
+  }
+
   const recent = listRuns({ limit: 8 });
   if (recent.length === 0) {
     say();
@@ -546,12 +563,16 @@ async function statusCommand(): Promise<void> {
   say();
   say("Recent runs");
   for (const run of recent) {
-    const progress =
-      run.status === "running" || run.status === "judging"
+    const fake = simulated.has(run.id);
+    const progress = fake
+      ? "no model was called"
+      : run.status === "running" || run.status === "judging"
         ? `${run.tick}/${run.totalTicks} ticks`
         : `${percent(run.score)} · ${percent(run.autonomy)} autonomy`;
-    say(`  ${run.status.padEnd(8)} ${run.id.padEnd(22)} ${run.episodeTitle}`);
-    say(`           ${run.model} · ${progress} · ${ago(run.startedAt)}`);
+    say(
+      `  ${(fake ? SIMULATED_LABEL.toLowerCase() : run.status).padEnd(9)} ${run.id.padEnd(22)} ${run.episodeTitle}`,
+    );
+    say(`            ${run.model} · ${progress} · ${ago(run.startedAt)}`);
   }
 }
 
@@ -579,6 +600,72 @@ function reconcileCommand(): void {
 }
 
 // ---------------------------------------------------------------------------
+// prune
+// ---------------------------------------------------------------------------
+
+/**
+ * Remove the days the stand-in fabricated.
+ *
+ * They are quarantined already — no mean, no table, no verdict — and quarantine
+ * is where they stay until this is run. Deleting them is a decision about the
+ * record, and the record is the owner's: a product that tidied away its own
+ * fabricated numbers on startup would be doing a quieter version of the thing
+ * that produced them.
+ *
+ * So the default is a listing. `--yes` is the second sentence, typed after
+ * reading the first.
+ */
+function pruneCommand(args: Args): void {
+  if (!switchOn(args, "simulated")) {
+    throw new Error(
+      "Say what to prune. Today there is one: sonata prune --simulated\n" +
+        "  (days played by the old stand-in loop, with no model behind them)",
+    );
+  }
+
+  const runs = listSimulatedRuns();
+  if (runs.length === 0) {
+    say("No simulated runs on disk. Every saved day was played by the engine.");
+    return;
+  }
+
+  say(`${runs.length} simulated run${runs.length === 1 ? "" : "s"}:`);
+  for (const run of runs) {
+    say(`  ${run.runId.padEnd(22)} ${run.specTitle}`);
+    say(
+      `           claimed ${run.model} · ${run.ticks.length} ticks · ${ago(run.startedAt)}` +
+        ` · ${agentToolCalls(run.ticks)} tool calls, none of which reached a clone`,
+    );
+  }
+  say();
+  say(`  ${SIMULATED_REASON}`);
+
+  if (!switchOn(args, "yes")) {
+    say();
+    say("Nothing was deleted. They are already out of every mean and every table —");
+    say("run `sonata prune --simulated --yes` to remove them from disk as well.");
+    return;
+  }
+
+  // The row goes with the file. There is no `deleteRun` in src/lib/db because
+  // nothing in this product has ever deleted a run — runs are the record — and
+  // this one command is the exception rather than the start of an API.
+  const db = getDb();
+  const dropRow = db.prepare("DELETE FROM runs WHERE id = ?");
+  let files = 0;
+  let rows = 0;
+  for (const run of runs) {
+    files += deleteRunArtifacts(run.runId).length;
+    rows += dropRow.run(run.runId).changes;
+  }
+  say();
+  say(
+    `Deleted ${runs.length} run${runs.length === 1 ? "" : "s"} — ${files} file${files === 1 ? "" : "s"}` +
+      ` and ${rows} row${rows === 1 ? "" : "s"}.`,
+  );
+}
+
+// ---------------------------------------------------------------------------
 
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
@@ -597,6 +684,8 @@ async function main(): Promise<void> {
       return statusCommand();
     case "reconcile":
       return reconcileCommand();
+    case "prune":
+      return pruneCommand(args);
     case undefined:
     case "help":
       say(USAGE);

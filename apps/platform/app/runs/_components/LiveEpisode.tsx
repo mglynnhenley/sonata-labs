@@ -10,8 +10,6 @@ import {
   IconArrowDown,
   IconArrowRight,
   IconCheck,
-  IconPause,
-  IconPlay,
   PageHeader,
   ProgressBar,
   SERVICE_LABELS,
@@ -122,7 +120,7 @@ export function LiveEpisode({ initial, twinLinks }: LiveEpisodeProps) {
         meta={
           <>
             <Badge status={STATUS_BADGE[run.status]} dot={run.status === "running"}>
-              {run.paused && run.status === "running" ? "Paused" : STATUS_LABEL[run.status]}
+              {STATUS_LABEL[run.status]}
             </Badge>
             <Chip>{modelLabel(run.model)}</Chip>
             {run.twins.map((twin) => (
@@ -135,23 +133,18 @@ export function LiveEpisode({ initial, twinLinks }: LiveEpisodeProps) {
         actions={
           <>
             {live ? (
-              <>
-                <Button
-                  variant="secondary"
-                  icon={run.paused ? <IconPlay size={12} /> : <IconPause size={13} />}
-                  loading={pending === "pause" || pending === "resume"}
-                  onClick={() => void command(run.paused ? "resume" : "pause")}
-                >
-                  {run.paused ? "Resume the day" : "Pause"}
-                </Button>
-                <Button
-                  variant="ghost"
-                  loading={pending === "abort"}
-                  onClick={() => void command("abort")}
-                >
-                  Stop the day
-                </Button>
-              </>
+              // Stop, and no Pause. A day is a chain of live model calls with
+              // nothing to freeze between them, so `pauseRun` refuses — this
+              // button POSTed that refusal straight back as a 500. Offering a
+              // control the engine cannot honour is the same defect as printing a
+              // number nothing measured, so the control goes.
+              <Button
+                variant="ghost"
+                loading={pending === "abort"}
+                onClick={() => void command("abort")}
+              >
+                Stop the day
+              </Button>
             ) : (
               <Button
                 variant="primary"
@@ -193,7 +186,7 @@ export function LiveEpisode({ initial, twinLinks }: LiveEpisodeProps) {
               value={run.tickCount}
               max={run.plannedTicks}
               tone={finished ? "success" : "primary"}
-              label={finished ? "The day, in full" : run.paused ? "Paused" : "The day so far"}
+              label={finished ? "The day, in full" : "The day so far"}
               showValue
               valueLabel={`Tick ${run.tickCount} of ${run.plannedTicks}`}
               indeterminate={run.status === "queued" || run.status === "judging"}
@@ -241,7 +234,7 @@ export function LiveEpisode({ initial, twinLinks }: LiveEpisodeProps) {
           <div className="ml-auto flex items-center gap-2">
             {error ? (
               <span className="text-[12px] text-sn-subtle">Reconnecting…</span>
-            ) : live && !run.paused ? (
+            ) : live ? (
               <Badge status="running" size="sm" dot>
                 Live
               </Badge>

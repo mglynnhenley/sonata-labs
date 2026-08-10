@@ -13,6 +13,7 @@ import {
   type Benchmark,
   type BenchmarkCell,
 } from "../_lib/summary";
+import { SIMULATED_HINT } from "../_lib/simulated";
 
 // The article's table. Rows are models, columns are scenarios, cells are
 // autonomy — and every cell is a link into the run that produced it, because a
@@ -40,6 +41,14 @@ export function BenchmarkTable({ benchmark }: { benchmark: Benchmark }) {
           "Rows are models, columns are scenarios",
           "Every cell opens the run behind it",
           "Copy it as Markdown straight into the draft",
+          // The empty state returns before the footnotes below, and "no runs
+          // yet" over a directory full of fabricated ones is the same silence
+          // this whole pass is undoing.
+          ...(benchmark.simulated > 0
+            ? [
+                `${benchmark.simulated} saved run${benchmark.simulated === 1 ? "" : "s"} cannot fill this table: ${SIMULATED_HINT.toLowerCase()}`,
+              ]
+            : []),
         ]}
       />
     );
@@ -161,11 +170,30 @@ export function BenchmarkTable({ benchmark }: { benchmark: Benchmark }) {
 
       {/* Said out loud, because a mean over a quietly smaller population is the
           same lie as a mean over a padded one. */}
-      {benchmark.excluded > 0 ? (
+      {benchmark.excluded > benchmark.simulated ? (
         <p className="border-t border-sn-line px-5 py-2.5 text-[11.5px] text-sn-muted">
-          {benchmark.excluded} run{benchmark.excluded === 1 ? "" : "s"} never finished the day and{" "}
-          {benchmark.excluded === 1 ? "is" : "are"} not averaged here — a run that stopped before
-          it acted has no autonomy to report. They are all still in the Runs list.
+          {benchmark.excluded - benchmark.simulated} run
+          {benchmark.excluded - benchmark.simulated === 1 ? "" : "s"} never finished the day and{" "}
+          {benchmark.excluded - benchmark.simulated === 1 ? "is" : "are"} not averaged here — a run
+          that stopped before it acted has no autonomy to report. They are all still in the Runs
+          list.
+        </p>
+      ) : null}
+
+      {/* Its own paragraph, above nothing and under everything: this table was
+          for months a comparison of models that were never called, and a reader
+          who has seen it before is owed that in the product rather than in a
+          changelog. */}
+      {benchmark.simulated > 0 ? (
+        <p className="border-t border-sn-line px-5 py-2.5 text-[11.5px] text-sn-muted">
+          <span className="font-medium text-sn-ink">
+            {benchmark.simulated} simulated run{benchmark.simulated === 1 ? "" : "s"}{" "}
+            {benchmark.simulated === 1 ? "is" : "are"} left out entirely.
+          </span>{" "}
+          {SIMULATED_HINT} Until this was found they were averaged into this table as if they
+          were measurements. They are still in the Runs list, marked;{" "}
+          <code className="font-mono text-[11px]">sonata prune --simulated</code> removes them for
+          good.
         </p>
       ) : null}
 

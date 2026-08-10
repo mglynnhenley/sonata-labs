@@ -213,7 +213,10 @@ export function StartRunPanel({
         <p className="text-[12px] leading-[18px] text-sn-subtle">
           {twins.length === 0
             ? "Give the agent at least one app — it has to have somewhere to work."
-            : `${ticks} ticks of 15 simulated minutes, across ${twins.length} app${twins.length === 1 ? "" : "s"}. You can pause or stop at any point.`}
+            : // Stop, not pause: a day is a chain of live model calls, and there is
+              // no point between them to hold one open at. Promising a pause here
+              // was promising a button that answered with a 500.
+              `${ticks} ticks of 15 simulated minutes, across ${twins.length} app${twins.length === 1 ? "" : "s"}. You can stop it at any point.`}
         </p>
       </div>
     </Card>

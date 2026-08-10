@@ -16,6 +16,7 @@ import { ago, elapsed, percent } from "@/lib/format";
 import { modelLabel } from "@/lib/models";
 // One name for the checklist number, wherever it is printed.
 import { CHECKLIST_HINT, CHECKLIST_LABEL } from "../../results/_lib/summary";
+import { SIMULATED_LABEL } from "../../results/_lib/simulated";
 import type { RunSummary } from "../../api/_lib/types";
 
 // History. Every row is a door onto its run — live or finished, the same URL.
@@ -51,7 +52,14 @@ const LIVE: readonly RunStatus[] = ["queued", "running", "judging"];
  * the agent never ran, and the row has to say so rather than leave two dashes
  * for the reader to interpret.
  */
-function statusOf(run: RunSummary): { tone: BadgeStatus; label: string } {
+function statusOf(run: RunSummary, simulated: boolean): { tone: BadgeStatus; label: string } {
+  // Before every other reading of the row, and before the score is consulted at
+  // all: this list is built from the document store, which still holds the
+  // bookkeeping the stand-in wrote for itself. Those docs are settled, so
+  // `refresh` serves them verbatim and their score never became null the way the
+  // relational rows behind Home did. Read as a normal row, a fabricated day
+  // prints "Ran to the end" at 100%.
+  if (simulated) return { tone: "neutral", label: SIMULATED_LABEL };
   if (!LIVE.includes(run.status) && run.score === null) {
     return { tone: run.status === "failed" ? "failed" : "neutral", label: NO_RESULT };
   }
@@ -62,10 +70,20 @@ export type PastRunsProps = {
   runs: readonly RunSummary[];
   /** Server time from the last poll, so "4 min ago" never drifts. */
   now: number;
+  /** Run ids the stand-in fabricated. Empty until /api/results/simulated answers. */
+  simulated: ReadonlySet<string>;
 };
 
-export function PastRuns({ runs, now }: PastRunsProps) {
+export function PastRuns({ runs, now, simulated }: PastRunsProps) {
   const router = useRouter();
+
+  // A fabricated run's numbers are not small or stale, they are invented — the
+  // score came off a seeded coin flip, not off a day. Nothing may print them, so
+  // they are dropped here rather than dimmed, and the row says why in its badge.
+  const scoreOf = (run: RunSummary): number | null =>
+    simulated.has(run.runId) ? null : run.score;
+  const autonomyOf = (run: RunSummary): number | null =>
+    simulated.has(run.runId) ? null : run.autonomy;
 
   const columns: readonly Column<RunSummary>[] = [
     {
@@ -84,7 +102,22 @@ export function PastRuns({ runs, now }: PastRunsProps) {
         </div>
       ),
     },
-    { key: "model", header: "Model", render: (run) => modelLabel(run.model), width: "170px" },
+    {
+      key: "model",
+      header: "Model",
+      width: "170px",
+      // Struck through, not removed, on a fabricated row: the model name was a
+      // hash seed there, never a callee, and the row should still say which model
+      // it claimed. Same treatment as Home's list.
+      render: (run) =>
+        simulated.has(run.runId) ? (
+          <span className="text-sn-subtle">
+            <span className="line-through">{modelLabel(run.model)}</span> · never called
+          </span>
+        ) : (
+          modelLabel(run.model)
+        ),
+    },
     {
       key: "when",
       header: "When",
@@ -110,26 +143,32 @@ export function PastRuns({ runs, now }: PastRunsProps) {
       header: CHECKLIST_LABEL,
       align: "right",
       width: "110px",
-      render: (run) => (
-        <span
-          data-numeric
-          className={run.score === null ? "text-sn-subtle" : "text-sn-ink"}
-          title={CHECKLIST_HINT}
-        >
-          {percent(run.score)}
-        </span>
-      ),
+      render: (run) => {
+        const score = scoreOf(run);
+        return (
+          <span
+            data-numeric
+            className={score === null ? "text-sn-subtle" : "text-sn-ink"}
+            title={CHECKLIST_HINT}
+          >
+            {percent(score)}
+          </span>
+        );
+      },
     },
     {
       key: "autonomy",
       header: "Autonomy",
       align: "right",
       width: "100px",
-      render: (run) => (
-        <span data-numeric className={run.autonomy === null ? "text-sn-subtle" : "text-sn-ink"}>
-          {percent(run.autonomy)}
-        </span>
-      ),
+      render: (run) => {
+        const autonomy = autonomyOf(run);
+        return (
+          <span data-numeric className={autonomy === null ? "text-sn-subtle" : "text-sn-ink"}>
+            {percent(autonomy)}
+          </span>
+        );
+      },
     },
     {
       key: "status",
@@ -141,7 +180,7 @@ export function PastRuns({ runs, now }: PastRunsProps) {
       align: "right",
       width: "140px",
       render: (run) => {
-        const status = statusOf(run);
+        const status = statusOf(run, simulated.has(run.runId));
         return (
           <Badge status={status.tone} size="sm" dot={run.status === "running"}>
             {status.label}
