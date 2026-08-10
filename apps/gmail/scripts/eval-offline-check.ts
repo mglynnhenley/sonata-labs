@@ -10,6 +10,7 @@
 
 import {
   connectGmail,
+  obtainAccessToken,
   injectFixture,
   latestActionId,
   resetSandbox,
@@ -101,7 +102,7 @@ const flaggingAgent: TriageAgent = {
 
 async function runOnce(agent: TriageAgent) {
   await resetSandbox("offline-check", rootUrl);
-  const gmail = connectGmail(rootUrl);
+  const gmail = connectGmail(rootUrl, await obtainAccessToken(rootUrl));
   const userId = "me";
 
   const fixture = buildFixture();

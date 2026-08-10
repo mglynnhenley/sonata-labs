@@ -1,4 +1,5 @@
 import { handleGmail, json } from "@/lib/gmail/route-helpers";
+import { GMAIL_SCOPE } from "@/lib/oauth/scopes";
 import { currentHistoryId } from "@/lib/store/meta";
 
 export const runtime = "nodejs";
@@ -9,7 +10,7 @@ export async function GET(
   { params }: { params: Promise<{ userId: string }> },
 ) {
   const { userId } = await params;
-  return handleGmail(req, userId, ({ db, userId: email }) => {
+  return handleGmail(req, userId, GMAIL_SCOPE.readonly, ({ db, userId: email }) => {
     const messagesTotal = (
       db.prepare("SELECT COUNT(*) AS n FROM messages").get() as { n: number }
     ).n;

@@ -1,4 +1,5 @@
 import { handleGmail, json, runMutation } from "@/lib/gmail/route-helpers";
+import { GMAIL_SCOPE } from "@/lib/oauth/scopes";
 import { badRequest, notFound } from "@/lib/gmail/errors";
 import { getDraftRow } from "@/lib/store/drafts";
 import { getMessageRow } from "@/lib/store/messages";
@@ -12,7 +13,7 @@ export async function POST(
   { params }: { params: Promise<{ userId: string }> },
 ) {
   const { userId } = await params;
-  return handleGmail(req, userId, async ({ db }) => {
+  return handleGmail(req, userId, GMAIL_SCOPE.send, async ({ db }) => {
     const body = (await req.json().catch(() => ({}))) as { id?: string };
     if (!body.id) return badRequest("Missing draft 'id'.");
 

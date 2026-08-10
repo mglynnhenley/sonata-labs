@@ -8,6 +8,8 @@ interface Ctx {
   gmail: gmail_v1.Gmail;
   check: (name: string, cond: boolean, detail?: unknown) => void;
   expectError: (name: string, fn: () => Promise<unknown>, code: number) => Promise<void>;
+  /** Re-establish an OAuth session (a reset wipes the access token). */
+  reauth: () => Promise<unknown>;
 }
 
 const PORT = process.env.PORT || "3100";
@@ -48,7 +50,7 @@ function headerOf(msg: gmail_v1.Schema$Message, name: string): string | undefine
     undefined;
 }
 
-export async function part2Writes({ gmail, check, expectError }: Ctx): Promise<void> {
+export async function part2Writes({ gmail, check, expectError, reauth }: Ctx): Promise<void> {
   console.log("\n\x1b[1mPart 2 — Writes (mutations, send, drafts, reset)\x1b[0m");
   const userId = "me";
 
@@ -168,6 +170,10 @@ export async function part2Writes({ gmail, check, expectError }: Ctx): Promise<v
 
   const resetRes = await fetch(`${ROOT}/api/sandbox/reset`, { method: "POST" }).then((r) => r.json());
   check("reset endpoint returns ok", resetRes.status === "ok", resetRes);
+  // A reset copies the pristine snapshot over working.db, which wipes minted
+  // OAuth tokens — re-establish a session before continuing, exactly as a client
+  // would after a 401. (The dev client is re-seeded on reset, so this succeeds.)
+  await reauth();
   const afterReset = await gmail.users.getProfile({ userId });
   check(
     "reset restores message count to snapshot (18)",

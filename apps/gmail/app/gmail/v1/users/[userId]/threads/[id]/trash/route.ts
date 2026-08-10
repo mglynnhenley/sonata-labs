@@ -1,4 +1,5 @@
 import { handleGmail, json, runMutation } from "@/lib/gmail/route-helpers";
+import { GMAIL_SCOPE } from "@/lib/oauth/scopes";
 import { notFound } from "@/lib/gmail/errors";
 import { trashThread } from "@/lib/gmail/mutations";
 import { getThread } from "@/lib/store/threads";
@@ -11,7 +12,7 @@ export async function POST(
   { params }: { params: Promise<{ userId: string; id: string }> },
 ) {
   const { userId, id } = await params;
-  return handleGmail(req, userId, ({ db }) => {
+  return handleGmail(req, userId, GMAIL_SCOPE.modify, ({ db }) => {
     const endpoint = new URL(req.url).pathname;
     runMutation(
       db,

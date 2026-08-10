@@ -9,6 +9,7 @@
     "start": "next start",
     "lint": "next lint",
     "db:init": "tsx src/cli/db-init.ts",
+    "oauth:client": "tsx scripts/oauth-register-client.ts",
     "seed": "tsx src/cli/seed.ts",
     "sync": "tsx src/cli/sync.ts",
     "reset": "tsx src/cli/reset.ts",

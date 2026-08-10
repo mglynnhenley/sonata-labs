@@ -8,20 +8,129 @@
 // Requires the server to be running (npm start) on $PORT and a seeded mailbox.
 
 import { google, type gmail_v1 } from "googleapis";
+import http from "node:http";
+import { randomBytes } from "node:crypto";
 import { b64urlDecodeToString } from "../src/lib/gmail/base64.js";
+import { s256Challenge } from "../src/lib/oauth/pkce.js";
+import {
+  DEV_UI_CLIENT_ID,
+  DEV_UI_CLIENT_SECRET,
+  DEV_UI_REDIRECT_URI,
+} from "../src/lib/oauth/clients.js";
+import { GMAIL_SCOPE } from "../src/lib/oauth/scopes.js";
 
 const OAuth2Client = google.auth.OAuth2;
 
 const PORT = process.env.PORT || "3100";
 const ROOT_URL = process.env.SANDBOX_ROOT_URL || `http://localhost:${PORT}`;
-const TOKEN = process.env.SANDBOX_TOKEN || "sandbox-token";
+
+// The scopes the smoke exercises — everything the read+write checks touch.
+const ALL_SCOPES = [
+  GMAIL_SCOPE.readonly,
+  GMAIL_SCOPE.modify,
+  GMAIL_SCOPE.labels,
+  GMAIL_SCOPE.send,
+  GMAIL_SCOPE.compose,
+];
 
 // Pass an OAuth2Client with setCredentials — a string `auth` becomes a `key=`
 // query param, NOT a bearer header (a classic footgun the plan calls out).
 const auth = new OAuth2Client();
-auth.setCredentials({ access_token: TOKEN });
-
 const gmail = google.gmail({ version: "v1", auth, rootUrl: ROOT_URL });
+
+// --- real OAuth2 handshake ---------------------------------------------------
+// Drive the sandbox's own authorization server exactly as the UI (or any
+// third-party client) would: PKCE authorize → consent Allow → code → token
+// exchange. This is the strongest regression signal — it proves the SDK's
+// OAuth2Client path works end-to-end against the twin.
+
+function b64url(buf: Buffer): string {
+  return buf.toString("base64url");
+}
+
+/** POST a form without following redirects, so we can read the 302 Location. */
+function postFormRaw(
+  urlStr: string,
+  form: Record<string, string>,
+): Promise<{ status: number; location?: string; body: string }> {
+  const body = new URLSearchParams(form).toString();
+  const u = new URL(urlStr);
+  return new Promise((resolve, reject) => {
+    const req = http.request(
+      {
+        hostname: u.hostname,
+        port: u.port,
+        path: u.pathname + u.search,
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          "Content-Length": Buffer.byteLength(body),
+        },
+      },
+      (res) => {
+        let data = "";
+        res.on("data", (c) => (data += c));
+        res.on("end", () =>
+          resolve({ status: res.statusCode ?? 0, location: res.headers.location, body: data }),
+        );
+      },
+    );
+    req.on("error", reject);
+    req.write(body);
+    req.end();
+  });
+}
+
+/** Run the full authorization-code + PKCE flow; return an access token. */
+async function handshake(scopes: string[]): Promise<string> {
+  const verifier = b64url(randomBytes(32));
+  const challenge = s256Challenge(verifier);
+  const state = b64url(randomBytes(9));
+
+  // 1. Consent decision (Allow) → 302 back to redirect_uri with code+state.
+  const decision = await postFormRaw(`${ROOT_URL}/oauth/authorize/decision`, {
+    client_id: DEV_UI_CLIENT_ID,
+    redirect_uri: DEV_UI_REDIRECT_URI,
+    scope: scopes.join(" "),
+    response_type: "code",
+    code_challenge: challenge,
+    code_challenge_method: "S256",
+    state,
+    decision: "allow",
+  });
+  if (!decision.location) {
+    throw new Error(`authorize decision did not redirect (${decision.status}): ${decision.body.slice(0, 200)}`);
+  }
+  const redirect = new URL(decision.location);
+  const code = redirect.searchParams.get("code");
+  if (redirect.searchParams.get("state") !== state) throw new Error("state mismatch on redirect");
+  if (!code) throw new Error(`no code in redirect: ${decision.location}`);
+
+  // 2. Exchange the code (with the PKCE verifier + client secret) for a token.
+  const tokenRes = await fetch(`${ROOT_URL}/oauth/token`, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      grant_type: "authorization_code",
+      code,
+      redirect_uri: DEV_UI_REDIRECT_URI,
+      client_id: DEV_UI_CLIENT_ID,
+      client_secret: DEV_UI_CLIENT_SECRET,
+      code_verifier: verifier,
+    }).toString(),
+  });
+  if (!tokenRes.ok) throw new Error(`token exchange failed (${tokenRes.status}): ${await tokenRes.text()}`);
+  const tok = (await tokenRes.json()) as { access_token?: string };
+  if (!tok.access_token) throw new Error("token response missing access_token");
+  return tok.access_token;
+}
+
+/** Handshake for the given scopes and point the shared SDK client at the token. */
+async function authorize(scopes: string[]): Promise<string> {
+  const token = await handshake(scopes);
+  auth.setCredentials({ access_token: token });
+  return token;
+}
 
 let passed = 0;
 let failed = 0;
@@ -144,13 +253,37 @@ async function part1Reads(): Promise<void> {
     gmail.users.messages.get({ userId: "me", id: firstId, format: "raw" }), 400);
 }
 
+// Per-route scope enforcement: a token that lacks a scope is refused with
+// Google's 403, even though it is a perfectly valid token.
+async function partScopeDenial(): Promise<void> {
+  console.log("\n\x1b[1mScope enforcement (per-route)\x1b[0m");
+  const readonlyToken = await handshake([GMAIL_SCOPE.readonly]);
+  check("readonly handshake issues a token", !!readonlyToken);
+  const ro = new OAuth2Client();
+  ro.setCredentials({ access_token: readonlyToken });
+  const roGmail = google.gmail({ version: "v1", auth: ro, rootUrl: ROOT_URL });
+
+  const prof = await roGmail.users.getProfile({ userId: "me" });
+  check("readonly token can read (getProfile)", !!prof.data.emailAddress);
+
+  await expectError("readonly token cannot create a label → 403", () =>
+    roGmail.users.labels.create({ userId: "me", requestBody: { name: `Denied ${Date.now()}` } }), 403);
+  await expectError("readonly token cannot send → 403", () =>
+    roGmail.users.messages.send({ userId: "me", requestBody: { raw: "" } }), 403);
+}
+
 async function main() {
   const mode = process.argv[2] || "all";
+  // Establish a session through the real OAuth flow before any API call.
+  const token = await authorize(ALL_SCOPES);
+  check("OAuth handshake yields an access token", !!token);
   await part1Reads();
   if (mode !== "reads") {
     try {
       const { part2Writes } = await import("./smoke-sdk-writes.js");
-      await part2Writes({ gmail, check, expectError });
+      // part2 resets the sandbox mid-run, which wipes OAuth tokens; `reauth`
+      // lets it re-establish a session the way a client would on a 401.
+      await part2Writes({ gmail, check, expectError, reauth: () => authorize(ALL_SCOPES) });
     } catch (e) {
       if ((e as { code?: string }).code === "ERR_MODULE_NOT_FOUND") {
         console.log("\n  (part 2 writes not yet implemented — skipping)");
@@ -158,6 +291,7 @@ async function main() {
         throw e;
       }
     }
+    await partScopeDenial();
   }
   console.log(`\n\x1b[1mResult:\x1b[0m ${passed} passed, ${failed} failed`);
   process.exit(failed === 0 ? 0 : 1);

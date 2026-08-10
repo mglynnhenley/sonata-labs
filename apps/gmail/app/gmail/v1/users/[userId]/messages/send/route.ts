@@ -1,4 +1,5 @@
 import { handleGmail, json, runMutation } from "@/lib/gmail/route-helpers";
+import { GMAIL_SCOPE } from "@/lib/oauth/scopes";
 import { badRequest } from "@/lib/gmail/errors";
 import { b64urlDecode } from "@/lib/gmail/base64";
 import { prepareSend, commitSend } from "@/lib/send";
@@ -11,7 +12,7 @@ export async function POST(
   { params }: { params: Promise<{ userId: string }> },
 ) {
   const { userId } = await params;
-  return handleGmail(req, userId, async ({ db }) => {
+  return handleGmail(req, userId, GMAIL_SCOPE.send, async ({ db }) => {
     const body = (await req.json().catch(() => ({}))) as { raw?: string; threadId?: string };
     if (!body.raw) return badRequest("Missing 'raw' RFC822 content.");
 

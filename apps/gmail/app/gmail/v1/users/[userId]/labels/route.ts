@@ -1,4 +1,5 @@
 import { handleGmail, json, runMutation } from "@/lib/gmail/route-helpers";
+import { GMAIL_SCOPE } from "@/lib/oauth/scopes";
 import { listLabelRows, shapeLabel, createLabel } from "@/lib/store/labels";
 
 export const runtime = "nodejs";
@@ -9,7 +10,7 @@ export async function GET(
   { params }: { params: Promise<{ userId: string }> },
 ) {
   const { userId } = await params;
-  return handleGmail(req, userId, ({ db }) => {
+  return handleGmail(req, userId, GMAIL_SCOPE.readonly, ({ db }) => {
     // labels.list omits counts (get includes them).
     const labels = listLabelRows(db).map(shapeLabel);
     return json({ labels });
@@ -21,7 +22,7 @@ export async function POST(
   { params }: { params: Promise<{ userId: string }> },
 ) {
   const { userId } = await params;
-  return handleGmail(req, userId, async ({ db }) => {
+  return handleGmail(req, userId, GMAIL_SCOPE.labels, async ({ db }) => {
     const body = (await req.json().catch(() => ({}))) as {
       name?: string;
       messageListVisibility?: string;

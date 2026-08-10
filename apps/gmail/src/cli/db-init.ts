@@ -15,11 +15,15 @@ import {
   WORKING_PATH,
   AUDIT_PATH,
 } from "../lib/db.js";
+import { seedDevClients } from "../lib/oauth/clients.js";
 
 const force = process.argv.includes("--force");
 const schema = readSchema();
 
-function initFile(file: string, { drop }: { drop?: boolean } = {}): void {
+// snapshot.db + working.db carry the OAuth tables; seed the well-known dev
+// clients into both so a `reset` (snapshot → working) preserves them. audit.db
+// gets the schema too (harmless, IF NOT EXISTS) but never the clients.
+function initFile(file: string, { drop, seedClients }: { drop?: boolean; seedClients?: boolean } = {}): void {
   if (drop && existsSync(file)) {
     for (const suffix of ["", "-wal", "-shm"]) rmSync(file + suffix, { force: true });
     console.log(`  dropped ${file}`);
@@ -27,13 +31,14 @@ function initFile(file: string, { drop }: { drop?: boolean } = {}): void {
   const db = new Database(file);
   db.pragma("journal_mode = WAL");
   db.exec(schema);
+  if (seedClients) seedDevClients(db);
   db.close();
   console.log(`  ready   ${file}`);
 }
 
 ensureDataDir();
 console.log("Initializing sandbox databases…");
-initFile(SNAPSHOT_PATH);
-initFile(WORKING_PATH, { drop: force });
+initFile(SNAPSHOT_PATH, { seedClients: true });
+initFile(WORKING_PATH, { drop: force, seedClients: true });
 initFile(AUDIT_PATH);
 console.log("Done.");

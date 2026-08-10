@@ -8,6 +8,7 @@ import Database from "better-sqlite3";
 import { copyFileSync, existsSync, rmSync } from "node:fs";
 import { ensureDataDir, readSchema, SNAPSHOT_PATH, WORKING_PATH } from "../lib/db.js";
 import { seedDatabase } from "../lib/seed.js";
+import { seedDevClients } from "../lib/oauth/clients.js";
 
 const SUFFIXES = ["", "-wal", "-shm"];
 function rmFiles(base: string): void {
@@ -21,6 +22,9 @@ rmFiles(SNAPSHOT_PATH);
 const db = new Database(SNAPSHOT_PATH);
 db.exec(readSchema());
 seedDatabase(db);
+// The bundled OAuth clients travel with the snapshot (and the copy to working.db)
+// so the UI + smoke handshake work with no manual registration.
+seedDevClients(db);
 const counts = {
   messages: (db.prepare("SELECT COUNT(*) AS n FROM messages").get() as { n: number }).n,
   labels: (db.prepare("SELECT COUNT(*) AS n FROM labels").get() as { n: number }).n,

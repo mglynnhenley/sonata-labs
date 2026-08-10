@@ -1,4 +1,5 @@
 import { handleGmail, json, runMutation, noContent } from "@/lib/gmail/route-helpers";
+import { GMAIL_SCOPE } from "@/lib/oauth/scopes";
 import { notFound, badRequest } from "@/lib/gmail/errors";
 import { getMessageRow, getLabelIds } from "@/lib/store/messages";
 import { deleteMessagePermanent } from "@/lib/gmail/mutations";
@@ -15,7 +16,7 @@ export async function GET(
   { params }: { params: Promise<{ userId: string; id: string }> },
 ) {
   const { userId, id } = await params;
-  return handleGmail(req, userId, ({ db }) => {
+  return handleGmail(req, userId, GMAIL_SCOPE.readonly, ({ db }) => {
     const sp = new URL(req.url).searchParams;
     const format = (sp.get("format") || "full").toLowerCase();
     if (!FORMATS.has(format)) {
@@ -42,7 +43,7 @@ export async function DELETE(
   { params }: { params: Promise<{ userId: string; id: string }> },
 ) {
   const { userId, id } = await params;
-  return handleGmail(req, userId, ({ db }) => {
+  return handleGmail(req, userId, GMAIL_SCOPE.modify, ({ db }) => {
     const endpoint = new URL(req.url).pathname;
     runMutation(
       db,

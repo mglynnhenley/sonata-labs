@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
-import { checkAuth } from "./auth";
+import { authenticate, tokenHasScope, insufficientScope } from "./auth";
 import { toErrorResponse, badRequest } from "./errors";
 import { getDb } from "../db";
 import { getProfileEmail } from "../store/meta";
 import type { Database } from "better-sqlite3";
 
-// Shared plumbing for /gmail/v1/* route handlers: bearer auth, userId
-// validation, and Gmail-shaped error translation. Keeps every route uniform.
+// Shared plumbing for /gmail/v1/* route handlers: OAuth bearer auth, per-route
+// scope enforcement, userId validation, and Gmail-shaped error translation.
+// Keeps every route uniform.
 
 export interface GmailCtx {
   db: Database;
@@ -14,18 +15,23 @@ export interface GmailCtx {
 }
 
 /**
- * Wrap a handler with auth + error handling. `userId` from the route is
- * validated to be `me` or the synced profile email (Gmail 400s otherwise).
+ * Wrap a handler with auth + scope enforcement + error handling. Every route
+ * declares the OAuth `scope` it requires (a Gmail scope string); a token whose
+ * granted scopes do not satisfy it gets Google's 403 insufficientPermissions.
+ * `userId` from the route is validated to be `me` or the synced profile email
+ * (Gmail 400s otherwise).
  */
 export async function handleGmail(
   req: Request,
   userIdParam: string,
+  scope: string,
   fn: (ctx: GmailCtx) => Promise<NextResponse> | NextResponse,
 ): Promise<NextResponse> {
-  const authErr = checkAuth(req);
-  if (authErr) return authErr;
+  const db = getDb();
+  const auth = authenticate(req, db);
+  if (auth instanceof NextResponse) return auth;
+  if (!tokenHasScope(auth, scope)) return insufficientScope();
   try {
-    const db = getDb();
     const email = getProfileEmail(db);
     if (userIdParam !== "me" && userIdParam.toLowerCase() !== email.toLowerCase()) {
       return badRequest(`Invalid userId '${userIdParam}'.`);

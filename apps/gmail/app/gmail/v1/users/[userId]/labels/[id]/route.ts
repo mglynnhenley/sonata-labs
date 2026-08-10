@@ -1,4 +1,5 @@
 import { handleGmail, json, runMutation, noContent } from "@/lib/gmail/route-helpers";
+import { GMAIL_SCOPE } from "@/lib/oauth/scopes";
 import { notFound } from "@/lib/gmail/errors";
 import {
   getLabelRow,
@@ -16,7 +17,7 @@ export async function GET(
   { params }: { params: Promise<{ userId: string; id: string }> },
 ) {
   const { userId, id } = await params;
-  return handleGmail(req, userId, ({ db }) => {
+  return handleGmail(req, userId, GMAIL_SCOPE.readonly, ({ db }) => {
     const row = getLabelRow(db, id);
     if (!row) return notFound();
     // labels.get includes live-computed counts.
@@ -29,7 +30,7 @@ async function patchOrPut(
   params: Promise<{ userId: string; id: string }>,
 ) {
   const { userId, id } = await params;
-  return handleGmail(req, userId, async ({ db }) => {
+  return handleGmail(req, userId, GMAIL_SCOPE.labels, async ({ db }) => {
     const body = (await req.json().catch(() => ({}))) as {
       name?: string;
       messageListVisibility?: string;
@@ -70,7 +71,7 @@ export async function DELETE(
   { params }: { params: Promise<{ userId: string; id: string }> },
 ) {
   const { userId, id } = await params;
-  return handleGmail(req, userId, ({ db }) => {
+  return handleGmail(req, userId, GMAIL_SCOPE.labels, ({ db }) => {
     const endpoint = new URL(req.url).pathname;
     runMutation(
       db,

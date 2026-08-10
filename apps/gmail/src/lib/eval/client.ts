@@ -25,6 +25,33 @@ export function connectGmail(rootUrl = defaultRootUrl(), token = defaultToken())
   return google.gmail({ version: "v1", auth, rootUrl });
 }
 
+/**
+ * Mint a real OAuth2 provider access token via the admin-gated bridge
+ * (POST /api/sandbox/token). Now that /gmail/v1/* is behind OAuth, an over-HTTP
+ * SDK connection needs one of these rather than the raw admin token. Presents
+ * the admin token (SANDBOX_TOKEN) and receives a full-scope access token.
+ */
+export async function obtainAccessToken(
+  rootUrl = defaultRootUrl(),
+  adminToken = defaultToken(),
+): Promise<string> {
+  const res = await fetch(`${rootUrl}/api/sandbox/token`, {
+    method: "POST",
+    headers: { "content-type": "application/json", authorization: `Bearer ${adminToken}` },
+    body: JSON.stringify({}),
+  });
+  if (!res.ok) throw new Error(`mint token failed (${res.status}): ${await res.text()}`);
+  return ((await res.json()) as { access_token: string }).access_token;
+}
+
+/** Connect the SDK using a freshly-minted OAuth token (the common post-cutover path). */
+export async function connectGmailOAuth(
+  rootUrl = defaultRootUrl(),
+  adminToken = defaultToken(),
+): Promise<gmail_v1.Gmail> {
+  return connectGmail(rootUrl, await obtainAccessToken(rootUrl, adminToken));
+}
+
 async function postJson<T>(url: string, body: unknown): Promise<T> {
   const res = await fetch(url, {
     method: "POST",

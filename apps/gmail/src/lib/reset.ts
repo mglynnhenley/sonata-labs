@@ -6,6 +6,7 @@ import {
   WORKING_PATH,
 } from "./db";
 import { startNewSession } from "./audit";
+import { seedDevClients } from "./oauth/clients";
 
 const SUFFIXES = ["", "-wal", "-shm"];
 
@@ -32,6 +33,9 @@ export function resetWorking(note = "reset to snapshot"): { messages: number } {
     if (existsSync(SNAPSHOT_PATH + s)) copyFileSync(SNAPSHOT_PATH + s, WORKING_PATH + s);
   }
   const db = getDb();
+  // The snapshot may predate OAuth (or carry an empty client table); re-seed the
+  // well-known dev clients so the UI can complete its flow after any reset.
+  seedDevClients(db);
   startNewSession(db, note);
   const n = (db.prepare("SELECT COUNT(*) AS n FROM messages").get() as { n: number }).n;
   return { messages: n };
