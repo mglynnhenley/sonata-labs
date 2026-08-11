@@ -1,5 +1,6 @@
 import {
   displayAddress,
+  resolveTwinApiUrl,
   type BeatBody,
   type EpisodeSpec,
   type GmailDiff,
@@ -65,7 +66,7 @@ export interface GmailAdapterOptions extends Omit<TwinHttpOptions, "baseUrl"> {
 }
 
 export function createGmailAdapter(opts: GmailAdapterOptions = {}): TwinAdapter {
-  const baseUrl = opts.baseUrl ?? process.env.GMAIL_TWIN_URL ?? "http://localhost:3101";
+  const baseUrl = resolveTwinApiUrl("gmail", process.env, { override: opts.baseUrl });
   // Gmail's provider API is behind OAuth2; the client mints a provider token via
   // the admin-gated bridge (control-plane calls keep the admin token). Callers
   // can still override `oauth` explicitly. Slack/calendar stay on the static

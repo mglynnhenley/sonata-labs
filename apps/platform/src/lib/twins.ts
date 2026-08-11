@@ -2,7 +2,15 @@ import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, openSync, readFileSync } from "node:fs";
 import { connect } from "node:net";
 import path from "node:path";
-import { TWIN_NAMES, type TwinName } from "@sonata/core";
+import {
+  TWIN_API_PORTS,
+  TWIN_NAMES,
+  TWIN_UI_PORTS,
+  hasUiService,
+  twinApiUrl,
+  twinUiUrl,
+  type TwinName,
+} from "@sonata/core";
 import {
   DATA_DIR,
   clearTwinProcess,
@@ -16,11 +24,8 @@ import {
 // it needs answer, so this is the first thing the product has to make obvious —
 // and the one thing a first-time user should never have to open a terminal for.
 
-export const TWIN_PORTS: Record<TwinName, number> = {
-  gmail: 3101,
-  slack: 3200,
-  calendar: 3400,
-};
+/** The API port per twin. Re-exported from @sonata/core, which owns the numbers. */
+export const TWIN_PORTS: Record<TwinName, number> = TWIN_API_PORTS;
 
 export const TWIN_LABELS: Record<TwinName, string> = {
   gmail: "Gmail",
@@ -36,7 +41,14 @@ export const TWIN_BLURBS: Record<TwinName, string> = {
 };
 
 export function twinUrl(twin: TwinName): string {
-  return `http://localhost:${TWIN_PORTS[twin]}`;
+  return twinApiUrl(twin);
+}
+
+/** The twin's web client, for twins that ship one. */
+export interface TwinUiStatus {
+  port: number;
+  url: string;
+  ok: boolean;
 }
 
 export interface TwinStatus {
@@ -53,6 +65,13 @@ export interface TwinStatus {
   pid: number | null;
   /** Epoch ms of this check. */
   checkedAt: number;
+  /**
+   * The paired UI service, when the twin has one. A twin is one logical unit
+   * started and stopped together, so this is a sub-status rather than its own
+   * row: the API is what a run needs, the UI is what a human looks at. Absent
+   * for twins with no UI service yet.
+   */
+  ui?: TwinUiStatus;
 }
 
 // ---------------------------------------------------------------------------
@@ -170,8 +189,29 @@ function portBusy(port: number): Promise<boolean> {
   });
 }
 
+/**
+ * Does the twin's web client answer? Same health-probe shape as the API, so
+ * there is one code path for "is this service up". Never throws: a UI that is
+ * down must not make a healthy API report as broken — a run only needs the API.
+ */
+async function probeUi(twin: TwinName): Promise<TwinUiStatus | undefined> {
+  if (!hasUiService(twin)) return undefined;
+  const url = twinUiUrl(twin);
+  const status: TwinUiStatus = { port: TWIN_UI_PORTS[twin], url, ok: false };
+  try {
+    const res = await fetch(`${url}/api/health`, {
+      cache: "no-store",
+      signal: AbortSignal.timeout(HEALTH_TIMEOUT_MS),
+    });
+    return { ...status, ok: res.ok };
+  } catch {
+    return status;
+  }
+}
+
 async function probe(twin: TwinName): Promise<TwinStatus> {
   const proc = livingProcess(twin);
+  const ui = await probeUi(twin);
   const base: Omit<TwinStatus, "ok" | "detail"> = {
     twin,
     label: TWIN_LABELS[twin],
@@ -180,6 +220,7 @@ async function probe(twin: TwinName): Promise<TwinStatus> {
     managed: proc !== null,
     pid: proc?.pid ?? null,
     checkedAt: Date.now(),
+    ui,
   };
 
   try {

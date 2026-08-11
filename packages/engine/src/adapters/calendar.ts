@@ -1,6 +1,7 @@
 import {
   displayAddress,
   emailOf,
+  resolveTwinApiUrl,
   type AgentTrace,
   type BeatBody,
   type CalendarDiff,
@@ -75,7 +76,7 @@ export interface CalendarAdapterOptions extends Omit<TwinHttpOptions, "baseUrl">
 }
 
 export function createCalendarAdapter(opts: CalendarAdapterOptions = {}): TwinAdapter {
-  const baseUrl = opts.baseUrl ?? process.env.CALENDAR_TWIN_URL ?? "http://localhost:3400";
+  const baseUrl = resolveTwinApiUrl("calendar", process.env, { override: opts.baseUrl });
   const http = new TwinHttp({ ...opts, baseUrl });
   const api = "/calendar/v3";
 

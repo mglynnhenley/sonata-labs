@@ -1,4 +1,4 @@
-import type { TwinName } from "@sonata/core";
+import { resolveTwinApiUrl, twinApiUrl, type TwinName } from "@sonata/core";
 
 // Where the three twins live and what token opens them.
 //
@@ -18,9 +18,9 @@ export const TWINS = ["gmail", "slack", "calendar"] as const;
 export type ServedTwin = (typeof TWINS)[number];
 
 export const DEFAULT_TWIN_URLS: Record<ServedTwin, string> = {
-  gmail: "http://localhost:3101",
-  slack: "http://localhost:3200",
-  calendar: "http://localhost:3400",
+  gmail: twinApiUrl("gmail"),
+  slack: twinApiUrl("slack"),
+  calendar: twinApiUrl("calendar"),
 };
 
 /** What to tell a user whose twin is not answering. Keyed by twin, from the root. */
@@ -57,7 +57,10 @@ export function asServedTwin(twin: TwinName): ServedTwin {
 export function configFromEnv(env: NodeJS.ProcessEnv = process.env): SonataConfig {
   const urls = {} as Record<ServedTwin, string>;
   for (const twin of TWINS) {
-    urls[twin] = trimSlashes(env[URL_ENV[twin]] || DEFAULT_TWIN_URLS[twin]);
+    // Resolved through core so both env spellings work here exactly as they do
+    // for the engine and the dashboard. `URL_ENV` below stays the canonical
+    // name to *emit* — a generated snippet should offer one way to spell it.
+    urls[twin] = resolveTwinApiUrl(twin, env);
   }
   // SANDBOX_TOKEN is accepted too: it is what the twins themselves read, so a
   // shell already set up to curl them needs no second variable.
