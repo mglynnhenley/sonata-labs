@@ -1,5 +1,16 @@
--- Sonata's own state. The nine twin databases are not here and never will be:
--- see src/lib/pg.ts.
+-- Sonata's own state, for the day it outgrows one laptop.
+--
+-- NOT IN USE. The app runs on SQLite (src/lib/db.ts) and will until there is a
+-- second user to justify a server. This file is kept because the schema is the
+-- hard-won part and it is Postgres-ready — Supabase is then only a connection
+-- string. The driver work is not: better-sqlite3 is synchronous and every call
+-- site would become async, which is a day's refactor and buys nothing yet.
+--
+-- The nine twin databases are not here and never will be. A clone reset is one
+-- `copyFileSync(snapshot.db, working.db)`, and that single line is why every run
+-- starts from an identical world and why two runs are comparable at all. Postgres
+-- has no cheap equivalent — it would take a schema per session — so the clones
+-- stay local files by design, not by inertia.
 --
 -- Every timestamp is an epoch in milliseconds, as BIGINT, rather than
 -- TIMESTAMPTZ. The whole app types them `number` and does arithmetic on them
