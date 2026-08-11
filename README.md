@@ -140,13 +140,24 @@ npm test          # every workspace that has a suite
 npm run typecheck
 ```
 
-The strongest signal for a twin is its smoke gate, which drives the *official*
-provider SDK against the clone, including a full OAuth handshake:
+Neither of those talks to a running server, and every serious defect in this repo
+so far has passed the type checker. Two gates do drive the real thing:
 
 ```bash
 npm run dev:gmail:api                  # in one shell
-PORT=3101 npm run smoke -w apps/gmail  # in another
+
+PORT=3101 npm run smoke -w apps/gmail  # the official SDK, incl. a real OAuth handshake
+npm run check:twin                     # the harness against a live twin
 ```
+
+`smoke` is the twin's own gate: it drives the *official* `googleapis` SDK through
+a full authorize → consent → token exchange, then 58 checks over reads, writes,
+scope enforcement and consent denial.
+
+`check:twin` is the other direction — the episode engine's `TwinAdapter` contract
+against a running twin, and it asserts the property that has broken twice: the
+control plane takes the static admin token, `/gmail/v1/**` takes an OAuth token
+minted through the bridge, and neither credential works on the other's surface.
 
 ## Layout
 

@@ -24,7 +24,8 @@
     "test:gmail": "npm run test -w apps/gmail",
     "test:slack": "npm run test -w apps/slack",
     "test:calendar": "npm run test -w apps/calendar",
-    "typecheck": "npm run typecheck --workspaces --if-present"
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "check:twin": "tsx packages/engine/scripts/twin-contract-check.ts"
   },
   "devDependencies": {
     "concurrently": "^10.0.4"
