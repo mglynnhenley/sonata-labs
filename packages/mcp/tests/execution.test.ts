@@ -28,20 +28,39 @@ function text(result: Awaited<ReturnType<typeof callTool>>): string {
 }
 
 describe("tool execution", () => {
-  it("sends a Gmail read to the twin's own route, with the bearer token", async () => {
+  it("mints an access token before reading Gmail, and never sends the admin token there", async () => {
     const { fake, call } = harness({
       "/messages": { messages: [{ id: "m1", threadId: "t1" }], resultSizeEstimate: 1 },
     });
     const result = await call("gmail_list_messages", { labelIds: ["INBOX"], maxResults: 5 });
+
+    // Gmail is behind a real OAuth2 server: the admin token opens the bridge and
+    // nothing else. Sending it to /gmail/v1/* earns a 401, so the exchange is not
+    // an optimisation to be skipped — it is the only way in.
+    const mint = fake.find("/api/sandbox/token") as Call;
+    expect(mint.method).toBe("POST");
+    expect(mint.headers.Authorization).toBe("Bearer test-token");
 
     const sent = fake.find("/messages") as Call;
     expect(sent.method).toBe("GET");
     expect(sent.url).toBe(
       "http://gmail.test/gmail/v1/users/me/messages?labelIds=INBOX&maxResults=5",
     );
-    expect(sent.headers.Authorization).toBe("Bearer test-token");
+    expect(sent.headers.Authorization).toBe("Bearer test-access-token");
     expect(result.isError).toBeUndefined();
     expect(payload(result)).toEqual({ messages: [{ id: "m1", threadId: "t1" }], total: 1 });
+  });
+
+  it("takes the static token straight to Slack, which has no OAuth in front of it", async () => {
+    const { fake, call } = harness({
+      "/api/conversations.list": { ok: true, channels: [{ id: "C01OPS", name: "ops" }] },
+    });
+    await call("slack_list_channels", {});
+
+    expect(fake.find("/api/sandbox/token")).toBeUndefined();
+    expect((fake.find("/api/conversations.list") as Call).headers.Authorization).toBe(
+      "Bearer test-token",
+    );
   });
 
   it("resolves a Slack channel name before posting, so an agent can say 'ops'", async () => {

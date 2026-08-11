@@ -50,7 +50,16 @@ export interface ClientOptions {
   timeoutMs?: number;
 }
 
-/** One HTTP client per twin, carrying the bearer token every call needs. */
+/**
+ * One HTTP client per twin, carrying the bearer token every call needs.
+ *
+ * Gmail sits behind a real OAuth2 server, so SONATA_TOKEN is only an admin
+ * credential there: presenting it to /gmail/v1/* earns a 401. TwinHttp's `oauth`
+ * flag makes it mint a provider access token on demand through the admin-gated
+ * bridge, which is the same thing the episode engine does — one mechanism, so an
+ * agent connected over MCP and an agent driven by the engine authenticate
+ * identically. Slack and calendar take the static token directly.
+ */
 export function twinClient(twin: ServedTwin, opts: ClientOptions): TwinClient {
   const baseUrl = opts.config.urls[twin];
   return {
@@ -59,6 +68,7 @@ export function twinClient(twin: ServedTwin, opts: ClientOptions): TwinClient {
     http: new TwinHttp({
       baseUrl,
       token: opts.config.token,
+      ...(twin === "gmail" ? { oauth: true } : {}),
       fetchImpl: opts.fetchImpl,
       ...(opts.timeoutMs === undefined ? {} : { timeoutMs: opts.timeoutMs }),
     }),

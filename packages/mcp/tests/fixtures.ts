@@ -32,8 +32,19 @@ export interface FetchFake {
   all(needle: string): Call[];
 }
 
+/**
+ * The admin-gated bridge every Gmail client now goes through before it can touch
+ * /gmail/v1/*. It is answered here rather than in each test because it is part of
+ * the world, not part of any one case: a test that forgot it would fail with a
+ * 404 on a route it never meant to exercise.
+ */
+const MINT_ROUTE = "/api/sandbox/token";
+const MINT_RESPONSE = { access_token: "test-access-token", token_type: "Bearer", expires_in: 3600 };
+
 /** `routes` maps a URL substring to the JSON the twin answers with. */
 export function fetchFake(routes: Record<string, Route>): FetchFake {
+  const withMint: Record<string, Route> = { [MINT_ROUTE]: MINT_RESPONSE, ...routes };
+  routes = withMint;
   const calls: Call[] = [];
   const fake: typeof globalThis.fetch = (input, init) => {
     const url = String(input);
