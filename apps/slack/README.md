@@ -1,12 +1,15 @@
-# Slack Sandbox Clone
+# Slack twin
 
-A local sandbox that mirrors a Slack workspace into SQLite and serves a mutable
-copy through a **Slack Web API–compatible** surface, with a Slack-replica UI and
-a full audit trail. Drop an AI agent into a realistic workspace and watch what
-it does, with zero risk to the real one.
+One of the three clones that make up [Sonata Labs](../../README.md) — read the
+root README for what the product is and how a scenario runs. This file is about
+the Slack surface only.
+
+It mirrors a Slack workspace into SQLite and serves a mutable copy through a
+**Slack Web API–compatible** surface, with a Slack-replica UI and a full audit
+trail the judge reads afterwards. Nothing leaves the machine.
 
 The design property that matters: **the official `@slack/web-api` SDK talks to
-the sandbox by overriding only the base URL.**
+the twin by overriding only the base URL.**
 
 ```ts
 import { WebClient } from "@slack/web-api";
@@ -19,33 +22,39 @@ const client = new WebClient("sandbox-token", {
 await client.chat.postMessage({ channel: "C0ENGINEER1", text: "hello" });
 ```
 
-Nothing leaves the machine. Every mutation is recorded. One command resets.
+Unlike the Gmail twin, this one is still a **single static bearer token**
+(`SANDBOX_TOKEN`, default `sandbox-token`) for both the Web API and
+`/api/sandbox/*`. Slack's own auth is a workspace token, not an OAuth2 access
+token per call, so there is nothing here for the Gmail-style authorization server
+to be faithful *to*. See [AGENTS.md](AGENTS.md) for working in this app.
 
-## Quick start
+## Run it
 
 ```bash
-npm install
-npm run db:init          # create snapshot.db + working.db + audit.db
-npm run seed             # synthetic workspace (no credentials needed)
-PORT=3200 npm run dev    # UI + API at http://localhost:3200
-
-# in another shell:
-PORT=3200 npm run smoke  # 108 acceptance checks via the official SDK
-PORT=3200 npm run demo   # watch a small agent work, live in the UI
+npm run dev:slack               # from the repo root: UI + API on :3200
+npm run db:init -w apps/slack   # first time
 ```
 
-Open <http://localhost:3200>, click **Agent activity**, run `npm run demo`, and
-watch the actions stream in. Then press **Reset to snapshot**.
+A world normally arrives from the platform (`npm run sonata -- world create …`
+POSTs a whole company to `/api/sandbox/seed`). To bring the twin up standalone:
 
-> Port 3000 and 3100 are typically taken locally (3100 is the Gmail sandbox), so
-> everything here defaults to **3200**.
+```bash
+npm run seed -w apps/slack      # synthetic workspace, no credentials needed
+
+cd apps/slack                   # these scripts read PORT (default 3200)
+npm run smoke                   # acceptance checks via the official SDK
+npm run demo                    # watch a small agent work, live in the UI
+```
+
+Open <http://localhost:3200>, click **Agent activity**, run the demo, and watch
+the actions stream in. Then press **Reset to snapshot**.
 
 ## Three databases (under `data/`, gitignored)
 
 | DB | Role |
 |---|---|
-| `snapshot.db` | Pristine capture — written only by `seed` / `sync`. |
-| `working.db` | The mutable copy the sandbox serves. Reset restores it from the snapshot. |
+| `snapshot.db` | Pristine capture — written only by `seed` / `sync` / the world seeder. |
+| `working.db` | The mutable copy the twin serves. Reset restores it from the snapshot. |
 | `audit.db` | `sessions` + `action_log`. **ATTACHed** onto the working connection, so an audit row commits in the same transaction as the mutation — yet survives resets, because it's a separate file. |
 
 All three share one schema (`db/schema.sql`), applied idempotently.
@@ -58,10 +67,10 @@ threading, plus `reactions`, `files` + `message_files`, `pins`, `outbox`, and an
 FTS5 index over message text.
 
 `raw_json` stores each resource as Slack would serve it, **minus** the fields the
-sandbox owns live (reactions, thread stats, edits, pin state). Those live in
-their own tables and are overlaid on every read — so mutations are always
-visible and the resource stays faithful. That overlay (`src/lib/slack/shape.ts`)
-is the fidelity linchpin.
+twin owns live (reactions, thread stats, edits, pin state). Those live in their
+own tables and are overlaid on every read — so mutations are always visible and
+the resource stays faithful. That overlay (`src/lib/slack/shape.ts`) is the
+fidelity linchpin.
 
 ## Implemented API surface
 
@@ -112,6 +121,26 @@ Also: **`conversations.history` returns thread roots only** (with
 `reply_count` / `latest_reply`); replies come from `conversations.replies`.
 Returning replies inline is the canonical clone bug.
 
+## The control plane — `/api/sandbox/*`
+
+How the rest of Sonata drives this twin. Failures here are a plain
+`{ok:false,error}`, never a Slack envelope: these routes are machinery, and
+dressing them up as Slack would teach a stray agent the wrong thing.
+
+| route | who calls it | `SANDBOX_TOKEN`? |
+|---|---|---|
+| `/seed` — a whole workspace at once | `packages/world` | required |
+| `/inject` — one beat: a message that just landed | `packages/engine` | required |
+| `/snapshot` — the workspace as the judge sees it | `packages/judge` | required |
+| `/reset` — restore working.db from the snapshot | the CLI, the UI | none |
+| `/chaos`, `/events`, `/upload` — the affordances below | you, the UI | none |
+
+The ungated ones are the ones the browser UI drives, and the browser has no
+token. Fine on a local port; know it before exposing a twin.
+
+Injected beats are deliberately **not** audit-logged: the audit log is the
+agent's record and grading reads it, so the world's own moves stay out.
+
 ## Testing affordances
 
 A replica that only ever succeeds is a weak test rig. Two features exist purely
@@ -119,7 +148,7 @@ to make agent behaviour observable and falsifiable.
 
 ### Fault injection — `POST /api/sandbox/chaos`
 
-Make the sandbox fail the way Slack fails, and watch how the agent copes. Also
+Make the twin fail the way Slack fails, and watch how the agent copes. Also
 in the UI under **Agent activity**, with one-click presets.
 
 ```bash
@@ -142,7 +171,7 @@ exactly. Injection happens *before* the handler, so a failed call never writes.
 
 ### Events API — `POST /api/sandbox/events`
 
-Event-driven agents need to be *pushed to*. Subscribe a URL and the sandbox
+Event-driven agents need to be *pushed to*. Subscribe a URL and the twin
 delivers Slack-shaped, **Slack-signed** events.
 
 ```bash
@@ -191,11 +220,12 @@ starts the next day, `on:` / `during:` span the named day / month / year.
 
 ## UI
 
-A faithful Slack desktop replica (aubergine `#3f0e40` sidebar, Lato, 36px avatar
-gutter, author-grouped messages, reaction pills, thread facepiles, day dividers)
-plus a thread drawer, search, and the **Agent activity** panel. The UI drives the
-same public API an agent uses, and polls internal JSON routes (`/api/ui/*`) every
-3s so agent writes appear live.
+Unlike the Gmail twin, whose replica was split into its own service, this one
+serves its UI from the same app: a faithful Slack desktop replica (aubergine
+`#3f0e40` sidebar, Lato, 36px avatar gutter, author-grouped messages, reaction
+pills, thread facepiles, day dividers) plus a thread drawer, search, and the
+**Agent activity** panel. It drives the same public API an agent uses, and polls
+internal JSON routes (`/api/ui/*`) every 3s so agent writes appear live.
 
 **Block Kit is rendered**, not flattened to fallback text: `section` (incl.
 2-column `fields` and accessories), `header`, `divider`, `context`, `actions`
@@ -210,17 +240,21 @@ renders as text nodes — no `dangerouslySetInnerHTML` anywhere — and it drops
 `javascript:` / `data:` URIs. Block Kit text goes through the same renderer.
 Covered by `tests/mrkdwn.test.ts`.
 
-## Syncing a real workspace
+## Syncing a real workspace — optional, read-only, not the normal path
+
+**Nothing in Sonata needs this.** Workspaces are generated (`packages/world`) or
+seeded synthetically; that is the path everything else assumes. Sync exists for
+the case where the twin should resemble one specific real workspace.
 
 ```bash
-SLACK_TOKEN=xoxp-... npm run sync
-npm run sync -- --since 30d --max-per-channel 500 --types public_channel,im
-npm run sync -- --no-files
-npm run reset            # load the new snapshot into working.db
+SLACK_TOKEN=xoxp-... npm run sync -w apps/slack
+npm run sync -w apps/slack -- --since 30d --max-per-channel 500 --types public_channel,im
+npm run sync -w apps/slack -- --no-files
+npm run reset -w apps/slack      # load the new snapshot into working.db
 ```
 
 The token is used **only** by the sync CLI (cached at `data/slack-token.json`,
-gitignored); the sandbox runtime never sees it and nothing is written back to
+gitignored); the twin's runtime never sees it and nothing is written back to
 Slack. Read-only scopes are enough:
 
 ```
@@ -233,17 +267,20 @@ Sync is idempotent (upserts by id / `(channel, ts)`), so re-running doubles as
 incremental sync. It backs off on `ratelimited` + `Retry-After`, downloads file
 bytes under `--file-cap` (2 MB) and `--file-budget` (100 MB) — over-cap files
 keep metadata only — and skips (rather than aborts on) conversations the token
-can't read.
+can't read. It is also the one path here never exercised against reality: its arg
+handling and auth-failure path are tested, but the happy path is unproven.
 
 ## Commands
+
+Run from `apps/slack` unless noted.
 
 ```bash
 npm run db:init            # create the three DBs
 npm run db:init -- --force # drop & recreate working.db
 npm run seed               # synthetic workspace → snapshot + working
-npm run sync               # real workspace → snapshot (read-only)
+npm run sync               # real workspace → snapshot (read-only, optional)
 npm run reset              # restore working.db from snapshot
-npm run dev / build / start
+npm run dev / build / start   # or `npm run dev:slack` from the repo root
 npm run smoke              # official-SDK acceptance (reads, writes, faults, events)
 npm run smoke -- reads     # reads only
 npm run demo               # the demo agent
@@ -268,17 +305,11 @@ npm test                   # vitest
   4. *events* — `url_verification`, signed delivery, every event shape,
      filtering, forged-delivery rejection, and subscriber isolation.
 
-  The harness resets to the snapshot on start, so it is **repeatable**: run it
-  twice and you get the same 152/152 — against `npm run dev` and against a
-  production `npm run build && npm start` alike.
+  The harness resets to the snapshot on start, so it is **repeatable** — and so
+  running it against a twin mid-episode destroys that episode's world.
 - `npm run demo` — an agent doing real work, observable in the UI.
-- `npx tsx scripts/demo-event-receiver.ts` — a reference event receiver that
-  verifies signatures.
 
 ## Stack
 
 Next.js 15 (App Router, Node runtime) · React 19 · TypeScript · Tailwind v4 ·
 better-sqlite3 (raw SQL + FTS5) · `@slack/web-api` · vitest.
-
-Sibling project: the Gmail sandbox clone in the `edinburgh` workspace, which
-this mirrors phase-for-phase.

@@ -5,6 +5,7 @@
 // description into one JSON object", so it asks with fetch and stays dependency-
 // free. Anything that runs an agent belongs in the engine, not here.
 
+import { modelCallError } from "@sonata/engine";
 import { getApiKey } from "@/lib/settings";
 
 export const OPENROUTER_BASE_URL =
@@ -80,6 +81,7 @@ export interface CompleteJsonOptions {
 }
 
 async function post(body: unknown, signal?: AbortSignal): Promise<Completion> {
+  const model = (body as { model?: string } | null)?.model ?? DEFAULT_MODEL;
   const res = await fetch(`${OPENROUTER_BASE_URL}/chat/completions`, {
     method: "POST",
     headers: {
@@ -91,7 +93,17 @@ async function post(body: unknown, signal?: AbortSignal): Promise<Completion> {
     signal,
   });
   const json = (await res.json()) as Completion;
-  if (!res.ok) throw new Error(json.error?.message ?? `OpenRouter HTTP ${res.status}`);
+  // Through the engine's translation, so a rejected or unfunded key reads the
+  // same here as it does mid-run. OpenRouter's own 401 is "User not found.",
+  // which arrives in the UI looking like a bug in the seeder.
+  if (!res.ok) {
+    throw modelCallError(
+      Object.assign(new Error(json.error?.message ?? `OpenRouter HTTP ${res.status}`), {
+        status: res.status,
+      }),
+      model,
+    );
+  }
   return json;
 }
 

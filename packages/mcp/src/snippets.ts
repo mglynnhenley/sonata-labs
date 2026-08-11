@@ -94,19 +94,38 @@ export function restSnippet(input: SnippetInput): string {
   };
   const lines = [
     "# Sonata twins over plain HTTP — the same surface the MCP tools call.",
-    `# Every request needs: Authorization: Bearer ${input.config.token}`,
+    `# Slack and calendar take: Authorization: Bearer ${input.config.token}`,
     "",
   ];
   for (const twin of TWINS) {
     if (!twins.includes(twin)) continue;
     lines.push(`${twin.padEnd(9)} ${input.config.urls[twin]}   ${shape[twin]}`);
   }
-  const first = twins[0] ?? "gmail";
-  lines.push(
-    "",
-    `curl -s -H "Authorization: Bearer ${env.SONATA_TOKEN}" \\`,
-    `  "${input.config.urls[first]}${sample(first)}"`,
-  );
+  // Gmail is behind the clone's own OAuth2 server; the token above is admin-only
+  // there and earns a 401 on /gmail/v1/*. Printing the curl that works is the
+  // difference between "connect" and "connect, then debug a 401 for an hour".
+  const gmail = twins.includes("gmail") ? input.config.urls.gmail : null;
+  if (gmail) {
+    lines.push(
+      "",
+      "# Gmail's /gmail/v1/* takes an OAuth2 access token, not the token above.",
+      "# Mint one through the admin bridge, then call:",
+      `TOKEN=$(curl -s -X POST ${gmail}/api/sandbox/token \\`,
+      `  -H "Authorization: Bearer ${env.SONATA_TOKEN}" -H "Content-Type: application/json" \\`,
+      "  -d '{}' | jq -r .access_token)",
+      "",
+      'curl -s -H "Authorization: Bearer $TOKEN" \\',
+      `  "${gmail}${sample("gmail")}"`,
+    );
+  }
+  const rest = twins.find((twin) => twin !== "gmail");
+  if (rest) {
+    lines.push(
+      "",
+      `curl -s -H "Authorization: Bearer ${env.SONATA_TOKEN}" \\`,
+      `  "${input.config.urls[rest]}${sample(rest)}"`,
+    );
+  }
   return `${lines.join("\n")}\n`;
 }
 

@@ -1,8 +1,12 @@
 {
   "name": "sonata-labs",
   "version": "0.1.0",
+  "description": "Clone your business into a fake Gmail, Slack and Calendar, run your agent through a simulated workday inside it, and score how much of the job it finished.",
+  "license": "MIT",
   "private": true,
-  "description": "Clone your business, then test how well your agent does the work inside the clone.",
+  "engines": {
+    "node": ">=22.0.0"
+  },
   "workspaces": [
     "apps/*",
     "packages/*"
@@ -13,7 +17,7 @@
     "dev:gmail": "PORT=3101 npm run dev -w apps/gmail",
     "dev:slack": "PORT=3200 npm run dev -w apps/slack",
     "dev:calendar": "PORT=3400 npm run dev -w apps/calendar",
-    "sonata": "cd apps/platform && tsx src/cli/sonata.ts",
+    "sonata": "node packages/cli/bin/sonata.mjs",
     "world": "cd apps/platform && tsx src/cli/sonata.ts world",
     "episode": "cd apps/platform && tsx src/cli/sonata.ts run",
     "judge": "cd apps/platform && tsx src/cli/sonata.ts judge",

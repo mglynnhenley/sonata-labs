@@ -14,7 +14,7 @@ import {
   type TwinHealth,
   type TwinSnapshot,
 } from "@sonata/core";
-import { TwinHttp, type TwinHttpOptions } from "../http";
+import { createTwinHttp, type TwinHttpOptions } from "../http";
 import { extractBodyText, headerMap, type GmailMessage } from "../gmailMime";
 import { projectTwinTrace } from "../project";
 import {
@@ -66,11 +66,7 @@ export interface GmailAdapterOptions extends Omit<TwinHttpOptions, "baseUrl"> {
 
 export function createGmailAdapter(opts: GmailAdapterOptions = {}): TwinAdapter {
   const baseUrl = opts.baseUrl ?? process.env.GMAIL_TWIN_URL ?? "http://localhost:3101";
-  // Gmail's provider API is behind OAuth2; the client mints a provider token via
-  // the admin-gated bridge (control-plane calls keep the admin token). Callers
-  // can still override `oauth` explicitly. Slack/calendar stay on the static
-  // token until they are cut over too.
-  const http = new TwinHttp({ oauth: true, ...opts, baseUrl });
+  const http = createTwinHttp("gmail", { ...opts, baseUrl });
   const userId = opts.userId ?? "me";
   const api = `/gmail/v1/users/${encodeURIComponent(userId)}`;
 

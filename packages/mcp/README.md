@@ -1,8 +1,8 @@
 # @sonata/mcp
 
-Step one of Sonata: **connect your tools**. One stdio MCP server fronts all three
-twins, so any external agent — Claude Code, OpenClaw, Cowork, anything that speaks
-MCP — is inside the fake company after one paste.
+The connector: one stdio MCP server that fronts all three [Sonata
+Labs](../../README.md) twins, so any external agent — Claude Code, OpenClaw,
+Cowork, anything that speaks MCP — is inside the fake company after one paste.
 
 ```bash
 npm run dev:gmail     # port 3101
@@ -44,8 +44,35 @@ makes finding it cheap enough to do on a loop.
 `sonata-mcp` serves all three; `sonata-mcp gmail` serves one, for episodes that
 should only put a mailbox in front of the agent.
 
+## `SONATA_TOKEN` is an admin token, not a Gmail credential
+
+Gmail sits behind a real OAuth2 authorization server (see
+[apps/gmail](../../apps/gmail/README.md)), so on that twin the token opens
+`/api/sandbox/*` and nothing else — presenting it to `/gmail/v1/*` earns a 401.
+`manifest.ts` therefore builds the Gmail client with `TwinHttp`'s `oauth` flag:
+it mints a provider access token through the admin-gated
+`POST /api/sandbox/token` on first use and re-mints on a 401 (expiry, or a reset
+that wiped the token table). Slack and Calendar take the static token directly.
+
+That is the same mechanism the episode engine uses — one implementation, so an
+agent connected over MCP and an agent driven by the engine authenticate
+identically, and a Gmail auth change cannot pass the benchmark while breaking
+the connector.
+
 ## No MCP?
 
 The twins are the product; MCP is one door into them. `sonata-mcp connect` also
 prints the raw base URLs and bearer token — every tool here is a thin call onto
 those same routes.
+
+The printed `curl` works as-is against Slack and Calendar. For Gmail, mint a
+token first:
+
+```bash
+TOKEN=$(curl -s -X POST localhost:3101/api/sandbox/token \
+  -H 'authorization: Bearer sandbox-token' -H 'content-type: application/json' \
+  -d '{}' | jq -r .access_token)
+
+curl -s -H "authorization: Bearer $TOKEN" \
+  "localhost:3101/gmail/v1/users/me/messages?labelIds=INBOX&maxResults=10"
+```

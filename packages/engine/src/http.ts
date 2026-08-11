@@ -14,7 +14,12 @@
 // test without a server, and without vitest-wide fetch monkey-patching leaking
 // between files.
 
+import type { TwinName } from "@sonata/core";
+
 export const DEFAULT_SANDBOX_TOKEN = process.env.SANDBOX_TOKEN || "sandbox-token";
+
+/** Twins whose provider API is behind the sandbox's own OAuth2 server. */
+const OAUTH_TWINS: readonly TwinName[] = ["gmail"];
 
 export interface TwinHttpOptions {
   baseUrl: string;
@@ -180,6 +185,19 @@ export class TwinHttp {
   delete<T>(path: string, query?: Query): Promise<T> {
     return this.request<T>("DELETE", path, { query });
   }
+}
+
+/**
+ * The client for one twin, with that twin's authentication already decided.
+ *
+ * Three callers build these — the engine's adapters, the agent's tools, and the
+ * MCP server — and the day only two of them knew Gmail had moved behind OAuth2,
+ * the third presented the admin token to /gmail/v1/* and 401'd on every read
+ * while typecheck and the suites stayed green. Which twin needs what is answered
+ * here and nowhere else. An explicit `oauth` still wins, for a twin mid-cutover.
+ */
+export function createTwinHttp(twin: TwinName, opts: TwinHttpOptions): TwinHttp {
+  return new TwinHttp({ ...opts, oauth: opts.oauth ?? OAUTH_TWINS.includes(twin) });
 }
 
 /** `err.message` for anything thrown, without the `unknown` dance at each site. */

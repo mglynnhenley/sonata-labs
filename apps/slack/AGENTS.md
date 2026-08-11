@@ -1,20 +1,23 @@
 # AGENTS.md
 
-Guidance for coding agents (and humans) working in this repo. Read this before
-making changes. For product usage, see [README.md](README.md).
+Working in the Slack twin. Read the [root AGENTS.md](../../AGENTS.md) first — it
+covers what has gone wrong across the whole repo. This file covers this app.
+For usage, see [README.md](README.md).
 
-Sibling project: the Gmail sandbox clone in the `edinburgh` workspace, which
-this mirrors phase-for-phase. Same architecture, different provider — when in
-doubt about a pattern, check how Gmail did it, then check the "Slack is not
-Gmail" section below for where it deliberately diverges.
+Sibling: `apps/gmail`, which this mirrors phase-for-phase. Same architecture,
+different provider — when in doubt about a pattern, check how Gmail did it, then
+check the "Slack is not Gmail" section below for where it deliberately diverges.
+One place it no longer mirrors: Gmail moved its provider API behind a real OAuth2
+server and split its UI into `apps/gmail-ui`. This twin did neither, on purpose —
+Slack authenticates with a workspace token, not a per-call OAuth2 access token,
+so there is nothing here for an authorization server to be faithful to.
 
 ## What this is
 
-A local, zero-risk Slack clone. It syncs a real workspace **read-only** into
-SQLite, then serves a **Slack-compatible Web API** the official
-`@slack/web-api` SDK drives by overriding `slackApiUrl`. All writes are
-simulated (local DB only) and logged to an audit trail. Nothing is ever written
-back to Slack.
+One of Sonata's three clones. A Slack-compatible Web API the official
+`@slack/web-api` SDK drives by overriding `slackApiUrl`, served over a mutable
+SQLite copy of a workspace. All writes are simulated (local DB only) and
+audit-logged; the judge grades that log. Nothing is ever written back to Slack.
 
 On top of the replica sit two things that make it a *testing* tool rather than a
 mirror: **fault injection** (make it fail the way Slack fails) and a **signed
@@ -22,45 +25,54 @@ Events API** (so event-driven agents can run at all).
 
 ## Commands
 
+Run from `apps/slack` unless noted. These scripts read `PORT`, default 3200.
+
 ```bash
-npm install
 npm run db:init            # create data/{snapshot,working,audit}.db from db/schema.sql
 npm run db:init -- --force # drop & recreate working.db
 npm run seed               # synthetic workspace (snapshot -> working); no Slack needed
-PORT=3200 npm run dev      # dev server  (3000 AND 3100 are taken here — use 3200)
-PORT=3200 npm start        # run built app
+npm run dev:slack          # from the REPO ROOT: dev server on :3200
+npm start                  # run built app
 
 npm run build              # production build + typecheck (run before claiming done)
 npx tsc --noEmit           # typecheck only (fast)
 npm test                   # vitest: seed, ts, search, mrkdwn, chaos, events, read-state (99)
 
-PORT=3200 npm run smoke            # ACCEPTANCE GATE: official SDK, 152 checks, 4 parts
-PORT=3200 npm run smoke -- reads   # part 1 only
-PORT=3200 npm run demo             # mini agent: read -> react -> reply in thread -> digest
-PORT=3200 npm run events           # reference event receiver (verifies signatures)
-npm run sync -- --since 30d        # real workspace read-only sync (needs SLACK_TOKEN)
-npm run reset                      # restore working.db from snapshot (curls server, falls back to file copy)
+npm run smoke              # ACCEPTANCE GATE: official SDK, 152 checks, 4 parts
+npm run smoke -- reads     # part 1 only
+npm run demo               # mini agent: read -> react -> reply in thread -> digest
+npm run events             # reference event receiver (verifies signatures)
+npm run sync -- --since 30d   # OPTIONAL real workspace read-only sync (needs SLACK_TOKEN)
+npm run reset              # restore working.db from snapshot (curls server, falls back to file copy)
 ```
 
 **Definition of done for API changes:** `npx tsc --noEmit` clean, `npm test`
-green, and `PORT=3200 npm run smoke` at 152/152. The smoke harness drives the
-real SDK — if it passes, agents work against the sandbox unchanged. Treat it as
-the gate.
+green, and `npm run smoke` at 152/152. The smoke harness drives the real SDK — if
+it passes, agents work against the twin unchanged. Treat it as the gate.
 
 The harness **resets to the snapshot on start**, so it is repeatable: run it
-twice, get the same number. If you add a check that creates state, you do not
-need to clean up, but you must not assume a fresh DB beyond what reset gives you.
+twice, get the same number. The corollary is that it destroys whatever world is
+loaded — never point it at a twin that is mid-episode.
+
+## Authentication
+
+One static bearer token, `SANDBOX_TOKEN` (default `sandbox-token`), for the Web
+API (`src/lib/slack/auth.ts`) and for the control plane. `/api/sandbox/{seed,
+inject,snapshot}` require it; `/api/sandbox/{reset,chaos,events,upload}` do not,
+because the browser UI drives those and has no token. If you add a control route
+the UI does not call, gate it.
 
 ## Environment quirks
 
-- **Ports 3000 and 3100 are taken** (3100 is the Gmail sandbox). Always
-  `PORT=3200`. The `smoke`/`demo`/`events`/`reset` scripts read `PORT`
-  (default 3200).
+- **The other services own 3000 (platform), 3101 (gmail), 3400 (calendar) and
+  3901 (gmail-ui).** This one is **3200**; every script defaults to it.
 - **Node 25**; `better-sqlite3` compiles from source (works, no prebuilt binary).
 - Server holds the working SQLite handle — a long-lived `npm run dev` is a
   background process. Reset must therefore run **in-process**
   (`POST /api/sandbox/reset`); the CLI curls it and only falls back to a file
-  copy when the server is down.
+  copy when the server is down. `src/lib/sandbox/live.ts` covers the other case:
+  a swap done by another process leaves the open handle serving a now-nameless
+  inode.
 - **`npm run build` fails while `npm run dev` is running.** Both write `.next/`,
   and the build dies in "Collecting page data" with
   `Cannot find module './chunks/vendor-chunks/next.js'`. It is not a code error.
@@ -120,6 +132,12 @@ src/lib/slack/             the compatibility layer:
   ids.ts, types.ts, emoji-names.ts
   methods/index.ts         THE METHOD REGISTRY — add new methods here
   methods/*.ts             one file per family; `-write.ts` split where a family got big
+src/lib/sandbox/           the control plane (engine contract):
+  auth.ts                  SANDBOX_TOKEN gate
+  seed.ts                  a whole workspace at once     inject.ts  one beat
+  snapshot.ts              the workspace as the judge sees it
+  resolve.ts, raw.ts       name/id resolution and raw_json assembly for injected content
+  live.ts                  detects an out-of-process working.db swap (inode check)
 src/lib/events/            Events API: bus.ts (subscriptions + delivery + retries),
                            events.ts (payload builders), signing.ts (v0 HMAC)
 src/lib/search/            parse.ts (query->AST) + compile.ts (AST->SQL); shared by
@@ -132,7 +150,7 @@ src/lib/ui/mrkdwn.ts       mrkdwn -> token tree (NEVER HTML)       ← security 
 src/lib/seed.ts            synthetic workspace (fixed BASE date, reproducible)
 src/cli/                   db-init, seed, sync, reset
 app/api/[method]/route.ts  the Slack-compatible Web API (one catch-all dispatcher)
-app/api/{health,activity,sandbox/{reset,chaos,events,upload},ui/*}   internal routes (no bearer auth)
+app/api/{health,activity,sandbox/{reset,chaos,events,upload,seed,inject,snapshot},ui/*}
 app/_components/*          Slack-replica UI (client components)
 scripts/                   smoke-sdk(+writes,-chaos,-events), demo-agent, demo-event-receiver
 tests/                     vitest
@@ -148,12 +166,15 @@ tests/                     vitest
   the audit row commit in one transaction. `audit.db` is ATTACHed onto the
   working connection specifically to make that atomic while still surviving
   resets (separate file).
+- **Injected beats are not audit-logged.** `/api/sandbox/inject` writes the
+  world's own moves; the audit log is the agent's record and grading reads it.
 - **Store functions take `db` as the first arg** (testable with in-memory DBs).
   Handlers get `db` from the ctx.
 - **Errors must use `envelope.ts`** — `throw new SlackError("channel_not_found")`
   inside handlers/stores (translated by `handleSlack`'s catch), or return
   `err(code)`. Use **documented Slack error strings**; inventing codes defeats
-  the point. Never return a bare 500 or a non-envelope body.
+  the point. Never return a bare 500 or a non-envelope body. Control-plane routes
+  are the exception: `{ok:false,error}`, not a Slack envelope.
 - **`raw_json` never holds live state.** Reactions, thread stats, edits, and pin
   state live in their own tables and are overlaid by `shape.ts` on every read.
   When storing a message, strip those fields (see `sync/transform.ts`).
@@ -195,7 +216,7 @@ tests/                     vitest
 5. Emit an event if the mutation has one (see `events/events.ts`), after commit.
 6. Add a check to `scripts/smoke-sdk.ts` (or `-writes.ts`) exercising it **via
    the SDK**, and a `tests/` case if there's pure logic.
-7. `npx tsc --noEmit`, `npm test`, `PORT=3200 npm run smoke` — all green.
+7. `npx tsc --noEmit`, `npm test`, `npm run smoke` — all green.
 
 ## Working on fault injection
 
@@ -237,7 +258,7 @@ tests/                     vitest
   renders a visible "unrendered block" marker — **fail visibly, never silently**.
 - Never commit `data/` (all three DBs) or `data/slack-token.json` — gitignored.
   The real token touches only the sync CLI, never the server runtime.
-- The sandbox runtime has no Slack credentials and cannot reach Slack. Keep it
+- The twin's runtime has no Slack credentials and cannot reach Slack. Keep it
   that way: don't import `@slack/web-api` into `app/` or `src/lib` server code
   (type-only imports are fine; `scripts/` and `src/cli/sync.ts` are the
   exceptions that legitimately use the client).

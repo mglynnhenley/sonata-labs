@@ -19,7 +19,7 @@ export const ROLE_LABELS: Record<ModelRole, string> = {
 export const ROLE_HINTS: Record<ModelRole, string> = {
   agent: "The model under test. It reads the day and does the work.",
   director: "Plays everyone else in the company. Writes their replies as the day runs.",
-  judge: "Reads the finished day and names what went wrong. Worth a strong model.",
+  judge: "Reads the finished day and names what went wrong. Wants a fast reader, not a long thinker.",
 };
 
 export interface ModelOption {
@@ -53,7 +53,7 @@ export const MODEL_CATALOG: readonly ModelOption[] = [
     inputUsd: 2,
     outputUsd: 10,
     contextTokens: 1_000_000,
-    note: "The default judge: careful reader, a fifth of the price of Opus.",
+    note: "Careful reader, but it thinks at length before it writes. Slow and dear over a day.",
   },
   {
     id: "anthropic/claude-haiku-4.5",
@@ -62,7 +62,7 @@ export const MODEL_CATALOG: readonly ModelOption[] = [
     inputUsd: 1,
     outputUsd: 5,
     contextTokens: 200_000,
-    note: "Fast and cheap. Good director, good for a first look at a scenario.",
+    note: "Fast and cheap, and answers without a long think. The default in all three seats.",
   },
   {
     id: "openai/gpt-5.4",
@@ -120,11 +120,26 @@ export const MODEL_CATALOG: readonly ModelOption[] = [
   },
 ];
 
-/** Cheap where it does not matter, careful where it does. */
+/**
+ * Cheap in all three seats, because the judge turned out to be the wrong place
+ * to spend.
+ *
+ * It was Sonnet 5, and every automatic pass on this repo's disk says that was a
+ * mistake. Sonnet 5 reasons before it answers whether or not it is asked to: two
+ * automatic passes spent a whole 16k ceiling thinking and returned nothing — one
+ * `finish_reason=length` with an empty body, one with JSON severed mid-sentence
+ * — and the one that did get through afterwards spent 18.8k completion tokens
+ * and 231 seconds of the 240 it is allowed. Haiku 4.5 does not reason unless it
+ * is asked to, and nothing here asks: it reads the day and writes the report,
+ * 1.5k tokens, 23 seconds, $0.017.
+ *
+ * A judge pass is a structured read of a day it is handed, not a puzzle. Anyone
+ * moving this back to a reasoning model should read `rejudge.ts`'s ceiling first.
+ */
 export const DEFAULT_MODELS: Record<ModelRole, string> = {
   agent: "anthropic/claude-haiku-4.5",
   director: "anthropic/claude-haiku-4.5",
-  judge: "anthropic/claude-sonnet-5",
+  judge: "anthropic/claude-haiku-4.5",
 };
 
 export function findModel(id: string): ModelOption | undefined {

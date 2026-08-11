@@ -21,6 +21,15 @@ import { buildEpisodePrompt, EPISODE_JUDGE_SCHEMA } from "./prompt";
  * `completeJSON` already satisfies this signature exactly, so wiring is
  * `judge(input, { complete: completeJSON })` — and in tests it is a two-line stub,
  * which is why every test in this package runs offline with no key.
+ *
+ * There is no reasoning-effort field, and that is the fix for a real failure
+ * rather than an omission. There was one, it defaulted to "high", and the only
+ * transport in the product (the dashboard's `rejudge.ts`) never forwarded it — so
+ * for as long as it existed it was a lever wired to nothing. What it would have
+ * asked for is also the wrong thing: a judge pass is a structured read of a day
+ * it is handed, and the two automatic passes that returned no diagnosis at all
+ * were a model spending its whole ceiling thinking. Depth belongs to the model
+ * choice, which the reader of a verdict can see; a knob here would hide it.
  */
 export interface CompleteJSON {
   <T>(opts: {
@@ -29,12 +38,9 @@ export interface CompleteJSON {
     schema: Record<string, unknown>;
     schemaName?: string;
     model?: string;
-    effort?: JudgeEffort;
     maxTokens?: number;
   }): Promise<T>;
 }
-
-export type JudgeEffort = "low" | "medium" | "high";
 
 /** `withRole` from the harness's trace module — see `opts.withRole` for why. */
 export type WithRole = <T>(role: TraceRole, fn: () => Promise<T>) => Promise<T>;
@@ -42,8 +48,6 @@ export type WithRole = <T>(role: TraceRole, fn: () => Promise<T>) => Promise<T>;
 export interface JudgeOptions {
   complete: CompleteJSON;
   model?: string;
-  /** Diagnosis is the whole product here, so this is never the call to economise on. */
-  effort?: JudgeEffort;
   /**
    * Wrap the model call so the trace attributes it to the judge.
    *
@@ -216,7 +220,6 @@ export async function judge(
       schema: EPISODE_JUDGE_SCHEMA,
       schemaName: "episode_judge_report",
       model,
-      effort: opts.effort ?? "high",
     });
 
   const raw = opts.withRole ? await opts.withRole<JudgeResponse>("judge", call) : await call();

@@ -424,24 +424,24 @@ export async function draftScenario(brief: string, ticks: number): Promise<Draft
           reason =
             `the model's criteria could not score this day, even after ${MAX_CRITERIA_REPAIRS} ` +
             `rewrites — ${shortfall}${why ? ` (dropped: ${why})` : ""}`;
-          assembled = assembleTemplate(nearestTemplate(brief), reason);
+          assembled = assembleTemplate(nearestTemplate(brief), { ticks, offlineReason: reason });
         }
       } else {
         reason =
           `the model answered with too thin a business (${authored.cast?.length ?? 0} people, ` +
           `${authored.channels?.length ?? 0} channels, ${authored.episode?.beats?.length ?? 0} beats, ` +
           `${authored.episode?.criteria?.length ?? 0} criteria)`;
-        assembled = assembleTemplate(nearestTemplate(brief), reason);
+        assembled = assembleTemplate(nearestTemplate(brief), { ticks, offlineReason: reason });
       }
     } catch (err) {
       // A generation failure must not cost the user their place in the flow —
       // but it must say what happened.
       reason = err instanceof Error ? err.message : String(err);
-      assembled = assembleTemplate(nearestTemplate(brief), reason);
+      assembled = assembleTemplate(nearestTemplate(brief), { ticks, offlineReason: reason });
     }
   } else {
     reason = "OPENROUTER_API_KEY is not set, so no model could be asked";
-    assembled = assembleTemplate(nearestTemplate(brief), reason);
+    assembled = assembleTemplate(nearestTemplate(brief), { ticks, offlineReason: reason });
   }
 
   const doc: DraftDoc = {
