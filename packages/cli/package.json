@@ -1,0 +1,32 @@
+{
+  "name": "@sonata/cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "The first command a stranger runs: check the machine, start the four apps, write the .env.",
+  "bin": {
+    "sonata": "./bin/sonata.mjs"
+  },
+  "main": "./src/main.ts",
+  "types": "./src/main.ts",
+  "exports": {
+    ".": "./src/main.ts",
+    "./*": "./src/*.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@sonata/core": "*",
+    "better-sqlite3": "^11.8.1",
+    "tsx": "^4.19.2"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/node": "^22.10.7",
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.2"
+  }
+}

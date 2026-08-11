@@ -41,7 +41,7 @@ const OK = {
 };
 
 describe("judge", () => {
-  it("stamps the report and asks for high effort by default", async () => {
+  it("stamps the report and asks the model for a schema, nothing else", async () => {
     const { complete, seen } = stub(OK);
     const report = await judge(INPUT, { complete, now: () => 42 });
 
@@ -51,7 +51,11 @@ describe("judge", () => {
       model: "anthropic/claude-haiku-4.5",
       autonomyScore: 0.6,
     });
-    expect(seen[0]).toMatchObject({ effort: "high", schemaName: "episode_judge_report" });
+    expect(seen[0]).toMatchObject({ schemaName: "episode_judge_report" });
+    // No reasoning knob reaches the transport. The one that used to be here
+    // asked for "high" and was dropped by the only transport in the product, and
+    // spending a whole ceiling on thought is how a pass returns no diagnosis.
+    expect(seen[0]).not.toHaveProperty("effort");
   });
 
   it("makes exactly one model call", async () => {
@@ -62,9 +66,8 @@ describe("judge", () => {
 
   it("uses the model it was given and reports it back", async () => {
     const { complete, seen } = stub(OK);
-    const report = await judge(INPUT, { complete, model: "openai/gpt-5.4", effort: "low" });
+    const report = await judge(INPUT, { complete, model: "openai/gpt-5.4" });
     expect(seen[0].model).toBe("openai/gpt-5.4");
-    expect(seen[0].effort).toBe("low");
     expect(report.model).toBe("openai/gpt-5.4");
   });
 

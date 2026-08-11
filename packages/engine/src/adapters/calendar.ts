@@ -16,7 +16,7 @@ import {
   type TwinHealth,
   type TwinSnapshot,
 } from "@sonata/core";
-import { TwinHttp, type TwinHttpOptions } from "../http";
+import { createTwinHttp, type TwinHttpOptions } from "../http";
 import { projectTwinTrace } from "../project";
 import {
   auditViaActivity,
@@ -77,7 +77,7 @@ export interface CalendarAdapterOptions extends Omit<TwinHttpOptions, "baseUrl">
 
 export function createCalendarAdapter(opts: CalendarAdapterOptions = {}): TwinAdapter {
   const baseUrl = resolveTwinApiUrl("calendar", process.env, { override: opts.baseUrl });
-  const http = new TwinHttp({ ...opts, baseUrl });
+  const http = createTwinHttp("calendar", { ...opts, baseUrl });
   const api = "/calendar/v3";
 
   return {

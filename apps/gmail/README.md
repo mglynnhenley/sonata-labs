@@ -1,164 +1,185 @@
-# Gmail Sandbox Clone
+# Gmail twin
 
-A local, zero-risk Gmail clone for observing how an AI agent behaves against a
-real-looking mailbox. It pulls your real Gmail **read-only** into a local SQLite
-snapshot, then serves a **Gmail-compatible REST API** the official `googleapis`
-SDK can drive by just overriding `rootUrl`. Every mutation (send/label/archive/
-trash/delete) hits only the local DB, is recorded in an audit log, and can be
-undone with one reset. Nothing is ever written back to Google.
+One of the three clones that make up [Sonata Labs](../../README.md) — read the
+root README for what the product is and how a scenario runs. This file is about
+the Gmail surface only.
 
-## Docs
+It serves a **Gmail-compatible REST API** the official `googleapis` SDK drives by
+overriding `rootUrl`, over a mutable copy of a mailbox in SQLite, behind a **real
+OAuth2 authorization server**. Every mutation hits the local DB, is recorded in an
+audit log the judge reads afterwards, and is undone by one reset. The runtime has
+no Google credentials and cannot reach Google.
 
-- **[AGENTS.md](AGENTS.md)** — working in this repo: commands, layout, conventions, how to add an endpoint.
-- **[ARCHITECTURE.md](ARCHITECTURE.md)** — how it fits together: the three DBs, request lifecycle, shaping, audit atomicity, send pipeline.
+Two services, because the API is what an agent talks to and the UI is what a
+human watches:
 
-## What's here
+| workspace | port | what |
+|---|---|---|
+| `apps/gmail` | 3101 | the API: `/gmail/v1/*`, `/oauth/*`, `/api/sandbox/*`. No mailbox UI of its own. |
+| `apps/gmail-ui` | 3901 | the Gmail-replica web UI + Agent Activity panel. A real third-party OAuth client of the API. |
 
-- **Gmail-compatible API** at `/gmail/v1/users/{me|email}/…` — profile, messages
-  (list/get/send/modify/trash/untrash/delete/batch/attachments), threads, labels
-  CRUD, drafts CRUD + send. Static bearer auth. Faithful semantics (list returns
-  `{id, threadId}` only, `nextPageToken` omitted on last page, TRASH/SPAM excluded
-  by default, live label counts, base64url everywhere).
-- **Gmail-replica UI** at `/` — top bar, left rail, message list, thread view, and
-  a live **Agent Activity** panel (action feed + outbox + reset button).
-- **Simulated writes** — "sent" mail lands in SENT + a fake outbox; nothing leaves
-  the machine. Every write is logged to `audit.db`, which survives resets.
-- **Read-only sync CLI** — pulls your real Gmail (`gmail.readonly` scope only).
+- **[AGENTS.md](AGENTS.md)** — working in this app: commands, layout, conventions, how to add an endpoint.
+- **[ARCHITECTURE.md](ARCHITECTURE.md)** — the three DBs, request lifecycle, shaping, audit atomicity, send pipeline, OAuth.
 
-## Quick start (synthetic data — no Google account needed)
+## Run it
 
 ```bash
-npm install
-npm run db:init      # create the three SQLite DBs
-npm run seed         # populate a synthetic ~18-message mailbox
-PORT=3100 npm start  # (port 3000 is often taken; any port works)
+npm run dev:gmail                 # from the repo root: API on :3101
+npm run db:init -w apps/gmail     # first time, or after a schema change
 ```
 
-Open http://localhost:3100. Then drive it with the official SDK:
+A world normally arrives from the platform (`npm run sonata -- world create …`
+POSTs a whole company to `/api/sandbox/seed`). To bring the twin up standalone:
 
 ```bash
-PORT=3100 npm run smoke   # 48 checks: reads + writes + reset, via googleapis
-PORT=3100 npm run demo    # a mini "agent": list unread → read → label → archive → reply
+npm run seed -w apps/gmail        # 18-message synthetic mailbox, no Google account
+PORT=3901 npm run dev -w apps/gmail-ui   # then open http://localhost:3901
 ```
 
-Watch the Activity panel update live as the demo runs.
+The UI has no token of its own: it redirects you through this server's consent
+screen and holds the resulting tokens in a sealed cookie, the way a real client
+would.
 
-## Point it at your real Gmail (read-only)
+## Two credentials, and they are not interchangeable
 
-1. In Google Cloud Console: enable the Gmail API, create an OAuth **Desktop app**
-   client, and download its JSON to `data/credentials.json`
-   (or set `GOOGLE_CREDENTIALS_PATH`).
-2. Run the sync (consent screen shows **read-only** Gmail access only):
+This is the one thing that catches people since the OAuth cutover.
 
-   ```bash
-   npm run sync -- --query "newer_than:90d" --max 1000
-   ```
+- **`SANDBOX_TOKEN`** (default `sandbox-token`) is the *control-plane admin*
+  token. It opens `/api/sandbox/*` — seed, inject, snapshot, mint — and nothing
+  else. Presented to `/gmail/v1/*` it earns a Gmail-shaped **401**.
+- **`/gmail/v1/*` requires an OAuth2 access token this server minted.** Get one
+  the interactive way (`/oauth/authorize` → consent → `/oauth/token`; PKCE S256
+  is mandatory), or admin-mint one in a single call:
 
-   Options: `--attachment-cap 2` (MB per attachment), `--attachment-budget 100`
-   (MB total), `--concurrency 5`. Idempotent — re-run any time.
-3. Restart the server (or `npm run reset`) and open the UI with your real mail.
+```bash
+TOKEN=$(curl -s -X POST localhost:3101/api/sandbox/token \
+  -H 'authorization: Bearer sandbox-token' -H 'content-type: application/json' \
+  -d '{}' | jq -r .access_token)
 
-## Using the sandbox from an agent
+curl -s -H "authorization: Bearer $TOKEN" localhost:3101/gmail/v1/users/me/profile
+```
 
-Point the official SDK at the sandbox — only `rootUrl` and the token change:
+The mint is what the episode engine, the MCP connector and the smoke harness all
+use — an operator does not need a consent screen, and one mechanism means an
+agent driven by the engine authenticates exactly like an agent plugged in over
+MCP.
+
+Scopes are Google's real strings and are enforced per route: a token minted with
+`gmail.readonly` gets `403 insufficientPermissions` from `messages.send`, and
+`https://mail.google.com/` (the mint default) satisfies everything.
+
+**Access tokens live in `working.db`, so a reset invalidates them.** Anything
+long-running must be able to re-mint; that is why the smoke harness re-auths
+after its reset check.
+
+## Driving it from an agent
+
+Only `rootUrl` and the token differ from real Gmail:
 
 ```ts
 import { google } from "googleapis";
 const auth = new google.auth.OAuth2();
-auth.setCredentials({ access_token: "sandbox-token" }); // SANDBOX_TOKEN env
-const gmail = google.gmail({ version: "v1", auth, rootUrl: "http://localhost:3100" });
+auth.setCredentials({ access_token: minted }); // from /api/sandbox/token or /oauth/token
+const gmail = google.gmail({ version: "v1", auth, rootUrl: "http://localhost:3101" });
 await gmail.users.messages.list({ userId: "me", labelIds: ["INBOX"] });
 ```
 
-> Pass an `OAuth2Client` (not a string) so the token becomes an
-> `Authorization: Bearer` header rather than a `?key=` query param.
+> Pass an `OAuth2Client`, not a string — a string `auth` becomes a `?key=` query
+> param instead of an `Authorization: Bearer` header, and the call 401s.
 
-## Triage stress-test eval
+Most agents never write this: `packages/mcp` fronts the same routes as MCP tools.
 
-Measures whether a triage agent handles *genuinely hard* situations — not whether it
-can be tricked. The classic case: an angry email from someone who already sent one.
-Correct triage requires context the single message doesn't carry, so a naive agent
-treats the escalation like a first complaint.
+## What the API covers
 
-It's **data-agnostic**: it reads whatever mailbox is loaded, derives the owner's
-persona and real contacts, then generates a trap email *in that mailbox's voice* from
-a plausible real sender — where possible as a reply on a real thread.
+`/gmail/v1/users/{me|email}/…` — profile, messages
+(list/get/send/modify/trash/untrash/delete/batchModify/batchDelete/attachments),
+threads, labels CRUD, drafts CRUD + send. Faithful semantics are the point: list
+returns `{id, threadId}` only, `nextPageToken` is omitted (not null) on the last
+page, TRASH/SPAM are excluded by default, label counts are live, base64url
+everywhere.
 
-```bash
-export OPENROUTER_API_KEY=…                  # https://openrouter.ai/keys
-PORT=3100 npm run eval -- --scenario escalation
-PORT=3100 npm run eval -- --all              # all six scenarios
-PORT=3100 npm run eval -- --list             # what's available
-PORT=3100 npm run eval -- --scenario escalation --agent naive   # known-bad control
-PORT=3100 npm run eval:check                 # verify the pipeline, no API key needed
-```
+Deliberately not implemented, and Gmail-shaped about it: `history.list` (501;
+historyId numbers are still maintained), `watch`/`stop`, `settings.*`,
+`messages.insert/import`, multipart `/batch`, the `/upload` media variant.
 
-**Models come from [OpenRouter](https://openrouter.ai)**, so you can grade any
-tool-calling model by changing a slug — no code change. Slugs use dots, not dashes:
+## Point it at your real Gmail — optional, read-only, not the normal path
 
-```bash
-PORT=3100 npm run eval -- --scenario bump --model openai/gpt-5.4
-OPENROUTER_MODEL=anthropic/claude-sonnet-4.6 PORT=3100 npm run eval -- --all
-curl -s https://openrouter.ai/api/v1/models | jq -r '.data[].id'   # list slugs
-```
+**Nothing in Sonata needs this.** Worlds are generated (`packages/world`) or
+seeded synthetically; that is the path everything else assumes. The sync exists
+for one case: you want the twin's mailbox to *look like* a specific real one.
 
-Default is `anthropic/claude-opus-4.8`. `--model` sets the agent-under-test;
-`OPENROUTER_MODEL` sets the default for every role (profiler, generator, judge, agent),
-and `runEval({ models: {...} })` overrides each role individually — handy for grading a
-cheap agent with an expensive judge.
+It is read-only by construction. The CLI asks for `gmail.readonly` and nothing
+else, credentials touch only the CLI, and the server process has no Google auth
+at all — there is no code path that writes back to Google.
 
-Six scenarios across two difficulty families:
+1. Google Cloud Console: enable the Gmail API, create an OAuth **Desktop app**
+   client, download the JSON to `apps/gmail/data/credentials.json` (or set
+   `GOOGLE_CREDENTIALS_PATH`).
+2. ```bash
+   npm run sync -w apps/gmail -- --query "newer_than:90d" --max 1000
+   ```
+   Options: `--attachment-cap 2` (MB per attachment), `--attachment-budget 100`
+   (MB total), `--concurrency 5`. Idempotent — re-run any time.
+3. ```bash
+   cd apps/gmail && PORT=3101 npm run reset
+   ```
+   Reset, not just a restart: `sync` rebuilds `snapshot.db` from `db/schema.sql`
+   and does not re-seed the OAuth clients, and `reset` is what puts them back —
+   skip it and the UI's sign-in fails with an unknown client.
 
-| id | The hard part |
-|---|---|
-| `escalation` | 2nd angry email, 1st unanswered |
-| `bump` | "per my last email" — the original request is still open |
-| `stale-urgency` | screams URGENT about a deadline already passed |
-| `already-resolved` | a request withdrawn later in the same thread |
-| `passive-aggressive` | polite surface, complaint underneath |
-| `sensitive-personal` | private personal mail amid work triage |
-
-**Grading is hybrid.** Deterministic assertions over the audit log and final mailbox
-state carry it ("did it archive the escalation?" is a fact, not a judgment); an LLM
-judge covers only the qualitative residue (was the reply tone appropriate?). `must`
-violations fail the run; `should` violations cost score.
-
-**The rubric is checked against a known-bad control.** `--agent naive` archives
-everything and never reads history, so it *must* fail `escalation` and `bump`. If it
-passes, the rubric is broken rather than the agent being good. `npm run eval:check`
-verifies exactly that, plus injection/threading/observation, with no model calls.
-
-Bring your own agent by implementing `TriageAgent` (`src/lib/eval/types.ts`) — anything
-that drives the same `gmail` client is gradeable, because every mutation is audit-logged.
-Runs are isolated: each resets to the pristine snapshot afterwards, and `audit.db`
-survives. Reports land in `data/eval-runs/` (gitignored).
-
-## Reset
+## Reset and the three databases (`data/`, gitignored)
 
 ```bash
-npm run reset            # restore working.db from the pristine snapshot
+cd apps/gmail && PORT=3101 npm run reset   # or POST /api/sandbox/reset
 ```
 
-Or click **Reset** in the Activity panel, or `POST /api/sandbox/reset`. The audit
-trail in `audit.db` survives (a new session starts).
+The CLI curls the running server (only it can safely close and swap the SQLite
+handle) and falls back to a file copy when nothing answers — so a wrong `PORT`
+resets a different twin and still reports success.
 
-## Databases (`data/`, gitignored)
+- `snapshot.db` — pristine copy, written only by seed/sync/world-seed.
+- `working.db` — what the API serves and mutates. Reset is `copyFileSync(snapshot, working)`; that single line is why two runs are comparable.
+- `audit.db` — sessions + action log. A separate file so it survives resets, ATTACHed to the working connection so each mutation + history bump + audit row commits in one transaction.
 
-- `snapshot.db` — pristine synced/seeded copy (written only by sync/seed).
-- `working.db` — what the sandbox serves and mutates. Reset copies snapshot → working.
-- `audit.db` — sessions + action log. Separate file so it survives resets;
-  ATTACHed to the working connection so each mutation + history bump + audit row
-  commits in one transaction.
+## Single-mailbox eval
+
+Older than the episode engine and narrower: it drops one hard triage situation
+into whatever mailbox is loaded and grades the agent on that alone. Six
+scenarios, each built so the right answer needs context the single message does
+not carry — `escalation` (2nd angry email, 1st unanswered), `bump`,
+`stale-urgency`, `already-resolved`, `passive-aggressive`, `sensitive-personal`.
+
+```bash
+cd apps/gmail
+PORT=3101 npm run eval:check                        # pipeline check, no API key, no spend
+PORT=3101 npm run eval -- --list
+PORT=3101 npm run eval -- --scenario escalation
+PORT=3101 npm run eval -- --scenario escalation --agent naive   # known-bad control
+```
+
+`PORT` is not optional: these scripts still default to **3100**, which is where
+the twin lived before the monorepo. Point them at 3101 or they will silently
+grade whatever else is listening. `OPENROUTER_API_KEY` must be in the
+environment or in `apps/gmail/.env` — the CLIs load `.env` from their own working
+directory, so the repo-root `.env` is not read.
+
+Grading is hybrid: deterministic assertions over the audit log and final mailbox
+state carry it, and an LLM judge covers only the qualitative residue. The rubric
+is checked against `--agent naive`, which archives everything and must fail
+`escalation` and `bump` — if it passes, the rubric is broken, not the agent good.
+
+It **costs money**: every scenario except `eval:check` calls OpenRouter for
+generation, the agent under test and the judge. Reports and traces land in
+`data/eval-runs/` (gitignored). Whole-day scoring across all three twins is the
+platform's job, not this — see `packages/{engine,judge,benchmark}`.
 
 ## Tests
 
 ```bash
-npm test     # vitest: schema, search (~30 cases), FTS
-npm run smoke # official-SDK acceptance harness (reads + writes + reset)
+npm test -w apps/gmail                     # 234 vitest: OAuth, search, eval generation, judge, traces
+cd apps/gmail && PORT=3101 npm run smoke   # the gate: official SDK through the real consent flow
 ```
 
-## Not implemented (Gmail-shaped 501/404)
-
-`history.list` (501; historyId numbers are still maintained), `watch`/`stop`,
-`settings.*`, `messages.insert/import`, multipart `/batch`, `/upload` media
-variant. Incremental (historyId-based) sync is deferred — re-run `sync` instead.
+If the smoke passes, an agent using `googleapis` works against the twin
+unchanged — that is the whole claim, so treat it as the gate. Never run
+`next build` while a dev server is up; they fight over `.next`.

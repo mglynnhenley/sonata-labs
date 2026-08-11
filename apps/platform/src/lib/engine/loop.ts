@@ -2,6 +2,7 @@ import type { ByTwin } from "@sonata/core";
 import {
   TwinHttp,
   createAdapters,
+  createTwinHttp,
   createAgent,
   createDirector,
   runEpisode,
@@ -24,10 +25,14 @@ export const engineLoop: RunEpisodeFn = async (opts) => {
 
   // The agent's tools talk to the twins over the same HTTP the adapters use;
   // one client per twin, so a run opens three connections rather than thirty.
+  // Through `createTwinHttp`, because the twin's authentication is the twin's
+  // business: built by hand here, this client missed Gmail's OAuth cutover and
+  // 401'd on every read the agent attempted while the harness's own calls, which
+  // go through the adapters, kept working.
   const http: ByTwin<TwinHttp> = {};
   for (const twin of opts.twins) {
     const baseUrl = opts.twinUrls[twin];
-    if (baseUrl) http[twin] = new TwinHttp({ baseUrl });
+    if (baseUrl) http[twin] = createTwinHttp(twin, { baseUrl });
   }
 
   // Only the twins this run attached. The engine narrows to the ones the spec

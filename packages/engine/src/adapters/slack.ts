@@ -15,7 +15,7 @@ import {
   type TwinHealth,
   type TwinSnapshot,
 } from "@sonata/core";
-import { TwinHttp, TwinHttpError, type TwinHttpOptions } from "../http";
+import { createTwinHttp, TwinHttpError, type TwinHttpOptions } from "../http";
 import { createSlackClient, type SlackChannel } from "../slackClient";
 import { projectTwinTrace } from "../project";
 import {
@@ -70,7 +70,7 @@ export interface SlackAdapterOptions extends Omit<TwinHttpOptions, "baseUrl"> {
 
 export function createSlackAdapter(opts: SlackAdapterOptions = {}): TwinAdapter {
   const baseUrl = resolveTwinApiUrl("slack", process.env, { override: opts.baseUrl });
-  const http = new TwinHttp({ ...opts, baseUrl });
+  const http = createTwinHttp("slack", { ...opts, baseUrl });
   const slack = createSlackClient(http, MAX_CHANNELS);
 
   /** One beat into the workspace. The route takes one event, not a batch. */

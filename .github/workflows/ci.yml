@@ -1,0 +1,61 @@
+name: CI
+
+# Everything the repo can check without spending money: install, typecheck every
+# workspace, run every suite. No secrets, no network beyond the registry, and no
+# model call — a green tick here says the code compiles and the deterministic
+# half of the product still holds, never that an agent did well.
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 22 is the floor package.json declares; 24 is the newer LTS. Both, so a
+        # dependency that quietly needs a newer Node is caught here rather than
+        # by the first stranger who installs it.
+        node: ["22", "24"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      # `ci`, not `install`: a lockfile that was never regenerated after a
+      # workspace was added should fail here, loudly, rather than resolve to
+      # something no one has run.
+      - run: npm ci
+
+      - run: npm run typecheck --workspaces --if-present
+
+      # The Next apps ship no `typecheck` script — a route that only ever ran
+      # under `next dev` is exactly where an untyped handler hides. Derived from
+      # the workspaces on disk rather than a list, so a new one cannot arrive
+      # unchecked.
+      - name: Typecheck the workspaces with no typecheck script
+        run: |
+          for dir in apps/* packages/*; do
+            [ -f "$dir/tsconfig.json" ] || continue
+            if node -e "process.exit((require('./$dir/package.json').scripts||{}).typecheck?0:1)"; then continue; fi
+            echo "== tsc --noEmit -p $dir"
+            npx tsc --noEmit -p "$dir"
+          done
+
+      # The clones' SQLite files are gitignored, so this runner has schemas and
+      # no tables. Nothing in the suites needs them — they build their own
+      # fixtures in a temp dir — and that is worth keeping true.
+      - run: npm run test --workspaces --if-present

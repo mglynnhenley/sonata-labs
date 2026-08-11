@@ -1,0 +1,28 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    // "dom" for `fetch`: the twin registry below is part of this program, and it
+    // is written against the browser RequestInit that apps/platform compiles
+    // under. Nothing here touches a document.
+    "lib": ["ES2022", "dom"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "isolatedModules": true,
+    "skipLibCheck": true,
+    "verbatimModuleSyntax": false,
+    "resolveJsonModule": true,
+    // The CLI reaches into apps/platform for the twin registry rather than
+    // reimplementing it, so that source is part of this program and needs the
+    // same sibling paths the platform itself resolves by name.
+    "baseUrl": ".",
+    "paths": {
+      "@sonata/core": ["../core/src/index.ts"],
+      "@sonata/core/*": ["../core/src/*.ts"]
+    }
+  },
+  "include": ["src/**/*.ts", "tests/**/*.ts"],
+  "exclude": ["node_modules"]
+}

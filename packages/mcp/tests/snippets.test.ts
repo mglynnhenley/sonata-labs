@@ -58,13 +58,24 @@ describe("connection snippets", () => {
 
   it("renders raw REST details for an agent that speaks no MCP", () => {
     const text = restSnippet({ config: testConfig, launch });
-    expect(text).toContain("Authorization: Bearer test-token");
     expect(text).toContain("gmail     http://gmail.test");
     expect(text).toContain("slack     http://slack.test");
     expect(text).toContain("calendar  http://calendar.test");
     expect(text).toContain(
       'curl -s -H "Authorization: Bearer test-token" \\\n' +
-        '  "http://gmail.test/gmail/v1/users/me/messages?labelIds=INBOX&maxResults=10"',
+        '  "http://slack.test/api/conversations.list"',
+    );
+  });
+
+  // The printed curl is the first thing anyone runs. Pointed at /gmail/v1/* with
+  // the admin token it 401s, which is an hour lost before the product has done
+  // anything — so the snippet mints first, and this pins that it still does.
+  it("mints an access token before curling gmail, and never offers the admin token there", () => {
+    const text = restSnippet({ config: testConfig, launch });
+    expect(text).toContain("POST http://gmail.test/api/sandbox/token");
+    expect(text).toContain('curl -s -H "Authorization: Bearer $TOKEN"');
+    expect(text).not.toContain(
+      'curl -s -H "Authorization: Bearer test-token" \\\n  "http://gmail.test/gmail/v1',
     );
   });
 

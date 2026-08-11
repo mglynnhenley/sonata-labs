@@ -682,13 +682,37 @@ export function getTemplate(id: string): Template | undefined {
   return TEMPLATES.find((t) => t.id === id);
 }
 
-/** Assemble a template into the same artifacts a described scenario produces. */
-export function assembleTemplate(template: Template, offlineReason?: string): AssembledScenario {
+export interface TemplateAssembly {
+  /**
+   * The day length the caller asked for, in ticks. Absent on the Templates grid,
+   * where the template's own clock IS the choice being made.
+   */
+  ticks?: number;
+  /** Why no model was used, when this template is standing in for one. */
+  offlineReason?: string;
+}
+
+/**
+ * Assemble a template into the same artifacts a described scenario produces.
+ *
+ * The clock is the caller's when they named one. This used to be `template.ticks`
+ * unconditionally, which meant someone who chose "Short, 3 hours", described a
+ * business, and fell through to a template got a 24-tick day — the request
+ * silently answered with a different question. Beats scheduled past a shorter
+ * horizon are pulled onto its last tick by `assembleScenario`, so a shortened day
+ * still fires every beat its checklist points at; what changes is that they
+ * arrive closer together, which is what a shorter day means. The guards scale off
+ * the same clock, so a 3-hour day is now also budgeted like one.
+ */
+export function assembleTemplate(
+  template: Template,
+  options: TemplateAssembly = {},
+): AssembledScenario {
   return assembleScenario(template.scenario, {
     brief: template.description,
-    ticks: template.ticks,
+    ticks: options.ticks ?? template.ticks,
     offline: true,
-    ...(offlineReason ? { offlineReason } : {}),
+    ...(options.offlineReason ? { offlineReason: options.offlineReason } : {}),
   });
 }
 

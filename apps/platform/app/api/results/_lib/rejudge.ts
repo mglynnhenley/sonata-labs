@@ -257,6 +257,12 @@ function openRouter(runId: string, signal: AbortSignal, onSpend: (spend: JudgeSp
       // Ask for the price explicitly rather than relying on the account default:
       // an unpriced judge call would show up as a blank in the run's own bill.
       usage: { include: true },
+      // No `reasoning` field, deliberately. Left off, a model that thinks by
+      // default still thinks — and that alone was expensive enough: the one
+      // Sonnet 5 pass that got through wrote 18.8k completion tokens for a 1.5k
+      // report and took 231 of the 240 seconds allowed, while two earlier ones
+      // spent the whole ceiling thinking and answered with nothing. Adding a
+      // request for more here is how this feature goes dark again.
     });
 
     const send = async (maxTokens: number) => {
@@ -413,7 +419,6 @@ export async function rejudgeRun(
     return await judge(buildJudgeInput(run, spec), {
       complete: openRouter(run.runId, controller.signal, opts.onSpend ?? (() => undefined)),
       model,
-      effort: "high",
     });
   } catch (err) {
     // "This operation was aborted" is what the platform says; it tells the reader

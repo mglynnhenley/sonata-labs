@@ -183,6 +183,43 @@ export function reasoningFor(effort?: Effort): Record<string, unknown> {
   return capped ? { reasoning: { effort: capped } } : {};
 }
 
+/**
+ * The provider's refusal, said in words the person who can fix it understands.
+ *
+ * OpenRouter answers a mistyped or deleted key with 401 "User not found." and an
+ * empty account with 402 — both of which, surfaced verbatim, read like a bug in
+ * Sonata. They are the two ways a first run fails, so they get named here, at
+ * the one seam every model call passes through, rather than in each caller.
+ */
+export function modelCallError(err: unknown, model: string): Error {
+  const status = (err as { status?: number } | null)?.status;
+  const said = err instanceof Error ? err.message : String(err);
+  if (status === 401 || status === 403) {
+    return new Error(
+      `OpenRouter rejected the key for ${model} (${status}: ${said}). Check OPENROUTER_API_KEY ` +
+        "in .env — or the key on the dashboard's Settings page, which wins over the file. " +
+        "New key: https://openrouter.ai/keys",
+    );
+  }
+  if (status === 402) {
+    return new Error(
+      `OpenRouter has no credit left for this key (402: ${said}). Nothing that needs a model — ` +
+        "a run, the judge, a generated business — can proceed until it is topped up: " +
+        "https://openrouter.ai/credits",
+    );
+  }
+  return err instanceof Error ? err : new Error(said);
+}
+
+/** Every model call, with the provider's refusals translated once. */
+async function callModel<T>(model: string, send: () => Promise<T>): Promise<T> {
+  try {
+    return await send();
+  } catch (err) {
+    throw modelCallError(err, model);
+  }
+}
+
 /** OpenRouter can answer 200 with an error body instead of choices. */
 function providerError(res: unknown): string | undefined {
   const e = (res as { error?: { message?: unknown } } | null)?.error?.message;
@@ -246,16 +283,18 @@ export async function completeJSON<T>(opts: CompleteJSONOptions): Promise<T> {
 
   const model = opts.model ?? DEFAULT_MODEL;
   const call = (effort?: Effort) =>
-    openai.chat.completions.create({
-      model,
-      max_tokens: opts.maxTokens ?? 16000,
-      messages,
-      response_format: {
-        type: "json_schema",
-        json_schema: { name: opts.schemaName ?? "result", strict: true, schema: opts.schema },
-      },
-      ...reasoningFor(effort),
-    } as OpenAI.ChatCompletionCreateParamsNonStreaming);
+    callModel(model, () =>
+      openai.chat.completions.create({
+        model,
+        max_tokens: opts.maxTokens ?? 16000,
+        messages,
+        response_format: {
+          type: "json_schema",
+          json_schema: { name: opts.schemaName ?? "result", strict: true, schema: opts.schema },
+        },
+        ...reasoningFor(effort),
+      } as OpenAI.ChatCompletionCreateParamsNonStreaming),
+    );
 
   let res = await call(opts.effort);
   let text = res.choices?.[0]?.message?.content ?? "";
@@ -409,13 +448,15 @@ export function withCacheBreakpoints(
 export const chatComplete: ChatComplete = async (opts) => {
   const openai = getClient();
   const model = opts.model ?? DEFAULT_MODEL;
-  const res = await openai.chat.completions.create({
-    model,
-    max_tokens: opts.maxTokens ?? 4000,
-    messages: cachesByBreakpoint(model) ? withCacheBreakpoints(opts.messages) : opts.messages,
-    ...(opts.tools?.length ? { tools: opts.tools } : {}),
-    ...reasoningFor(opts.effort),
-  } as OpenAI.ChatCompletionCreateParamsNonStreaming);
+  const res = await callModel(model, () =>
+    openai.chat.completions.create({
+      model,
+      max_tokens: opts.maxTokens ?? 4000,
+      messages: cachesByBreakpoint(model) ? withCacheBreakpoints(opts.messages) : opts.messages,
+      ...(opts.tools?.length ? { tools: opts.tools } : {}),
+      ...reasoningFor(opts.effort),
+    } as OpenAI.ChatCompletionCreateParamsNonStreaming),
+  );
 
   const message = res.choices?.[0]?.message;
   if (!message) {
