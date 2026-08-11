@@ -132,6 +132,44 @@ async function authorize(scopes: string[]): Promise<string> {
   return token;
 }
 
+/**
+ * Cancel on the consent screen. The client must be sent back to its redirect_uri
+ * carrying `error=access_denied` and its `state` — never a code, and never an
+ * inline error page, because a client that cannot distinguish "the user said no"
+ * from "the server broke" cannot recover.
+ */
+async function partConsentDenial(): Promise<void> {
+  console.log("\n\x1b[1mConsent denial\x1b[0m");
+  const state = b64url(randomBytes(9));
+  const res = await postFormRaw(`${ROOT_URL}/oauth/authorize/decision`, {
+    client_id: DEV_UI_CLIENT_ID,
+    redirect_uri: DEV_UI_REDIRECT_URI,
+    scope: GMAIL_SCOPE.readonly,
+    response_type: "code",
+    code_challenge: s256Challenge(b64url(randomBytes(32))),
+    code_challenge_method: "S256",
+    state,
+    decision: "deny",
+  });
+
+  check("Deny redirects rather than erroring inline", !!res.location, {
+    status: res.status,
+    body: res.body.slice(0, 120),
+  });
+  if (!res.location) return;
+  const back = new URL(res.location);
+  check("Deny returns error=access_denied", back.searchParams.get("error") === "access_denied", {
+    got: back.searchParams.get("error"),
+  });
+  check("Deny echoes state, so the client can match the request", back.searchParams.get("state") === state);
+  check("Deny issues no authorization code", back.searchParams.get("code") === null);
+  check(
+    "Deny lands on the registered redirect_uri",
+    `${back.origin}${back.pathname}` === DEV_UI_REDIRECT_URI,
+    { got: `${back.origin}${back.pathname}` },
+  );
+}
+
 let passed = 0;
 let failed = 0;
 function check(name: string, cond: boolean, detail?: unknown) {
@@ -292,6 +330,7 @@ async function main() {
       }
     }
     await partScopeDenial();
+    await partConsentDenial();
   }
   console.log(`\n\x1b[1mResult:\x1b[0m ${passed} passed, ${failed} failed`);
   process.exit(failed === 0 ? 0 : 1);
