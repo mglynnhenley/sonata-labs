@@ -30,7 +30,7 @@ export function EndOfDay({ report }: { report: EndOfDayReport }) {
           </p>
         </div>
         {report.closedAt ? (
-          <Chip size="sm" icon={<IconClock size={11} />} className="shrink-0">
+          <Chip size="sm" icon={<IconClock size="xs" />} className="shrink-0">
             stopped {report.closedAt}
           </Chip>
         ) : null}

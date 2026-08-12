@@ -39,7 +39,7 @@ export function StaleNotice({ poll, what }: StaleNoticeProps) {
       role="status"
       className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-sn-lg border border-sn-line-strong bg-sn-gold-soft px-4 py-2.5"
     >
-      <IconAlert size={14} className="shrink-0 text-sn-gold-ink" />
+      <IconAlert size="sm" className="shrink-0 text-sn-gold-ink" />
       <p className="text-[13px] leading-[20px] text-sn-ink">
         This page has stopped updating — {what} was last read {ago(poll.updatedAt, now)}.
       </p>

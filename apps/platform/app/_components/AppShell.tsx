@@ -30,12 +30,12 @@ import { ROUTES } from "@/lib/routes";
 // One flat list sorted by a user's day, not our data lifecycle. "Runs" is the
 // only place a run lives; "Compare" is the benchmark's front door.
 const NAV = [
-  { href: ROUTES.home, label: "Home", icon: <IconSpark size={16} /> },
-  { href: ROUTES.companies, label: "Companies", icon: <IconInbox size={16} /> },
-  { href: ROUTES.scenarios, label: "Scenarios", icon: <IconLayers size={16} /> },
-  { href: ROUTES.runs, label: "Runs", icon: <IconPlay size={14} /> },
-  { href: ROUTES.compare, label: "Compare", icon: <IconSearch size={16} /> },
-  { href: ROUTES.settings, label: "Settings", icon: <IconBolt size={16} /> },
+  { href: ROUTES.home, label: "Home", icon: <IconSpark size="md" /> },
+  { href: ROUTES.companies, label: "Companies", icon: <IconInbox size="md" /> },
+  { href: ROUTES.scenarios, label: "Scenarios", icon: <IconLayers size="md" /> },
+  { href: ROUTES.runs, label: "Runs", icon: <IconPlay size="sm" /> },
+  { href: ROUTES.compare, label: "Compare", icon: <IconSearch size="md" /> },
+  { href: ROUTES.settings, label: "Settings", icon: <IconBolt size="md" /> },
 ] as const;
 
 const EMPTY: Pick<Overview, "live" | "twins"> = { live: [], twins: [] };
@@ -156,7 +156,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </a>
           }
         />
-        <div className="mx-auto w-full max-w-[1180px] px-5 py-8 sm:px-8 sm:py-12 lg:px-14 lg:py-16">
+        {/* Gutters widen with the viewport; the vertical inset does not keep
+            pace with it. 64px of air above every heading is a marketing page's
+            opening, and this is a dashboard someone reads all day. */}
+        <div className="mx-auto w-full max-w-[1180px] px-5 py-8 sm:px-8 sm:py-10 lg:px-14 lg:py-12">
           {children}
         </div>
       </main>

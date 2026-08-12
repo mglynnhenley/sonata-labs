@@ -30,13 +30,14 @@ export {
 } from "./tokens";
 
 export { Badge, type BadgeProps, type BadgeSize, type BadgeStatus } from "./components/Badge";
+export { Button, type ButtonProps } from "./components/Button";
+// Straight from the client-free module: a server component dressing a link as a
+// button must not reach through Button.tsx, which is "use client".
 export {
-  Button,
   buttonClasses,
-  type ButtonProps,
   type ButtonSize,
   type ButtonVariant,
-} from "./components/Button";
+} from "./components/buttonClasses";
 export {
   Card,
   type CardPadding,

@@ -70,16 +70,16 @@ function markerClass(moment: Moment): string {
 }
 
 function MarkerIcon({ moment }: { moment: Moment }) {
-  if (moment.error || moment.step?.kind === "escalation") return <IconAlert size={12} />;
+  if (moment.error || moment.step?.kind === "escalation") return <IconAlert size="xs" />;
   if (moment.source === "agent") {
-    return moment.isMutation ? <IconBolt size={12} /> : <IconSearch size={12} />;
+    return moment.isMutation ? <IconBolt size="xs" /> : <IconSearch size="xs" />;
   }
   if (moment.twin) {
     const Icon = TWIN_ICON[moment.twin];
-    return <Icon size={12} />;
+    return <Icon size="xs" />;
   }
-  if (moment.source === "director") return <IconSpark size={12} />;
-  return <IconInfo size={12} />;
+  if (moment.source === "director") return <IconSpark size="xs" />;
+  return <IconInfo size="xs" />;
 }
 
 export function DayReplay({
@@ -136,7 +136,7 @@ export function DayReplay({
               aria-label="Previous moment"
               className="grid h-7 w-7 place-items-center rounded-sn-md text-sn-muted transition-colors duration-150 ease-sn hover:bg-sn-bg-subtle hover:text-sn-ink disabled:opacity-40"
             >
-              <IconArrowUp size={14} />
+              <IconArrowUp size="sm" />
             </button>
             <span data-numeric className="tabular-nums">
               {selected + 1} / {moments.length}
@@ -148,7 +148,7 @@ export function DayReplay({
               aria-label="Next moment"
               className="grid h-7 w-7 place-items-center rounded-sn-md text-sn-muted transition-colors duration-150 ease-sn hover:bg-sn-bg-subtle hover:text-sn-ink disabled:opacity-40"
             >
-              <IconArrowDown size={14} />
+              <IconArrowDown size="sm" />
             </button>
           </div>
         ) : null}

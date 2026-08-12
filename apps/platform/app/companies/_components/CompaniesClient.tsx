@@ -128,7 +128,7 @@ export function CompaniesClient({ initial }: { initial: CompaniesData }) {
           // markup and leaves the page's main exit deaf to Cmd-click.
           <Link href="/scenarios/new" className={buttonClasses("primary", "md")}>
             Clone a company
-            <IconArrowRight size={14} />
+            <IconArrowRight size="sm" />
           </Link>
         }
       />
@@ -138,7 +138,7 @@ export function CompaniesClient({ initial }: { initial: CompaniesData }) {
       {offline.length > 0 ? (
         <Card padding="lg" radius="2xl">
           <div className="flex items-start gap-2.5">
-            <IconAlert size={15} className="mt-0.5 shrink-0 text-sn-danger" />
+            <IconAlert size="md" className="mt-0.5 shrink-0 text-sn-danger" />
             <div>
               <p className="text-[13.5px] font-medium text-sn-ink">
                 {offline.map((c) => c.label).join(" and ")}{" "}
@@ -158,7 +158,7 @@ export function CompaniesClient({ initial }: { initial: CompaniesData }) {
 
       {companies.length === 0 ? (
         <EmptyState
-          icon={<IconInbox size={20} />}
+          icon={<IconInbox size="lg" />}
           title="Nothing cloned yet"
           description="Describe a company in one line — “a 12-person fintech, the week before an audit” — and Sonata writes the people, their threads, their channels and their meetings."
           hints={[
@@ -168,12 +168,15 @@ export function CompaniesClient({ initial }: { initial: CompaniesData }) {
           action={
             <Link href="/scenarios/new" className={buttonClasses("primary", "md")}>
               Clone a company
-              <IconArrowRight size={14} />
+              <IconArrowRight size="sm" />
             </Link>
           }
         />
       ) : (
-        <ul className="grid gap-4 md:grid-cols-2">
+        // items-start: a card is as tall as its own contents. Stretched to the
+        // row, a three-line company carried two hundred pixels of blank under
+        // its button while the nine-line one beside it set the height.
+        <ul className="grid items-start gap-4 md:grid-cols-2">
           {companies.map((company) => (
             <li key={company.id}>
               <CompanyTile
@@ -217,72 +220,85 @@ interface TileProps {
 function CompanyTile({ company, clones, now, busy, busyLine, disabled, onSeed }: TileProps) {
   return (
     <Card padding="lg" radius="2xl" className="flex h-full flex-col">
-      <div className="flex items-start justify-between gap-3">
-        <h2 className="font-display min-w-0 text-[23px] text-sn-ink">{company.name}</h2>
-        {stateBadge(company)}
-      </div>
-      <p className="mt-2 text-[13.5px] leading-[21px] text-sn-muted">{company.description}</p>
-
-      <div className="mt-4 flex flex-wrap items-center gap-1.5">
-        {company.industry ? <Chip size="sm">{company.industry}</Chip> : null}
-        <Chip size="sm">
-          {company.castSize} people · {company.channelCount} channels
-        </Chip>
-        <Chip size="sm">Cloned {ago(company.createdAt, now)}</Chip>
-      </div>
-
-      {/* What has been written, or an honest note that nothing has. The counts
-          the preview promised are not shown here: they describe an inbox that
-          does not exist until the backlog is. */}
-      {company.counts ? (
-        <p className="mt-3 text-[12px] leading-[18px] text-sn-subtle">
-          <span data-numeric>{company.counts.threads}</span> threads ·{" "}
-          <span data-numeric>{company.counts.slackMessages}</span> Slack messages ·{" "}
-          <span data-numeric>{company.counts.events}</span> events written
-        </p>
-      ) : (
-        <p className="mt-3 text-[12px] leading-[18px] text-sn-subtle">
-          No history written yet — seeding writes it first, which takes about a minute.
-        </p>
-      )}
-
-      {company.state === "superseded" && company.supersededBy ? (
-        <p className="mt-3 text-[12px] leading-[18px] text-sn-subtle">
-          Was in the clones {ago(company.seededAt, now)}; {company.supersededBy} replaced it.
-        </p>
-      ) : null}
-
-      {company.state === "seeded" ? (
-        <div className="mt-4 rounded-sn-lg border border-sn-passed-line bg-sn-passed-soft px-3.5 py-3">
-          <p className="flex items-center gap-1.5 text-[12.5px] font-medium text-sn-passed-ink">
-            <IconCheck size={13} />
-            Loaded {ago(company.seededAt, now)} — this is what the clones are holding
-          </p>
-          <ul className="mt-2 flex flex-col gap-1">
-            {clones.map((clone) => (
-              <li key={clone.twin} className="flex items-center justify-between gap-3">
-                <span className="text-[12px] text-sn-muted">
-                  {clone.label} · {clone.ok ? clone.detail : "not running"}
-                </span>
-                <a
-                  href={clone.url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-1 text-[12px] font-medium text-sn-primary-ink hover:underline"
-                >
-                  Open
-                  <IconArrowRight size={11} />
-                </a>
-              </li>
-            ))}
-          </ul>
+      <div className="sn-stack-group">
+        <div className="sn-stack-item">
+          <div className="flex items-start justify-between gap-3">
+            <h2 className="font-display min-w-0 text-[23px] text-sn-ink">{company.name}</h2>
+            {stateBadge(company)}
+          </div>
+          {/* Not clamped. These run from 158 to 653 characters — most of them
+              past nine lines — so cutting them to three would have hidden the
+              majority of what the page is for. The dead air came from the grid
+              stretching every card to its row's tallest, which `items-start`
+              fixes without taking a word off the screen. */}
+          <p className="text-[13.5px] leading-[21px] text-sn-muted">{company.description}</p>
         </div>
-      ) : null}
 
-      <div className="mt-auto flex flex-wrap items-center gap-3 pt-5">
+        <div className="sn-stack-item">
+          <div className="flex flex-wrap items-center gap-1.5">
+            {company.industry ? <Chip size="sm">{company.industry}</Chip> : null}
+            <Chip size="sm">
+              {company.castSize} people · {company.channelCount} channels
+            </Chip>
+            <Chip size="sm">Cloned {ago(company.createdAt, now)}</Chip>
+          </div>
+
+          {/* What has been written, or an honest note that nothing has. The counts
+              the preview promised are not shown here: they describe an inbox that
+              does not exist until the backlog is. */}
+          {company.counts ? (
+            <p className="text-[12px] leading-[18px] text-sn-subtle">
+              <span data-numeric>{company.counts.threads}</span> threads ·{" "}
+              <span data-numeric>{company.counts.slackMessages}</span> Slack messages ·{" "}
+              <span data-numeric>{company.counts.events}</span> events written
+            </p>
+          ) : (
+            <p className="text-[12px] leading-[18px] text-sn-subtle">
+              No history written yet — seeding writes it first, which takes about a minute.
+            </p>
+          )}
+
+          {company.state === "superseded" && company.supersededBy ? (
+            <p className="text-[12px] leading-[18px] text-sn-subtle">
+              Was in the clones {ago(company.seededAt, now)}; {company.supersededBy} replaced it.
+            </p>
+          ) : null}
+        </div>
+
+        {company.state === "seeded" ? (
+          <div className="rounded-sn-lg border border-sn-passed-line bg-sn-passed-soft px-3.5 py-3">
+            <p className="flex items-center gap-1.5 text-[12.5px] font-medium text-sn-passed-ink">
+              <IconCheck size="sm" />
+              Loaded {ago(company.seededAt, now)} — this is what the clones are holding
+            </p>
+            <ul className="mt-2 flex flex-col gap-1">
+              {clones.map((clone) => (
+                <li key={clone.twin} className="flex items-center justify-between gap-3">
+                  <span className="text-[12px] text-sn-muted">
+                    {clone.label} · {clone.ok ? clone.detail : "not running"}
+                  </span>
+                  <a
+                    href={clone.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1 text-[12px] font-medium text-sn-primary-ink hover:underline"
+                  >
+                    Open
+                    <IconArrowRight size="xs" />
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+      </div>
+
+      {/* The button is on the floor of the card, not wherever the text above it
+          happened to end, so a row of them reads as one row. */}
+      <div className="mt-auto flex flex-wrap items-center gap-3 pt-6">
         <Button
           variant={company.state === "seeded" ? "secondary" : "primary"}
-          icon={<IconSpark size={14} />}
+          icon={<IconSpark size="sm" />}
           loading={busy}
           disabled={disabled && !busy}
           onClick={onSeed}
@@ -330,7 +346,7 @@ function ConfirmSeed({ company, replacing, onCancel, onConfirm }: ConfirmProps) 
           <Button variant="ghost" onClick={onCancel}>
             Cancel
           </Button>
-          <Button variant="primary" icon={<IconSpark size={14} />} onClick={() => onConfirm(company)}>
+          <Button variant="primary" icon={<IconSpark size="sm" />} onClick={() => onConfirm(company)}>
             Seed the clones
           </Button>
         </>
@@ -395,7 +411,7 @@ function Landed({ outcome, onClose }: { outcome: SeedOutcome | null; onClose: ()
               className="inline-flex shrink-0 items-center gap-1 rounded-sn-md px-2 py-1 text-[12px] font-medium text-sn-primary-ink transition-colors duration-150 ease-sn hover:bg-sn-primary-soft"
             >
               Open {twin.label}
-              <IconArrowRight size={11} />
+              <IconArrowRight size="xs" />
             </a>
           </li>
         ))}

@@ -156,11 +156,11 @@ function CriterionRow({
           )}
         >
           {undecided ? (
-            <IconMinus size={11} />
+            <IconMinus size="xs" />
           ) : passed ? (
-            <IconCheck size={11} />
+            <IconCheck size="xs" />
           ) : (
-            <IconClose size={11} />
+            <IconClose size="xs" />
           )}
         </span>
 
@@ -217,7 +217,7 @@ function CriterionRow({
         ) : null}
 
         <IconChevronDown
-          size={15}
+          size="md"
           className={cn(
             "mt-1 shrink-0 text-sn-subtle transition-transform duration-150 ease-sn",
             open && "rotate-180",
@@ -240,7 +240,7 @@ function CriterionRow({
             </blockquote>
           ) : (
             <p className="flex items-start gap-2 text-[13px] text-sn-muted">
-              <IconAlert size={14} className="mt-0.5 shrink-0 text-sn-subtle" />
+              <IconAlert size="sm" className="mt-0.5 shrink-0 text-sn-subtle" />
               {undecided
                 ? "Nothing in the run settles this, so it counts neither way."
                 : passed
@@ -256,7 +256,7 @@ function CriterionRow({
               className="mt-2.5 inline-flex items-center gap-1.5 text-[12.5px] font-medium text-sn-primary-ink hover:underline"
             >
               Go to tick {tick} in the replay
-              <IconArrowRight size={13} />
+              <IconArrowRight size="sm" />
             </button>
           ) : null}
         </div>
@@ -285,7 +285,7 @@ function Verbatim({ text }: { text: string }) {
       >
         {open ? "Hide the checker's own words" : "The checker's own words"}
         <IconChevronDown
-          size={12}
+          size="xs"
           className={cn("transition-transform duration-150 ease-sn", open && "rotate-180")}
         />
       </button>

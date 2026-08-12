@@ -137,7 +137,7 @@ export function RejudgeButton({
           label is the whole message. */}
       <Button
         variant={variant}
-        icon={<IconSpark size={14} />}
+        icon={<IconSpark size="sm" />}
         loading={busy}
         disabled={inFlight}
         onClick={() => setOpen(true)}
@@ -271,7 +271,7 @@ function Landed({ report, spendUsd }: { report: EpisodeJudgeReport; spendUsd: nu
     <div aria-live="polite" className="rounded-sn-xl border border-sn-passed-line bg-sn-passed-soft px-4 py-4">
       <div className="flex items-center gap-2.5">
         <span className="grid h-[22px] w-[22px] shrink-0 place-items-center rounded-full border border-sn-passed-line bg-sn-surface text-sn-passed-ink">
-          <IconCheck size={12} />
+          <IconCheck size="xs" />
         </span>
         <span className="text-[13.5px] font-medium text-sn-ink">
           <span className="font-mono text-[12.5px]">{report.model}</span> judged this run

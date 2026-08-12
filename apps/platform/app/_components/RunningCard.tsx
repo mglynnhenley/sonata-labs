@@ -45,7 +45,7 @@ export function RunningCard({ run, now }: RunningCardProps) {
 
         <a href={href} onClick={(e) => go(e, href)} className={buttonClasses("primary", "lg")}>
           Watch the day
-          <IconArrowRight size={15} />
+          <IconArrowRight size="md" />
         </a>
       </div>
 
@@ -76,7 +76,7 @@ export function RunningCard({ run, now }: RunningCardProps) {
       </div>
 
       <div className="mt-6 flex items-start gap-2.5 rounded-sn-lg bg-sn-bg-subtle px-4 py-3">
-        <IconClock size={14} className="mt-0.5 shrink-0 text-sn-subtle" />
+        <IconClock size="sm" className="mt-0.5 shrink-0 text-sn-subtle" />
         <p className="text-[13px] leading-[20px] text-sn-muted">
           {run.lastEvent ?? "Waiting for the first thing to happen."}
         </p>

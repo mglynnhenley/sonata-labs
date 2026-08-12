@@ -99,7 +99,7 @@ export function VerdictHeader({
     <div className="flex flex-col gap-4">
       {error ? (
         <div className="flex items-start gap-2.5 rounded-sn-xl border border-sn-failed-line bg-sn-failed-soft px-4 py-3 text-[13px] text-sn-failed-ink">
-          <IconAlert size={16} className="mt-0.5 shrink-0" />
+          <IconAlert size="md" className="mt-0.5 shrink-0" />
           <div>
             <span className="font-medium">The run ended badly.</span> {error}
           </div>
@@ -244,7 +244,7 @@ export function VerdictHeader({
                   ? "No criterion was checked: a checklist run against a day the agent never worked scores its negative criteria for free."
                   : coverageHint(coverage) ?? CHECKLIST_HINT
             }
-            icon={<IconLayers size={15} />}
+            icon={<IconLayers size="md" />}
             actionLabel="See the checklist"
             onClick={() => onOpen("checklist")}
           />
@@ -262,7 +262,7 @@ export function VerdictHeader({
                   : "Open one to jump to the moment it happened."
                 : judgeCopy(judgeState).detail
             }
-            icon={<IconAlert size={15} />}
+            icon={<IconAlert size="md" />}
             actionLabel="See the findings"
             onClick={() => onOpen("failures")}
           />
@@ -274,7 +274,7 @@ export function VerdictHeader({
             label="Cost"
             value={formatUsd(costUsd)}
             hint="Every model call filed against this run, the judge's included. Open it for the per-role split."
-            icon={<IconBolt size={15} />}
+            icon={<IconBolt size="md" />}
             actionLabel="See the per-call breakdown"
             onClick={() => onOpen("cost")}
           />
@@ -282,7 +282,7 @@ export function VerdictHeader({
             label="The day"
             value={formatDuration(summary.durationMs)}
             hint={`${stats.ticks} tick${stats.ticks === 1 ? "" : "s"} · ${stats.toolCalls} tool call${stats.toolCalls === 1 ? "" : "s"} · ${stats.mutations} change${stats.mutations === 1 ? "" : "s"}`}
-            icon={<IconClock size={15} />}
+            icon={<IconClock size="md" />}
             actionLabel="Replay the day"
             onClick={() => onOpen("replay")}
           />

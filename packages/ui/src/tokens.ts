@@ -107,6 +107,46 @@ export const space = {
   "16": "64px",
 } as const;
 
+/**
+ * Vertical rhythm, named by what the gap separates rather than by size.
+ *
+ * Four page components stacked their sections at 32px, 40px, 48px and 56px —
+ * one hierarchy level wearing four different spacings, which is why the app read
+ * as slightly different software on every route. This is a dense dashboard, so
+ * the scale tops out at 32px: the tier tells you which gap to reach for, and the
+ * number stops being a per-file opinion.
+ */
+export const rhythm = {
+  /**
+   * Between top-level sections of a page.
+   *
+   * 40 and not 32: a section step has to beat the 24px one inside it by enough
+   * to read as a different kind of boundary. At 32 the two were close enough
+   * that a heading with no subtitle sat almost equidistant between the block
+   * above it and the content below, and the hierarchy went flat.
+   */
+  section: "40px",
+  /** Between blocks inside one section. */
+  block: "24px",
+  /** Between related items — cards in a grid, chips in a row. */
+  group: "16px",
+  /** A label and its value; an icon and its text. */
+  item: "8px",
+} as const;
+
+/**
+ * Icon sizes. Four steps, because eight was not a scale.
+ *
+ * 11, 12, 13, 14, 15, 16, 18 and 20 were all in use across 158 call sites, which
+ * is the difference between a rhythm and a rounding error.
+ */
+export const iconSize = {
+  xs: 12,
+  sm: 14,
+  md: 16,
+  lg: 20,
+} as const;
+
 /** Generous. Cards are 2xl/3xl; controls are md/lg. */
 export const radius = {
   sm: "6px",
@@ -182,6 +222,8 @@ export function buildCssVariables(): string {
   for (const [key, value] of Object.entries(radius)) push(`--radius-sn-${key}`, value);
   for (const [key, value] of Object.entries(shadow)) push(`--shadow-sn-${key}`, value);
   for (const [key, value] of Object.entries(space)) push(`--sn-space-${key.replace(".", "_")}`, value);
+  for (const [key, value] of Object.entries(rhythm)) push(`--sn-rhythm-${key}`, value);
+  for (const [key, value] of Object.entries(iconSize)) push(`--sn-icon-${key}`, `${value}px`);
   for (const [key, value] of Object.entries(fontSize)) {
     push(`--sn-text-${key}`, value.size);
     push(`--sn-leading-${key}`, value.leading);
@@ -201,6 +243,8 @@ export const tokens = {
   serviceColor,
   statusColor,
   space,
+  rhythm,
+  iconSize,
   radius,
   shadow,
   fontSize,

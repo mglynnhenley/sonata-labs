@@ -62,17 +62,22 @@ export const ProgressBar = forwardRef<HTMLDivElement, ProgressBarProps>(function
         aria-valuemin={0}
         aria-valuemax={indeterminate ? undefined : safeMax}
         aria-valuenow={indeterminate ? undefined : clamped}
-        aria-valuetext={indeterminate ? "Working" : undefined}
+        aria-valuetext={indeterminate ? "Working…" : undefined}
         aria-label={typeof label === "string" ? label : undefined}
         className={cn("overflow-hidden rounded-full bg-sn-bg-subtle", SIZES[size])}
       >
+        {/* A determinate bar is full-width and scaled down, not a width that
+            animates: width is a layout property, so a run ticking every second
+            re-laid out the page on every tick. scaleX is composited.
+            No radius of its own — scaling would stretch it into an ellipse, and
+            the track is already rounded and clipping. */}
         <div
           className={cn(
-            "h-full rounded-full transition-[width] duration-300 ease-sn",
+            "h-full origin-left transition-transform duration-300 ease-sn",
             TONES[tone],
-            indeterminate && "animate-sn-indeterminate w-1/3",
+            indeterminate ? "animate-sn-indeterminate w-1/3 rounded-full" : "w-full",
           )}
-          style={indeterminate ? undefined : { width: `${pct}%` }}
+          style={indeterminate ? undefined : { transform: `scaleX(${pct / 100})` }}
         />
       </div>
     </div>

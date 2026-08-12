@@ -71,9 +71,9 @@ export function ConnectPanel({ twins }: ConnectPanelProps) {
                   {twin.url.replace(/^https?:\/\//, "")}
                 </span>
                 {copied === twin.url ? (
-                  <IconCheck size={12} className="text-sn-success" />
+                  <IconCheck size="xs" className="text-sn-success" />
                 ) : (
-                  <IconCopy size={12} className="text-sn-subtle" />
+                  <IconCopy size="xs" className="text-sn-subtle" />
                 )}
               </span>
             </button>

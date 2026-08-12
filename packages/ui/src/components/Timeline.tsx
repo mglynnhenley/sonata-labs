@@ -140,14 +140,14 @@ export function TimelineItem({
       <span className="min-w-0 flex-1">
         <span
           className={cn(
-            "block text-[13.5px] font-medium text-sn-ink",
+            "block text-[13.5px] font-medium text-sn-ink [overflow-wrap:anywhere]",
             expandable && "group-hover:text-sn-primary-ink",
           )}
         >
           {title}
         </span>
         {description ? (
-          <span className="mt-0.5 block text-[13px] leading-[19px] text-sn-muted">
+          <span className="mt-0.5 block text-[13px] leading-[19px] text-sn-muted [overflow-wrap:anywhere]">
             {description}
           </span>
         ) : null}
@@ -155,7 +155,7 @@ export function TimelineItem({
       {meta ? <span className="flex shrink-0 items-center gap-1.5 pt-0.5">{meta}</span> : null}
       {expandable ? (
         <IconChevronDown
-          size={15}
+          size="md"
           className={cn(
             "mt-0.5 shrink-0 text-sn-subtle transition-transform duration-150 ease-sn",
             isOpen && "rotate-180",

@@ -150,7 +150,7 @@ function RoleRow({ role, shareBase }: { role: RoleCost; shareBase: number }) {
           {formatUsd(role.costUsd)}
         </span>
         <IconChevronDown
-          size={15}
+          size="md"
           className={cn(
             "shrink-0 text-sn-subtle transition-transform duration-150 ease-sn",
             open && "rotate-180",

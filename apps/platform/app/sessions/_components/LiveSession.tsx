@@ -119,7 +119,7 @@ export function LiveSession({ initial, twinLinks }: LiveSessionProps) {
   const resultsHref = `/runs/${session.sessionId}`;
 
   return (
-    <div className="flex flex-col gap-8">
+    <div className="sn-stack-section">
       <PageHeader
         eyebrow={`Session · ${session.sessionId}`}
         title={session.title}
@@ -151,7 +151,7 @@ export function LiveSession({ initial, twinLinks }: LiveSessionProps) {
               className={buttonClasses("primary", "md")}
             >
               See the results
-              <IconArrowRight size={14} />
+              <IconArrowRight size="sm" />
             </a>
           )
         }
@@ -160,7 +160,7 @@ export function LiveSession({ initial, twinLinks }: LiveSessionProps) {
       {session.error ? (
         <Card padding="md" className="border-sn-failed-line bg-sn-failed-soft">
           <div className="flex items-start gap-2.5">
-            <IconAlert size={15} className="mt-0.5 shrink-0 text-sn-danger" />
+            <IconAlert size="md" className="mt-0.5 shrink-0 text-sn-danger" />
             <p className="text-[13px] leading-[20px] text-sn-failed-ink">{session.error}</p>
           </div>
         </Card>
@@ -209,7 +209,7 @@ export function LiveSession({ initial, twinLinks }: LiveSessionProps) {
           </div>
         </div>
 
-        <dl className="mt-7 grid grid-cols-2 gap-x-8 gap-y-4 border-t border-sn-line pt-5 sm:grid-cols-4">
+        <dl className="mt-6 grid grid-cols-2 gap-x-8 gap-y-4 border-t border-sn-line pt-5 sm:grid-cols-4">
           <Tally label="Arrived" value={counts.arrivals} hint="emails, posts, invites" />
           <Tally label="People answered" value={counts.replies} hint="because of the agent" />
           <Tally label="Agent changed" value={session.agentActions} hint="writes the clones logged" />
@@ -244,7 +244,7 @@ export function LiveSession({ initial, twinLinks }: LiveSessionProps) {
               <Button
                 size="sm"
                 variant="secondary"
-                icon={<IconArrowDown size={13} />}
+                icon={<IconArrowDown size="sm" />}
                 onClick={() => {
                   const node = scroller.current;
                   if (node) node.scrollTop = node.scrollHeight;
@@ -381,7 +381,7 @@ function DayStrip({
   const columns = Array.from({ length: Math.max(session.plannedTicks, session.tick) }, (_, i) => i);
 
   return (
-    <div className="mt-7">
+    <div className="mt-6">
       <div className="flex h-12 items-end gap-[3px]">
         {columns.map((index) => {
           const record = byTick.get(index);
@@ -446,7 +446,7 @@ function Closing({
   return (
     <Card padding="lg">
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <IconCheck size={15} className="shrink-0 text-sn-success" />
+        <IconCheck size="md" className="shrink-0 text-sn-success" />
         <h2 className="font-display text-[22px] text-sn-ink">
           {session.endedBecause ?? "The day is over."}
         </h2>
@@ -461,7 +461,7 @@ function Closing({
       {session.caveats.length > 0 ? (
         <div className="mt-6 rounded-sn-lg bg-sn-bg-subtle px-5 py-4">
           <div className="flex items-center gap-2">
-            <IconInfo size={14} className="shrink-0 text-sn-subtle" />
+            <IconInfo size="sm" className="shrink-0 text-sn-subtle" />
             <p className="text-[13px] font-medium text-sn-ink">
               What this record cannot tell you
             </p>
@@ -489,7 +489,7 @@ function Closing({
           className={buttonClasses("primary", "md")}
         >
           Read the results
-          <IconArrowRight size={14} />
+          <IconArrowRight size="sm" />
         </a>
         <p className="text-[12px] text-sn-subtle">
           It sits in Results beside the benchmark runs, marked {session.model} so it is never read as

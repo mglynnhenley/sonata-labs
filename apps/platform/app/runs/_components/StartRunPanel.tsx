@@ -124,7 +124,7 @@ export function StartRunPanel({
   if (episodes.length === 0) {
     return (
       <EmptyState
-        icon={<IconLayers size={20} />}
+        icon={<IconLayers size="lg" />}
         title="A run needs a scenario"
         description="A scenario is one simulated workday: who is in the company, what happens and when, and what counts as having done the job. Save one and this panel fills in."
         hints={[
@@ -134,7 +134,7 @@ export function StartRunPanel({
         action={
           <a href="/scenarios" className={buttonClasses("primary", "md")}>
             See the five scenarios
-            <IconArrowRight size={14} />
+            <IconArrowRight size="sm" />
           </a>
         }
       />
@@ -156,55 +156,62 @@ export function StartRunPanel({
 
   return (
     <Card padding="lg">
-      <div className="grid gap-6 lg:grid-cols-2">
-        <div>
-          <label htmlFor="run-scenario" className="text-[13px] font-medium text-sn-ink">
-            Scenario
-          </label>
-          <select
-            id="run-scenario"
-            className={cn(CONTROL, "mt-2")}
-            value={episodeId}
-            onChange={(e) => setEpisodeId(e.target.value)}
-          >
-            {episodes.map((option) => (
-              <option key={option.id} value={option.id}>
-                {option.title}
-                {option.worldName ? ` — ${option.worldName}` : ""}
-              </option>
-            ))}
-          </select>
-          <p className="mt-2 line-clamp-2 text-[12px] leading-[18px] text-sn-muted">
-            {episode?.story ?? "Pick the day you want to test against."}
-          </p>
-        </div>
+      {/* Only the two selects are peers, so only they pair off. Beside the lengths
+          — three priced buttons, a tick box and a truncation notice — the chip row
+          ran out about 150px short and left the start button below a hole. The two
+          button groups take the whole card instead, which is also what lets the
+          lengths sit three across rather than wrapping two-then-one. */}
+      <div className="sn-stack-block">
+        <div className="grid gap-6 lg:grid-cols-2">
+          <div>
+            <label htmlFor="run-scenario" className="text-[13px] font-medium text-sn-ink">
+              Scenario
+            </label>
+            <select
+              id="run-scenario"
+              className={cn(CONTROL, "mt-2")}
+              value={episodeId}
+              onChange={(e) => setEpisodeId(e.target.value)}
+            >
+              {episodes.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.title}
+                  {option.worldName ? ` — ${option.worldName}` : ""}
+                </option>
+              ))}
+            </select>
+            <p className="mt-2 line-clamp-2 text-[12px] leading-[18px] text-sn-muted">
+              {episode?.story ?? "Pick the day you want to test against."}
+            </p>
+          </div>
 
-        <div>
-          <label htmlFor="run-model" className="text-[13px] font-medium text-sn-ink">
-            Model under test
-          </label>
-          <select
-            id="run-model"
-            className={cn(CONTROL, "mt-2")}
-            value={model}
-            onChange={(e) => setModel(e.target.value)}
-          >
-            {chosenModel ? null : <option value={model}>{model}</option>}
-            {byVendor().map(([vendor, models]) => (
-              <optgroup key={vendor} label={vendor}>
-                {models.map((option) => (
-                  <option key={option.id} value={option.id}>
-                    {option.label}
-                  </option>
-                ))}
-              </optgroup>
-            ))}
-          </select>
-          <p className="mt-2 text-[12px] leading-[18px] text-sn-muted">
-            {chosenModel
-              ? `${chosenModel.note} · ${usd(chosenModel.inputUsd)} in / ${usd(chosenModel.outputUsd)} out per million tokens`
-              : "An OpenRouter model id."}
-          </p>
+          <div>
+            <label htmlFor="run-model" className="text-[13px] font-medium text-sn-ink">
+              Model under test
+            </label>
+            <select
+              id="run-model"
+              className={cn(CONTROL, "mt-2")}
+              value={model}
+              onChange={(e) => setModel(e.target.value)}
+            >
+              {chosenModel ? null : <option value={model}>{model}</option>}
+              {byVendor().map(([vendor, models]) => (
+                <optgroup key={vendor} label={vendor}>
+                  {models.map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {option.label}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+            <p className="mt-2 text-[12px] leading-[18px] text-sn-muted">
+              {chosenModel
+                ? `${chosenModel.note} · ${usd(chosenModel.inputUsd)} in / ${usd(chosenModel.outputUsd)} out per million tokens`
+                : "An OpenRouter model id."}
+            </p>
+          </div>
         </div>
 
         <div>
@@ -232,14 +239,19 @@ export function StartRunPanel({
               );
             })}
           </div>
-          <p className="mt-2 text-[12px] leading-[18px] text-sn-muted">
+          {/* Capped because the block is the width of the card now, and a sentence
+              this long across all of it is a line nobody's eye can carry back. */}
+          <p className="mt-2 max-w-[76ch] text-[12px] leading-[18px] text-sn-muted">
             Detach an app to see what the agent does without it — that is the cheapest way to
             find out which surface it was actually relying on.
           </p>
         </div>
 
         <div>
-          <div className="flex flex-wrap items-baseline justify-between gap-2">
+          {/* The caption sits beside the label, not at the far end of the row: across
+              the full card those two ended up a screen apart and stopped reading as
+              one thought. */}
+          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
             <p className="text-[13px] font-medium text-sn-ink">How long the day runs</p>
             <p className="text-[11.5px] text-sn-subtle">
               This run only — the scenario keeps its clock.
@@ -256,7 +268,12 @@ export function StartRunPanel({
                   aria-pressed={on}
                   onClick={() => setTicks(length.ticks)}
                   className={cn(
-                    "min-w-[8.5rem] rounded-sn-md border px-3 py-2 text-left transition-colors duration-150 ease-sn",
+                    // Equal shares of the row, whether there are two lengths on offer
+                    // or four. Sized to their own text they came out 194/140/222 wide
+                    // and read as three different kinds of thing. The floor stays:
+                    // a long scenario offers four, and basis-0 alone would let the
+                    // narrowest breakpoint squeeze them past legibility.
+                    "grow basis-full rounded-sn-md border px-3 py-2 text-left transition-colors duration-150 ease-sn sm:basis-0 sm:min-w-[8.5rem]",
                     on
                       ? "border-sn-primary bg-sn-primary-soft text-sn-primary-ink"
                       : "border-sn-line bg-sn-surface text-sn-muted hover:border-sn-line-strong",
@@ -340,7 +357,7 @@ export function StartRunPanel({
           <Button
             size="lg"
             variant="primary"
-            icon={<IconPlay size={13} />}
+            icon={<IconPlay size="sm" />}
             loading={starting}
             disabled={!canStart}
             onClick={() => onStart({ episodeId, model, twins, ticks })}

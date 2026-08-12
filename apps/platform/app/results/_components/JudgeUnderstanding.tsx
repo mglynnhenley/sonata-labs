@@ -105,7 +105,7 @@ export function JudgeUnderstanding({
           >
             {briefOpen ? "Hide the brief the agent was given" : "Compare with the brief the agent was given"}
             <IconChevronDown
-              size={13}
+              size="sm"
               className={cn("transition-transform duration-150 ease-sn", briefOpen && "rotate-180")}
             />
           </button>

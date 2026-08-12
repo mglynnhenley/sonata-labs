@@ -55,9 +55,9 @@ function PreviewFailure({
   onUse: (template: TemplateSummary) => void;
 }) {
   return (
-    <div className="flex flex-col gap-5">
+    <div className="sn-stack-block">
       <div className="flex items-start gap-2.5 rounded-sn-lg border border-sn-failed-line bg-sn-failed-soft px-4 py-3">
-        <IconAlert size={15} className="mt-0.5 shrink-0 text-sn-danger" />
+        <IconAlert size="md" className="mt-0.5 shrink-0 text-sn-danger" />
         <p className="text-[13px] leading-[20px] text-sn-failed-ink">{message}</p>
       </div>
 
@@ -85,7 +85,7 @@ function PreviewFailure({
                 variant="secondary"
                 loading={busyId === template.id}
                 disabled={busyId !== null && busyId !== template.id}
-                iconRight={<IconArrowRight size={13} />}
+                iconRight={<IconArrowRight size="sm" />}
                 onClick={() => onUse(template)}
               >
                 Run this day
@@ -199,7 +199,7 @@ export function NewScenarioComposer({ templates }: NewScenarioComposerProps) {
 
   if (draft) {
     return (
-      <div className="flex flex-col gap-8">
+      <div className="sn-stack-section">
         <PageHeader
           eyebrow="Step 2 of 2 · Preview"
           title="Here is what will be built"
@@ -215,7 +215,7 @@ export function NewScenarioComposer({ templates }: NewScenarioComposerProps) {
               <Button
                 variant="primary"
                 size="lg"
-                iconRight={<IconArrowRight size={15} />}
+                iconRight={<IconArrowRight size="md" />}
                 loading={creating}
                 onClick={() => void create()}
               >
@@ -247,7 +247,7 @@ export function NewScenarioComposer({ templates }: NewScenarioComposerProps) {
           <Button
             variant="primary"
             size="lg"
-            iconRight={<IconArrowRight size={15} />}
+            iconRight={<IconArrowRight size="md" />}
             loading={creating}
             onClick={() => void create()}
           >
@@ -259,7 +259,7 @@ export function NewScenarioComposer({ templates }: NewScenarioComposerProps) {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-[820px] flex-col gap-8">
+    <div className="sn-stack-section mx-auto w-full max-w-[820px]">
       <PageHeader
         eyebrow="Step 1 of 2 · Describe"
         title="New scenario"
@@ -298,7 +298,7 @@ export function NewScenarioComposer({ templates }: NewScenarioComposerProps) {
               <Chip
                 key={example.label}
                 tone="gold"
-                icon={<IconSpark size={12} />}
+                icon={<IconSpark size="xs" />}
                 onClick={() => useExample(example.text)}
               >
                 {example.label}
@@ -307,7 +307,7 @@ export function NewScenarioComposer({ templates }: NewScenarioComposerProps) {
           </div>
         </div>
 
-        <div className="mt-7 border-t border-sn-line pt-5">
+        <div className="mt-6 border-t border-sn-line pt-5">
           <p className="text-[13px] font-medium text-sn-ink">How long the day should run</p>
           <div className="mt-2.5 flex flex-wrap gap-2">
             {DAY_LENGTHS.map((length) => (
@@ -341,11 +341,11 @@ export function NewScenarioComposer({ templates }: NewScenarioComposerProps) {
           </div>
         ) : null}
 
-        <div className="mt-7 flex flex-wrap items-center gap-4 border-t border-sn-line pt-5">
+        <div className="mt-6 flex flex-wrap items-center gap-4 border-t border-sn-line pt-5">
           <Button
             size="lg"
             variant="primary"
-            icon={<IconSpark size={14} />}
+            icon={<IconSpark size="sm" />}
             loading={working}
             disabled={tooShort}
             onClick={() => void preview()}

@@ -50,7 +50,7 @@ export function StartSessionPanel({ scenarios, starting, onStart }: StartSession
   if (scenarios.length === 0) {
     return (
       <EmptyState
-        icon={<IconLayers size={20} />}
+        icon={<IconLayers size="lg" />}
         title="A session needs a scenario"
         description="A scenario is the day the world will play at your agent: who is in the company, what lands and when, and what counts as having done the job. Save one and this panel fills in."
         hints={[
@@ -60,7 +60,7 @@ export function StartSessionPanel({ scenarios, starting, onStart }: StartSession
         action={
           <a href="/scenarios" className={buttonClasses("primary", "md")}>
             Browse scenarios
-            <IconArrowRight size={14} />
+            <IconArrowRight size="sm" />
           </a>
         }
       />
@@ -163,7 +163,7 @@ export function StartSessionPanel({ scenarios, starting, onStart }: StartSession
         <Button
           size="lg"
           variant="primary"
-          icon={<IconPlay size={13} />}
+          icon={<IconPlay size="sm" />}
           loading={starting}
           disabled={!episodeId}
           onClick={() =>

@@ -216,7 +216,7 @@ export function ReportView({
         <Button
           variant="secondary"
           size="sm"
-          icon={copied ? <IconCheck size={13} /> : <IconCopy size={13} />}
+          icon={copied ? <IconCheck size="sm" /> : <IconCopy size="sm" />}
           onClick={copy}
         >
           {copied ? "Copied" : "Copy Markdown"}
@@ -228,7 +228,7 @@ export function ReportView({
           className={buttonClasses("secondary", "sm")}
         >
           Download .md
-          <IconArrowRight size={13} />
+          <IconArrowRight size="sm" />
         </a>
       </div>
 

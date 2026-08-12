@@ -35,7 +35,7 @@ export function TemplateCard({ template, busy, onAction }: TemplateCardProps) {
               {SERVICE_LABELS[service.twin]} · {service.count} {service.unit}
             </Chip>
           ))}
-          <Chip size="sm" icon={<IconLayers size={11} />}>
+          <Chip size="sm" icon={<IconLayers size="xs" />}>
             {hours}h day
           </Chip>
         </div>
@@ -47,7 +47,7 @@ export function TemplateCard({ template, busy, onAction }: TemplateCardProps) {
           variant="primary"
           loading={busy === "use"}
           disabled={busy !== null && busy !== "use"}
-          iconRight={<IconArrowRight size={13} />}
+          iconRight={<IconArrowRight size="sm" />}
           onClick={() => onAction(template, "use")}
         >
           Run this day
@@ -66,7 +66,7 @@ export function TemplateCard({ template, busy, onAction }: TemplateCardProps) {
           variant="ghost"
           loading={busy === "environment"}
           disabled={busy !== null && busy !== "environment"}
-          icon={<IconPlay size={12} />}
+          icon={<IconPlay size="xs" />}
           onClick={() => onAction(template, "environment")}
         >
           Build the company

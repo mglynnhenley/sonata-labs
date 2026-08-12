@@ -92,7 +92,7 @@ export function SessionsClient({ initial, scenarios, twins }: SessionsClientProp
   }
 
   return (
-    <div className="flex flex-col gap-12">
+    <div className="sn-stack-section">
       <PageHeader
         title="Sessions"
         subtitle="A session is a simulated workday running at an agent Sonata never calls. Emails land, people answer, the calendar moves — on a wall clock, at whatever speed you choose. Your agent notices by checking its own inbox, and everything it does is scored the same way a benchmark run is."
@@ -105,7 +105,7 @@ export function SessionsClient({ initial, scenarios, twins }: SessionsClientProp
               className={buttonClasses("primary", "md")}
             >
               Watch the day
-              <IconArrowRight size={14} />
+              <IconArrowRight size="sm" />
             </a>
           ) : undefined
         }
@@ -130,7 +130,7 @@ export function SessionsClient({ initial, scenarios, twins }: SessionsClientProp
           The scenario decides what happens and what counts as done. Nobody plays the agent — that
           is the seat your own is sitting in.
         </p>
-        <div className="mt-5">
+        <div className="mt-6">
           <StartSessionPanel
             scenarios={scenarios}
             starting={starting}
@@ -141,7 +141,7 @@ export function SessionsClient({ initial, scenarios, twins }: SessionsClientProp
 
       <section>
         <h2 className="font-display text-[26px] text-sn-ink">Past sessions</h2>
-        <div className="mt-5">
+        <div className="mt-6">
           <PastSessions sessions={past} now={data.at} />
         </div>
       </section>
@@ -192,7 +192,7 @@ function LiveBanner({
           </div>
           <a href={href} onClick={(e) => go(e, href)} className={buttonClasses("primary", "lg")}>
             Watch the day
-            <IconArrowRight size={15} />
+            <IconArrowRight size="md" />
           </a>
         </div>
       </div>
@@ -299,7 +299,7 @@ function PastSessions({ sessions, now }: { sessions: readonly SessionView[]; now
       empty={
         <EmptyState
           size="sm"
-          icon={<IconClock size={18} />}
+          icon={<IconClock size="lg" />}
           title="No sessions yet"
           description="Start the world above, point your agent at the three clones, and the day it works through lands here — with what it changed, what it ignored, and the same score a benchmark run gets."
           hints={[

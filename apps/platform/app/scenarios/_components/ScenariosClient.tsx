@@ -110,7 +110,7 @@ export function ScenariosClient({ initialEpisodes, templates, initialNow }: Scen
   }
 
   return (
-    <div className="flex flex-col gap-12">
+    <div className="sn-stack-section">
       <PageHeader
         title="Scenarios"
         subtitle="A scenario is one simulated workday inside a cloned business: who works there, what happens and when, and what counts as having done the job."
@@ -121,7 +121,7 @@ export function ScenariosClient({ initialEpisodes, templates, initialNow }: Scen
             onClick={(e) => go(e, "/scenarios/new")}
             className={buttonClasses("primary", "lg")}
           >
-            <IconSpark size={14} />
+            <IconSpark size="sm" />
             New scenario
           </a>
         }
@@ -137,10 +137,10 @@ export function ScenariosClient({ initialEpisodes, templates, initialNow }: Scen
           ) : null}
         </div>
 
-        <div className="mt-5">
+        <div className="mt-6">
           {episodes.length === 0 ? (
             <EmptyState
-              icon={<IconLayers size={20} />}
+              icon={<IconLayers size="lg" />}
               title="Nothing saved yet"
               description="Create one from scratch, or save a template below as a starting point. Either way you get a whole fake company — an inbox, Slack channels and a calendar, with the same people in all three."
               hints={[
@@ -154,13 +154,13 @@ export function ScenariosClient({ initialEpisodes, templates, initialNow }: Scen
                   onClick={(e) => go(e, "/scenarios/new")}
                   className={buttonClasses("primary", "md")}
                 >
-                  <IconSpark size={14} />
+                  <IconSpark size="sm" />
                   Describe a business
                 </a>
               }
             />
           ) : (
-            <div className="grid gap-5 lg:grid-cols-2">
+            <div className="grid gap-4 lg:grid-cols-2">
               {episodes.map((episode) => (
                 <SavedScenarioCard
                   key={episode.id}
@@ -183,7 +183,7 @@ export function ScenariosClient({ initialEpisodes, templates, initialNow }: Scen
           it is asked for, and the day keeps changing after the agent starts working.
         </p>
 
-        <div className="mt-5 grid gap-5 lg:grid-cols-2">
+        <div className="mt-6 grid gap-4 lg:grid-cols-2">
           {templates.map((template) => (
             <TemplateCard
               key={template.id}

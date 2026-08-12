@@ -135,7 +135,7 @@ export function RunDetail({
                 className={buttonClasses("secondary", "md")}
               >
                 Report
-                <IconArrowRight size={14} />
+                <IconArrowRight size="sm" />
               </Link>
             ) : null}
             {rejudge("secondary")}
@@ -192,7 +192,7 @@ export function RunDetail({
           className="inline-flex items-center gap-1 text-sn-primary-ink hover:underline"
         >
           The raw artifact
-          <IconArrowRight size={12} />
+          <IconArrowRight size="xs" />
         </Link>
         — everything on this page is derived from that one file.
       </p>

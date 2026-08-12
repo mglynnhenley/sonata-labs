@@ -85,7 +85,7 @@ export function HomeClient({ initial }: HomeClientProps) {
   const twinsDown = twins.filter((t) => !t.ok);
 
   return (
-    <div className="flex flex-col gap-10">
+    <div className="sn-stack-section">
       <PageHeader
         eyebrow="Overview"
         title="What's happening"
@@ -106,7 +106,7 @@ export function HomeClient({ initial }: HomeClientProps) {
               className={buttonClasses("primary", "md")}
             >
               New run
-              <IconArrowRight size={14} />
+              <IconArrowRight size="sm" />
             </a>
           ) : undefined
         }
@@ -125,7 +125,7 @@ export function HomeClient({ initial }: HomeClientProps) {
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div className="flex items-start gap-3">
               <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-sn-gold-soft text-sn-gold-ink">
-                <IconSpark size={16} />
+                <IconSpark size="md" />
               </span>
               <div>
                 <p className="text-[14px] font-medium text-sn-ink">Nothing is running</p>
@@ -160,7 +160,7 @@ export function HomeClient({ initial }: HomeClientProps) {
           <StatCard
             label="Autonomy"
             value={percent(stats.autonomy)}
-            icon={<IconSpark size={15} />}
+            icon={<IconSpark size="md" />}
             // The mean is over the runs that produced a result. Runs that never
             // executed, and runs no model ever touched, are named rather than
             // averaged in — the counts are the honest footnote to the number
@@ -185,7 +185,7 @@ export function HomeClient({ initial }: HomeClientProps) {
                 ? percent(null)
                 : `${Math.round(stats.passRate * stats.scored)} of ${stats.scored}`
             }
-            icon={<IconSearch size={15} />}
+            icon={<IconSearch size="md" />}
             hint={
               stats.scored === 0
                 ? PASS_RATE_HINT
@@ -198,7 +198,7 @@ export function HomeClient({ initial }: HomeClientProps) {
           <StatCard
             label="Runs"
             value={counts.runs}
-            icon={<IconPlay size={13} />}
+            icon={<IconPlay size="sm" />}
             // The total counts everything on disk, fabricated days included —
             // deleting them from the tally is how they got averaged in unnoticed.
             // It just has to say how many of them there are.
@@ -214,7 +214,7 @@ export function HomeClient({ initial }: HomeClientProps) {
           <StatCard
             label="Spend"
             value={money(stats.spendUsd)}
-            icon={<IconLayers size={15} />}
+            icon={<IconLayers size="md" />}
             hint="Every model call so far, agent and director"
             href={ROUTES.compare}
             actionLabel="Where the money went"
@@ -228,7 +228,7 @@ export function HomeClient({ initial }: HomeClientProps) {
       {twinsDown.length > 0 ? (
         <section>
           <div className="flex items-center gap-2">
-            <IconAlert size={15} className="text-sn-warning" />
+            <IconAlert size="md" className="text-sn-warning" />
             <h2 className="text-[14px] font-medium text-sn-ink">
               {twinsDown.length === 1
                 ? `${twinsDown[0].label} is not running`
@@ -238,7 +238,7 @@ export function HomeClient({ initial }: HomeClientProps) {
           <p className="mt-1.5 text-[13px] text-sn-muted">
             A scenario can only use an app that is up. Start them here.
           </p>
-          <div className="mt-4">
+          <div className="mt-6">
             <TwinStrip twins={twins} onChanged={refresh} />
           </div>
         </section>

@@ -21,13 +21,13 @@ export default function NotFound() {
   return (
     <div className="mx-auto w-full max-w-[720px]">
       <EmptyState
-        icon={<IconSearch size={20} />}
+        icon={<IconSearch size="lg" />}
         title="There's nothing at this address"
         description="The link is wrong, or whatever used to be here has been cleared away. Nothing is broken — you are just somewhere the product does not have a page for."
         action={
           <Link href={ROUTES.home} className={buttonClasses("primary", "md")}>
             Back to the overview
-            <IconArrowRight size={14} />
+            <IconArrowRight size="sm" />
           </Link>
         }
       />
@@ -46,7 +46,7 @@ export default function NotFound() {
                   <span className="block text-[12px] text-sn-muted">{place.hint}</span>
                 </span>
                 <IconArrowRight
-                  size={13}
+                  size="sm"
                   className="shrink-0 text-sn-subtle transition-transform duration-150 ease-sn group-hover:translate-x-0.5 group-hover:text-sn-ink"
                 />
               </Link>

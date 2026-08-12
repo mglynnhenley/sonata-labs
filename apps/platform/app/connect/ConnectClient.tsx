@@ -134,7 +134,7 @@ export function ConnectClient({ connection, initialTwins }: ConnectClientProps) 
   }
 
   return (
-    <div className="flex flex-col gap-12">
+    <div className="sn-stack-section">
       <PageHeader
         eyebrow="Step 1 of 3"
         title="Connect your agent"
@@ -157,7 +157,7 @@ export function ConnectClient({ connection, initialTwins }: ConnectClientProps) 
         <h2 id="how-it-works" className="text-[14px] font-medium text-sn-ink">
           How this works
         </h2>
-        <ol className="mt-3 grid gap-4 md:grid-cols-3">
+        <ol className="mt-6 grid gap-4 md:grid-cols-3">
           {HOW_IT_WORKS.map((step, i) => (
             <li key={step.title}>
               <Card padding="md" tone="sunken" className="h-full">
@@ -185,7 +185,7 @@ export function ConnectClient({ connection, initialTwins }: ConnectClientProps) 
           Each one is a local server your agent talks to over its normal API. They have to be
           running before anything can connect — start any that are off, right here.
         </p>
-        <div className="mt-4">
+        <div className="mt-6">
           <TwinStrip twins={twins} onChanged={poll.refresh} />
         </div>
         {poll.error ? (
@@ -205,8 +205,8 @@ export function ConnectClient({ connection, initialTwins }: ConnectClientProps) 
         </p>
 
         {!live.binInstalled ? (
-          <Card padding="sm" tone="sunken" className="mt-4 flex items-start gap-2.5">
-            <IconAlert size={15} className="mt-0.5 shrink-0 text-sn-warning" />
+          <Card padding="sm" tone="sunken" className="mt-6 flex items-start gap-2.5">
+            <IconAlert size="md" className="mt-0.5 shrink-0 text-sn-warning" />
             <p className="text-[13px] leading-[20px] text-sn-muted">
               <span className="font-medium text-sn-ink">The launcher is not installed yet.</span>{" "}
               The command below is right, but{" "}
@@ -217,7 +217,7 @@ export function ConnectClient({ connection, initialTwins }: ConnectClientProps) 
           </Card>
         ) : null}
 
-        <div className="mt-4">
+        <div className="mt-6">
           <Tabs
             items={TABS}
             value={tab}
@@ -264,21 +264,21 @@ export function ConnectClient({ connection, initialTwins }: ConnectClientProps) 
           is good before you touch your own setup.
         </p>
 
-        <Card padding="md" className="mt-4">
+        <Card padding="md" className="mt-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="min-w-0">
               {test ? (
                 <div className="flex items-start gap-2.5">
                   {test.ok ? (
-                    <IconCheck size={16} className="mt-0.5 shrink-0 text-sn-success" />
+                    <IconCheck size="md" className="mt-0.5 shrink-0 text-sn-success" />
                   ) : (
-                    <IconAlert size={16} className="mt-0.5 shrink-0 text-sn-warning" />
+                    <IconAlert size="md" className="mt-0.5 shrink-0 text-sn-warning" />
                   )}
                   <p className="text-[14px] leading-[21px] text-sn-ink">{test.headline}</p>
                 </div>
               ) : (
                 <div className="flex items-start gap-2.5">
-                  <IconSpark size={16} className="mt-0.5 shrink-0 text-sn-subtle" />
+                  <IconSpark size="md" className="mt-0.5 shrink-0 text-sn-subtle" />
                   <p className="text-[14px] leading-[21px] text-sn-muted">
                     Not tested yet. One call per clone, through the same tools your agent gets —
                     it changes nothing.
@@ -290,7 +290,7 @@ export function ConnectClient({ connection, initialTwins }: ConnectClientProps) 
               variant="primary"
               loading={testing}
               onClick={() => void testConnection()}
-              icon={<IconBolt size={14} />}
+              icon={<IconBolt size="sm" />}
             >
               {test ? "Test again" : "Test the connection"}
             </Button>
@@ -307,9 +307,9 @@ export function ConnectClient({ connection, initialTwins }: ConnectClientProps) 
                   className="grid grid-cols-[14px_84px_minmax(0,1fr)] items-start gap-x-3 gap-y-1 sm:grid-cols-[14px_84px_minmax(0,1fr)_auto]"
                 >
                   {check.ok ? (
-                    <IconCheck size={14} className="mt-1 text-sn-success" />
+                    <IconCheck size="sm" className="mt-1 text-sn-success" />
                   ) : (
-                    <IconClose size={14} className="mt-1 text-sn-danger" />
+                    <IconClose size="sm" className="mt-1 text-sn-danger" />
                   )}
                   <Chip service={check.twin} size="sm" className="justify-self-start" />
                   <span className="min-w-0 text-[13px] leading-[22px] text-sn-ink">
@@ -336,7 +336,7 @@ export function ConnectClient({ connection, initialTwins }: ConnectClientProps) 
           With the agent connected, the rest is the other two steps: choose what the day throws at
           it, then read what it did.
         </p>
-        <div className="mt-4 flex flex-wrap gap-2.5">
+        <div className="mt-6 flex flex-wrap gap-2.5">
           {/* Real anchors wearing the button's clothes, so middle-click and
               "copy link address" keep working on the page's main exits. */}
           <a
@@ -345,7 +345,7 @@ export function ConnectClient({ connection, initialTwins }: ConnectClientProps) 
             className={buttonClasses("primary", "md")}
           >
             Choose a scenario
-            <IconArrowRight size={13} />
+            <IconArrowRight size="sm" />
           </a>
           <a
             href={ROUTES.compare}
@@ -353,7 +353,7 @@ export function ConnectClient({ connection, initialTwins }: ConnectClientProps) 
             className={buttonClasses("secondary", "md")}
           >
             See what finished days scored
-            <IconArrowRight size={13} />
+            <IconArrowRight size="sm" />
           </a>
         </div>
       </section>

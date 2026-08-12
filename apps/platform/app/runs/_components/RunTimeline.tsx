@@ -26,9 +26,9 @@ import type { StoryKind, StoryRow } from "../_lib/story";
 // thing itself.
 
 const TWIN_ICON: Record<TwinName, ReactNode> = {
-  gmail: <IconMail size={11} />,
-  slack: <IconMessage size={11} />,
-  calendar: <IconCalendar size={11} />,
+  gmail: <IconMail size="xs" />,
+  slack: <IconMessage size="xs" />,
+  calendar: <IconCalendar size="xs" />,
 };
 
 function tone(row: StoryRow): TimelineTone {
@@ -40,11 +40,11 @@ function tone(row: StoryRow): TimelineTone {
 }
 
 function icon(row: StoryRow): ReactNode {
-  if (row.kind === "escalation") return <IconAlert size={12} />;
-  if (row.kind === "thought") return <IconSpark size={12} />;
-  if (row.kind === "note") return <IconMinus size={12} />;
-  if (row.kind === "tool") return row.mutation ? <IconBolt size={12} /> : <IconSearch size={12} />;
-  return row.twin ? TWIN_ICON[row.twin] : <IconArrowRight size={12} />;
+  if (row.kind === "escalation") return <IconAlert size="xs" />;
+  if (row.kind === "thought") return <IconSpark size="xs" />;
+  if (row.kind === "note") return <IconMinus size="xs" />;
+  if (row.kind === "tool") return row.mutation ? <IconBolt size="xs" /> : <IconSearch size="xs" />;
+  return row.twin ? TWIN_ICON[row.twin] : <IconArrowRight size="xs" />;
 }
 
 /** What kind of thing this row is, in the user's language. */
@@ -130,7 +130,7 @@ export function RunTimeline({ rows, activeKey, freshFrom }: RunTimelineProps) {
                       className="ml-auto inline-flex items-center gap-1 font-medium text-sn-primary-ink hover:underline"
                     >
                       Open in {row.twin ? SERVICE_LABELS[row.twin] : "the clone"}
-                      <IconArrowRight size={12} />
+                      <IconArrowRight size="xs" />
                     </a>
                   ) : null}
                 </p>

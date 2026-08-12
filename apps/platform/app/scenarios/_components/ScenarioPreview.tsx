@@ -41,9 +41,9 @@ const DAY_COUNTS: readonly { key: keyof WorldCounts; label: string; twin: TwinNa
 ];
 
 const TWIN_ICON: Record<TwinName, ReactNode> = {
-  gmail: <IconMail size={11} />,
-  slack: <IconMessage size={11} />,
-  calendar: <IconCalendar size={11} />,
+  gmail: <IconMail size="xs" />,
+  slack: <IconMessage size="xs" />,
+  calendar: <IconCalendar size="xs" />,
 };
 
 export type ScenarioPreviewProps = {
@@ -89,7 +89,7 @@ export function ScenarioPreview({ draft }: ScenarioPreviewProps) {
             "here is your business". */}
         {standIn ? (
           <div className="mt-4 flex items-start gap-2.5 rounded-sn-lg border border-sn-gold-soft bg-sn-gold-soft px-4 py-3">
-            <IconInfo size={15} className="mt-0.5 shrink-0 text-sn-gold-ink" />
+            <IconInfo size="md" className="mt-0.5 shrink-0 text-sn-gold-ink" />
             <div className="min-w-0">
               <p className="text-[13.5px] leading-[20px] font-medium text-sn-gold-ink">
                 {business.name} is a ready-made example, not the business you described.

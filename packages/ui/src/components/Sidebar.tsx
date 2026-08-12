@@ -173,7 +173,7 @@ export const Sidebar = forwardRef<HTMLElement, SidebarProps>(function Sidebar(
             aria-label="Close navigation"
             className="absolute top-5 right-3 rounded-sn-md p-1.5 text-sn-subtle transition-colors duration-150 ease-sn hover:bg-sn-bg-subtle hover:text-sn-ink lg:hidden"
           >
-            <IconClose size={16} />
+            <IconClose size="md" />
           </button>
         ) : null}
 
@@ -219,7 +219,7 @@ export function SidebarTrigger({ onClick, open, brand, className }: SidebarTrigg
         aria-controls={SIDEBAR_ID}
         className="-ml-1.5 rounded-sn-md p-1.5 text-sn-muted transition-colors duration-150 ease-sn hover:bg-sn-surface-hover hover:text-sn-ink"
       >
-        <IconMenu size={18} />
+        <IconMenu size="lg" />
       </button>
       {brand}
     </div>
@@ -386,7 +386,7 @@ export const SidebarUser = forwardRef<HTMLElement, SidebarUserProps>(function Si
       </span>
       {clickable ? (
         <IconChevronRight
-          size={14}
+          size="sm"
           className="shrink-0 text-sn-subtle transition-transform duration-150 ease-sn group-hover:translate-x-0.5"
         />
       ) : null}

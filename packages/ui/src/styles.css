@@ -86,6 +86,28 @@
   --color-sn-pending-soft: #ece9e1;
   --color-sn-pending-line: #ddd9cd;
 
+  /* These two were declared in tokens.ts but never mirrored here, so Badge's
+     warning and neutral tones borrowed a soft fill and the generic rule as
+     their border while the other four used a real -line hue. */
+  --color-sn-warning-line: #e8d7ae;
+  --color-sn-neutral-line: #ddd9cd;
+
+  /* Vertical rhythm, named by what the gap separates. Mirrors `rhythm` in
+     tokens.ts. The app was using 32/40/48/56 for the one job of separating
+     page sections; this is that job's single answer, and it has to stay clear
+     of the 24px step inside a section or the hierarchy reads flat. Use the
+     `sn-stack-*` utilities below rather than picking a gap per file. */
+  --sn-rhythm-section: 40px;
+  --sn-rhythm-block: 24px;
+  --sn-rhythm-group: 16px;
+  --sn-rhythm-item: 8px;
+
+  /* Icon steps. Mirrors `iconSize` in tokens.ts. */
+  --sn-icon-xs: 12px;
+  --sn-icon-sm: 14px;
+  --sn-icon-md: 16px;
+  --sn-icon-lg: 20px;
+
   /* Radii */
   --radius-sn-sm: 6px;
   --radius-sn-md: 10px;
@@ -297,6 +319,33 @@
 .sn-scroll::-webkit-scrollbar-thumb:hover {
   background: var(--color-sn-subtle);
   background-clip: content-box;
+}
+
+/**
+ * Vertical stacks at the four rhythm tiers.
+ *
+ * `sn-stack-section` is the one every page's outermost column wants; the others
+ * step down inside it. Named tiers rather than a gap utility, so "how far apart
+ * are two sections" has one answer across the whole app instead of one per file.
+ */
+.sn-stack-section,
+.sn-stack-block,
+.sn-stack-group,
+.sn-stack-item {
+  display: flex;
+  flex-direction: column;
+}
+.sn-stack-section {
+  gap: var(--sn-rhythm-section);
+}
+.sn-stack-block {
+  gap: var(--sn-rhythm-block);
+}
+.sn-stack-group {
+  gap: var(--sn-rhythm-group);
+}
+.sn-stack-item {
+  gap: var(--sn-rhythm-item);
 }
 
 /**

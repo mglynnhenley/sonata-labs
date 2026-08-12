@@ -86,7 +86,7 @@ export function CodeBlock({
               onClick={onCopy}
               className="-mr-1 inline-flex h-6 items-center gap-1.5 rounded-sn-sm px-1.5 text-[12px] text-sn-muted transition-colors duration-150 ease-sn hover:bg-sn-surface hover:text-sn-ink"
             >
-              {copied ? <IconCheck size={13} className="text-sn-success" /> : <IconCopy size={13} />}
+              {copied ? <IconCheck size="sm" className="text-sn-success" /> : <IconCopy size="sm" />}
               {copied ? "Copied" : "Copy"}
             </button>
           ) : null}

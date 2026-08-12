@@ -34,7 +34,7 @@ export function BenchmarkTable({ benchmark }: { benchmark: Benchmark }) {
   if (benchmark.rows.length === 0) {
     return (
       <EmptyState
-        icon={<IconLayers size={20} />}
+        icon={<IconLayers size="lg" />}
         title="The table needs scored runs"
         description="Run the same scenario on two or more models and this becomes the comparison the article prints: autonomy per scenario, mean autonomy, the failure mode each model repeats, and what an episode costs."
         hints={[
@@ -74,7 +74,7 @@ export function BenchmarkTable({ benchmark }: { benchmark: Benchmark }) {
             a cell to open the run.
           </p>
         </div>
-        <Button size="sm" icon={<IconCopy size={13} />} onClick={copyMarkdown}>
+        <Button size="sm" icon={<IconCopy size="sm" />} onClick={copyMarkdown}>
           {copied ? "Copied" : "Copy as Markdown"}
         </Button>
       </div>

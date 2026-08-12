@@ -59,7 +59,7 @@ export function RecentRuns({ runs, now, simulated }: RecentRunsProps) {
         >
           All runs
           <IconArrowRight
-            size={13}
+            size="sm"
             className="transition-transform duration-150 ease-sn group-hover:translate-x-0.5"
           />
         </a>
@@ -69,7 +69,7 @@ export function RecentRuns({ runs, now, simulated }: RecentRunsProps) {
         <div className="px-5 pb-5">
           <EmptyState
             size="sm"
-            icon={<IconPlay size={16} />}
+            icon={<IconPlay size="md" />}
             title="No runs yet"
             description="A run plays one simulated workday against a scenario, with your agent inside it. Finished runs land here with their score."
             hints={[
@@ -135,7 +135,7 @@ export function RecentRuns({ runs, now, simulated }: RecentRunsProps) {
                   </span>
 
                   <IconArrowRight
-                    size={14}
+                    size="sm"
                     className="shrink-0 text-sn-subtle transition-transform duration-150 ease-sn group-hover:translate-x-0.5 group-hover:text-sn-ink"
                   />
                 </a>

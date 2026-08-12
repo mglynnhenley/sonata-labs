@@ -10,8 +10,8 @@ const TONES: Record<BadgeStatus, string> = {
   passed: "border-sn-passed-line bg-sn-passed-soft text-sn-passed-ink",
   failed: "border-sn-failed-line bg-sn-failed-soft text-sn-failed-ink",
   pending: "border-sn-pending-line bg-sn-pending-soft text-sn-pending-ink",
-  warning: "border-sn-warning-soft bg-sn-warning-soft text-sn-warning-ink",
-  neutral: "border-sn-line bg-sn-bg-subtle text-sn-muted",
+  warning: "border-sn-warning-line bg-sn-warning-soft text-sn-warning-ink",
+  neutral: "border-sn-neutral-line bg-sn-neutral-soft text-sn-neutral-ink",
 };
 
 const SIZES: Record<BadgeSize, string> = {

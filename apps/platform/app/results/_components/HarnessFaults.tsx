@@ -49,7 +49,7 @@ export function HarnessFaults({ report }: { report: HarnessReport }) {
       <div className="flex items-start gap-4 p-5">
         <div className="min-w-0 flex-1">
           <h2 className="flex items-center gap-2 text-[14px] font-medium text-sn-gold-ink">
-            <IconAlert size={15} />
+            <IconAlert size="md" />
             Ours, not the agent&rsquo;s
           </h2>
           <p className="mt-0.5 max-w-[80ch] text-[13px] leading-[20px] text-sn-muted">
@@ -298,7 +298,7 @@ function Row({
         <span className="min-w-0 flex-1 text-[13px] leading-[19px] text-sn-ink">{title}</span>
         <span className="shrink-0 text-[11.5px] text-sn-gold-ink">{tag}</span>
         <IconChevronDown
-          size={14}
+          size="sm"
           className={cn(
             "mt-0.5 shrink-0 text-sn-subtle transition-transform duration-150 ease-sn",
             open && "rotate-180",

@@ -30,7 +30,7 @@ export default function AppError({
   return (
     <div className="mx-auto w-full max-w-[720px]">
       <EmptyState
-        icon={<IconAlert size={20} />}
+        icon={<IconAlert size="lg" />}
         title="This page didn't load"
         description="Something went wrong reading the data behind it. Nothing has been lost — runs and scenarios are files and rows on this machine, and the rest of the dashboard is still working."
         hints={[
@@ -47,7 +47,7 @@ export default function AppError({
           // so the Link IS the button rather than wrapping one.
           <Link href={ROUTES.home} className={buttonClasses("ghost", "md")}>
             Back to the overview
-            <IconArrowRight size={14} />
+            <IconArrowRight size="sm" />
           </Link>
         }
       />

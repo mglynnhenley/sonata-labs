@@ -131,7 +131,7 @@ export function SettingsForm({ initialSettings, initialTwins }: SettingsFormProp
   const clock = settings;
 
   return (
-    <div className="flex flex-col gap-8">
+    <div className="sn-stack-section">
       <PageHeader
         eyebrow="Settings"
         title="How Sonata runs"
@@ -148,7 +148,7 @@ export function SettingsForm({ initialSettings, initialTwins }: SettingsFormProp
               </>
             ) : savedAt ? (
               <>
-                <IconCheck size={13} className="text-sn-success" />
+                <IconCheck size="sm" className="text-sn-success" />
                 All changes saved
               </>
             ) : (
@@ -355,7 +355,7 @@ export function SettingsForm({ initialSettings, initialTwins }: SettingsFormProp
           </code>
           .
         </p>
-        <div className="mt-4">
+        <div className="mt-6">
           <TwinStrip twins={twinPoll.data.twins} onChanged={twinPoll.refresh} />
         </div>
       </section>

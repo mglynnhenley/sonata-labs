@@ -128,7 +128,7 @@ export function RunsClient({
   }, [demo, episodes, defaultModel, router, toast]);
 
   return (
-    <div className="flex flex-col gap-12">
+    <div className="sn-stack-section">
       <PageHeader
         title="Runs"
         subtitle="A run is one simulated workday. Pick a scenario and a model, press start, and watch the day play out — emails arriving, the agent working, people writing back."
@@ -141,7 +141,7 @@ export function RunsClient({
               className={buttonClasses("primary", "md")}
             >
               Watch the day
-              <IconArrowRight size={14} />
+              <IconArrowRight size="sm" />
             </a>
           ) : undefined
         }
@@ -172,7 +172,7 @@ export function RunsClient({
           The scenario decides what happens and what counts as done. The model is the thing being
           tested — everyone else in the company is played by the harness.
         </p>
-        <div className="mt-5">
+        <div className="mt-6">
           <StartRunPanel
             episodes={episodes}
             defaultModel={defaultModel}
@@ -210,7 +210,7 @@ export function RunsClient({
             </a>
           </div>
         </div>
-        <div className="mt-5">
+        <div className="mt-6">
           <PastRuns runs={data.runs} now={data.at} simulated={simulated} />
         </div>
       </section>
@@ -257,7 +257,7 @@ function LiveRunBanner({
           </div>
           <a href={href} onClick={(e) => go(e, href)} className={buttonClasses("primary", "lg")}>
             Watch the day
-            <IconArrowRight size={15} />
+            <IconArrowRight size="md" />
           </a>
         </div>
       </div>

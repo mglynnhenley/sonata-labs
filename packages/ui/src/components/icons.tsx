@@ -6,13 +6,26 @@ import type { ReactNode, SVGProps } from "react";
  * own 1.5px stroke set rather than pulling in an icon dependency.
  */
 
-export type IconProps = Omit<SVGProps<SVGSVGElement>, "children"> & { size?: number };
+/**
+ * Four steps, mirroring `iconSize` in tokens.ts. A raw number is still allowed
+ * for the rare glyph that has to match a specific piece of type, but the named
+ * step is the default — eight ad-hoc sizes across the app was not a scale.
+ */
+export const ICON_SIZE = { xs: 12, sm: 14, md: 16, lg: 20 } as const;
+
+export type IconSize = keyof typeof ICON_SIZE;
+
+export type IconProps = Omit<SVGProps<SVGSVGElement>, "children"> & {
+  size?: IconSize | number;
+};
 
 function makeIcon(name: string, children: ReactNode, filled = false) {
-  const Icon = ({ size = 16, ...rest }: IconProps) => (
+  const Icon = ({ size = "md", ...rest }: IconProps) => {
+    const px = typeof size === "number" ? size : ICON_SIZE[size];
+    return (
     <svg
-      width={size}
-      height={size}
+      width={px}
+      height={px}
       viewBox="0 0 24 24"
       fill={filled ? "currentColor" : "none"}
       stroke={filled ? "none" : "currentColor"}
@@ -25,7 +38,8 @@ function makeIcon(name: string, children: ReactNode, filled = false) {
     >
       {children}
     </svg>
-  );
+    );
+  };
   Icon.displayName = name;
   return Icon;
 }

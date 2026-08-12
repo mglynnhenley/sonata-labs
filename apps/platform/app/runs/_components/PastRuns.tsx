@@ -207,7 +207,7 @@ export function PastRuns({ runs, now, simulated }: PastRunsProps) {
       empty={
         <EmptyState
           size="sm"
-          icon={<IconClock size={18} />}
+          icon={<IconClock size="lg" />}
           title="No runs yet"
           description="Every day you play lands here with its score, how long it took and what it cost. Start one above and this fills in while it runs."
           hints={[

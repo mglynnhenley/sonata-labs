@@ -96,7 +96,7 @@ export function TwinStrip({ twins, onChanged }: TwinStripProps) {
                     className="inline-flex h-7 items-center gap-1 rounded-sn-md px-2 text-[12px] font-medium text-sn-primary-ink transition-colors duration-150 ease-sn hover:bg-sn-primary-soft"
                   >
                     Open
-                    <IconArrowRight size={12} />
+                    <IconArrowRight size="xs" />
                   </a>
                   {twin.managed ? (
                     <Button

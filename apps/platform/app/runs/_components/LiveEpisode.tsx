@@ -113,7 +113,7 @@ export function LiveEpisode({ initial, twinLinks }: LiveEpisodeProps) {
   const resultsHref = `/runs/${run.runId}`;
 
   return (
-    <div className="flex flex-col gap-8">
+    <div className="sn-stack-section">
       <PageHeader
         eyebrow={`Run · ${run.runId}`}
         title={run.specTitle}
@@ -155,7 +155,7 @@ export function LiveEpisode({ initial, twinLinks }: LiveEpisodeProps) {
                 className={buttonClasses("primary", "md")}
               >
                 See the verdict
-                <IconArrowRight size={14} />
+                <IconArrowRight size="sm" />
               </a>
             )}
           </>
@@ -165,7 +165,7 @@ export function LiveEpisode({ initial, twinLinks }: LiveEpisodeProps) {
       {run.error ? (
         <Card padding="md" className="border-sn-failed-line bg-sn-failed-soft">
           <div className="flex items-start gap-2.5">
-            <IconAlert size={15} className="mt-0.5 shrink-0 text-sn-danger" />
+            <IconAlert size="md" className="mt-0.5 shrink-0 text-sn-danger" />
             <p className="text-[13px] leading-[20px] text-sn-failed-ink">{run.error}</p>
           </div>
         </Card>
@@ -203,7 +203,7 @@ export function LiveEpisode({ initial, twinLinks }: LiveEpisodeProps) {
           </div>
         </div>
 
-        <dl className="mt-7 grid grid-cols-2 gap-x-8 gap-y-4 border-t border-sn-line pt-5 sm:grid-cols-4">
+        <dl className="mt-6 grid grid-cols-2 gap-x-8 gap-y-4 border-t border-sn-line pt-5 sm:grid-cols-4">
           <Tally label="Arrived" value={counts.arrivals} hint="emails, posts, invites" />
           <Tally label="People answered" value={counts.replies} hint="because of the agent" />
           <Tally label="Agent acted" value={counts.agentActions} hint="writes to an app" />
@@ -248,7 +248,7 @@ export function LiveEpisode({ initial, twinLinks }: LiveEpisodeProps) {
               </Badge>
             ) : null}
             {!follow && live ? (
-              <Button size="sm" variant="secondary" icon={<IconArrowDown size={13} />} onClick={jumpToNow}>
+              <Button size="sm" variant="secondary" icon={<IconArrowDown size="sm" />} onClick={jumpToNow}>
                 {behind > 0 ? `${behind} new` : "Jump to now"}
               </Button>
             ) : null}
@@ -272,7 +272,7 @@ export function LiveEpisode({ initial, twinLinks }: LiveEpisodeProps) {
 
           {finished ? (
             <div className="mt-2 flex items-center gap-2.5 rounded-sn-lg bg-sn-bg-subtle px-4 py-3">
-              <IconCheck size={14} className="shrink-0 text-sn-success" />
+              <IconCheck size="sm" className="shrink-0 text-sn-success" />
               <p className="text-[13px] text-sn-muted">
                 The day is over. The verdict has the score, the criteria behind it and the
                 failure modes the judge found.

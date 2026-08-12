@@ -94,7 +94,7 @@ export function FailureModes({
           diagnosis and a current one. */}
       {state?.state === "judged" && state.reason ? (
         <div className="flex items-start gap-2.5 border-t border-sn-gold/30 bg-sn-gold-soft/35 px-5 py-3">
-          <IconAlert size={14} className="mt-0.5 shrink-0 text-sn-gold-ink" />
+          <IconAlert size="sm" className="mt-0.5 shrink-0 text-sn-gold-ink" />
           <p className="max-w-[78ch] text-[12.5px] leading-[19px] text-sn-muted">
             <span className="font-medium text-sn-gold-ink">
               These are the findings from the last judge pass that worked.
@@ -109,7 +109,7 @@ export function FailureModes({
       {rows.length === 0 ? (
         <div className="flex items-center gap-2.5 px-5 pb-5 text-[13px] text-sn-muted">
           <span className="grid h-6 w-6 place-items-center rounded-full border border-sn-passed-line bg-sn-passed-soft text-sn-passed-ink">
-            <IconCheck size={13} />
+            <IconCheck size="sm" />
           </span>
           Nothing in the catalog fired, and the judge added nothing of its own.
         </div>
@@ -149,7 +149,7 @@ function NoDiagnosis({ state }: { state: JudgeState | null }) {
             <Spinner size="sm" label="" />
           ) : (
             <IconAlert
-              size={15}
+              size="md"
               className={copy.tone === "failed" ? "text-sn-failed-ink" : "text-sn-subtle"}
             />
           )}
@@ -191,7 +191,7 @@ function PartialSightNote({
 }) {
   return (
     <div className="flex items-start gap-2.5 border-t border-sn-gold/30 bg-sn-gold-soft/35 px-5 py-3">
-      <IconAlert size={14} className="mt-0.5 shrink-0 text-sn-gold-ink" />
+      <IconAlert size="sm" className="mt-0.5 shrink-0 text-sn-gold-ink" />
       <p className="max-w-[78ch] text-[12.5px] leading-[19px] text-sn-muted">
         {sight.kind === "partial" ? (
           <>
@@ -252,7 +252,7 @@ function FindingRow({
             className="ml-auto inline-flex items-center gap-1.5 text-[12.5px] font-medium text-sn-primary-ink hover:underline"
           >
             {row.tick !== undefined ? `Go to tick ${row.tick}` : "Go to the moment"}
-            <IconArrowRight size={13} />
+            <IconArrowRight size="sm" />
           </button>
         ) : null}
       </div>

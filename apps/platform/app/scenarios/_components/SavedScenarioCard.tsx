@@ -66,7 +66,7 @@ export function SavedScenarioCard({ episode, now, deleting, onDelete }: SavedSce
               {SERVICE_LABELS[twin]}
             </Chip>
           ))}
-          <Chip size="sm" icon={<IconClock size={11} />}>
+          <Chip size="sm" icon={<IconClock size="xs" />}>
             {/* Not "beats" (screenwriting jargon the UI never defines) and not
                 "ways to pass" — the criteria are conjunctive. */}
             {episode.counts.beats} things happen · {episode.counts.criteria} must-dos
@@ -81,7 +81,7 @@ export function SavedScenarioCard({ episode, now, deleting, onDelete }: SavedSce
           href={`/runs?scenario=${encodeURIComponent(episode.id)}`}
           className={buttonClasses("primary", "sm")}
         >
-          <IconPlay size={12} />
+          <IconPlay size="xs" />
           Start a run
         </Link>
         <span className="ml-auto text-[12px] text-sn-subtle">

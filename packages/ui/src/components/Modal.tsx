@@ -150,11 +150,11 @@ export function Modal({
             aria-label="Close"
             className="absolute top-4 right-4 rounded-sn-md p-1.5 text-sn-subtle transition-colors duration-150 ease-sn hover:bg-sn-bg-subtle hover:text-sn-ink"
           >
-            <IconClose size={16} />
+            <IconClose size="md" />
           </button>
         ) : null}
 
-        <h2 id={titleId} className="font-display pr-8 text-[26px] text-sn-ink">
+        <h2 id={titleId} className="font-display pr-8 text-balance text-[26px] text-sn-ink">
           {title}
         </h2>
         {description ? (

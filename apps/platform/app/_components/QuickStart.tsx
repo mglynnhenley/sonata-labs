@@ -10,19 +10,19 @@ import { useGo } from "./useGo";
 const ACTIONS = [
   {
     href: ROUTES.scenarios,
-    icon: <IconLayers size={16} />,
+    icon: <IconLayers size="md" />,
     title: "Clone another company",
     body: "Describe a company in one line and watch it become an inbox, channels and a calendar.",
   },
   {
     href: ROUTES.runs,
-    icon: <IconPlay size={14} />,
+    icon: <IconPlay size="sm" />,
     title: "New run",
     body: "Pick a scenario and a model, then watch the simulated workday play out live.",
   },
   {
     href: ROUTES.compare,
-    icon: <IconSearch size={16} />,
+    icon: <IconSearch size="md" />,
     title: "Compare models",
     body: "Autonomy, checklist score, failure modes and cost per day, side by side.",
   },
@@ -49,7 +49,7 @@ export function QuickStart() {
                 </span>
                 <h3 className="flex-1 text-[14px] font-medium text-sn-ink">{action.title}</h3>
                 <IconArrowRight
-                  size={14}
+                  size="sm"
                   className="text-sn-subtle transition-transform duration-150 ease-sn group-hover:translate-x-0.5 group-hover:text-sn-ink"
                 />
               </div>

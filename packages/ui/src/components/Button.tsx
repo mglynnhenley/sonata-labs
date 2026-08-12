@@ -3,52 +3,12 @@
 import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from "react";
 import { cn } from "../cn";
 import { Spinner } from "./Spinner";
+import { buttonClasses, type ButtonSize, type ButtonVariant } from "./buttonClasses";
 
-export type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
-export type ButtonSize = "sm" | "md" | "lg";
-
-const BASE =
-  "relative inline-flex select-none items-center justify-center gap-2 rounded-sn-md border font-medium " +
-  "transition-[background-color,border-color,color,box-shadow,transform] duration-150 ease-sn " +
-  "active:translate-y-px disabled:pointer-events-none disabled:active:translate-y-0";
-
-const VARIANTS: Record<ButtonVariant, string> = {
-  primary:
-    "border-transparent bg-sn-primary text-sn-on-primary shadow-sn-xs hover:bg-sn-primary-hover active:bg-sn-primary-active",
-  secondary:
-    "border-sn-line bg-sn-surface text-sn-ink shadow-sn-xs hover:border-sn-line-strong hover:bg-sn-surface-hover",
-  ghost: "border-transparent bg-transparent text-sn-muted hover:bg-sn-bg-subtle hover:text-sn-ink",
-  danger:
-    "border-transparent bg-sn-danger text-white shadow-sn-xs hover:bg-sn-danger-hover active:bg-sn-danger-hover",
-};
-
-const SIZES: Record<ButtonSize, string> = {
-  sm: "h-7 px-2.5 text-[12px]",
-  md: "h-9 px-3.5 text-[13px]",
-  lg: "h-11 px-5 text-[15px]",
-};
-
-const ICON_SIZES: Record<ButtonSize, string> = {
-  sm: "h-7 w-7 px-0",
-  md: "h-9 w-9 px-0",
-  lg: "h-11 w-11 px-0",
-};
-
-/** Exported so links and other elements can wear the same clothes. */
-export function buttonClasses(
-  variant: ButtonVariant = "secondary",
-  size: ButtonSize = "md",
-  options: { iconOnly?: boolean; block?: boolean; loading?: boolean } = {},
-): string {
-  return cn(
-    BASE,
-    VARIANTS[variant],
-    options.iconOnly ? ICON_SIZES[size] : SIZES[size],
-    options.block && "w-full",
-    // A loading button is busy, not unavailable — it must not fade out.
-    !options.loading && "disabled:opacity-45",
-  );
-}
+// The class strings live in ./buttonClasses (no "use client"), so a server
+// component can dress a link as a button without importing this module.
+export { buttonClasses };
+export type { ButtonSize, ButtonVariant };
 
 export type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: ButtonVariant;

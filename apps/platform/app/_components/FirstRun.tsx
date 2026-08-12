@@ -51,7 +51,7 @@ export function FirstRun({ twins, onTwinsChanged }: FirstRunProps) {
   const ready = twins.filter((t) => t.ok).length;
 
   return (
-    <div className="animate-sn-rise flex flex-col gap-14">
+    <div className="animate-sn-rise sn-stack-section">
       <PageHeader
         size="lg"
         eyebrow="Welcome to Sonata Labs"
@@ -59,7 +59,7 @@ export function FirstRun({ twins, onTwinsChanged }: FirstRunProps) {
         subtitle="Sonata builds a fake company — an inbox, Slack channels and a calendar, with the same people in all three — then plays one workday inside it while your agent works. Emails arrive on a clock, coworkers write back in character, meetings move. At 5pm you get one number: how much of the job it handled without you. Everything runs on this machine. Nothing touches a real account."
         meta={
           <>
-            <Chip tone="gold" icon={<IconSpark size={13} />}>
+            <Chip tone="gold" icon={<IconSpark size="sm" />}>
               Five minutes end to end
             </Chip>
             <Chip>Local only</Chip>
@@ -85,7 +85,7 @@ export function FirstRun({ twins, onTwinsChanged }: FirstRunProps) {
               className={buttonClasses("primary", "lg")}
             >
               Run the demo day
-              <IconArrowRight size={15} />
+              <IconArrowRight size="md" />
             </a>
           </>
         }
@@ -119,7 +119,7 @@ export function FirstRun({ twins, onTwinsChanged }: FirstRunProps) {
                 >
                   {step.cta}
                   <IconArrowRight
-                    size={13}
+                    size="sm"
                     className="transition-transform duration-150 ease-sn group-hover:translate-x-0.5"
                   />
                 </a>
