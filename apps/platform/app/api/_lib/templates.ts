@@ -688,7 +688,12 @@ export interface TemplateAssembly {
    * where the template's own clock IS the choice being made.
    */
   ticks?: number;
-  /** Why no model was used, when this template is standing in for one. */
+  /**
+   * The whole story of a substitution, when this template is standing in for a
+   * business someone described: why no model wrote it, AND that this company is
+   * not the one they asked for. Composed in one place — `templateStandIn` in
+   * draft.ts — because it is shown verbatim beside the company's name.
+   */
   offlineReason?: string;
 }
 

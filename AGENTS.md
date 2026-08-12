@@ -18,7 +18,7 @@ packages/engine   the tick clock, scripted beats, the director, the agent loop
 packages/judge    checkers, the deterministic checklist, the episode judge
 packages/world    one sentence -> a coherent company across all three clones
 packages/mcp      the stdio MCP server an outside agent connects through
-packages/cli      `sonata` — doctor, init, up/down, then straight through to the above
+packages/cli      `npm run sonata` — doctor, init, up/down, then straight through to the above
 packages/ui       the design system
 ```
 
@@ -43,13 +43,13 @@ added three tables, and every Gmail call returned 500 —
 `no such table: oauth_tokens` — until the schema was applied.
 
 ```bash
-npx sonata doctor               # names the clone, the missing tables and the fix
+npm run sonata -- doctor        # names the clone, the missing tables and the fix
 npm run db:init -w apps/gmail   # safe: every statement is CREATE TABLE IF NOT EXISTS
 ```
 
-If a clone starts 500ing right after a merge, this is why. `sonata doctor` reads
-every clone's `data/*.db` against its committed `db/schema.sql` and changes
-nothing, so it is the cheapest first move after any merge.
+If a clone starts 500ing right after a merge, this is why. `doctor` reads every
+clone's `data/*.db` against its committed `db/schema.sql` and changes nothing,
+so it is the cheapest first move after any merge.
 
 ## Verify by running it, not by compiling it
 
@@ -93,21 +93,28 @@ agent's record and grading reads it. Anything the harness writes must stay out.
 ## Commands
 
 ```bash
-npm install                  # workspaces, from the root — before any `npx sonata`
-npx sonata doctor            # every prerequisite, and the fix for each
-npx sonata up                # dashboard :3000 and the three clones, supervised
-npm run dev:platform         # or one at a time: dashboard  :3000
-npm run dev:gmail            # clone      :3101
-npm run dev:slack            # clone      :3200
-npm run dev:calendar         # clone      :3400
-npx sonata status            # twins, models, recent runs
-npx sonata world create "a 30-person support desk"
-npx sonata run <scenario> --model anthropic/claude-haiku-4.5 --ticks 4
+npm install                       # workspaces, from the root — before anything else
+npm run sonata -- doctor          # every prerequisite, and the fix for each
+npm run sonata -- up              # dashboard :3000 and the three clones, supervised
+npm run dev:platform              # or one at a time: dashboard  :3000
+npm run dev:gmail                 # clone      :3101
+npm run dev:slack                 # clone      :3200
+npm run dev:calendar              # clone      :3400
+npm run sonata -- status          # twins, models, recent runs
+npm run sonata -- world create "a 30-person support desk"
+npm run sonata -- run <scenario> --model anthropic/claude-haiku-4.5 --ticks 4
 ```
 
-`npm install` first: `sonata` is this repo's own bin, and `npx sonata` in an
-uninstalled checkout fetches an unrelated package of that name off the registry.
-`npm run sonata -- <command>` is the same CLI by a path that cannot.
+**The CLI is `npm run sonata -- <command>`, never `npx sonata`.** `sonata` is a
+package somebody else publishes — `sonata@0.0.3`, a web framework, with a bin of
+that name. npx asks `node_modules/.bin` first and the registry second, so `npx
+sonata` means this CLI after `npm install` and downloads and runs a stranger's
+before it: one command, two behaviours, no error when it takes the wrong one.
+`npm run` reaches `packages/cli/bin/sonata.mjs` by path out of this repo's
+`package.json` and has no second answer at any point in the install. The bin
+keeps both names — `sonata-labs` is ours and unclaimed, and `sonata` stays only
+so that an installed checkout keeps winning that race against the registry —
+but do not put either in a document.
 
 Tests and typecheck are per workspace: `npx vitest run` and `npx tsc --noEmit`
 inside each. Never run `next build` while a dev server is up — they fight over

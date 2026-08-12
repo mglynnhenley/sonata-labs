@@ -12,7 +12,8 @@ import {
 } from "@sonata/ui";
 import { useGo } from "../../_components/useGo";
 import { apiGet, apiSend } from "../../api/_lib/client";
-import type { EpisodeRecord, EpisodeSummary, TemplateSummary, WorldSummary } from "../../api/_lib/types";
+import type { EpisodeSummary, TemplateSummary, WorldSummary } from "../../api/_lib/types";
+import { episodeFromTemplate } from "../_lib/shipped";
 import { SavedScenarioCard } from "./SavedScenarioCard";
 import { TemplateCard, type TemplateAction } from "./TemplateCard";
 
@@ -65,9 +66,7 @@ export function ScenariosClient({ initialEpisodes, templates }: ScenariosClientP
         return;
       }
 
-      const { episode } = await apiSend<{ episode: EpisodeRecord }>("/api/episodes", "POST", {
-        templateId: template.id,
-      });
+      const episode = await episodeFromTemplate(template.id);
 
       if (action === "use") {
         router.push(`/runs?scenario=${encodeURIComponent(episode.id)}`);

@@ -1,5 +1,5 @@
 import type { Person, TwinName, WorldSeed } from "@sonata/core";
-import { owner as ownerOf, resolvePerson } from "@sonata/core";
+import { allTwinApiUrls, owner as ownerOf, resolvePerson, resolveTwinApiUrl } from "@sonata/core";
 import type { GeneratedWorld } from "./generate";
 import type { CalendarSeed, GmailSeed, SlackSeed } from "./schema";
 
@@ -49,24 +49,25 @@ import type { CalendarSeed, GmailSeed, SlackSeed } from "./schema";
 
 const MINUTE = 60_000;
 
-export const DEFAULT_TWIN_URLS: Record<TwinName, string> = {
-  gmail: "http://127.0.0.1:3101",
-  slack: "http://127.0.0.1:3200",
-  calendar: "http://127.0.0.1:3400",
-};
+/**
+ * Injection talks to the loopback address rather than `localhost`, which can
+ * resolve to ::1 while a twin's dev server listens on IPv4 only — a failure that
+ * reads as "the twin is down" when it is running fine.
+ */
+const INJECT_HOST = "127.0.0.1";
 
-const URL_ENV: Record<TwinName, string> = {
-  gmail: "SONATA_GMAIL_URL",
-  slack: "SONATA_SLACK_URL",
-  calendar: "SONATA_CALENDAR_URL",
-};
+export const DEFAULT_TWIN_URLS: Record<TwinName, string> = allTwinApiUrls(
+  {},
+  { host: INJECT_HOST },
+);
 
 /** Env beats the default; an explicit override beats both. Read per call so a
  *  test (or the dashboard's settings page) can move a twin without a restart. */
 export function twinBaseUrl(twin: TwinName, overrides?: Partial<Record<TwinName, string>>): string {
-  return (
-    overrides?.[twin] ?? process.env[URL_ENV[twin]] ?? DEFAULT_TWIN_URLS[twin]
-  ).replace(/\/+$/, "");
+  return resolveTwinApiUrl(twin, process.env, {
+    host: INJECT_HOST,
+    override: overrides?.[twin],
+  });
 }
 
 // ---------------------------------------------------------------------------

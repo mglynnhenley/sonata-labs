@@ -8,6 +8,24 @@
 // `sonata doctor` can even load — a Node that is too old, and an install that
 // never happened — into a sentence with a fix in it, and then hand over to the
 // real CLI under tsx.
+//
+// Two bin names, and neither is what the docs tell you to type.
+//
+//   sonata-labs   this project's name, and nobody else's on the registry
+//   sonata        kept, because removing it is the dangerous move
+//
+// `sonata` is a real published package — sonata@0.0.3, "a simple web framework",
+// bin `./bin/sonata`. npx resolves a bare name against `node_modules/.bin`
+// first and the registry second, so inside an installed checkout this entry is
+// the only thing standing between `npx sonata` and downloading and running that
+// stranger's CLI. Deleting the name would hand every old habit and every stale
+// copy of our own docs straight to it.
+//
+// What no bin can fix: before `npm install` there is no `node_modules/.bin`, so
+// npx has nothing to ask but the registry. That is why every document in this
+// repo says `npm run sonata -- <command>` — npm run reads package.json and
+// reaches this file by path, so it cannot resolve to anything but this file, at
+// any point in the install.
 
 import { spawn } from "node:child_process";
 import { createRequire } from "node:module";

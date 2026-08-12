@@ -1,4 +1,5 @@
 import {
+  resolveTwinApiUrl,
   slackIdOf,
   type AgentTrace,
   type BeatBody,
@@ -68,7 +69,7 @@ export interface SlackAdapterOptions extends Omit<TwinHttpOptions, "baseUrl"> {
 }
 
 export function createSlackAdapter(opts: SlackAdapterOptions = {}): TwinAdapter {
-  const baseUrl = opts.baseUrl ?? process.env.SLACK_TWIN_URL ?? "http://localhost:3200";
+  const baseUrl = resolveTwinApiUrl("slack", process.env, { override: opts.baseUrl });
   const http = createTwinHttp("slack", { ...opts, baseUrl });
   const slack = createSlackClient(http, MAX_CHANNELS);
 

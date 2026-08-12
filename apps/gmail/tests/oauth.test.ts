@@ -16,7 +16,9 @@ import {
 import { validateAuthorize, isAuthorizeRequest } from "@/lib/oauth/authorize";
 import { s256Challenge, verifyPkce, isValidCodeVerifier } from "@/lib/oauth/pkce";
 import { hasScope, parseScopes, partitionScopes, GMAIL_SCOPE } from "@/lib/oauth/scopes";
-import { revokeToken } from "@/lib/oauth/store";
+import { revokeToken, type TokenRow } from "@/lib/oauth/store";
+import { authMode, authenticate, setAuthMode, SANDBOX_TOKEN } from "@/lib/gmail/auth";
+import { NextResponse } from "next/server";
 
 const schema = readFileSync(path.resolve(__dirname, "..", "db", "schema.sql"), "utf8");
 
@@ -274,5 +276,64 @@ describe("authorize request validation", () => {
       expect(isAuthorizeRequest(r)).toBe(false);
       if (!isAuthorizeRequest(r)) expect(r.kind).toBe("redirectable");
     }
+  });
+});
+
+describe("SANDBOX_AUTH modes", () => {
+  const req = (bearer: string) =>
+    new Request("http://twin.test/gmail/v1/users/me/profile", {
+      headers: { authorization: `Bearer ${bearer}` },
+    });
+
+  it("defaults to token mode, and any value but 'oauth' is token", () => {
+    expect(authMode({})).toBe("token");
+    expect(authMode({ SANDBOX_AUTH: "oauth" })).toBe("oauth");
+    // A typo must not lock anyone out of their own fixture.
+    expect(authMode({ SANDBOX_AUTH: "aouth" })).toBe("token");
+  });
+
+  it("the live override beats the env, and clearing it falls back", () => {
+    try {
+      setAuthMode("oauth");
+      expect(authMode({})).toBe("oauth");
+      expect(authMode({ SANDBOX_AUTH: "token" })).toBe("oauth");
+      setAuthMode(null);
+      expect(authMode({})).toBe("token");
+    } finally {
+      setAuthMode(null); // never leak mode into other tests
+    }
+  });
+
+  it("token mode: the static token is valid with full scope", () => {
+    const db = makeDb();
+    const result = authenticate(req(SANDBOX_TOKEN), db, "token");
+    expect(result).not.toBeInstanceOf(NextResponse);
+    const row = result as TokenRow;
+    expect(hasScope(row.scope, GMAIL_SCOPE.send)).toBe(true);
+    expect(hasScope(row.scope, GMAIL_SCOPE.readonly)).toBe(true);
+  });
+
+  it("oauth mode: the static token is refused", () => {
+    const db = makeDb();
+    expect(authenticate(req(SANDBOX_TOKEN), db, "oauth")).toBeInstanceOf(NextResponse);
+  });
+
+  it("a minted OAuth token works in both modes, scopes still enforced", () => {
+    const db = makeDb();
+    // Real clock, not T0: authenticate() validates expiry against Date.now().
+    const grant = mintToken(db, { clientId: CLIENT_ID, scope: GMAIL_SCOPE.readonly });
+    for (const mode of ["token", "oauth"] as const) {
+      const result = authenticate(req(grant.access_token), db, mode);
+      expect(result).not.toBeInstanceOf(NextResponse);
+      const row = result as TokenRow;
+      expect(hasScope(row.scope, GMAIL_SCOPE.readonly)).toBe(true);
+      expect(hasScope(row.scope, GMAIL_SCOPE.send)).toBe(false);
+    }
+  });
+
+  it("garbage bearers are refused in both modes", () => {
+    const db = makeDb();
+    expect(authenticate(req("wrong"), db, "token")).toBeInstanceOf(NextResponse);
+    expect(authenticate(req("wrong"), db, "oauth")).toBeInstanceOf(NextResponse);
   });
 });

@@ -6,11 +6,10 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start",
-    "lint": "next lint"
+    "start": "next start"
   },
   "dependencies": {
-    "next": "^15.1.6",
+    "next": "^16.3.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },

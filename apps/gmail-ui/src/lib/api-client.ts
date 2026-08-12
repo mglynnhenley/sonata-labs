@@ -1,4 +1,5 @@
 import {
+  ADMIN_TOKEN,
   API_URL,
   UI_CLIENT_ID,
   UI_CLIENT_SECRET,
@@ -10,13 +11,6 @@ import { getSession, setSession, type Session } from "./session";
 // bearer from the session cookie and transparently refreshes on expiry / 401.
 // Only ever runs on the server — the client_secret and tokens never reach the
 // browser.
-
-export class NoSessionError extends Error {
-  constructor() {
-    super("no session");
-    this.name = "NoSessionError";
-  }
-}
 
 export class ApiError extends Error {
   constructor(readonly status: number, readonly body: string) {
@@ -68,10 +62,12 @@ async function call(path: string, init: RequestInit, token: string): Promise<Res
   });
 }
 
-/** Make an authenticated request to the API. Throws NoSessionError if signed out. */
+/** Make an authenticated request to the API. Sessionless requests carry the
+ *  static token: in the API's `token` mode that succeeds, and in `oauth` mode
+ *  the API answers 401 — it stays the single source of truth by refusing. */
 export async function apiRequest(path: string, init: RequestInit = {}): Promise<Response> {
   let session = await getSession();
-  if (!session) throw new NoSessionError();
+  if (!session) return call(path, init, ADMIN_TOKEN);
 
   // Proactively refresh a token that is expired or about to expire.
   if (session.refresh_token && Date.now() > session.expires_at - 5000) {
@@ -91,6 +87,11 @@ export async function apiRequest(path: string, init: RequestInit = {}): Promise<
       res = await call(path, init, session.access_token);
     }
   }
+  // A session the API no longer recognises — a reset wiped oauth_tokens while
+  // the cookie lived on — is the same as no session: fall back to the static
+  // token. In `oauth` mode this earns the same 401, so nothing is granted that
+  // a sessionless request would not get.
+  if (res.status === 401) res = await call(path, init, ADMIN_TOKEN);
   return res;
 }
 
