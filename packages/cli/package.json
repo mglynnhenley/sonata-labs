@@ -5,6 +5,7 @@
   "type": "module",
   "description": "The first command a stranger runs: check the machine, start the four apps, write the .env.",
   "bin": {
+    "sonata-labs": "./bin/sonata.mjs",
     "sonata": "./bin/sonata.mjs"
   },
   "main": "./src/main.ts",

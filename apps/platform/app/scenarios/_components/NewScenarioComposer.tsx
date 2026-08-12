@@ -16,8 +16,14 @@ import {
 } from "@sonata/ui";
 import { useGo } from "../../_components/useGo";
 import { apiSend } from "../../api/_lib/client";
-import { DAY_LENGTHS, type EpisodeRecord, type ScenarioDraft } from "../../api/_lib/types";
+import {
+  DAY_LENGTHS,
+  type EpisodeRecord,
+  type ScenarioDraft,
+  type TemplateSummary,
+} from "../../api/_lib/types";
 import { BRIEF_EXAMPLES } from "../_lib/examples";
+import { episodeFromTemplate } from "../_lib/shipped";
 import { ScenarioPreview } from "./ScenarioPreview";
 
 // The product's first promise: one description in, a whole fake company out.
@@ -27,12 +33,65 @@ import { ScenarioPreview } from "./ScenarioPreview";
 // what was on screen — the preview and the thing that gets built can never
 // disagree, and looking twice never costs twice.
 
-/** The one way a failed generation is reported, on either step. */
-function ErrorNote({ message }: { message: string }) {
+/**
+ * The one way a failed generation is reported, on either step.
+ *
+ * The shipped days come with it, always. When the failure is "no model, and
+ * nothing shipped resembles what you described", these ARE the remaining
+ * options and the point is that the user picks one rather than being handed one;
+ * when it is anything else, offering them costs a sentence and claims nothing.
+ */
+function PreviewFailure({
+  message,
+  templates,
+  busyId,
+  onUse,
+}: {
+  message: string;
+  templates: readonly TemplateSummary[];
+  busyId: string | null;
+  onUse: (template: TemplateSummary) => void;
+}) {
   return (
-    <div className="flex items-start gap-2.5 rounded-sn-lg border border-sn-failed-line bg-sn-failed-soft px-4 py-3">
-      <IconAlert size={15} className="mt-0.5 shrink-0 text-sn-danger" />
-      <p className="text-[13px] leading-[20px] text-sn-failed-ink">{message}</p>
+    <div className="flex flex-col gap-5">
+      <div className="flex items-start gap-2.5 rounded-sn-lg border border-sn-failed-line bg-sn-failed-soft px-4 py-3">
+        <IconAlert size={15} className="mt-0.5 shrink-0 text-sn-danger" />
+        <p className="text-[13px] leading-[20px] text-sn-failed-ink">{message}</p>
+      </div>
+
+      <Card padding="lg">
+        <h3 className="font-display text-[21px] text-sn-ink">Run one of the shipped days instead</h3>
+        <p className="mt-1.5 max-w-[70ch] text-[13px] leading-[20px] text-sn-muted">
+          Each is a whole company with its own day. None of them is the business you described, and
+          choosing one is choosing to run that company — which is a perfectly good way to see what
+          Sonata does, as long as it is your decision and not ours.
+        </p>
+        <ul className="mt-4 flex flex-col divide-y divide-sn-line">
+          {templates.map((template) => (
+            <li
+              key={template.id}
+              className="flex flex-wrap items-start gap-x-4 gap-y-2 py-3.5 first:pt-0 last:pb-0"
+            >
+              <span className="min-w-[16rem] flex-1">
+                <span className="block text-[13.5px] font-medium text-sn-ink">{template.title}</span>
+                <span className="mt-0.5 block text-[12.5px] leading-[19px] text-sn-subtle">
+                  {template.description}
+                </span>
+              </span>
+              <Button
+                size="sm"
+                variant="secondary"
+                loading={busyId === template.id}
+                disabled={busyId !== null && busyId !== template.id}
+                iconRight={<IconArrowRight size={13} />}
+                onClick={() => onUse(template)}
+              >
+                Run this day
+              </Button>
+            </li>
+          ))}
+        </ul>
+      </Card>
     </div>
   );
 }
@@ -46,7 +105,12 @@ const WORKING_LINES = [
   "Deciding what counts as having done the job…",
 ];
 
-export function NewScenarioComposer() {
+export type NewScenarioComposerProps = {
+  /** The shipped days, offered as a choice when a description cannot be answered. */
+  templates: TemplateSummary[];
+};
+
+export function NewScenarioComposer({ templates }: NewScenarioComposerProps) {
   const router = useRouter();
   const go = useGo();
   const { toast } = useToast();
@@ -57,6 +121,7 @@ export function NewScenarioComposer() {
   const [working, setWorking] = useState(false);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [usingShipped, setUsingShipped] = useState<string | null>(null);
   const [line, setLine] = useState(0);
 
   const box = useRef<HTMLTextAreaElement | null>(null);
@@ -114,6 +179,17 @@ export function NewScenarioComposer() {
     }
   }
 
+  async function useShipped(template: TemplateSummary) {
+    setUsingShipped(template.id);
+    try {
+      const episode = await episodeFromTemplate(template.id);
+      router.push(`/runs?scenario=${encodeURIComponent(episode.id)}`);
+    } catch (err) {
+      setUsingShipped(null);
+      toast({ title: "That didn't work", description: (err as Error).message, tone: "error" });
+    }
+  }
+
   function useExample(text: string) {
     setBrief(text);
     box.current?.focus();
@@ -150,7 +226,14 @@ export function NewScenarioComposer() {
         {/* "Try again" lives on this step too, so its failure has to be
             reportable here — otherwise the button spins, stops, and nothing
             visible happens. */}
-        {error ? <ErrorNote message={error} /> : null}
+        {error ? (
+          <PreviewFailure
+            message={error}
+            templates={templates}
+            busyId={usingShipped}
+            onUse={(template) => void useShipped(template)}
+          />
+        ) : null}
 
         <ScenarioPreview draft={draft} />
 
@@ -247,7 +330,12 @@ export function NewScenarioComposer() {
 
         {error ? (
           <div className="mt-6">
-            <ErrorNote message={error} />
+            <PreviewFailure
+              message={error}
+              templates={templates}
+              busyId={usingShipped}
+              onUse={(template) => void useShipped(template)}
+            />
           </div>
         ) : null}
 
