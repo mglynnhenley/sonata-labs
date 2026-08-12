@@ -1,19 +1,24 @@
 import { describe, it, expect } from "vitest";
-import type { DirectorPolicy, TimelineEntry, TwinAuditRow } from "@sonata/core";
+import type { DirectorPersona, DirectorPolicy, TimelineEntry, TwinAuditRow } from "@sonata/core";
 import type { CompleteJSONOptions } from "../src/llm";
 import {
   auditRefName,
   boundEvents,
+  castTick,
   createDirector,
-  directorPrompt,
+  personPrompt,
+  personSystemPrompt,
   directorSystemPrompt,
   quietLine,
   quietWindow,
   reactionDecision,
+  type CastMember,
   type DeltaDetail,
   type DirectorContext,
+  type Heard,
+  type Waiting,
 } from "../src/director";
-import { auditKey } from "../src/trace";
+import { auditKey, newTrace, recordLlmCall, withTrace } from "../src/trace";
 import { auditRow, spec, world } from "./fixtures";
 
 // The director is the only part of the engine that hands a model the pen. Every
@@ -40,6 +45,22 @@ const policy = (over: Partial<DirectorPolicy> = {}): DirectorPolicy => ({
   ...over,
 });
 
+/**
+ * The fixture policy with nobody sitting on their reply.
+ *
+ * Dana's `replyDelayTicks` is 1, which is now MECHANICAL — she is not offered the
+ * pen on the tick she is written to. Tests about what happens when someone speaks
+ * say so by setting the delay to 0, rather than by hoping.
+ */
+const immediate = (over: Partial<DirectorPolicy> = {}): DirectorPolicy =>
+  policy({
+    personas: [
+      { personId: "dana", responsiveness: 0.8, replyDelayTicks: 0, surfaces: ["gmail"] },
+      { personId: "sam", responsiveness: 0.5, replyDelayTicks: 0, surfaces: ["slack"] },
+    ],
+    ...over,
+  });
+
 const ctx = (over: Partial<DirectorContext> = {}): DirectorContext => ({
   tick: 1,
   simTimeISO: "2026-08-04T09:15:00.000Z",
@@ -51,15 +72,54 @@ const ctx = (over: Partial<DirectorContext> = {}): DirectorContext => ({
   ...over,
 });
 
-/** A model seam that answers with a fixed plan and counts how often it is asked. */
-function stub(events: unknown[]) {
+/** The agent emailing the client, and posting in the team's channel. */
+const emailedDana = auditRow({
+  id: 9,
+  twin: "gmail",
+  summary: 'Sent “Re: SLA” to dana@acme.test',
+});
+const postedOps = auditRow({ id: 4, twin: "slack", summary: 'posted to #ops: "any update on the depot?"' });
+
+/** A model seam that answers per call and records everything it was asked. */
+function stub(answer: (opts: CompleteJSONOptions) => unknown[] = () => []) {
   const asked: CompleteJSONOptions[] = [];
   const complete = async <T>(opts: CompleteJSONOptions): Promise<T> => {
     asked.push(opts);
-    return { events } as T;
+    return { events: answer(opts) } as T;
   };
   return { complete, asked };
 }
+
+/** Who a given call is writing, read out of the system prompt it was handed. */
+function speaker(opts: CompleteJSONOptions): string {
+  return /^YOU ARE (.+?) —/m.exec(opts.system ?? "")?.[1] ?? "";
+}
+
+const persona = (over: Partial<DirectorPersona> = {}): DirectorPersona => ({
+  personId: "dana",
+  responsiveness: 0.8,
+  replyDelayTicks: 0,
+  surfaces: ["gmail"],
+  ...over,
+});
+
+const heard = (over: Partial<Heard> = {}): Heard => ({
+  at: 1,
+  twin: "gmail",
+  summary: 'Sent “Re: SLA” to dana@acme.test',
+  ref: "",
+  byAgent: true,
+  ...over,
+});
+
+const member = (over: Partial<CastMember> = {}): CastMember => ({
+  person: world.cast[1],
+  persona: persona(),
+  because: "the assistant wrote to you",
+  heard: heard(),
+  answers: true,
+  ...over,
+});
 
 describe("boundEvents", () => {
   const idFor = (i: number) => `e${i}`;
@@ -221,34 +281,647 @@ describe("reactionDecision", () => {
     expect(reactionDecision(policy(), ctx({ tick: 5 }), 4).react).toBe(true);
     expect(reactionDecision(policy(), ctx({ tick: 6 }), 4).react).toBe(false);
   });
+
+  it("speaks for a debt the quiet window cannot see", () => {
+    // A cap-cut question is re-queued for the NEXT tick, which is outside the
+    // window whenever every persona answers at once. Read from the delays alone,
+    // the world went quiet still owing an answer and never asked again.
+    const now = immediate();
+    expect(quietWindow(now)).toBe(0);
+    expect(reactionDecision(now, ctx({ tick: 2 }), 1).react).toBe(false);
+    const owed = new Map<string, Waiting>([
+      ["sam", { dueAt: 2, because: "the assistant wrote to you", heard: { at: 1, twin: "gmail", summary: "s", ref: "act:gmail:1", byAgent: true } }],
+    ]);
+    expect(reactionDecision(now, ctx({ tick: 2 }), 1, owed).react).toBe(true);
+    // A debt is a reason to speak on its day and not before it — otherwise every
+    // persona with a long delay would hold the world open for the whole day.
+    const later = new Map<string, Waiting>([["sam", { ...owed.get("sam")!, dueAt: 4 }]]);
+    expect(reactionDecision(now, ctx({ tick: 2 }), 1, later).react).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Casting
+//
+// Who speaks is decided HERE, in code, from state anyone can read back off the
+// artifact — not by a model asked nicely to be sparing. That is what makes
+// `responsiveness` and `replyDelayTicks` mean something: until this existed they
+// were prompt guidance a model could ignore, and the only alternative on offer
+// was rolling dice, which would have meant two runs of one spec facing two
+// different worlds and the benchmark table measuring the coin.
+// ---------------------------------------------------------------------------
+
+describe("castTick", () => {
+  const cast = (
+    over: Partial<DirectorContext> = {},
+    pol: DirectorPolicy = immediate(),
+    waiting?: ReadonlyMap<string, Waiting>,
+  ) => castTick(pol, world, ctx(over), waiting);
+
+  it("casts nobody when what the agent did named nobody", () => {
+    // "did a thing" reaches no one in particular, so nobody has a reason to
+    // answer — and nobody is called, which is where the money is.
+    const { cast: chosen } = cast({ deltas: [auditRow({ id: 1, twin: "gmail" })] });
+    expect(chosen).toEqual([]);
+  });
+
+  it("casts the person the agent wrote to, and gives them the answer", () => {
+    const { cast: chosen } = cast({ deltas: [emailedDana] });
+    expect(chosen.map((c) => c.person.id)).toEqual(["dana"]);
+    expect(chosen[0].answers).toBe(true);
+    expect(chosen[0].heard.ref).toBe("act:gmail:9");
+    expect(chosen[0].heard.summary).toContain("Re: SLA");
+  });
+
+  it("finds the person only the agent's prose names", () => {
+    // The audit row says nothing about who this was for. Phase 1 put the body in
+    // front of the world; this is what the world now does with it.
+    const row = auditRow({ id: 3, twin: "gmail", summary: "Sent a message" });
+    const { cast: chosen } = cast({
+      deltas: [row],
+      deltaDetail: new Map([[auditKey(row), { prose: "Dana — the £40k credit is approved." }]]),
+    });
+    expect(chosen.map((c) => c.person.id)).toEqual(["dana"]);
+  });
+
+  it("answers the same way twice, given the same state", () => {
+    const twice = [1, 2].map(() => cast({ deltas: [emailedDana, postedOps] }));
+    expect(twice[0].cast.map((c) => `${c.person.id}:${c.answers}`)).toEqual(["dana:true", "sam:true"]);
+    expect(twice[0]).toEqual(twice[1]);
+  });
+
+  it("makes replyDelayTicks mechanical: not this tick, that one", () => {
+    // Dana's fixture delay is 1. She is written down, not called.
+    const first = cast({ tick: 1, deltas: [emailedDana] }, policy());
+    expect(first.cast).toEqual([]);
+    expect(first.waiting.get("dana")?.dueAt).toBe(2);
+
+    // Still not at the tick before she is due.
+    const early = castTick(policy(), world, ctx({ tick: 1 }), first.waiting);
+    expect(early.cast).toEqual([]);
+
+    // And then she answers, carrying what she was told with her.
+    const later = castTick(policy(), world, ctx({ tick: 2 }), first.waiting);
+    expect(later.cast.map((c) => c.person.id)).toEqual(["dana"]);
+    expect(later.cast[0].heard.ref).toBe("act:gmail:9");
+    expect(personPrompt(ctx({ tick: 2 }), later.cast[0])).toContain(
+      "WHY YOU ARE BEING ASKED NOW: the assistant wrote to you, 1 interval(s) ago, and you have not answered it yet.",
+    );
+    // Answered, so no longer owed.
+    expect(later.waiting.has("dana")).toBe(false);
+  });
+
+  it("says how long they have waited once, however often they were put off", async () => {
+    // The wait is rendered from `heard.at` and never stored, because the stored
+    // form was re-decorated on every re-queue: two ticks of being cut produced
+    // "…, 1 interval(s) ago, and you have not answered it yet, 2 interval(s) ago,
+    // and you have not answered it yet", growing by a clause a tick and wrong in
+    // its earlier counts.
+    const tight = immediate({
+      maxEventsPerTick: 1,
+      personas: [
+        { personId: "dana", responsiveness: 0.9, replyDelayTicks: 1, surfaces: ["gmail"] },
+        { personId: "sam", responsiveness: 0.5, replyDelayTicks: 1, surfaces: ["gmail"] },
+      ],
+    });
+    const row = auditRow({ id: 7, twin: "gmail", summary: "Sent “Re: SLA” to dana@acme.test, sam@northwind.test" });
+    // Both written to at tick 1, both due at 2, and the cap only fits one — so
+    // Sam is cut at tick 2 and finally speaks at tick 3.
+    const t1 = castTick(tight, world, ctx({ tick: 1, deltas: [row] }));
+    const t2 = castTick(tight, world, ctx({ tick: 2 }), t1.waiting);
+    const t3 = castTick(tight, world, ctx({ tick: 3 }), t2.waiting);
+
+    expect(t2.cast.map((c) => c.person.id)).toEqual(["dana"]);
+    expect(t3.cast.map((c) => c.person.id)).toEqual(["sam"]);
+    const why = /WHY YOU ARE BEING ASKED NOW: .+/.exec(personPrompt(ctx({ tick: 3 }), t3.cast[0]))?.[0];
+    expect(why).toBe(
+      "WHY YOU ARE BEING ASKED NOW: the assistant wrote to you, 2 interval(s) ago, and you have not answered it yet.",
+    );
+  });
+
+  it("carries the words the agent wrote across the wait", () => {
+    // Without this the people who sit on a reply — which is most clients — would
+    // be exactly the people who never got to read what the agent said.
+    const detail = new Map([[auditKey(emailedDana), { prose: "The £40k credit is approved." }]]);
+    const first = cast({ tick: 1, deltas: [emailedDana], deltaDetail: detail }, policy());
+    const later = castTick(policy(), world, ctx({ tick: 2 }), first.waiting);
+    expect(later.cast[0].heard.prose).toBe("The £40k credit is approved.");
+    expect(personPrompt(ctx({ tick: 2 }), later.cast[0])).toContain("it wrote: “The £40k credit is approved.”");
+  });
+
+  it("does not read a longer channel's name as a mention of a shorter one", () => {
+    // Half the channels in this repo are hyphenated, and a hyphen is a word
+    // boundary — so `#ops` matched `#ops-escalation` and the room that answered
+    // was the wrong room.
+    const twoRooms = {
+      ...world,
+      channels: [
+        { id: "C01OPS", name: "ops", purpose: "the day", members: ["priya", "sam"], isPrivate: false },
+        { id: "C02ESC", name: "ops-escalation", purpose: "the fire", members: ["priya"], isPrivate: false },
+      ],
+    };
+    const escalated = auditRow({ id: 4, twin: "slack", summary: 'posted to #ops-escalation: "we have a problem"' });
+    expect(castTick(immediate(), twoRooms, ctx({ deltas: [escalated] })).cast).toEqual([]);
+    // And the room that IS named still answers.
+    expect(
+      castTick(immediate(), twoRooms, ctx({ deltas: [postedOps] })).cast.map((c) => c.person.id),
+    ).toEqual(["sam"]);
+  });
+
+  it("lets one person answer a room, not four", () => {
+    const crowded = immediate({
+      personas: [
+        { personId: "sam", responsiveness: 0.5, replyDelayTicks: 0, surfaces: ["slack"] },
+        { personId: "dana", responsiveness: 0.9, replyDelayTicks: 0, surfaces: ["slack"] },
+      ],
+    });
+    const busy = {
+      ...world,
+      channels: [{ ...world.channels[0], members: ["priya", "sam", "dana"] }],
+    };
+    const { cast: chosen } = castTick(crowded, busy, ctx({ deltas: [postedOps] }));
+    // The most responsive member of the room, and only them.
+    expect(chosen.map((c) => c.person.id)).toEqual(["dana"]);
+  });
+
+  it("never writes as the person whose accounts the agent operates", () => {
+    const withOwner = immediate({
+      personas: [
+        persona({ personId: "priya" }),
+        persona({ personId: "dana" }),
+      ],
+    });
+    const row = auditRow({ id: 5, twin: "gmail", summary: "Sent a note" });
+    const { cast: chosen } = castTick(
+      withOwner,
+      world,
+      ctx({
+        deltas: [row],
+        deltaDetail: new Map([[auditKey(row), { prose: "Priya asked me to tell Dana it is approved." }]]),
+      }),
+    );
+    expect(chosen.map((c) => c.person.id)).toEqual(["dana"]);
+  });
+
+  it("keeps someone off a surface they are not on, however loudly they are named", () => {
+    const post = auditRow({ id: 6, twin: "slack", summary: 'posted to #general: "Dana Reyes is chasing"' });
+    const { cast: chosen } = cast({ deltas: [post] });
+    expect(chosen).toEqual([]);
+  });
+
+  it("gives one ref to exactly one answerer, and tells the others", () => {
+    const both = immediate({
+      personas: [
+        { personId: "dana", responsiveness: 0.9, replyDelayTicks: 0, surfaces: ["gmail"] },
+        { personId: "sam", responsiveness: 0.5, replyDelayTicks: 0, surfaces: ["gmail"] },
+      ],
+    });
+    const row = auditRow({ id: 7, twin: "gmail", summary: "Sent “Re: SLA” to dana@acme.test, sam@northwind.test" });
+    const { cast: chosen } = castTick(both, world, ctx({ deltas: [row] }));
+    expect(chosen.map((c) => `${c.person.id}:${c.answers}`)).toEqual(["dana:true", "sam:false"]);
+    // And the one who is not answering is told so, in words, in their prompt.
+    expect(personPrompt(ctx(), chosen[1])).toContain("Someone else is answering that");
+    expect(personPrompt(ctx(), chosen[0])).not.toContain("Someone else is answering that");
+  });
+
+  it("never casts more people than the tick's cap, and re-queues the question it cut", () => {
+    const three = immediate({
+      maxEventsPerTick: 1,
+      personas: [
+        { personId: "dana", responsiveness: 0.9, replyDelayTicks: 0, surfaces: ["gmail"] },
+        { personId: "sam", responsiveness: 0.5, replyDelayTicks: 0, surfaces: ["gmail"] },
+      ],
+    });
+    const row = auditRow({ id: 7, twin: "gmail", summary: "Sent “Re: SLA” to dana@acme.test, sam@northwind.test" });
+    const { cast: chosen, waiting } = castTick(three, world, ctx({ tick: 4, deltas: [row] }));
+    expect(chosen.map((c) => c.person.id)).toEqual(["dana"]);
+    // Cut by the cap, not by anyone's judgement: the question is still owed.
+    expect(waiting.get("sam")?.dueAt).toBe(5);
+  });
+
+  it("lets a beat pull in the people it names, but never its own author", () => {
+    const chatty = immediate({
+      personas: [
+        // Dana is the one the beat is written for: she does not react to herself.
+        { personId: "dana", responsiveness: 0.9, replyDelayTicks: 0, surfaces: ["gmail"] },
+        { personId: "sam", responsiveness: 0.9, replyDelayTicks: 0, surfaces: ["gmail"] },
+      ],
+    });
+    const { cast: chosen } = castTick(
+      chatty,
+      world,
+      ctx({
+        beatsThisTick: [
+          {
+            beatId: "b1",
+            ref: "escalation",
+            twin: "gmail",
+            kind: "email",
+            summary: 'Dana Reyes emailed Priya Raman, Sam Okafor: "where is my freight"',
+          },
+        ],
+      }),
+    );
+    expect(chosen.map((c) => c.person.id)).toEqual(["sam"]);
+    expect(chosen[0].heard.ref).toBe("escalation");
+    expect(chosen[0].heard.byAgent).toBe(false);
+  });
+
+  it("reads the author off the START of the line, not off the first name in it", () => {
+    // `summarizeBody` opens a calendar move with the event's title, so the only
+    // name on the line belongs to the person the change is ABOUT. Taken as the
+    // author — "the first name mentioned" — they were excluded as reacting to
+    // themselves and the beat pulled in nobody at all.
+    const onCalendar = immediate({
+      personas: [{ personId: "sam", responsiveness: 0.9, replyDelayTicks: 0, surfaces: ["calendar"] }],
+    });
+    const { cast: chosen } = castTick(
+      onCalendar,
+      world,
+      ctx({
+        beatsThisTick: [
+          {
+            beatId: "b1",
+            twin: "calendar",
+            kind: "move",
+            summary: '"review" moved to 2026-08-04T14:00:00Z (Sam Okafor needs the machine first)',
+          },
+        ],
+      }),
+    );
+    expect(chosen.map((c) => c.person.id)).toEqual(["sam"]);
+  });
+
+  it("only lets the habitual chimers-in react to something nobody asked them about", () => {
+    const quiet = immediate({
+      personas: [{ personId: "sam", responsiveness: 0.5, replyDelayTicks: 0, surfaces: ["gmail"] }],
+    });
+    const beats = [
+      {
+        beatId: "b1",
+        twin: "gmail" as const,
+        kind: "email",
+        summary: 'Dana Reyes emailed Sam Okafor: "where is my freight"',
+      },
+    ];
+    expect(castTick(quiet, world, ctx({ beatsThisTick: beats })).cast).toEqual([]);
+    const loud = immediate({
+      personas: [{ personId: "sam", responsiveness: 0.9, replyDelayTicks: 0, surfaces: ["gmail"] }],
+    });
+    expect(castTick(loud, world, ctx({ beatsThisTick: beats })).cast).toHaveLength(1);
+  });
+
+  it("never casts someone who does not answer at all, or who is nowhere", () => {
+    const mute = immediate({
+      personas: [
+        { personId: "dana", responsiveness: 0, replyDelayTicks: 0, surfaces: ["gmail"] },
+        { personId: "sam", responsiveness: 1, replyDelayTicks: 0, surfaces: [] },
+      ],
+    });
+    const row = auditRow({ id: 7, twin: "gmail", summary: "Sent “Re: SLA” to dana@acme.test, sam@northwind.test" });
+    expect(castTick(mute, world, ctx({ deltas: [row] })).cast).toEqual([]);
+  });
+
+  it("ignores a beat that never landed", () => {
+    const loud = immediate({
+      personas: [{ personId: "sam", responsiveness: 0.9, replyDelayTicks: 0, surfaces: ["gmail"] }],
+    });
+    const { cast: chosen } = castTick(
+      loud,
+      world,
+      ctx({
+        beatsThisTick: [
+          {
+            beatId: "b1",
+            twin: "gmail",
+            kind: "email",
+            summary: 'Dana Reyes emailed Sam Okafor: "where is my freight"',
+            error: "twin returned 500",
+          },
+        ],
+      }),
+    );
+    expect(chosen).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// One prompt per person
+//
+// The structural half of who-knows-what. A client who exists only on Gmail is no
+// longer ASKED to be discreet about #ops: #ops is not in the bytes it is sent.
+// ---------------------------------------------------------------------------
+
+describe("personPrompt", () => {
+  const busyTick = ctx({
+    tick: 2,
+    history: [
+      {
+        tick: 1,
+        simTimeISO: "2026-08-04T09:15:00.000Z",
+        source: "world",
+        twin: "slack",
+        text: 'Sam Okafor posted in #ops: "the depot is on fire"',
+      },
+      {
+        tick: 1,
+        simTimeISO: "2026-08-04T09:15:00.000Z",
+        source: "agent",
+        twin: "gmail",
+        text: 'gmail_send → Sent "Re: SLA" to dana@acme.test',
+      },
+      {
+        tick: 1,
+        simTimeISO: "2026-08-04T09:15:00.000Z",
+        source: "agent",
+        twin: null,
+        text: "I will keep Dana warm and say nothing about the refund policy",
+      },
+    ],
+    deltas: [emailedDana, postedOps],
+    beatsThisTick: [
+      { beatId: "b1", twin: "slack", kind: "message", summary: 'Sam Okafor posted in #ops: "still down"' },
+      { beatId: "b2", twin: "gmail", kind: "email", summary: 'Dana Reyes emailed Priya Raman: "well?"' },
+    ],
+    upcoming: [
+      { twin: "slack", line: '11:00 — Sam Okafor posted in #ops: "the depot is on fire"' },
+      { twin: "gmail", line: '11:00 — Dana Reyes emailed Priya Raman: "escalating"' },
+    ],
+  });
+
+  it("shows a gmail-only person nothing that happened in Slack", () => {
+    const prompt = personPrompt(busyTick, member({ heard: heard({ at: 2 }) }));
+    expect(prompt).toContain('Sent “Re: SLA” to dana@acme.test');
+    expect(prompt).toContain('Dana Reyes emailed Priya Raman: "well?"');
+    expect(prompt).toContain('11:00 — Dana Reyes emailed Priya Raman: "escalating"');
+
+    // Not one of these — history, this tick's beat, the delta, or the schedule.
+    expect(prompt).not.toContain("#ops");
+    expect(prompt).not.toContain("depot");
+    expect(prompt).not.toContain("still down");
+  });
+
+  it("shows a slack-only person nothing that happened in the inbox", () => {
+    const sam = member({
+      person: world.cast[2],
+      persona: persona({ personId: "sam", surfaces: ["slack"] }),
+      heard: heard({ at: 2, twin: "slack", summary: "posted to #ops" }),
+    });
+    const prompt = personPrompt(busyTick, sam);
+    expect(prompt).toContain("#ops");
+    expect(prompt).not.toContain("Re: SLA");
+    expect(prompt).not.toContain("escalating");
+  });
+
+  it("never shows anyone the inside of the machine under test", () => {
+    // An agent's thought is not on any surface, so no person in this world has
+    // any way of having seen it — including the one it is about.
+    const both = member({ persona: persona({ surfaces: ["gmail", "slack"] }), heard: heard({ at: 2 }) });
+    expect(personPrompt(busyTick, both)).not.toContain("keep Dana warm");
+  });
+
+  it("shows the whole day to someone who is on the whole day", () => {
+    const both = member({ persona: persona({ surfaces: ["gmail", "slack"] }), heard: heard({ at: 2 }) });
+    const prompt = personPrompt(busyTick, both);
+    expect(prompt).toContain("Re: SLA");
+    expect(prompt).toContain("#ops");
+  });
+
+  it("says why this person is being asked right now", () => {
+    const prompt = personPrompt(busyTick, member({ because: "the assistant wrote to you", heard: heard({ at: 2 }) }));
+    expect(prompt).toContain("WHY YOU ARE BEING ASKED NOW: the assistant wrote to you.");
+  });
+
+  it("offers a beat's ref to the one person answering it", () => {
+    const answering = member({
+      heard: heard({ at: 2, ref: "escalation", byAgent: false, summary: "Dana emailed" }),
+    });
+    expect(personPrompt(busyTick, answering)).toContain('replyToRef "escalation"');
+  });
+});
+
+describe("personSystemPrompt", () => {
+  it("names the one person, their brief, and the surfaces they cannot see past", () => {
+    const prompt = personSystemPrompt(
+      spec(),
+      member({ persona: persona({ brief: "Never proposes a slot himself." }) }),
+    );
+    expect(prompt).toContain("YOU ARE Dana Reyes — Ops Lead at Acme, client to Priya Raman.");
+    expect(prompt).toContain("Your standing instruction: Never proposes a slot himself.");
+    expect(prompt).toContain("You appear on gmail and nowhere else");
+    // The shared half is still there: the company, the story, the prohibitions.
+    expect(prompt).toContain("Northwind Logistics");
+    expect(prompt).toContain("- the refund policy");
+  });
+
+  it("shares the setting and withholds the traffic, which is the whole boundary", () => {
+    // Said out loud because half a guarantee stated as a whole one is worse than
+    // none. `client-escalation`'s own story names #launch-kestrel, so its
+    // Gmail-only client does know that channel exists and always did — what he
+    // cannot learn is one line anyone said in it. Narrowing that further is a
+    // scenario-authoring change; this is where the line actually falls.
+    const s = spec({ story: "Dana has been waiting since Tuesday, and #ops knows it." });
+    const clive = member({ heard: heard({ at: 1 }) });
+    const everything =
+      personSystemPrompt(s, clive) +
+      "\n" +
+      personPrompt(
+        ctx({
+          history: [
+            {
+              tick: 0,
+              simTimeISO: "2026-08-04T09:00:00.000Z",
+              source: "world",
+              twin: "slack",
+              text: 'Sam Okafor posted in #ops: "the depot is on fire"',
+            },
+          ],
+          beatsThisTick: [
+            { beatId: "b1", twin: "slack", kind: "message", summary: 'Sam Okafor posted in #ops: "still down"' },
+          ],
+          deltas: [postedOps],
+        }),
+        clive,
+      );
+    // The setting, whole.
+    expect(everything).toContain("#ops knows it");
+    // Not one word of what was said there — history, this tick, or the deltas.
+    expect(everything).not.toContain("depot");
+    expect(everything).not.toContain("still down");
+    expect(everything).not.toContain("any update");
+  });
 });
 
 describe("createDirector", () => {
   it("produces nothing, and calls no model, when the agent did nothing", async () => {
-    const { complete, asked } = stub([{ ...RAW }]);
+    const { complete, asked } = stub(() => [{ ...RAW }]);
     const director = createDirector({ spec: spec(), complete });
     expect(await director.react(ctx({ tick: 0 }))).toEqual([]);
     expect(asked).toHaveLength(0);
     expect(director.lastNote()).toMatch(/nothing has happened yet/);
   });
 
-  it("caps what a chatty model returns at the policy's number", async () => {
-    const chatty = Array.from({ length: 9 }, (_, i) => ({
-      ...RAW,
-      personId: i % 2 === 0 ? "dana" : "sam",
-      surface: i % 2 === 0 ? "gmail" : "slack",
-      kind: i % 2 === 0 ? "email" : "message",
-      channel: "ops",
-    }));
-    const { complete, asked } = stub(chatty);
+  it("calls no model on a tick where nobody has a reason to speak", async () => {
+    // The gate `reactionDecision` opens is not the same question as "is there
+    // anybody to call". This is the one that makes a big cast affordable.
+    const { complete, asked } = stub(() => [{ ...RAW }]);
     const director = createDirector({ spec: spec(), complete });
-    const events = await director.react(ctx({ deltas: [auditRow({ id: 4, twin: "gmail" })] }));
+    const events = await director.react(ctx({ deltas: [auditRow({ id: 1, twin: "gmail" })] }));
+    expect(events).toEqual([]);
+    expect(asked).toHaveLength(0);
+    expect(director.lastNote()).toMatch(/no one in the cast had a reason to speak/);
+  });
 
-    // Two events, one each, from one call — never nine, and never two calls.
+  it("gives each person their own call, about them alone", async () => {
+    const { complete, asked } = stub((o) =>
+      speaker(o) === "Dana Reyes"
+        ? [{ ...RAW }]
+        : [{ ...RAW, surface: "slack", kind: "message", channel: "ops", body: "on it" }],
+    );
+    const director = createDirector({ spec: spec({ director: immediate() }), complete });
+    const events = await director.react(ctx({ deltas: [emailedDana, postedOps] }));
+
+    // Two people, two calls — never one call writing both of them.
+    expect(asked.map(speaker)).toEqual(["Dana Reyes", "Sam Okafor"]);
+    expect(events.map((e) => e.personId)).toEqual(["dana", "sam"]);
+    expect(events.map((e) => e.id)).toEqual(["dir-1-0", "dir-1-1"]);
+
+    // And each call is about one person: Dana's prompt has no Slack in it.
+    const dana = asked[0];
+    expect(dana.prompt).not.toContain("#ops");
+    expect(dana.system).toContain("YOU ARE Dana Reyes");
+  });
+
+  it("will not let a character act as somebody else", async () => {
+    // The person is not a field the model gets to fill in, so a model writing as
+    // Sam cannot put an email in the client's mouth.
+    const { complete } = stub(() => [{ ...RAW, personId: "dana", surface: "slack", kind: "message", channel: "ops" }]);
+    const director = createDirector({ spec: spec({ director: immediate() }), complete });
+    const events = await director.react(ctx({ deltas: [postedOps] }));
+    expect(events.map((e) => e.personId)).toEqual(["sam"]);
+  });
+
+  it("keeps the tick's cap when several people speak at once", async () => {
+    const chatty = Array.from({ length: 4 }, (_, i) => ({ ...RAW, subject: `and again ${i}` }));
+    const { complete, asked } = stub((o) =>
+      speaker(o) === "Dana Reyes"
+        ? chatty
+        : chatty.map((c) => ({ ...c, surface: "slack", kind: "message", channel: "ops" })),
+    );
+    const director = createDirector({ spec: spec({ director: immediate() }), complete });
+    const events = await director.react(ctx({ deltas: [emailedDana, postedOps] }));
+
+    // Two calls, eight offered moves, two events: one each.
+    expect(asked).toHaveLength(2);
     expect(events).toHaveLength(2);
     expect(new Set(events.map((e) => e.personId)).size).toBe(2);
+  });
+
+  it("never buys more calls than the cap can spend", async () => {
+    const { complete, asked } = stub(() => [{ ...RAW }]);
+    const director = createDirector({
+      spec: spec({ director: immediate({ maxEventsPerTick: 1 }) }),
+      complete,
+    });
+    await director.react(ctx({ deltas: [emailedDana, postedOps] }));
     expect(asked).toHaveLength(1);
-    expect(events.map((e) => e.id)).toEqual(["dir-1-0", "dir-1-1"]);
+  });
+
+  it("loses one person to a failed call, and not the tick", async () => {
+    const asked: string[] = [];
+    const complete = async <T>(opts: CompleteJSONOptions): Promise<T> => {
+      asked.push(speaker(opts));
+      if (speaker(opts) === "Dana Reyes") throw new Error("provider timed out");
+      return { events: [{ ...RAW, surface: "slack", kind: "message", channel: "ops", body: "on it" }] } as T;
+    };
+    const director = createDirector({ spec: spec({ director: immediate() }), complete });
+    const events = await director.react(ctx({ deltas: [emailedDana, postedOps] }));
+
+    expect(asked).toHaveLength(2);
+    expect(events.map((e) => e.personId)).toEqual(["sam"]);
+    expect(director.lastNote()).toBe("director call failed for dana: provider timed out");
+  });
+
+  it("survives every call failing, and says why the world went quiet", async () => {
+    const director = createDirector({
+      spec: spec({ director: immediate() }),
+      complete: () => Promise.reject(new Error("provider timed out")),
+    });
+    const events = await director.react(ctx({ deltas: [emailedDana] }));
+    expect(events).toEqual([]);
+    expect(director.lastNote()).toBe("director call failed for dana: provider timed out");
+  });
+
+  it("still owes the answer a failed call did not give", async () => {
+    // Casting clears a debt on the way in, so a provider that timed out took the
+    // client's question with it: the old single call merely lost the tick and
+    // rebuilt the whole prompt on the next one.
+    let failed = false;
+    const asked: string[] = [];
+    const complete = async <T>(opts: CompleteJSONOptions): Promise<T> => {
+      asked.push(speaker(opts));
+      if (!failed) {
+        failed = true;
+        throw new Error("provider timed out");
+      }
+      return { events: [{ ...RAW }] } as T;
+    };
+    const director = createDirector({ spec: spec({ director: immediate() }), complete });
+    expect(await director.react(ctx({ tick: 1, deltas: [emailedDana] }))).toEqual([]);
+
+    // Tick 2 has nothing new in it at all — and Dana is asked anyway, because she
+    // is still owed one.
+    const events = await director.react(ctx({ tick: 2 }));
+    expect(asked).toEqual(["Dana Reyes", "Dana Reyes"]);
+    expect(events.map((e) => e.personId)).toEqual(["dana"]);
+    // And she is asked once, not for the rest of the day.
+    expect(await director.react(ctx({ tick: 3 }))).toEqual([]);
+    expect(asked).toHaveLength(2);
+  });
+
+  it("does not lose a question the tick's cap cut on a day nobody is delayed on", async () => {
+    // `quietWindow` is 0 when every persona answers at once, so the tick a cut
+    // question is re-queued for was a tick the world refused to speak on at all.
+    const both = immediate({
+      maxEventsPerTick: 1,
+      personas: [
+        { personId: "dana", responsiveness: 0.9, replyDelayTicks: 0, surfaces: ["gmail"] },
+        { personId: "sam", responsiveness: 0.5, replyDelayTicks: 0, surfaces: ["gmail"] },
+      ],
+    });
+    const row = auditRow({ id: 7, twin: "gmail", summary: "Sent “Re: SLA” to dana@acme.test, sam@northwind.test" });
+    const { complete, asked } = stub(() => [{ ...RAW }]);
+    const director = createDirector({ spec: spec({ director: both }), complete });
+
+    expect((await director.react(ctx({ tick: 1, deltas: [row] }))).map((e) => e.personId)).toEqual(["dana"]);
+    const later = await director.react(ctx({ tick: 2 }));
+    expect(asked.map(speaker)).toEqual(["Dana Reyes", "Sam Okafor"]);
+    expect(later.map((e) => e.personId)).toEqual(["sam"]);
+  });
+
+  it("survives a model that answers with the wrong shape", async () => {
+    const { complete } = stub(() => []);
+    const director = createDirector({ spec: spec({ director: immediate() }), complete });
+    const events = await director.react(ctx({ deltas: [emailedDana] }));
+    expect(events).toEqual([]);
+    expect(director.lastNote()).toBe("director had the world stay quiet");
+  });
+
+  it("refuses to let two people answer the same question", async () => {
+    // The people in a tick are written at the same moment and cannot see each
+    // other. Contradiction is fine and wanted; two answers to one question in the
+    // same fifteen minutes is not.
+    const both = immediate({
+      personas: [
+        { personId: "dana", responsiveness: 0.9, replyDelayTicks: 0, surfaces: ["gmail"] },
+        { personId: "sam", responsiveness: 0.5, replyDelayTicks: 0, surfaces: ["gmail"] },
+      ],
+    });
+    const row = auditRow({ id: 7, twin: "gmail", summary: "Sent “Re: SLA” to dana@acme.test, sam@northwind.test" });
+    const { complete } = stub(() => [{ ...RAW, replyToRef: "act:gmail:7" }]);
+    const director = createDirector({ spec: spec({ director: both }), complete });
+    const events = await director.react(ctx({ deltas: [row] }));
+    expect(events.map((e) => e.personId)).toEqual(["dana"]);
   });
 
   it("renders offLimits into the prompt verbatim, and omits the heading when there is none", () => {
@@ -260,38 +933,21 @@ describe("createDirector", () => {
     expect(open).not.toContain("OFF LIMITS");
   });
 
-  it("shows the model the story, the agent's moves and what is still to come", () => {
-    const prompt = directorPrompt(
-      ctx({
-        deltas: [auditRow({ id: 9, twin: "slack", summary: "Posted in #ops" })],
-        upcoming: ["11:00 — the escalation lands"],
-      }),
-      auditRefName,
-    );
-    expect(prompt).toContain("IT IS 09:15 (tick 1)");
-    expect(prompt).toContain("Posted in #ops");
-    expect(prompt).toContain('replyToRef "act:slack:9"');
-    expect(prompt).toContain("11:00 — the escalation lands");
-  });
+  it("counts every one of a tick's calls as the world's spend, on the right tick", async () => {
+    // N calls a tick, all still separable from the agent's: a cost figure that
+    // silently dropped the second person would understate what a day costs.
+    const complete = async <T>(): Promise<T> => {
+      recordLlmCall({ model: "test/model", request: {}, response: {}, startedAt: 0, endedAt: 1 });
+      return { events: [] } as T;
+    };
+    const trace = newTrace("run-1");
+    const director = createDirector({ spec: spec({ director: immediate() }), complete });
+    await withTrace(trace, () => director.react(ctx({ tick: 3, deltas: [emailedDana, postedOps] })));
 
-  it("survives a model that fails, and says why the world went quiet", async () => {
-    const director = createDirector({
-      spec: spec(),
-      complete: () => Promise.reject(new Error("provider timed out")),
-    });
-    const events = await director.react(ctx({ beatsThisTick: [
-      { beatId: "b1", twin: "gmail", kind: "email", summary: "Dana emailed" },
-    ] }));
-    expect(events).toEqual([]);
-    expect(director.lastNote()).toBe("director call failed: provider timed out");
-  });
-
-  it("survives a model that answers with the wrong shape", async () => {
-    const { complete } = stub([]);
-    const director = createDirector({ spec: spec(), complete: complete as never });
-    const events = await director.react(ctx({ deltas: [auditRow({ id: 1, twin: "gmail" })] }));
-    expect(events).toEqual([]);
-    expect(director.lastNote()).toBe("director had the world stay quiet");
+    expect(trace.llmCalls).toHaveLength(2);
+    expect(trace.llmCalls.every((c) => c.role === "director")).toBe(true);
+    expect(trace.llmCalls.every((c) => c.tick === 3)).toBe(true);
+    expect(new Set(trace.llmCalls.map((c) => c.seq)).size).toBe(2);
   });
 });
 
@@ -311,7 +967,7 @@ describe("the prose the agent wrote", () => {
     new Map([[auditKey(sent), { prose }]]);
 
   const promptFor = (detail?: ReadonlyMap<string, DeltaDetail>) =>
-    directorPrompt(ctx({ deltas: [sent], ...(detail ? { deltaDetail: detail } : {}) }), auditRefName);
+    personPrompt(ctx({ deltas: [sent], ...(detail ? { deltaDetail: detail } : {}) }), member());
 
   it("puts the body under the delta it belongs to, still offering the ref", () => {
     const prompt = promptFor(withProse("The £40k credit is approved and lands on your next invoice."));
@@ -339,7 +995,7 @@ describe("the prose the agent wrote", () => {
       auditRow({ id, twin: "gmail", summary: `Sent mail ${id}` }),
     );
     const detail = new Map(rows.map((r) => [auditKey(r), { prose: "y".repeat(600) }]));
-    const prompt = directorPrompt(ctx({ deltas: rows, deltaDetail: detail }), auditRefName);
+    const prompt = personPrompt(ctx({ deltas: rows, deltaDetail: detail }), member());
     // Four bodies fit the per-tick budget; the fifth is named as missing, never
     // quietly absent — an unread reply the world thinks it read is the whole bug.
     expect(prompt.match(/it wrote: “/g)).toHaveLength(4);
@@ -374,7 +1030,7 @@ describe("the prose the agent wrote", () => {
     // is waiting on said "looking into it" — the false accusation, rebuilt.
     const email = auditRow({ id: 1, twin: "gmail", summary: 'Sent "Re: SLA" to dana@acme.test' });
     const post = auditRow({ id: 1, twin: "slack", summary: "Posted in #ops" });
-    const prompt = directorPrompt(
+    const prompt = personPrompt(
       ctx({
         deltas: [email, post],
         deltaDetail: new Map([
@@ -382,10 +1038,10 @@ describe("the prose the agent wrote", () => {
           [auditKey(post), { prose: "looking into it" }],
         ]),
       }),
-      auditRefName,
+      member({ persona: persona({ surfaces: ["gmail", "slack"] }) }),
     );
     const lines = prompt.split("\n");
-    const under = (summary: string) => lines[lines.findIndex((l) => l.includes(summary)) + 1];
+    const under = (summary: string): string => lines[lines.findIndex((l: string) => l.includes(summary)) + 1];
     expect(under('Sent "Re: SLA"')).toContain("The £40k credit is approved.");
     expect(under("Posted in #ops")).toContain("looking into it");
   });
@@ -459,11 +1115,11 @@ describe("becauseSeq", () => {
   });
 
   it("carries through from the detail the loop hands the director", async () => {
-    const { complete } = stub([{ ...RAW, replyToRef: "act:gmail:9" }]);
-    const director = createDirector({ spec: spec(), complete });
+    const { complete } = stub(() => [{ ...RAW, replyToRef: "act:gmail:9" }]);
+    const director = createDirector({ spec: spec({ director: immediate() }), complete });
     const events = await director.react(
       ctx({
-        deltas: [auditRow({ id: 9, twin: "gmail" })],
+        deltas: [emailedDana],
         deltaDetail: new Map([["gmail:9", { seq: 12, prose: "the credit is approved" }]]),
       }),
     );
@@ -475,13 +1131,17 @@ describe("becauseSeq", () => {
     // Same collision as the prose block: keyed on the number alone, Sam's reply to
     // the #ops post would draw its causal arrow at the email instead, and the
     // replay would tell the reader the world answered something it did not.
-    const { complete } = stub([
-      { ...RAW, personId: "sam", surface: "slack", kind: "message", channel: "ops", replyToRef: "act:slack:1" },
-    ]);
-    const director = createDirector({ spec: spec(), complete });
+    const email = auditRow({ id: 1, twin: "gmail", summary: 'Sent "Re: SLA" to dana@acme.test' });
+    const post = auditRow({ id: 1, twin: "slack", summary: 'posted to #ops: "any update?"' });
+    const { complete } = stub((o) =>
+      speaker(o) === "Sam Okafor"
+        ? [{ ...RAW, surface: "slack", kind: "message", channel: "ops", replyToRef: "act:slack:1" }]
+        : [],
+    );
+    const director = createDirector({ spec: spec({ director: immediate() }), complete });
     const events = await director.react(
       ctx({
-        deltas: [auditRow({ id: 1, twin: "gmail" }), auditRow({ id: 1, twin: "slack" })],
+        deltas: [email, post],
         deltaDetail: new Map([
           ["gmail:1", { seq: 3 }],
           ["slack:1", { seq: 5 }],
@@ -494,10 +1154,10 @@ describe("becauseSeq", () => {
   it("stays absent when the caller could not say which step wrote the row", () => {
     // A session fills `seq` and never `prose`; a caller that fills neither must
     // produce exactly today's output rather than a made-up link.
-    const { complete } = stub([{ ...RAW, replyToRef: "act:gmail:9" }]);
-    const director = createDirector({ spec: spec(), complete });
+    const { complete } = stub(() => [{ ...RAW, replyToRef: "act:gmail:9" }]);
+    const director = createDirector({ spec: spec({ director: immediate() }), complete });
     return director
-      .react(ctx({ deltas: [auditRow({ id: 9, twin: "gmail" })] }))
+      .react(ctx({ deltas: [emailedDana] }))
       .then((events) => expect(events[0].becauseSeq).toBeUndefined());
   });
 });
@@ -522,13 +1182,12 @@ describe("auditRefName", () => {
 // ---------------------------------------------------------------------------
 
 describe("what the world is told when the agent is quiet this tick", () => {
-  const entry = (source: "agent" | "world", text: string, simTimeISO: string): TimelineEntry => ({
-    tick: 2,
-    simTimeISO,
-    source,
-    twin: "gmail",
-    text,
-  });
+  const entry = (
+    source: "agent" | "world",
+    text: string,
+    simTimeISO: string,
+    twin: "gmail" | "slack" = "gmail",
+  ): TimelineEntry => ({ tick: 2, simTimeISO, source, twin, text });
 
   it("says the day is empty when the agent has genuinely never acted", () => {
     const line = quietLine([entry("world", "Clive emailed", "2026-09-15T08:00:00.000Z")]);
@@ -557,5 +1216,34 @@ describe("what the world is told when the agent is quiet this tick", () => {
     expect(line).toContain("09:30");
     expect(line).toContain("latest thing");
     expect(line).not.toContain("first thing");
+  });
+
+  it("does not let a person mistake another surface for an empty day", () => {
+    // The same false accusation, one layer down: an agent that spent the morning
+    // in Slack is invisible to a client on email, and the one thing that must not
+    // follow is the client concluding it has done nothing.
+    const all = [
+      entry("world", "Clive emailed", "2026-09-15T08:00:00.000Z"),
+      entry("agent", "posted in #ops", "2026-09-15T08:30:00.000Z", "slack"),
+    ];
+    const line = quietLine(all.filter((h) => h.twin === "gmail"), all);
+    expect(line).toContain("working elsewhere today");
+    expect(line).not.toContain("at any point today");
+  });
+
+  it("does not let a thought count as work on another surface", () => {
+    // A thought is on no surface, so nobody saw it and it is not evidence of
+    // anything. Counted, an agent that spent the day thinking and touching
+    // nothing bought itself "you must not accuse it of any idleness" — the
+    // mirror image of the false accusation, landing on the one run that most
+    // deserved chasing.
+    const all: TimelineEntry[] = [
+      { tick: 1, simTimeISO: "2026-09-15T08:00:00.000Z", source: "world", twin: "gmail", text: "Clive emailed" },
+      { tick: 2, simTimeISO: "2026-09-15T08:30:00.000Z", source: "agent", twin: null, text: "I will get to this" },
+    ];
+    const line = quietLine(all.filter((h) => h.twin === "gmail"), all);
+    expect(line).toContain("at any point today");
+    expect(line).not.toContain("working elsewhere");
+    expect(line).not.toContain("I will get to this");
   });
 });

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import type { AgentStep, DirectorEvent, TickRecord } from "@sonata/core";
+import type { AgentStep, DirectorEvent, DirectorPolicy, TickRecord, TwinName } from "@sonata/core";
 import { autonomy } from "@sonata/judge/autonomy";
 import {
   adaptersForSpec,
@@ -408,7 +408,6 @@ function replyingModel() {
       events: ref
         ? [
             {
-              personId: "dana",
               surface: "gmail",
               kind: "email",
               reason: "she read the reply",
@@ -426,6 +425,14 @@ function replyingModel() {
     } as T;
   };
   return { complete, prompts };
+}
+
+/** The client, on the surfaces this test needs her, answering without waiting. */
+function client(surfaces: TwinName[], replyDelayTicks = 0): DirectorPolicy {
+  return {
+    ...spec().director,
+    personas: [{ personId: "dana", responsiveness: 0.8, replyDelayTicks, surfaces }],
+  };
 }
 
 describe("the world reads what the agent wrote", () => {
@@ -458,12 +465,15 @@ describe("the world reads what the agent wrote", () => {
     };
   }
 
-  async function day() {
+  async function day(replyDelayTicks = 0) {
     const gmail = fakeAdapter("gmail");
     const model = replyingModel();
     // The client's opening email, so the day has a gmail twin in it and a reason
     // for the agent to write at all.
-    const s = spec({ beats: [beat({ id: "opener", tick: 0, ref: "opener" })] });
+    const s = spec({
+      beats: [beat({ id: "opener", tick: 0, ref: "opener" })],
+      director: client(["gmail"], replyDelayTicks),
+    });
     let clock = 1_000;
     const result = await runEpisode({
       spec: s,
@@ -477,12 +487,29 @@ describe("the world reads what the agent wrote", () => {
     return { result, prompts: model.prompts };
   }
 
-  it("shows the director the body of the email, not just its subject line", async () => {
+  it("shows the client the body of the email, not just its subject line", async () => {
     const { prompts } = await day();
-    // Tick 0 is the opening beat; tick 1 is the first one that has seen the agent.
-    expect(prompts[0]).not.toContain("it wrote:");
-    expect(prompts[1]).toContain('Sent "Re: SLA" to dana@acme.test');
-    expect(prompts[1]).toContain("it wrote: “The £40k credit is approved.”");
+    // Two calls in the whole day, and both are Dana answering something she was
+    // sent. Tick 0 buys none: the beat that opens the day is her own email, and
+    // nobody reacts to themselves.
+    expect(prompts).toHaveLength(2);
+    expect(prompts[0]).toContain('Sent "Re: SLA" to dana@acme.test');
+    expect(prompts[0]).toContain("it wrote: “The £40k credit is approved.”");
+    expect(prompts[1]).toContain("it wrote: “Thursday 2pm is booked.”");
+  });
+
+  it("still reaches a client who sits on her reply for a tick", async () => {
+    // `replyDelayTicks` is mechanical now, so the tick that carries the agent's
+    // words and the tick she answers on are different ticks. The words have to
+    // survive the wait, or the people who wait are exactly the people who never
+    // read the reply.
+    const { result, prompts } = await day(1);
+    expect(prompts[0]).toContain("it wrote: “The £40k credit is approved.”");
+    expect(prompts[0]).toContain("still unanswered by you");
+    const answered = result.run.ticks.flatMap((t) => t.directorEvents);
+    expect(answered).toHaveLength(1);
+    // And the causal arrow survives it too.
+    expect(answered[0].becauseSeq).toBe(0);
   });
 
   it("sets becauseSeq to the step the world was answering", async () => {
@@ -507,15 +534,17 @@ describe("the world reads what the agent wrote", () => {
     // one in which to answer.
     expect(stats.exchanges).toBe(1);
     expect(stats.exchangesCarried).toBe(1);
+    expect(result.run.ticks.map((t) => t.directorEvents.length)).toEqual([0, 1, 0, 1]);
   });
 
-  it("quotes nothing for a tick the agent was silent in, and does not call it absent", async () => {
-    const { prompts } = await day();
-    // Tick 2's call: the agent did nothing in tick 1, so there is no delta, no ref
-    // to answer and nothing to quote. The quiet line still has to point at the
-    // morning rather than say the assistant has done nothing.
-    expect(prompts[2]).not.toContain("it wrote:");
-    expect(prompts[2]).toContain("nothing since the last tick");
+  it("buys no call at all on a tick where nobody has a reason to speak", async () => {
+    // The agent is silent in tick 1 and the world has already answered, so tick 2
+    // has nobody to call. Under one-call-for-everybody that tick still cost a
+    // model call, every tick of every day, whatever was happening.
+    const { result, prompts } = await day();
+    expect(prompts).toHaveLength(2);
+    expect(result.run.ticks[2].directorEvents).toEqual([]);
+    expect(result.run.ticks[2].notes.join(" ")).toMatch(/nothing has happened since the last reaction/);
   });
 
   it("keeps each twin's body on its own row when their audit ids collide", async () => {
@@ -538,6 +567,9 @@ describe("the world reads what the agent wrote", () => {
           payload: { channel: "ops", from: "sam", text: "morning" },
         }),
       ],
+      // On both surfaces, so one prompt holds both rows and the two can be
+      // confused. A gmail-only client would simply never be shown the Slack one.
+      director: client(["gmail", "slack"]),
     });
     const agent: Agent = {
       act: (c: AgentContext) => {
@@ -570,8 +602,9 @@ describe("the world reads what the agent wrote", () => {
     });
     expect(result.run.status).toBe("done");
 
-    const lines = model.prompts[1].split("\n");
-    const under = (summary: string) => lines[lines.findIndex((l) => l.includes(summary)) + 1];
+    const lines = model.prompts[0].split("\n");
+    const under = (summary: string): string =>
+      lines[lines.findIndex((l: string) => l.includes(summary)) + 1];
     expect(under('Sent "Re: SLA"')).toContain("The £40k credit is approved.");
     expect(under("Posted in #ops")).toContain("looking into it");
   });

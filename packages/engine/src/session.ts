@@ -26,7 +26,13 @@ import {
   summarizeBody,
   type RefRegistry,
 } from "./beats";
-import { auditRefName, createDirector, type DeltaDetail, type Director } from "./director";
+import {
+  auditRefName,
+  createDirector,
+  type DeltaDetail,
+  type Director,
+  type UpcomingBeat,
+} from "./director";
 import { recentHistory, runTimeline } from "./timeline";
 import { auditKey, newTrace, withTrace } from "./trace";
 import { adaptersForSpec, didSomething, specWarnings, type RunResult } from "./run";
@@ -287,6 +293,7 @@ const CAVEATS = [
   "The twins audit mutations only, so what the agent read is not on the record — only what it changed.",
   "Audit rows carry a summary, not a request body, so the prose the agent wrote is not recoverable; `mentions` criteria will read as unverifiable rather than passing.",
   "The world therefore reacted to metadata alone — subjects, recipients, what changed — and never to what the agent actually wrote. A scored episode's director is shown the reply itself, so a session's people cannot tell a thorough answer from a thin one and may be harsher, or kinder, than the reply deserved.",
+  "That metadata is also all that decides WHO in this world has a reason to answer: casting reads the audit summary, so someone the agent named only inside a message body is never cast here, where a scored episode would have cast them.",
   "Escalations appear only if the harness in front of the agent reported them; without that the autonomy score's independence component reads as fully autonomous.",
   "The trace holds the harness's own model calls (the director's) and none of the agent's, so a cost figure from it is the cost of running the world, not of running the agent.",
 ];
@@ -403,12 +410,16 @@ export function createSession(opts: SessionOptions): Session {
     return played;
   }
 
-  /** One line per beat still to come, so the director does not pre-empt the script. */
-  function upcomingLines(after: number): string[] {
+  /**
+   * One line per beat still to come, so the world does not pre-empt the script.
+   * Carries the twin for the same reason `runEpisode`'s copy does: a character is
+   * only ever shown the surfaces they are on.
+   */
+  function upcomingLines(after: number): UpcomingBeat[] {
     return spec.beats
       .filter((b) => b.tick > after && b.tick < clock.ticks)
       .sort((a, b) => a.tick - b.tick)
-      .map((b) => `${clock.labelAt(b.tick)} — ${summarizeBody(b, spec.world)}`);
+      .map((b) => ({ twin: b.twin, line: `${clock.labelAt(b.tick)} — ${summarizeBody(b, spec.world)}` }));
   }
 
   // -------------------------------------------------------------------------

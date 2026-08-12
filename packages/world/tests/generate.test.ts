@@ -1,19 +1,47 @@
 import { describe, expect, it } from "vitest";
 import type { WorldSeed } from "@sonata/core";
-import { assembleCast, assembleWorld, companyDomain, generateWorld } from "../src/generate";
+import {
+  assembleCast,
+  assembleWorld,
+  companyDomain,
+  generateWorld,
+  mergeStorylines,
+  type StorylineWrite,
+} from "../src/generate";
 import type { CompleteJSON, CompleteJSONOptions } from "../src/llm";
-import { DRAFT, NOW, SEEDS } from "./fixtures";
+import { AMBIENT, BOARD, DRAFT, NOW, RENEWAL, SEEDS, SPINE, WRITES } from "./fixtures";
 import { referencedPeople } from "./refs";
 
-// A stub for the one model seam. Two calls, in order: the draft, then the twin
-// seeds. Nothing here touches the network.
-function stubComplete(): CompleteJSON & { prompts: string[] } {
-  const prompts: string[] = [];
+/**
+ * A stub for the one model seam, answering by SCHEMA rather than by call order:
+ * the storyline writers run in parallel, so their order is whatever the event
+ * loop decides and a stub that counted calls would be testing that. Nothing here
+ * touches the network.
+ */
+function stubComplete(
+  fail: (schemaName: string, prompt: string) => string | undefined = () => undefined,
+): CompleteJSON & { calls: CompleteJSONOptions[] } {
+  const calls: CompleteJSONOptions[] = [];
   const complete: CompleteJSON = async <T,>(opts: CompleteJSONOptions): Promise<T> => {
-    prompts.push(opts.prompt);
-    return (prompts.length === 1 ? DRAFT : SEEDS) as T;
+    calls.push(opts);
+    const name = opts.schemaName ?? "";
+    const boom = fail(name, opts.prompt);
+    if (boom) throw new Error(boom);
+    if (name === "world_draft") return DRAFT as T;
+    if (name === "world_spine") return SPINE as T;
+    if (name === "ambient_seeds") return AMBIENT as T;
+    if (name === "storyline_seeds") {
+      const write = WRITES.find((w) => opts.prompt.includes(`YOUR STORYLINE — ${w.storylineId}:`));
+      if (!write) throw new Error(`no fixture for this storyline prompt:\n${opts.prompt}`);
+      return write.seeds as T;
+    }
+    throw new Error(`unexpected schema "${name}"`);
   };
-  return Object.assign(complete, { prompts });
+  return Object.assign(complete, { calls });
+}
+
+function prompts(complete: { calls: CompleteJSONOptions[] }, schemaName: string): string[] {
+  return complete.calls.filter((c) => c.schemaName === schemaName).map((c) => c.prompt);
 }
 
 function castIds(world: WorldSeed): Set<string> {
@@ -123,32 +151,243 @@ describe("assembleWorld", () => {
   });
 });
 
+describe("mergeStorylines", () => {
+  const merged = mergeStorylines(SPINE, WRITES);
+
+  it("is pure: same inputs, same company, whatever order the writers finished in", () => {
+    const shuffled = [WRITES[2], WRITES[0], WRITES[1]];
+    expect(mergeStorylines(SPINE, shuffled)).toEqual(merged);
+    expect(mergeStorylines(SPINE, WRITES)).toEqual(merged);
+  });
+
+  it("does not touch what the writers handed it", () => {
+    const before = JSON.stringify(WRITES);
+    mergeStorylines(SPINE, WRITES);
+    expect(JSON.stringify(WRITES)).toBe(before);
+  });
+
+  it("takes every channel from the spine, and its topic and purpose only from there", () => {
+    expect(merged.seeds.slack.channels.map((c) => c.name)).toEqual([
+      "audit-prep",
+      "board",
+      "random",
+      // Off-roster, kept rather than deleted, and reported below.
+      "ops",
+    ]);
+    const audit = merged.seeds.slack.channels[0];
+    // The writer called it "#Audit Prep"; one channel, named by the spine.
+    expect(audit.purpose).toBe("Evidence and gaps");
+    expect(audit.messages).toHaveLength(1);
+    expect(merged.warnings).toContain(
+      "the ambient noise posted in #ops, which is not on the spine's roster.",
+    );
+  });
+
+  it("keeps one meeting when two writers both invented it, with both guest lists", () => {
+    const kickoffs = merged.seeds.calendar.events.filter((e) => e.summary === "Fieldwork kickoff");
+    expect(kickoffs).toHaveLength(1);
+    expect(kickoffs[0].attendeePersonIds).toEqual(["gerald", "priya"]);
+    expect(merged.warnings.join("\n")).toContain('both scheduled "Fieldwork kickoff"');
+  });
+
+  it("caps how deep the double-bookings stack", () => {
+    const summaries = merged.seeds.calendar.events.map((e) => e.summary);
+    expect(summaries).not.toContain("Board meeting");
+    expect(merged.warnings.join("\n")).toContain('dropped "Board meeting"');
+  });
+
+  it("measures a clash with the length the finished calendar gives a meeting", () => {
+    // A writer that sizes an offsite at 1440 minutes gets ten hours in the
+    // world, so a meeting fifteen hours out does not clash with it. Measuring
+    // the clash against the unclamped number instead dropped that meeting for a
+    // double-booking the world never has — the one place code throws writing
+    // away, doing it on a calendar nobody would ever see.
+    const day = (summary: string, startOffsetMin: number, durationMin: number) => ({
+      summary,
+      calendarName: "Priya Raman",
+      startOffsetMin,
+      durationMin,
+      attendeePersonIds: ["priya"],
+      location: "",
+      recurrence: "",
+      description: "",
+    });
+    const out = mergeStorylines(SPINE, [
+      {
+        storylineId: "renewal",
+        seeds: { threads: [], channels: [], events: [day("Offsite", 0, 1440)] },
+      },
+      {
+        storylineId: "board",
+        seeds: {
+          threads: [],
+          channels: [],
+          events: [day("All-day workshop", 30, 1440), day("Board review", 900, 60)],
+        },
+      },
+    ]);
+    expect(out.seeds.calendar.events.map((e) => e.summary)).toEqual([
+      "Offsite",
+      "All-day workshop",
+      "Board review",
+    ]);
+    expect(out.warnings.join("\n")).not.toContain("dropped");
+  });
+
+  it("reports a fact spelled a writer's own way, and leaves the prose alone", () => {
+    expect(merged.warnings).toContain(
+      '"Board pack, draft 3" wrote "inv 2291" where the disputed invoice is "INV-2291". Left as written.',
+    );
+    const board = merged.seeds.gmail.threads.find((t) => t.subject === "Board pack, draft 3")!;
+    expect(board.messages[0].body).toBe("inv 2291 needs a line in there. M");
+  });
+
+  it("reports a fact a storyline was given and never wrote", () => {
+    expect(merged.warnings).toContain(
+      '"Board pack, draft 3" turns on the fieldwork date ("Tuesday 14 April") and never writes it. Left as written.',
+    );
+  });
+
+  it("reports somebody writing a fact they were never told", () => {
+    expect(merged.warnings).toContain(
+      'marcus writes the disputed invoice ("INV-2291") but is not one of the people who know it. Left as written.',
+    );
+  });
+
+  it("names the ambient noise, so nothing downstream can depend on it", () => {
+    expect(merged.ambient).toEqual({ threads: ["Coffee machine"], events: ["All-hands"] });
+  });
+
+  it("merges two writers who landed on the same subject into one thread", () => {
+    const twice: StorylineWrite[] = [
+      { storylineId: "renewal", seeds: RENEWAL },
+      {
+        storylineId: "board",
+        seeds: {
+          ...BOARD,
+          threads: [{ ...RENEWAL.threads[0], subject: "Re: renewal terms", labels: ["INBOX"] }],
+        },
+      },
+    ];
+    const out = mergeStorylines(SPINE, twice);
+    expect(out.seeds.gmail.threads.map((t) => t.subject)).toEqual(["Renewal terms"]);
+    // The same message twice is one message; the warning is what survives.
+    expect(out.seeds.gmail.threads[0].messages).toHaveLength(1);
+    expect(out.warnings.join("\n")).toContain('both wrote a thread called "renewal terms"');
+  });
+});
+
 describe("generateWorld", () => {
-  it("runs exactly two model calls and hands the roster to the second", async () => {
+  it("runs one call per storyline, plus the spine and the noise", async () => {
     const complete = stubComplete();
     const generated = await generateWorld("a 12-person fintech, the week before an audit", {
       complete,
       now: NOW,
     });
 
-    expect(complete.prompts).toHaveLength(2);
-    expect(complete.prompts[0]).toContain("a 12-person fintech, the week before an audit");
-    // The narrative pass must see the real ids, or it invents its own.
-    expect(complete.prompts[1]).toContain("priya — Priya Raman");
-    expect(complete.prompts[1]).toContain("MAILBOX OWNER");
+    expect(complete.calls.map((c) => c.schemaName)).toEqual([
+      "world_draft",
+      "world_spine",
+      "storyline_seeds",
+      "storyline_seeds",
+      "ambient_seeds",
+    ]);
+    expect(prompts(complete, "world_draft")[0]).toContain(
+      "a 12-person fintech, the week before an audit",
+    );
+    // Every writer sees the real ids, or it invents its own.
+    for (const prompt of complete.calls.slice(1).map((c) => c.prompt)) {
+      expect(prompt).toContain("priya — Priya Raman");
+      expect(prompt).toContain("MAILBOX OWNER");
+    }
     expect(generated.world.business.name).toBe("Northwind Ledger");
     expect(generated.generatedAtISO).toBe(new Date(NOW).toISOString());
   });
 
-  it("produces the same world as assembling the same two outputs by hand", async () => {
-    const generated = await generateWorld("x", { complete: stubComplete(), now: NOW });
-    expect(generated).toEqual(assembleWorld("x", DRAFT, SEEDS, { now: NOW }));
+  it("gives every writer the whole spine, and its own facts to spell", async () => {
+    const complete = stubComplete();
+    await generateWorld("x", { complete, now: NOW });
+    const [renewal, board] = prompts(complete, "storyline_seeds");
+
+    for (const prompt of [renewal, board, prompts(complete, "ambient_seeds")[0]]) {
+      expect(prompt).toContain("#audit-prep — Evidence and gaps");
+      expect(prompt).toContain('the disputed invoice: "INV-2291" (known by: priya, gerald)');
+    }
+    expect(renewal).toContain('spell these character for character, every time: "INV-2291"');
+    expect(board).toContain('"INV-2291", "Tuesday 14 April"');
   });
 
-  it("reports progress for the dashboard's clone step", async () => {
+  it("produces the same world as merging and assembling the same outputs by hand", async () => {
+    const generated = await generateWorld("x", { complete: stubComplete(), now: NOW });
+    const merged = mergeStorylines(SPINE, WRITES);
+    expect(generated).toEqual({
+      ...assembleWorld("x", DRAFT, merged.seeds, { now: NOW }),
+      warnings: merged.warnings,
+      ambient: merged.ambient,
+    });
+  });
+
+  it("loses one storyline to a failed writer, not the company", async () => {
+    const lines: string[] = [];
+    const generated = await generateWorld("x", {
+      now: NOW,
+      say: (m) => lines.push(m),
+      complete: stubComplete((schema, prompt) =>
+        schema === "storyline_seeds" && prompt.includes("YOUR STORYLINE — board:")
+          ? "502 from the provider"
+          : undefined,
+      ),
+    });
+
+    expect(generated.warnings?.[0]).toBe(
+      '"Board pack, draft 3" was never written: 502 from the provider',
+    );
+    expect(lines.join("\n")).toContain('lost "Board pack, draft 3"');
+    // The rest of the company is still here.
+    expect(generated.gmail.threads.map((t) => t.subject)).toContain("Renewal terms");
+    expect(generated.gmail.threads.map((t) => t.subject)).toContain("Coffee machine");
+  });
+
+  it("reports progress per storyline, which is the first time this step can", async () => {
     const lines: string[] = [];
     await generateWorld("x", { complete: stubComplete(), now: NOW, say: (m) => lines.push(m) });
-    expect(lines.length).toBeGreaterThanOrEqual(3);
+    expect(lines.join("\n")).toContain("2 storylines, 3 channels and 2 facts");
+    expect(lines.join("\n")).toContain('wrote "The Halloran renewal"');
+    expect(lines.join("\n")).toContain("wrote the ambient noise");
     expect(lines.join("\n")).toContain("Northwind Ledger");
+  });
+
+  it("says every warning, because a count is not a contradiction anyone can read", async () => {
+    const lines: string[] = [];
+    const generated = await generateWorld("x", {
+      complete: stubComplete(),
+      now: NOW,
+      say: (m) => lines.push(m),
+    });
+    for (const warning of generated.warnings ?? []) expect(lines).toContain(warning);
+    expect(lines.join("\n")).toContain('both scheduled "Fieldwork kickoff"');
+  });
+
+  it("names an empty plan rather than crashing on a spine that came back short", async () => {
+    // Providers soft-honour structured output, which is why `completeJSON`
+    // parses loosely. A spine missing a list used to take out every writer at
+    // once inside the prompt builder, so the sentence written for this case
+    // could never be the one anybody saw.
+    const complete: CompleteJSON = async <T,>(opts: CompleteJSONOptions): Promise<T> =>
+      (opts.schemaName === "world_draft" ? DRAFT : {}) as T;
+    await expect(
+      generateWorld("x", { complete, now: NOW, channels: ["ops"] }),
+    ).rejects.toThrow(/came back with no storylines/);
+  });
+
+  it("keeps every pinned channel, so a day's beats still have somewhere to land", async () => {
+    const complete = stubComplete();
+    const generated = await generateWorld("x", {
+      complete,
+      now: NOW,
+      channels: ["audit-prep", "escalations"],
+    });
+    expect(prompts(complete, "world_spine")[0]).toContain("#audit-prep, #escalations");
+    expect(generated.slack.channels.map((c) => c.name)).toContain("escalations");
   });
 });

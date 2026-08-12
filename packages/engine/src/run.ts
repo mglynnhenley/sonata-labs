@@ -26,7 +26,13 @@ import {
   unreachableBeats,
   type RefRegistry,
 } from "./beats";
-import { auditRefName, createDirector, type DeltaDetail, type Director } from "./director";
+import {
+  auditRefName,
+  createDirector,
+  type DeltaDetail,
+  type Director,
+  type UpcomingBeat,
+} from "./director";
 import { recentHistory, tickDigest } from "./timeline";
 import { attributeActions, newTrace, pairRowsToSteps, traceCost, withTrace } from "./trace";
 import { errorMessage } from "./http";
@@ -41,6 +47,8 @@ import type { Agent, AgentContext } from "./agent";
 //   2. DIRECTOR. What the world does back, having seen what the agent did in the
 //      PREVIOUS tick (read out of each twin's audit log), the prose it wrote in
 //      doing it (`detailFor`, since the log carries none), and this tick's beats.
+//      One model call per person the world casts — often none — never one call
+//      per tick; see `castTick`.
 //   3. AGENT. Which then sees the results of both, and only ever as a digest.
 //
 // The order is what makes a run mean anything. If the agent went first it would
@@ -158,12 +166,21 @@ async function playEvents(
   return played;
 }
 
-/** One line per beat still to come, so the director does not pre-empt the script. */
-function upcomingLines(deps: TickDeps, after: number): string[] {
+/**
+ * One line per beat still to come, so the world does not pre-empt the script.
+ *
+ * Carries the twin as well as the line, because each character is only shown the
+ * surfaces they are on: a client with no Slack account must not be handed the
+ * text of a Slack beat, not even as something to avoid pre-empting.
+ */
+function upcomingLines(deps: TickDeps, after: number): UpcomingBeat[] {
   return deps.spec.beats
     .filter((b) => b.tick > after && b.tick < deps.clock.ticks)
     .sort((a, b) => a.tick - b.tick)
-    .map((b) => `${deps.clock.labelAt(b.tick)} — ${summarizeBody(b, deps.spec.world)}`);
+    .map((b) => ({
+      twin: b.twin,
+      line: `${deps.clock.labelAt(b.tick)} — ${summarizeBody(b, deps.spec.world)}`,
+    }));
 }
 
 export interface TickInput {

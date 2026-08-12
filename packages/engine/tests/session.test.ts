@@ -16,7 +16,14 @@ import {
   type SessionTimer,
 } from "../src/session";
 import { createSessionRegistry, realTimer, sessionDurationMs } from "../src/live";
-import { auditRefName, directorPrompt, type DirectorContext, type Director } from "../src/director";
+import {
+  createDirector,
+  personPrompt,
+  type CastMember,
+  type DirectorContext,
+  type Director,
+} from "../src/director";
+import type { CompleteJSONOptions } from "../src/llm";
 import { auditRow, beat, fakeAdapter, spec, type FakeAdapter } from "./fixtures";
 
 // A SESSION: the same day, with the agent on the outside.
@@ -99,6 +106,17 @@ function stubDirector(): Director & { seen: DirectorContext[]; next(e: DirectorE
       return Promise.resolve(out);
     },
     lastNote: () => undefined,
+  };
+}
+
+/** The client, cast for something the agent just did — what the director builds. */
+function dana(summary: string): CastMember {
+  return {
+    person: spec().world.cast[1],
+    persona: { personId: "dana", responsiveness: 0.8, replyDelayTicks: 0, surfaces: ["gmail"] },
+    because: "the assistant wrote to you",
+    heard: { at: 1, twin: "gmail", summary, ref: "", byAgent: true },
+    answers: true,
   };
 }
 
@@ -247,7 +265,7 @@ describe("the director reacts to an agent it never called", () => {
     // never reached us. So the world here reads a subject line and reacts to that
     // — the asymmetry `SessionRecord.caveats` puts on the record.
     expect(seen.deltaDetail?.get("gmail:10")?.prose).toBeUndefined();
-    expect(directorPrompt(seen, auditRefName)).not.toContain("it wrote");
+    expect(personPrompt(seen, dana(seen.deltas[0].summary))).not.toContain("it wrote");
     await w.session.stop();
   });
 
@@ -348,6 +366,53 @@ describe("the director reacts to an agent it never called", () => {
     expect(w.session.status().status).toBe("running");
     expect(w.session.status().tick).toBe(1);
     await w.session.stop();
+  });
+
+  it("casts and calls one person at a time here too, off the summary alone", async () => {
+    // The real director, in the loop that has no agent in it. A session has no
+    // prose to cast from — the request bodies never reached us — so the audit
+    // summary is all the world gets, and it has to be enough to work out who was
+    // written to. See `SessionRecord.caveats`.
+    const gmail = fakeAdapter("gmail");
+    const timer = fakeTimer();
+    const asked: string[] = [];
+    const complete = async <T>(opts: CompleteJSONOptions): Promise<T> => {
+      asked.push(opts.prompt);
+      return { events: [] } as T;
+    };
+    const s = spec({
+      // The client's own opening email, which is what puts a gmail twin in the
+      // session at all — and which casts nobody, because nobody reacts to
+      // themselves and the only other person on it is the mailbox owner.
+      beats: [beat({ id: "b0", tick: 0 })],
+      director: {
+        ...spec().director,
+        personas: [{ personId: "dana", responsiveness: 0.8, replyDelayTicks: 0, surfaces: ["gmail"] }],
+      },
+    });
+    const session = createSession({
+      spec: s,
+      adapters: [gmail],
+      compression: COMPRESSION,
+      timer,
+      director: createDirector({ spec: s, complete }),
+      sessionId: "sess-real",
+    });
+    await session.start();
+    // Tick 0 has nothing in it at all, so it buys no model call.
+    expect(asked).toEqual([]);
+
+    gmail.rows.push(
+      auditRow({ id: 1, twin: "gmail", ts: 5_000, summary: 'Sent “Re: SLA” to dana@acme.test' }),
+    );
+    await step(session, timer, TICK_MS);
+
+    expect(asked).toHaveLength(1);
+    expect(asked[0]).toContain("You are Dana Reyes");
+    expect(asked[0]).toContain("Re: SLA");
+    // Still metadata only: nothing here invents a body the session never had.
+    expect(asked[0]).not.toContain("it wrote");
+    await session.stop();
   });
 });
 

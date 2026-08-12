@@ -1,12 +1,14 @@
 // What the model is allowed to write, and nothing more.
 //
-// Two schemas, one per generation pass: the company and its people, then the
-// story as it appears on the three surfaces. Everything mechanical — person ids,
-// email addresses, Slack user/channel ids, calendar ids, absolute timestamps,
-// threading, channel membership — is absent from both, because it is assembled
-// in code (see generate.ts and inject.ts). A model that could set its own
-// addresses would eventually give the same person two of them, and the whole
-// premise is that Priya in the inbox is provably Priya in #ops.
+// One schema per generation pass: the company and its people; the spine every
+// writer must agree on; then one storyline at a time across all three surfaces
+// (and `TWIN_SEEDS_SCHEMA`, the whole company in one pass, which the backlog
+// path still uses). Everything mechanical — person ids, email addresses, Slack
+// user/channel ids, calendar ids, absolute timestamps, threading, channel
+// membership — is absent from all of them, because it is assembled in code (see
+// generate.ts and inject.ts). A model that could set its own addresses would
+// eventually give the same person two of them, and the whole premise is that
+// Priya in the inbox is provably Priya in #ops.
 //
 // House pattern for strict structured outputs: every object carries
 // `additionalProperties: false` and lists ALL of its properties in `required`.
@@ -99,7 +101,7 @@ export const WORLD_DRAFT_SCHEMA = {
     business: BUSINESS_SCHEMA,
     people: {
       type: "array",
-      description: "6 to 10 people. Mostly colleagues, plus at least one outsider.",
+      description: "12 to 18 people. Mostly colleagues, plus two or three outsiders.",
       items: PERSON_SCHEMA,
     },
     mailboxOwnerName: {
@@ -112,7 +114,13 @@ export const WORLD_DRAFT_SCHEMA = {
 } as const;
 
 // ---------------------------------------------------------------------------
-// Pass 2 — the same story on three surfaces
+// The three surfaces.
+//
+// One set of item definitions for every narrative pass. The whole-company pass
+// and the per-storyline passes differ in how MUCH they are asked for, never in
+// what a thread or an event is — two definitions of a calendar event would drift
+// into two shapes, and the normalizers in generate.ts would then be repairing
+// one of them by accident.
 // ---------------------------------------------------------------------------
 
 export interface GmailMessageSeed {
@@ -194,61 +202,136 @@ export interface CalendarSeed {
   events: CalendarEventSeed[];
 }
 
-/** The one narrative pass: all three surfaces written together so they agree. */
+/** All three surfaces together: what the merge produces, and what one
+ *  whole-company pass produces when a backlog is grown onto an existing world. */
 export interface TwinSeeds {
   gmail: GmailSeed;
   slack: SlackSeed;
   calendar: CalendarSeed;
 }
 
+const GMAIL_THREAD_ITEM_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["subject", "labels", "participants", "messages"],
+  properties: {
+    subject: { type: "string", description: "No 'Re:' prefix — code adds those." },
+    labels: {
+      type: "array",
+      description:
+        "Gmail labels for the thread: INBOX, UNREAD, STARRED, IMPORTANT, or a user label name.",
+      items: { type: "string" },
+    },
+    participants: {
+      type: "array",
+      description: "personId values from the roster. Everyone on the thread.",
+      items: { type: "string" },
+    },
+    messages: {
+      type: "array",
+      description: "Oldest first. At least one.",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["fromPersonId", "minutesAgo", "body"],
+        properties: {
+          fromPersonId: { type: "string", description: "personId from the roster." },
+          minutesAgo: {
+            type: "integer",
+            description: "Minutes before now. Larger = older. Never negative.",
+          },
+          body: {
+            type: "string",
+            description:
+              "Plain-text email body in this person's voice. No markdown, no signature boilerplate.",
+          },
+        },
+      },
+    },
+  },
+} as const;
+
+const SLACK_MESSAGE_ITEM_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["personId", "minutesAgo", "text", "threadReplies"],
+  properties: {
+    personId: { type: "string" },
+    minutesAgo: { type: "integer", description: "Minutes before now. Never negative." },
+    text: {
+      type: "string",
+      description: "How this person actually types in Slack. Short. May use :emoji:.",
+    },
+    threadReplies: {
+      type: "array",
+      description: "Replies in this message's thread. Empty array for none.",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["personId", "minutesAgo", "text"],
+        properties: {
+          personId: { type: "string" },
+          minutesAgo: { type: "integer" },
+          text: { type: "string" },
+        },
+      },
+    },
+  },
+} as const;
+
+const CALENDAR_ITEM_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["name", "ownerPersonId", "description"],
+  properties: {
+    name: { type: "string" },
+    ownerPersonId: { type: "string", description: "personId from the roster." },
+    description: { type: "string" },
+  },
+} as const;
+
+const CALENDAR_EVENT_ITEM_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: [
+    "summary",
+    "calendarName",
+    "startOffsetMin",
+    "durationMin",
+    "attendeePersonIds",
+    "location",
+    "recurrence",
+    "description",
+  ],
+  properties: {
+    summary: { type: "string" },
+    calendarName: { type: "string", description: "Must match one of the calendars above." },
+    startOffsetMin: {
+      type: "integer",
+      description:
+        "Minutes from now. Negative for meetings that already happened, positive for ones still to come.",
+    },
+    durationMin: { type: "integer" },
+    attendeePersonIds: {
+      type: "array",
+      description: "personId values from the roster.",
+      items: { type: "string" },
+    },
+    location: { type: "string", description: "Room, video link or empty string." },
+    recurrence: {
+      type: "string",
+      description: "RFC 5545 rule like 'RRULE:FREQ=WEEKLY;BYDAY=MO', or empty string.",
+    },
+    description: { type: "string", description: "Agenda in a sentence, or empty string." },
+  },
+} as const;
+
 const GMAIL_SEED_SCHEMA = {
   type: "object",
   additionalProperties: false,
   required: ["threads"],
   properties: {
-    threads: {
-      type: "array",
-      items: {
-        type: "object",
-        additionalProperties: false,
-        required: ["subject", "labels", "participants", "messages"],
-        properties: {
-          subject: { type: "string", description: "No 'Re:' prefix — code adds those." },
-          labels: {
-            type: "array",
-            description:
-              "Gmail labels for the thread: INBOX, UNREAD, STARRED, IMPORTANT, or a user label name.",
-            items: { type: "string" },
-          },
-          participants: {
-            type: "array",
-            description: "personId values from the roster. Everyone on the thread.",
-            items: { type: "string" },
-          },
-          messages: {
-            type: "array",
-            description: "Oldest first. At least one.",
-            items: {
-              type: "object",
-              additionalProperties: false,
-              required: ["fromPersonId", "minutesAgo", "body"],
-              properties: {
-                fromPersonId: { type: "string", description: "personId from the roster." },
-                minutesAgo: {
-                  type: "integer",
-                  description: "Minutes before now. Larger = older. Never negative.",
-                },
-                body: {
-                  type: "string",
-                  description:
-                    "Plain-text email body in this person's voice. No markdown, no signature boilerplate.",
-                },
-              },
-            },
-          },
-        },
-      },
-    },
+    threads: { type: "array", items: GMAIL_THREAD_ITEM_SCHEMA },
   },
 } as const;
 
@@ -272,36 +355,7 @@ const SLACK_SEED_SCHEMA = {
             description: "personId values from the roster.",
             items: { type: "string" },
           },
-          messages: {
-            type: "array",
-            items: {
-              type: "object",
-              additionalProperties: false,
-              required: ["personId", "minutesAgo", "text", "threadReplies"],
-              properties: {
-                personId: { type: "string" },
-                minutesAgo: { type: "integer", description: "Minutes before now. Never negative." },
-                text: {
-                  type: "string",
-                  description: "How this person actually types in Slack. Short. May use :emoji:.",
-                },
-                threadReplies: {
-                  type: "array",
-                  description: "Replies in this message's thread. Empty array for none.",
-                  items: {
-                    type: "object",
-                    additionalProperties: false,
-                    required: ["personId", "minutesAgo", "text"],
-                    properties: {
-                      personId: { type: "string" },
-                      minutesAgo: { type: "integer" },
-                      text: { type: "string" },
-                    },
-                  },
-                },
-              },
-            },
-          },
+          messages: { type: "array", items: SLACK_MESSAGE_ITEM_SCHEMA },
         },
       },
     },
@@ -316,55 +370,9 @@ const CALENDAR_SEED_SCHEMA = {
     calendars: {
       type: "array",
       description: "The mailbox owner's own calendar first, then any shared ones.",
-      items: {
-        type: "object",
-        additionalProperties: false,
-        required: ["name", "ownerPersonId", "description"],
-        properties: {
-          name: { type: "string" },
-          ownerPersonId: { type: "string", description: "personId from the roster." },
-          description: { type: "string" },
-        },
-      },
+      items: CALENDAR_ITEM_SCHEMA,
     },
-    events: {
-      type: "array",
-      items: {
-        type: "object",
-        additionalProperties: false,
-        required: [
-          "summary",
-          "calendarName",
-          "startOffsetMin",
-          "durationMin",
-          "attendeePersonIds",
-          "location",
-          "recurrence",
-          "description",
-        ],
-        properties: {
-          summary: { type: "string" },
-          calendarName: { type: "string", description: "Must match one of the calendars above." },
-          startOffsetMin: {
-            type: "integer",
-            description:
-              "Minutes from now. Negative for meetings that already happened, positive for ones still to come.",
-          },
-          durationMin: { type: "integer" },
-          attendeePersonIds: {
-            type: "array",
-            description: "personId values from the roster.",
-            items: { type: "string" },
-          },
-          location: { type: "string", description: "Room, video link or empty string." },
-          recurrence: {
-            type: "string",
-            description: "RFC 5545 rule like 'RRULE:FREQ=WEEKLY;BYDAY=MO', or empty string.",
-          },
-          description: { type: "string", description: "Agenda in a sentence, or empty string." },
-        },
-      },
-    },
+    events: { type: "array", items: CALENDAR_EVENT_ITEM_SCHEMA },
   },
 } as const;
 
@@ -376,6 +384,223 @@ export const TWIN_SEEDS_SCHEMA = {
     gmail: GMAIL_SEED_SCHEMA,
     slack: SLACK_SEED_SCHEMA,
     calendar: CALENDAR_SEED_SCHEMA,
+  },
+} as const;
+
+// ---------------------------------------------------------------------------
+// Pass 2 — the spine.
+//
+// Shape without prose: the storylines, the channel roster, the calendars and the
+// exact facts. Every storyline writer is handed all of it, because they run in
+// parallel and cannot see each other's work, so anything two of them could
+// contradict each other about has to be settled here or not at all. Small on
+// purpose: a spine that grew prose would be the single 32k-token call this
+// design exists to stop being.
+// ---------------------------------------------------------------------------
+
+/**
+ * One thing that is true, and the exact characters it is written in.
+ *
+ * A fact an agent has to retrieve is only retrievable if two writers spell it
+ * the same way: "INV-2291" in the email and "invoice 2291" in Slack is a
+ * needle nobody can find, and a criterion that matched on it would fail an
+ * agent for the generator's mistake.
+ */
+export interface CanonicalFact {
+  /** Short id the storylines refer to. */
+  id: string;
+  /** What it is, in a few words: "the disputed invoice number". */
+  label: string;
+  /** The exact characters every writer must spell: "INV-2291", "£40,800". */
+  token: string;
+  /** `Person.id` values who know it. Everyone else must not write it. */
+  knownBy: string[];
+}
+
+/** One thread of the story: a whole writer's brief, in shape only. */
+export interface SpineStoryline {
+  /** Short slug — how the merge and the warnings name it. */
+  id: string;
+  title: string;
+  /** Beginning to unfinished end, a few sentences. What happens, not what is said. */
+  arc: string;
+  /** `Person.id` values who appear in it. */
+  castPersonIds: string[];
+  /** Roster channel names this storyline may write in. */
+  channels: string[];
+  /** Roughly how much of each surface this storyline is worth. */
+  threadCount: number;
+  slackMessageCount: number;
+  eventCount: number;
+  /** `CanonicalFact.id` values this storyline must spell verbatim. */
+  factIds: string[];
+}
+
+/** A channel, decided once for the whole company. */
+export interface SpineChannel {
+  /** Without the leading `#`. */
+  name: string;
+  topic: string;
+  purpose: string;
+  /** `Person.id` values. */
+  members: string[];
+}
+
+export interface WorldSpine {
+  storylines: SpineStoryline[];
+  channels: SpineChannel[];
+  calendars: CalendarSeedCalendar[];
+  facts: CanonicalFact[];
+}
+
+const SPINE_STORYLINE_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: [
+    "id",
+    "title",
+    "arc",
+    "castPersonIds",
+    "channels",
+    "threadCount",
+    "slackMessageCount",
+    "eventCount",
+    "factIds",
+  ],
+  properties: {
+    id: { type: "string", description: "Short lowercase slug, e.g. 'renewal'. Unique." },
+    title: { type: "string", description: "A few words a colleague would recognise it by." },
+    arc: {
+      type: "string",
+      description:
+        "What happens, beginning to unfinished end, in two or three sentences. No dialogue, no quotes — a writer turns this into the words.",
+    },
+    castPersonIds: {
+      type: "array",
+      description: "personId values from the roster who appear in this storyline.",
+      items: { type: "string" },
+    },
+    channels: {
+      type: "array",
+      description: "Names from the channel roster below that this storyline may post in.",
+      items: { type: "string" },
+    },
+    threadCount: { type: "integer", description: "Roughly how many email threads it is worth." },
+    slackMessageCount: { type: "integer", description: "Roughly how many Slack messages." },
+    eventCount: { type: "integer", description: "Roughly how many calendar events." },
+    factIds: {
+      type: "array",
+      description: "Ids of the facts below that this storyline turns on.",
+      items: { type: "string" },
+    },
+  },
+} as const;
+
+export const WORLD_SPINE_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["storylines", "channels", "calendars", "facts"],
+  properties: {
+    storylines: {
+      type: "array",
+      description: "4 to 6 storylines. They overlap in people and in time.",
+      items: SPINE_STORYLINE_SCHEMA,
+    },
+    channels: {
+      type: "array",
+      description: "The company's whole Slack, 6 to 9 channels. Decided here and nowhere else.",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["name", "topic", "purpose", "members"],
+        properties: {
+          name: { type: "string", description: "Lowercase, hyphenated, no leading '#'." },
+          topic: { type: "string" },
+          purpose: { type: "string" },
+          members: {
+            type: "array",
+            description: "personId values from the roster.",
+            items: { type: "string" },
+          },
+        },
+      },
+    },
+    calendars: {
+      type: "array",
+      description: "The mailbox owner's own calendar first, then any shared one that matters.",
+      items: CALENDAR_ITEM_SCHEMA,
+    },
+    facts: {
+      type: "array",
+      description: "5 to 10 exact, checkable facts.",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["id", "label", "token", "knownBy"],
+        properties: {
+          id: { type: "string", description: "Short lowercase slug. Unique." },
+          label: { type: "string", description: "What it is: 'the disputed invoice number'." },
+          token: {
+            type: "string",
+            description:
+              "The exact characters every writer must spell, character for character: 'INV-2291', '£40,800', 'Tuesday 14 April'.",
+          },
+          knownBy: {
+            type: "array",
+            description: "personId values who know this. Nobody else may write it.",
+            items: { type: "string" },
+          },
+        },
+      },
+    },
+  },
+} as const;
+
+// ---------------------------------------------------------------------------
+// Passes 3 and 4 — one storyline at a time, and the ambient noise.
+//
+// The same three surfaces, minus everything the spine already decided: a writer
+// gets to say what is posted in #renewals, never what #renewals is for. Channel
+// topic and purpose are absent from this schema rather than merely discouraged,
+// because "please reuse the roster's wording" is advice a model takes four times
+// out of five and the fifth is a channel that reads as somebody else's company.
+// ---------------------------------------------------------------------------
+
+export interface StorylineChannelPost {
+  /** A channel name from the spine's roster. */
+  name: string;
+  messages: SlackMessageSeed[];
+}
+
+export interface StorylineSeeds {
+  threads: GmailThreadSeed[];
+  channels: StorylineChannelPost[];
+  events: CalendarEventSeed[];
+}
+
+export const STORYLINE_SEEDS_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["threads", "channels", "events"],
+  properties: {
+    threads: { type: "array", items: GMAIL_THREAD_ITEM_SCHEMA },
+    channels: {
+      type: "array",
+      description: "Only channels from the roster you were given.",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["name", "messages"],
+        properties: {
+          name: {
+            type: "string",
+            description: "A roster channel name, without the leading '#'. Invent none.",
+          },
+          messages: { type: "array", items: SLACK_MESSAGE_ITEM_SCHEMA },
+        },
+      },
+    },
+    events: { type: "array", items: CALENDAR_EVENT_ITEM_SCHEMA },
   },
 } as const;
 
