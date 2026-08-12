@@ -200,8 +200,10 @@ npm run dev:calendar
 
 The dashboard starts the clones itself when a run needs them, and `sonata up`
 goes through the same scripts, so the Gmail front end comes up with its API
-either way. Each script defaults to the port in the table and yields to an outer
-`PORT=`, which is what a second checkout on the same machine needs.
+either way. Each single-service script defaults to the port in the table and
+yields to an outer `PORT=`, which is what a second checkout on the same machine
+needs. The multi-service scripts (`dev`, `dev:gmail`) ignore an outer `PORT` —
+one value cannot bind five services.
 
 ### Two credentials, and when they are interchangeable
 

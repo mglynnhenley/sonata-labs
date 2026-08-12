@@ -76,7 +76,3 @@ export function envFor(config: SonataConfig, twins: readonly ServedTwin[] = TWIN
   }
   return out;
 }
-
-function trimSlashes(url: string): string {
-  return url.replace(/\/+$/, "");
-}

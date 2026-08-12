@@ -12,9 +12,9 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "concurrently -n platform,gmail-api,gmail-ui,slack,calendar -c magenta,red,yellow,green,blue \"npm:dev:platform\" \"npm:dev:gmail:api\" \"npm:dev:gmail:ui\" \"npm:dev:slack\" \"npm:dev:calendar\"",
+    "dev": "PORT= concurrently -n platform,gmail-api,gmail-ui,slack,calendar -c magenta,red,yellow,green,blue \"npm:dev:platform\" \"npm:dev:gmail:api\" \"npm:dev:gmail:ui\" \"npm:dev:slack\" \"npm:dev:calendar\"",
     "dev:platform": "npm run dev -w apps/platform",
-    "dev:gmail": "concurrently -n api,ui -c red,yellow \"npm:dev:gmail:api\" \"npm:dev:gmail:ui\"",
+    "dev:gmail": "PORT= concurrently -n api,ui -c red,yellow \"npm:dev:gmail:api\" \"npm:dev:gmail:ui\"",
     "dev:gmail:api": "PORT=${PORT:-3101} npm run dev -w apps/gmail",
     "dev:gmail:ui": "PORT=${PORT:-3901} npm run dev -w apps/gmail-ui",
     "dev:slack": "PORT=${PORT:-3200} npm run dev -w apps/slack",

@@ -8,7 +8,7 @@ import {
   TWIN_UI_PORTS,
   hasUiService,
   resolveTwinApiUrl,
-  twinUiUrl,
+  resolveTwinUiUrl,
   type TwinName,
 } from "@sonata/core";
 import {
@@ -196,6 +196,17 @@ function portBusy(port: number): Promise<boolean> {
   });
 }
 
+/** The port of the URL actually probed. A malformed env override (a missing
+ *  scheme is the easy typo) degrades to the default port rather than throwing
+ *  the whole status call. */
+function portOf(url: string, fallback: number): number {
+  try {
+    return Number(new URL(url).port) || fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 /**
  * Does the twin's web client answer? Same health-probe shape as the API, so
  * there is one code path for "is this service up". Never throws: a UI that is
@@ -203,8 +214,8 @@ function portBusy(port: number): Promise<boolean> {
  */
 async function probeUi(twin: TwinName): Promise<TwinUiStatus | undefined> {
   if (!hasUiService(twin)) return undefined;
-  const url = twinUiUrl(twin);
-  const status: TwinUiStatus = { port: TWIN_UI_PORTS[twin], url, ok: false };
+  const url = resolveTwinUiUrl(twin, process.env);
+  const status: TwinUiStatus = { port: portOf(url, TWIN_UI_PORTS[twin]), url, ok: false };
   try {
     const res = await fetch(`${url}/api/health`, {
       cache: "no-store",
@@ -216,22 +227,27 @@ async function probeUi(twin: TwinName): Promise<TwinUiStatus | undefined> {
   }
 }
 
+/** Both halves of a twin at once: the UI probe never throws, so it can neither
+ *  fail nor slow the API's answer beyond the longer of the two round trips. */
 async function probe(twin: TwinName): Promise<TwinStatus> {
+  const [status, ui] = await Promise.all([probeApi(twin), probeUi(twin)]);
+  return ui ? { ...status, ui } : status;
+}
+
+async function probeApi(twin: TwinName): Promise<Omit<TwinStatus, "ui">> {
   const proc = livingProcess(twin);
-  const ui = await probeUi(twin);
   const url = twinUrl(twin);
-  const base: Omit<TwinStatus, "ok" | "detail"> = {
+  const base: Omit<TwinStatus, "ok" | "detail" | "ui"> = {
     twin,
     label: TWIN_LABELS[twin],
     // The port of the URL actually probed — with an env override these differ
     // from the defaults, and the card must not claim one port while reporting
     // another one's health. TWIN_PORTS stays what startTwin binds locally.
-    port: Number(new URL(url).port) || TWIN_PORTS[twin],
+    port: portOf(url, TWIN_PORTS[twin]),
     url,
     managed: proc !== null,
     pid: proc?.pid ?? null,
     checkedAt: Date.now(),
-    ui,
   };
 
   try {

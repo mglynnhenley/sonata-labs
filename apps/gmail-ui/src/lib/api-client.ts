@@ -87,6 +87,11 @@ export async function apiRequest(path: string, init: RequestInit = {}): Promise<
       res = await call(path, init, session.access_token);
     }
   }
+  // A session the API no longer recognises — a reset wiped oauth_tokens while
+  // the cookie lived on — is the same as no session: fall back to the static
+  // token. In `oauth` mode this earns the same 401, so nothing is granted that
+  // a sessionless request would not get.
+  if (res.status === 401) res = await call(path, init, ADMIN_TOKEN);
   return res;
 }
 
