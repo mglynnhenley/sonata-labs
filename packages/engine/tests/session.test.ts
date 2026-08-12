@@ -16,7 +16,7 @@ import {
   type SessionTimer,
 } from "../src/session";
 import { createSessionRegistry, realTimer, sessionDurationMs } from "../src/live";
-import type { DirectorContext, Director } from "../src/director";
+import { auditRefName, directorPrompt, type DirectorContext, type Director } from "../src/director";
 import { auditRow, beat, fakeAdapter, spec, type FakeAdapter } from "./fixtures";
 
 // A SESSION: the same day, with the agent on the outside.
@@ -230,6 +230,68 @@ describe("the director reacts to an agent it never called", () => {
     await w.session.stop();
   });
 
+  it("says which step wrote each row, and never what it said", async () => {
+    const w = world();
+    await w.session.start();
+    externalAction(w, { id: 10, ts: 5_000, actionType: "send", targetId: "m-10", summary: "replied to Dana" });
+    await step(w.session, w.timer, TICK_MS);
+
+    // `stepsFromAudit` emits one step per row in order, so the link between a row
+    // and the step that wrote it is an index here, not the ordinal inference a
+    // scored episode has to make. It is what gives a session's director events a
+    // `becauseSeq` at all.
+    const seen = w.director.seen[1];
+    expect(seen.deltaDetail?.get("gmail:10")).toEqual({ seq: 0 });
+
+    // The prose half stays absent, because it does not exist: the request bodies
+    // never reached us. So the world here reads a subject line and reacts to that
+    // — the asymmetry `SessionRecord.caveats` puts on the record.
+    expect(seen.deltaDetail?.get("gmail:10")?.prose).toBeUndefined();
+    expect(directorPrompt(seen, auditRefName)).not.toContain("it wrote");
+    await w.session.stop();
+  });
+
+  it("tells two twins' rows apart when their ids collide", async () => {
+    // Each twin numbers its own audit log from 1, so an agent that emails and
+    // posts in the same interval produces gmail row 1 and slack row 1. Keyed on
+    // the number alone one overwrites the other, and the reply the world draws its
+    // causal arrow to is not the one it answered.
+    const gmail = fakeAdapter("gmail");
+    const slack = fakeAdapter("slack");
+    const director = stubDirector();
+    const timer = fakeTimer();
+    const session = createSession({
+      spec: spec({
+        beats: [
+          beat({ id: "b0", tick: 0 }),
+          beat({
+            id: "s0",
+            tick: 0,
+            twin: "slack",
+            kind: "message",
+            payload: { channel: "ops", from: "sam", text: "morning" },
+          }),
+        ],
+      }),
+      adapters: [gmail, slack],
+      compression: COMPRESSION,
+      timer,
+      director,
+      sessionId: "sess-collide",
+    });
+    await session.start();
+    gmail.rows.push(auditRow({ id: 1, twin: "gmail", ts: 5_000, summary: "emailed the client" }));
+    slack.rows.push(auditRow({ id: 1, twin: "slack", ts: 5_000, summary: "posted in #ops" }));
+    await step(session, timer, TICK_MS);
+
+    const seen = director.seen[1];
+    expect(seen.deltas).toHaveLength(2);
+    const seqs = [seen.deltaDetail?.get("gmail:1")?.seq, seen.deltaDetail?.get("slack:1")?.seq];
+    expect(new Set(seqs).size).toBe(2);
+    expect(seqs.every((s) => s !== undefined)).toBe(true);
+    await session.stop();
+  });
+
   it("offers the world a ref for what the agent did, so a reply can attach to it", async () => {
     const w = world();
     await w.session.start();
@@ -341,6 +403,10 @@ describe("the record the judge already knows how to read", () => {
     expect(kinds).not.toContain("thought");
     expect(record.caveats.join(" ")).toMatch(/reasoning/);
     expect(record.caveats.join(" ")).toMatch(/request body/);
+    // And that the world therefore judged the agent on metadata alone. A scored
+    // episode's director reads the reply itself; a session's cannot, and the gap
+    // has to be the harness's on the record rather than the agent's in the score.
+    expect(record.caveats.join(" ")).toMatch(/metadata alone/);
   });
 
   it("counts the world's own audit rows as nobody's work", async () => {

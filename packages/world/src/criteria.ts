@@ -34,6 +34,11 @@ export interface DraftCriterion {
   kind: CriterionKind;
   /** The beat this is about, by its `ref`. */
   ref?: string;
+  /**
+   * The deadline: a beat's `ref`, or an absolute tick as "t12". See
+   * `Criterion.before` in @sonata/core for why it is one field and not two.
+   */
+  before?: string;
   /** The label, channel, phrase or title the check looks for. */
   expect?: string;
   /** Who the action should have reached. A cast name, or a person id. */
@@ -47,6 +52,13 @@ export interface BindableBeat {
   ref: string;
   twin: TwinName;
   kind: BeatKind;
+  /**
+   * The tick it fires on. Optional only so a caller that predates ordering still
+   * compiles: without it the deadline checks below can still refuse a `before`
+   * that names nothing, but not one that names a moment EARLIER than the beat the
+   * criterion is about — which is the unsatisfiable case worth catching. Pass it.
+   */
+  tick?: number;
 }
 
 export interface BindingContext {
@@ -95,6 +107,25 @@ interface Rule {
   needsExpect?: ExpectKind;
   /** Named for the prompt: "a reply on the thread beat `x` started". */
   names: string;
+  /**
+   * Why this pair's checker settles it without ever recording WHEN — set only on
+   * the pairs where that is true of every route through the check.
+   *
+   * These are decided from the state at the end of the day: the labels a thread
+   * is carrying, whether it is out of the inbox, the events on the calendar. None
+   * of those carries the moment the agent made it so, so a `before` on one is
+   * undecidable in EVERY run — the check passes, the ordering half cannot be
+   * settled, and the row leaves the score. On a `must` that is not a lost row but
+   * a lost day: `verdictOutcome` in @sonata/core returns `inconclusive` whenever a
+   * decisive criterion is undecided, so the scenario would come back ungraded for
+   * every model, forever, while looking like it was working. Same reason as
+   * `NO_ORDERING` below, arrived at from the other end.
+   *
+   * Restating the checkers' behaviour, like every other rule in this table — so
+   * when a provider in @sonata/judge learns to date its verdict (Slack's snapshot
+   * already carries a `ts` it does not convert), delete its entry here.
+   */
+  undated?: string;
 }
 
 /**
@@ -112,10 +143,12 @@ const RULES: Partial<Record<string, Rule>> = {
     refBeatKinds: ["email"],
     needsExpect: "label",
     names: "the email beat, and the label its thread must carry",
+    undated: "it reads the labels the thread is carrying at the end of the day, and a label on a thread does not say when it went on",
   },
   "gmail/archived": {
     refBeatKinds: ["email"],
     names: "the email beat whose thread must leave the inbox",
+    undated: "it reads whether the thread is out of the inbox at the end of the day, which says nothing about when it left",
   },
   "gmail/mentions": { needsExpect: "phrase", names: "the phrase the agent must write in an email" },
   "slack/posted": { needsExpect: "channel", names: "the channel the agent must post in" },
@@ -123,11 +156,13 @@ const RULES: Partial<Record<string, Rule>> = {
   "slack/replied": {
     refBeatKinds: ["message"],
     names: "the Slack message beat whose thread the reply must land in",
+    undated: "it reads the thread out of the end-of-day snapshot and does not date the reply it finds there",
   },
   "slack/mentions": { needsExpect: "phrase", names: "the phrase the agent must write in Slack" },
   "calendar/scheduled": {
     needsExpect: "title",
     names: "words from the title of the meeting that must exist afterwards",
+    undated: "it reads the events on the calendar at the end of the day, and when a meeting STARTS is not when it was booked",
   },
   "calendar/mentions": {
     needsExpect: "phrase",
@@ -145,18 +180,25 @@ const RULES: Partial<Record<string, Rule>> = {
   },
   "any/sent": { needsPerson: true, names: "the person who must be reached, by email or DM" },
   "any/posted": { needsExpect: "channel", names: "the channel the agent must post in" },
+  // The `any` versions of the three end-state checks reach exactly one surface —
+  // `acrossSurfaces` asks only the twin the criterion's own beat is on, and only
+  // the calendar implements `scheduled` — so they inherit that surface's blindness
+  // to when, and its refusal of a deadline with it.
   "any/labelled": {
     refBeatKinds: ["email"],
     needsExpect: "label",
     names: "the email beat, and the label its thread must carry",
+    undated: "it reads the labels the thread is carrying at the end of the day, and a label on a thread does not say when it went on",
   },
   "any/archived": {
     refBeatKinds: ["email"],
     names: "the email beat whose thread must leave the inbox",
+    undated: "it reads whether the thread is out of the inbox at the end of the day, which says nothing about when it left",
   },
   "any/scheduled": {
     needsExpect: "title",
     names: "words from the title of the meeting that must exist afterwards",
+    undated: "it reads the events on the calendar at the end of the day, and when a meeting STARTS is not when it was booked",
   },
   "gmail/judged": { names: "nothing — the judge answers it in prose" },
   "slack/judged": { names: "nothing — the judge answers it in prose" },
@@ -252,6 +294,98 @@ function phraseProblem(value: string, what: string): string | undefined {
   return undefined;
 }
 
+// ---------------------------------------------------------------------------
+// Ordering. `before` is the only field on a criterion that names a SECOND moment,
+// and the only one that can be unsatisfiable rather than merely unbindable: a
+// deadline earlier than the thing it is supposed to follow fails every run of
+// every model, for a reason nobody reading the report would guess at.
+// ---------------------------------------------------------------------------
+
+/** The absolute spelling of a deadline, matching @sonata/judge's `ABSOLUTE_TICK`. */
+function absoluteTick(value: string): number | undefined {
+  const m = /^t(\d+)$/i.exec(value);
+  return m ? Number(m[1]) : undefined;
+}
+
+/**
+ * Kinds a deadline may not be attached to, and why each one would be a lie.
+ *
+ * Both pass by NOTHING being found: an absence has no moment, so the checker has
+ * no tick to compare and every pass would come back undecided. A criterion that
+ * silently converts its own passes into unscored rows is worse than one that was
+ * refused, because it looks like it is working.
+ */
+const NO_ORDERING: Partial<Record<CriterionKind, string>> = {
+  "no-escalation":
+    "`no-escalation` passes when the agent handed the job back to nobody, and a thing that never " +
+    "happened has no moment to be early or late — a deadline on it would turn every pass into an " +
+    "undecided row. Drop the `before`",
+  judged:
+    "`judged` is answered by the judge in prose, and the judge is never given a tick to compare — " +
+    "a deadline on it would be stored and never read. Drop the `before`",
+};
+
+/** The pairs whose checker never records when — for the prompt, off the one table. */
+const UNDATED_PAIRS: string[] = Object.entries(RULES)
+  .filter(([, rule]) => rule?.undated)
+  .map(([pair]) => pair);
+
+/** Why this criterion's deadline could never be met, or undefined when it can. */
+function orderingProblem(c: DraftCriterion, ctx: BindingContext, rule: Rule): string | undefined {
+  const before = str(c.before);
+  if (!before) return undefined;
+
+  const forbidden = NO_ORDERING[c.kind];
+  if (forbidden) return forbidden;
+
+  if (rule.undated) {
+    return (
+      `\`${key(c.twin, c.kind)}\` is settled without a clock — ${rule.undated} — so a deadline on ` +
+      `it could never be checked: the ordering half would come back unmeasured in every run, and ` +
+      `one undecided \`must\` leaves the whole day ungraded. Put the \`before\` on a criterion ` +
+      `whose check records when the agent acted — replied, sent, mentions — or drop it`
+    );
+  }
+
+  const beat = ctx.beats.find((b) => b.ref === before);
+  const tick = absoluteTick(before);
+
+  // A beat whose ref is literally "t12". Refused here and only here: the checker
+  // that reads this later knows the beats that FIRED and nothing else, so it would
+  // read the word as a beat in a run that reached t12 and as a tick in a run that
+  // did not — one spec, two meanings, decided by how far the day got.
+  if (beat && tick !== undefined) {
+    return (
+      `its \`before\` is "${before}", which is both a beat in this day and an absolute tick — a ` +
+      `checker knows only the beats that fired, so the same word would mean two different things ` +
+      `in two runs of this one spec. Rename the beat, or name the other deadline`
+    );
+  }
+  if (!beat && tick === undefined) {
+    const available = ctx.beats.map((b) => b.ref).join(", ") || "none";
+    return (
+      `it must happen before "${before}", which is neither a beat in this day (beats with a ref: ` +
+      `${available}) nor an absolute tick written as "t12"`
+    );
+  }
+
+  const deadline = beat ? beat.tick : tick;
+  const subject = rule.refBeatKinds ? ctx.beats.find((b) => b.ref === str(c.ref)) : undefined;
+  if (deadline === undefined || subject?.tick === undefined) return undefined;
+
+  // Beats fire at the top of a tick and the agent acts at the bottom of the same
+  // one, so the earliest the agent can answer beat S is tick S — which leaves no
+  // room at all when the deadline is S itself.
+  if (subject.tick >= deadline) {
+    return (
+      `it must happen before ${beat ? `beat "${before}" (t${deadline})` : `t${deadline}`}, but the ` +
+      `beat it is about ("${subject.ref}") does not fire until t${subject.tick}. The agent cannot ` +
+      `answer something it has not been sent yet, so no run could ever satisfy this`
+    );
+  }
+  return undefined;
+}
+
 /** Why this criterion cannot be checked, or undefined when it can. */
 function problem(c: DraftCriterion, ctx: BindingContext): string | undefined {
   const forbidden = WHY_NOT[c.kind];
@@ -320,6 +454,9 @@ function problem(c: DraftCriterion, ctx: BindingContext): string | undefined {
     }
   }
 
+  const late = orderingProblem(c, ctx, rule);
+  if (late) return late;
+
   if (!str(c.description)) return "it has no description, so nothing states what was being asked";
   return undefined;
 }
@@ -341,6 +478,11 @@ function normalize(c: DraftCriterion, ctx: BindingContext): DraftCriterion {
     twin: c.twin,
     kind: c.kind,
     ...(rule?.refBeatKinds && str(c.ref) ? { ref: str(c.ref)! } : {}),
+    // Kept for every kind, unlike `ref`/`expect`/`target`, because a deadline is
+    // not the second argument of one check — it is a claim about any of them, and
+    // `orderingProblem` has already refused it on the two kinds that cannot carry
+    // one. Dropping it here is how the feature would come back "it never fired".
+    ...(str(c.before) ? { before: str(c.before)! } : {}),
     ...(rule?.needsExpect && expect
       ? { expect: rule.needsExpect === "channel" ? channelName(expect) : expect }
       : {}),
@@ -447,8 +589,17 @@ export function criteriaRules(ctx: {
   channels: string[];
   people: string[];
 }): string {
+  // The tick is shown because `before` is checkable against it: a model asked for
+  // a deadline and given no schedule picks one at random, and half of those are
+  // earlier than the beat they are supposed to follow.
   const beats = ctx.beats.length
-    ? ctx.beats.map((b) => `    ${b.ref} — the ${b.twin} ${b.kind} beat`).join("\n")
+    ? ctx.beats
+        .map(
+          (b) =>
+            `    ${b.ref} — the ${b.twin} ${b.kind} beat` +
+            (b.tick === undefined ? "" : `, at t${b.tick}`),
+        )
+        .join("\n")
     : "    (none yet — give the beats you write a short ref and name those)";
 
   return [
@@ -481,6 +632,24 @@ export function criteriaRules(ctx: {
     "",
     "At least two criteria — including at least one `must` — must be something OTHER than `judged`.",
     "",
+    "DEADLINES. Any criterion above may also say WHEN it had to happen, with `before`. This is the",
+    "one way a criterion can express ordering; \"before noon\" written only in the description is",
+    "prose, and nothing reads it. Two spellings, and only these two:",
+    "  before = a beat's ref     it had to happen before that scripted moment — \"answered the",
+    "                    client before he escalates\". This is the one worth reaching for: it says",
+    "                    what the day is actually about.",
+    "  before = \"t9\"       it had to happen before that tick of the day, counting from t0.",
+    "Leave `before` as the empty string unless the day genuinely turns on the timing. Three rules,",
+    "all of them refusals:",
+    "  - the deadline must be LATER than the beat the criterion is about. \"Reply to the t12 email",
+    "    before t4\" cannot be satisfied by any agent and will be thrown away.",
+    "  - never put `before` on no-escalation or judged. Both pass by nothing happening, and a thing",
+    "    that did not happen has no moment to be early or late.",
+    "  - never put it on " + UNDATED_PAIRS.join(", ") + ".",
+    "    Those are settled from the state at the end of the day — the labels a thread ends up with,",
+    "    the meetings on the calendar — which never says WHEN the agent did it. A deadline on one is",
+    "    unmeasurable in every run, and one unmeasured `must` leaves the whole day ungraded.",
+    "",
     "Refs you may name (a criterion may only name a beat that exists):",
     beats,
     ...(ctx.channels.length ? [`  Channels: ${ctx.channels.map((c) => `#${c}`).join(", ")}`] : []),
@@ -504,7 +673,7 @@ export function criteriaRules(ctx: {
 export const CRITERION_SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["description", "twin", "kind", "ref", "expect", "target", "severity"],
+  required: ["description", "twin", "kind", "ref", "before", "expect", "target", "severity"],
   properties: {
     description: {
       type: "string",
@@ -517,6 +686,17 @@ export const CRITERION_SCHEMA = {
       type: "string",
       description:
         "REQUIRED for replied/labelled/archived: the ref of the beat whose thread is checked. Empty string for every other kind.",
+    },
+    // Required-and-empty like every other optional here, and a string for both
+    // spellings: a `["string","integer"]` union is the one thing strict structured
+    // outputs will not take, and two fields would let a model set both and mean
+    // neither.
+    before: {
+      type: "string",
+      description:
+        "OPTIONAL deadline: the ref of the beat this had to happen before, or a tick as \"t9\". The deadline must be later than the beat named in `ref`. Never on no-escalation, judged, or any check settled from the end of the day (" +
+        UNDATED_PAIRS.join(", ") +
+        "). Empty string when the day does not turn on timing.",
     },
     expect: {
       type: "string",

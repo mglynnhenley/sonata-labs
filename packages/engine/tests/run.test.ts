@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { AgentStep, DirectorEvent, TickRecord } from "@sonata/core";
+import { autonomy } from "@sonata/judge/autonomy";
 import {
   adaptersForSpec,
   didSomething,
@@ -9,7 +10,8 @@ import {
   type RunOptions,
 } from "../src/run";
 import type { Agent, AgentContext } from "../src/agent";
-import type { Director } from "../src/director";
+import { createDirector, type Director } from "../src/director";
+import type { CompleteJSONOptions } from "../src/llm";
 import { auditRow, beat, fakeAdapter, spec, type FakeAdapter } from "./fixtures";
 
 // The tick loop. Everything here is about ONE property: the order in which a
@@ -382,6 +384,196 @@ describe("termination", () => {
     expect(didSomething(record([{ kind: "thought", seq: 0, at: 0, text: "hmm" }]))).toBe(false);
     expect(didSomething(record([toolStep(0)]))).toBe(true);
     expect(didSomething(record([{ kind: "escalation", seq: 0, at: 0, text: "help" }]))).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The world reading the agent, end to end
+//
+// Two things the loop has to hand the director that the audit log cannot carry:
+// what the agent WROTE (the log has "Sent \"Re: SLA\"" and no body), and WHICH
+// STEP wrote it (so `becauseSeq` can be set). Both are asserted here through the
+// real director rather than a stub, because both are lost the moment `boundEvents`
+// is bypassed — which is how `becauseSeq` came to be declared, read in four
+// places, and written by nothing.
+// ---------------------------------------------------------------------------
+
+/** A model seam that replies to whatever ref the prompt offered it. */
+function replyingModel() {
+  const prompts: string[] = [];
+  const complete = async <T>(opts: CompleteJSONOptions): Promise<T> => {
+    prompts.push(opts.prompt);
+    const ref = /replyToRef "(act:[^"]+)"/.exec(opts.prompt)?.[1];
+    return {
+      events: ref
+        ? [
+            {
+              personId: "dana",
+              surface: "gmail",
+              kind: "email",
+              reason: "she read the reply",
+              subject: "Re: SLA",
+              to: [],
+              body: "That still does not tell me when.",
+              channel: "",
+              emoji: "",
+              replyToRef: ref,
+              eventRef: "",
+              response: "",
+            },
+          ]
+        : [],
+    } as T;
+  };
+  return { complete, prompts };
+}
+
+describe("the world reads what the agent wrote", () => {
+  /** The agent sending an email: a step in the record, a row in the twin's log. */
+  function sends(gmail: FakeAdapter, seq: number, id: number, body: string): AgentStep {
+    gmail.rows.push(
+      auditRow({ id, twin: "gmail", ts: 5_000, summary: 'Sent "Re: SLA" to dana@acme.test' }),
+    );
+    return {
+      kind: "tool",
+      seq,
+      at: 5_000,
+      twin: "gmail",
+      name: "gmail_send",
+      args: { body },
+      resultSummary: "sent",
+      isMutation: true,
+    };
+  }
+
+  /** Acts on ticks 0 and 2, so the world has something to answer and time to answer it. */
+  function replyingAgent(gmail: FakeAdapter): Agent {
+    return {
+      act: (c: AgentContext) => {
+        if (c.tick === 0) return Promise.resolve([sends(gmail, 0, 1, "The £40k credit is approved.")]);
+        if (c.tick === 2) return Promise.resolve([sends(gmail, 1, 2, "Thursday 2pm is booked.")]);
+        return Promise.resolve([]);
+      },
+      wrapUp: () => Promise.resolve("done"),
+    };
+  }
+
+  async function day() {
+    const gmail = fakeAdapter("gmail");
+    const model = replyingModel();
+    // The client's opening email, so the day has a gmail twin in it and a reason
+    // for the agent to write at all.
+    const s = spec({ beats: [beat({ id: "opener", tick: 0, ref: "opener" })] });
+    let clock = 1_000;
+    const result = await runEpisode({
+      spec: s,
+      adapters: [gmail],
+      agent: replyingAgent(gmail),
+      director: createDirector({ spec: s, complete: model.complete }),
+      model: "test/model",
+      runId: "run-prose",
+      now: () => (clock += 10),
+    });
+    return { result, prompts: model.prompts };
+  }
+
+  it("shows the director the body of the email, not just its subject line", async () => {
+    const { prompts } = await day();
+    // Tick 0 is the opening beat; tick 1 is the first one that has seen the agent.
+    expect(prompts[0]).not.toContain("it wrote:");
+    expect(prompts[1]).toContain('Sent "Re: SLA" to dana@acme.test');
+    expect(prompts[1]).toContain("it wrote: “The £40k credit is approved.”");
+  });
+
+  it("sets becauseSeq to the step the world was answering", async () => {
+    const { result } = await day();
+    // The agent sent at tick 0 (step seq 0); the world answers at tick 1.
+    const answer = result.run.ticks[1].directorEvents[0];
+    expect(answer.personId).toBe("dana");
+    expect(answer.becauseSeq).toBe(0);
+    // And at tick 3 it answers the SECOND email, which is a different step.
+    expect(result.run.ticks[3].directorEvents[0].becauseSeq).toBe(1);
+  });
+
+  // The number that has been silently zero on every real run. It only stays fixed
+  // if something asserts it, so this asserts the judge's arithmetic and not the
+  // engine's field: `exchanges` is 0 for any run where nothing writes `becauseSeq`.
+  it("makes the autonomy score's exchanges non-zero, which it never was", async () => {
+    const { result } = await day();
+    const stats = autonomy([], result.run.ticks).stats;
+    expect(stats.exchanges).toBeGreaterThan(0);
+    // Tick 1's exchange, carried because the agent acted again at tick 2. Tick 3's
+    // is excluded on purpose — it is the last tick, so the agent was never given
+    // one in which to answer.
+    expect(stats.exchanges).toBe(1);
+    expect(stats.exchangesCarried).toBe(1);
+  });
+
+  it("quotes nothing for a tick the agent was silent in, and does not call it absent", async () => {
+    const { prompts } = await day();
+    // Tick 2's call: the agent did nothing in tick 1, so there is no delta, no ref
+    // to answer and nothing to quote. The quiet line still has to point at the
+    // morning rather than say the assistant has done nothing.
+    expect(prompts[2]).not.toContain("it wrote:");
+    expect(prompts[2]).toContain("nothing since the last tick");
+  });
+
+  it("keeps each twin's body on its own row when their audit ids collide", async () => {
+    // Every twin numbers its own `action_log` from 1, so the first interval in
+    // which the agent both emails and posts to Slack yields gmail row 1 AND slack
+    // row 1. If the two are indexed by the number alone, the client is shown the
+    // Slack one-liner as the body of the email it is waiting on and escalates
+    // about a figure it has already been given — this change's own bug, rebuilt.
+    const gmail = fakeAdapter("gmail");
+    const slack = fakeAdapter("slack");
+    const model = replyingModel();
+    const s = spec({
+      beats: [
+        beat({ id: "opener", tick: 0, ref: "opener" }),
+        beat({
+          id: "standup",
+          tick: 0,
+          twin: "slack",
+          kind: "message",
+          payload: { channel: "ops", from: "sam", text: "morning" },
+        }),
+      ],
+    });
+    const agent: Agent = {
+      act: (c: AgentContext) => {
+        if (c.tick !== 0) return Promise.resolve([]);
+        const email = sends(gmail, 0, 1, "The £40k credit is approved.");
+        slack.rows.push(auditRow({ id: 1, twin: "slack", ts: 5_000, summary: "Posted in #ops" }));
+        const post: AgentStep = {
+          kind: "tool",
+          seq: 1,
+          at: 5_000,
+          twin: "slack",
+          name: "slack_post",
+          args: { text: "looking into it" },
+          resultSummary: "posted",
+          isMutation: true,
+        };
+        return Promise.resolve([email, post]);
+      },
+      wrapUp: () => Promise.resolve("done"),
+    };
+    let clock = 1_000;
+    const result = await runEpisode({
+      spec: s,
+      adapters: [gmail, slack],
+      agent,
+      director: createDirector({ spec: s, complete: model.complete }),
+      model: "test/model",
+      runId: "run-collide",
+      now: () => (clock += 10),
+    });
+    expect(result.run.status).toBe("done");
+
+    const lines = model.prompts[1].split("\n");
+    const under = (summary: string) => lines[lines.findIndex((l) => l.includes(summary)) + 1];
+    expect(under('Sent "Re: SLA"')).toContain("The £40k credit is approved.");
+    expect(under("Posted in #ops")).toContain("looking into it");
   });
 });
 

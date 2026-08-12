@@ -1,6 +1,7 @@
 import {
   episodeTwins,
   plannedTicks,
+  type AgentStep,
   type AgentTrace,
   type BeatFired,
   type ByTwin,
@@ -14,6 +15,7 @@ import {
   type TwinName,
   type TwinSnapshot,
 } from "@sonata/core";
+import { writtenFromTicks } from "@sonata/judge/checklist";
 import { createClock, type SimClock } from "./clock";
 import {
   createRefRegistry,
@@ -24,9 +26,9 @@ import {
   unreachableBeats,
   type RefRegistry,
 } from "./beats";
-import { auditRefName, createDirector, type Director } from "./director";
+import { auditRefName, createDirector, type DeltaDetail, type Director } from "./director";
 import { recentHistory, tickDigest } from "./timeline";
-import { attributeActions, newTrace, traceCost, withTrace } from "./trace";
+import { attributeActions, newTrace, pairRowsToSteps, traceCost, withTrace } from "./trace";
 import { errorMessage } from "./http";
 import { byTwin } from "./adapters";
 import type { Agent, AgentContext } from "./agent";
@@ -37,7 +39,8 @@ import type { Agent, AgentContext } from "./agent";
 //
 //   1. BEATS. What the day was always going to do, fired from the script.
 //   2. DIRECTOR. What the world does back, having seen what the agent did in the
-//      PREVIOUS tick (read out of each twin's audit log) and this tick's beats.
+//      PREVIOUS tick (read out of each twin's audit log), the prose it wrote in
+//      doing it (`detailFor`, since the log carries none), and this tick's beats.
 //   3. AGENT. Which then sees the results of both, and only ever as a digest.
 //
 // The order is what makes a run mean anything. If the agent went first it would
@@ -188,6 +191,45 @@ async function readDeltas(deps: TickDeps, cursors: Map<TwinName, number>): Promi
   return rows.sort((a, b) => a.id - b.id);
 }
 
+/**
+ * What one of the agent's steps actually wrote, through the judge's own extractor.
+ *
+ * `writtenFromTicks` already answers "which tool arguments hold prose the agent
+ * authored" — its comment is the reason it exists: "the tool arguments are the
+ * only place a sent email's body survives" — and the judge scores `mentions`
+ * criteria off exactly that answer. A second copy of the field list here would
+ * drift the first time a tool grew a field, and the world and the scorer would
+ * then disagree about what the agent said. So the step is handed to the existing
+ * function as a one-step tick rather than re-derived.
+ */
+function proseOf(step: AgentStep, tick: TickRecord): string {
+  const [written] = writtenFromTicks([{ ...tick, agentSteps: [step] }]);
+  return written?.text ?? "";
+}
+
+/**
+ * What the harness knows about this tick's deltas beyond the audit rows: which
+ * agent step wrote each one, and what that step said.
+ *
+ * The deltas read at the top of tick N are the rows the agent's tools wrote
+ * during tick N-1 — beats and director events go in through the twins' unaudited
+ * sandbox routes precisely so that stays true — so the previous tick's record
+ * holds the steps that produced them, and `pairRowsToSteps` says which is which.
+ *
+ * Keyed by `pairRowsToSteps`'s own twin-qualified key and never re-keyed: a tick
+ * in which the agent both emails and posts to Slack holds gmail row 1 and slack
+ * row 1 at once.
+ */
+function detailFor(prev: TickRecord | undefined, deltas: TwinAuditRow[]): Map<string, DeltaDetail> {
+  const detail = new Map<string, DeltaDetail>();
+  if (!prev) return detail;
+  for (const [key, step] of pairRowsToSteps(prev.agentSteps, deltas)) {
+    const prose = proseOf(step, prev);
+    detail.set(key, { seq: step.seq, ...(prose ? { prose } : {}) });
+  }
+  return detail;
+}
+
 export async function runTick(deps: TickDeps, input: TickInput): Promise<TickRecord> {
   const { tick } = input;
   const startedAt = deps.now();
@@ -219,6 +261,7 @@ export async function runTick(deps: TickDeps, input: TickInput): Promise<TickRec
     simTimeLabel: deps.clock.labelAt(tick),
     history: recentHistory(input.ticks, deps.historyLimit),
     deltas,
+    deltaDetail: detailFor(input.ticks[input.ticks.length - 1], deltas),
     beatsThisTick: beatsFired,
     upcoming: upcomingLines(deps, tick),
   });

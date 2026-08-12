@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@sonata/core": "*",
+    "@sonata/judge": "*",
     "openai": "^7.1.0"
   },
   "devDependencies": {

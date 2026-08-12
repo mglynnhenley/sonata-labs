@@ -26,9 +26,9 @@ import {
   summarizeBody,
   type RefRegistry,
 } from "./beats";
-import { auditRefName, createDirector, type Director } from "./director";
+import { auditRefName, createDirector, type DeltaDetail, type Director } from "./director";
 import { recentHistory, runTimeline } from "./timeline";
-import { newTrace, withTrace } from "./trace";
+import { auditKey, newTrace, withTrace } from "./trace";
 import { adaptersForSpec, didSomething, specWarnings, type RunResult } from "./run";
 import { errorMessage } from "./http";
 
@@ -55,7 +55,9 @@ import { errorMessage } from "./http";
 //   - THE DIRECTOR. The same `Director`, fed the same `deltas` — each twin's
 //     audit rows since the last tick. It never knew who wrote those rows; an
 //     external agent's mutations land in exactly the same audit log, through the
-//     same routes, so the world answers it with no change whatsoever.
+//     same routes, so the world answers it with no change whatsoever. The one
+//     thing it is fed LESS of is the agent's prose, which does not exist here:
+//     the world reacts to metadata alone. See the tool-arguments caveat below.
 //   - THE ARTIFACT. A session finishes as an `EpisodeRun` with `TickRecord[]`,
 //     which is what @sonata/judge already consumes. It is scored by the same
 //     checklist, the same autonomy arithmetic and the same episode judge.
@@ -73,7 +75,9 @@ import { errorMessage } from "./http";
 //   - Its tool arguments. The normalized `TwinAuditRow` carries a summary, not the
 //     request body, so the prose the agent wrote is not recoverable from a session.
 //     `writtenFromTicks` therefore comes back empty and `mentions` criteria read as
-//     unverifiable — undercrediting, which is the safe direction.
+//     unverifiable — undercrediting, which is the safe direction. It also means the
+//     DIRECTOR is shown less here than in a scored episode, where it reads what the
+//     agent actually wrote: a session's world judges a reply by its subject line.
 //   - Its escalations, unless the harness in front of it reports them. See
 //     `Session.escalate`.
 
@@ -282,6 +286,7 @@ const CAVEATS = [
   "The agent is external, so its reasoning was never observable: this record has no thoughts.",
   "The twins audit mutations only, so what the agent read is not on the record — only what it changed.",
   "Audit rows carry a summary, not a request body, so the prose the agent wrote is not recoverable; `mentions` criteria will read as unverifiable rather than passing.",
+  "The world therefore reacted to metadata alone — subjects, recipients, what changed — and never to what the agent actually wrote. A scored episode's director is shown the reply itself, so a session's people cannot tell a thorough answer from a thin one and may be harsher, or kinder, than the reply deserved.",
   "Escalations appear only if the harness in front of the agent reported them; without that the autonomy score's independence component reads as fully autonomous.",
   "The trace holds the harness's own model calls (the director's) and none of the agent's, so a cost figure from it is the cost of running the world, not of running the agent.",
 ];
@@ -443,6 +448,21 @@ export function createSession(opts: SessionOptions): Session {
 
     const agentSteps: AgentStep[] = stepsFromAudit(deltas, seq);
     seq += agentSteps.length;
+    // Which step wrote which row — an index, not an inference: `stepsFromAudit`
+    // emits exactly one step per row, in order, so a session gets this link for
+    // free where a scored episode has to pair for it.
+    //
+    // `seq` is the only half of `DeltaDetail` fillable here. `prose` stays absent
+    // because it does not exist: the request bodies never reached us, and a
+    // plausible-looking body would put words in the agent's mouth and then let
+    // the world react to them. CAVEATS says so on the record.
+    //
+    // Keyed by `auditKey` and not by `row.id`: the twins number their audit logs
+    // independently, so a tick that saw both an email and a Slack post holds two
+    // different rows with the same id.
+    const deltaDetail = new Map<string, DeltaDetail>(
+      deltas.map((row, i) => [auditKey(row), { seq: agentSteps[i].seq }]),
+    );
     const reportedAt = timer.now();
     while (pendingEscalations.length) {
       const text = pendingEscalations.shift();
@@ -457,15 +477,17 @@ export function createSession(opts: SessionOptions): Session {
       refs,
     });
 
-    // 3. DIRECTOR. Identical inputs to a scored episode's: it is shown the deltas
-    // and this tick's beats, and it has no way of telling — nor any reason to care —
-    // that the deltas came from someone else's agent.
+    // 3. DIRECTOR. The same inputs a scored episode gives it, minus the one a
+    // session cannot have: it is shown the deltas and this tick's beats but not
+    // the prose behind them, and it has no way of telling — nor any reason to
+    // care — that the deltas came from someone else's agent.
     const events = await director.react({
       tick: at,
       simTimeISO,
       simTimeLabel: clock.labelAt(at),
       history: recentHistory(run.ticks, historyLimit),
       deltas,
+      deltaDetail,
       beatsThisTick: beatsFired,
       upcoming: upcomingLines(at),
     });

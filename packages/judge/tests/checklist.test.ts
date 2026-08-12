@@ -399,6 +399,26 @@ describe("evidence belongs to the criterion it is printed under", () => {
     expect(results[1].evidence).not.toContain("replied to Dana");
   });
 
+  it("refuses it just as firmly when the second criterion carries a deadline", () => {
+    // `withDeadline` restates the fact it refines, in this criterion's name. A fact
+    // minted for someone else must not go through that: re-minting it would launder
+    // c1's proof into a pass for c2 and the guard above would never fire again.
+    let stash: ReturnType<FactProvider> | undefined;
+    FACT_PROVIDERS["gmail:replied_in_thread"] = (q) => {
+      stash ??= q.holds("replied to Dana at 10:02", 2);
+      return stash;
+    };
+
+    const { results } = runChecklist(
+      working({
+        criteria: [criterion({ id: "c1" }), criterion({ id: "c2", before: "t9" })],
+      }),
+    );
+    expect(results[1].status).toBe("notApplicable");
+    expect(results[1].evidence).toContain('gathered for criterion "c1"');
+    expect(results[1].evidence).not.toContain("replied to Dana");
+  });
+
   it("will not settle a narrower no-escalation claim on the general one", () => {
     // The run records what was said, not who it went to. "Never escalated to Dana"
     // is a different proposition from "never escalated", and when the day contains
@@ -747,6 +767,183 @@ describe("a criterion whose subject never arrived", () => {
       working({ criteria: [criterion({ id: "c1" })], truncation: whole }),
     );
     expect(isHarnessDefect(results[0])).toBe(false);
+  });
+
+  it("dates a deadline on a beat that never fired from the schedule it was fixed to", () => {
+    // "Answer Arun before Priya's t12 forward." The run stopped at t11, so that
+    // beat never landed — but the beat SCHEDULE is fixed across runs by design, so
+    // t12 is the deadline whether it fired or not. An agent that replied at t2 beat
+    // it, and calling that undecidable would be the harness losing its nerve over
+    // the one case where the answer is obvious.
+    const { results } = runChecklist(
+      day({
+        criteria: [criterion({ id: "c1", ref: "arun_refund", before: "priya_update" })],
+        refs: { arun_refund: { twin: "gmail", id: "M1", containerId: "T1", tick: 1 } },
+        audit: [auditRow({ targetId: "T1" })],
+        tickOf: () => 2,
+      }),
+    );
+    expect(results[0].status).toBe("passed");
+    expect(results[0].evidence).toContain("scheduled for t12");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ORDERING. `Criterion.before` is the only field that compares two moments. Every
+// ingredient was already here — a `Fact` may carry the tick that settled it, and
+// every beat lands on a tick — and nothing ever put two of them side by side, so
+// "the client got an answer before noon" could only ever be checked as "got an
+// answer". These tests hold the line at the three answers ordering may give:
+// earlier, later, and — the one that matters — "we did not measure when".
+// ---------------------------------------------------------------------------
+
+describe("a criterion that says when", () => {
+  /** The escalation thread, and a later beat to be early or late against. */
+  const REFS = {
+    escalation: { twin: "gmail" as const, id: "M1", containerId: "T1", tick: 0 },
+    followup: { twin: "gmail" as const, id: "M2", containerId: "T2", tick: 6 },
+  };
+
+  /** A reply that landed, on the audit row, at whichever tick `at` says. */
+  function replied(at: number, over: Partial<ChecklistInput> = {}): ChecklistInput {
+    return working({ refs: REFS, audit: [auditRow()], tickOf: () => at, ...over });
+  }
+
+  it("passes a reply that beat the beat it had to precede", () => {
+    const { results } = runChecklist(
+      replied(2, { criteria: [criterion({ before: "followup" })] }),
+    );
+    expect(results[0].status).toBe("passed");
+    expect(results[0].evidence).toContain("at t2, before beat \"followup\", at t6");
+    expect(results[0].tick).toBe(2);
+  });
+
+  it("passes a reply that beat an absolute tick", () => {
+    const { results } = runChecklist(replied(2, { criteria: [criterion({ before: "t5" })] }));
+    expect(results[0].status).toBe("passed");
+    expect(results[0].evidence).toContain("before t5");
+  });
+
+  it("fails a reply that landed too late, and says both times", () => {
+    const { results } = runChecklist(replied(9, { criteria: [criterion({ before: "followup" })] }));
+    expect(results[0].status).toBe("failed");
+    expect(results[0].evidence).toContain("too late");
+    expect(results[0].evidence).toContain("not until t9");
+    expect(results[0].evidence).toContain("t6");
+    // The failure still quotes what the agent DID, because "late" is only legible
+    // next to the thing that was late.
+    expect(results[0].evidence).toContain("replied to Dana Reyes on T1");
+    expect(results[0].tick).toBe(9);
+  });
+
+  it("counts the deadline's own tick as too late", () => {
+    // Within a tick the engine fires the beats, then the director, then the agent,
+    // so an action recorded on t6 happened after the t6 beat did.
+    const { results } = runChecklist(replied(6, { criteria: [criterion({ before: "followup" })] }));
+    expect(results[0].status).toBe("failed");
+  });
+
+  it("says it did not measure WHEN, rather than guessing, when the fact carries no tick", () => {
+    // The message-count route: a real, sent reply that no audit row dated. The
+    // criterion is settled on what happened and silent on when, so the ordering
+    // half is unmeasured — not passed, and above all not failed.
+    const after = gmailSnapshot();
+    after.threads[0].count = 2;
+    const { results } = runChecklist(
+      working({
+        criteria: [criterion({ before: "followup" })],
+        refs: REFS,
+        snapshots: { gmail: { before: gmailSnapshot(), after } },
+        audit: [auditRow({ actionType: "unrecognised_verb" })],
+      }),
+    );
+    expect(results[0].status).toBe("notApplicable");
+    expect(results[0].evidence).toContain("records no tick");
+    expect(results[0].evidence).toContain("grew from 1 to 2");
+    // NOT marked as ours-in-the-"never-shown"-sense: the moment did reach the
+    // agent and the agent acted on it. What is missing is our clock reading.
+    expect(isHarnessDefect(results[0])).toBe(false);
+    // Out of the score either way, which is the half that must never slip.
+    expect(scoreChecklist(results)).toMatchObject({ decided: 0, total: 1 });
+  });
+
+  it("marks a deadline this run cannot locate as ours", () => {
+    const { results } = runChecklist(replied(2, { criteria: [criterion({ before: "nowhere" })] }));
+    expect(results[0].status).toBe("notApplicable");
+    expect(isHarnessDefect(results[0])).toBe(true);
+    expect(results[0].evidence).toContain("nothing here locates the deadline");
+  });
+
+  it("will not date a deadline off a beat whose tick nobody recorded", () => {
+    const { results } = runChecklist(
+      replied(2, {
+        criteria: [criterion({ before: "followup" })],
+        refs: { ...REFS, followup: { twin: "gmail", id: "M2", containerId: "T2" } },
+      }),
+    );
+    expect(results[0].status).toBe("notApplicable");
+    expect(results[0].evidence).toContain("not which tick it fired on");
+  });
+
+  // The rule the whole design turns on. "Replied before the escalation" is a
+  // conjunction; an agent that never replied fails the FIRST half, for the first
+  // half's reason. Re-reporting that as a timing failure would put "not until
+  // t14" on a row where nothing happened at all — and this evidence is handed to
+  // the judge verbatim and printed on the results page.
+  it("leaves a check that did not pass exactly as its own checker wrote it", () => {
+    const silent = (before?: string): CriterionResult[] =>
+      runChecklist(working({ criteria: [criterion({ before })], refs: REFS })).results;
+
+    expect(silent()[0].status).toBe("failed");
+    expect(silent()[0].evidence).toContain("no reply landed");
+    // Byte-identical with a deadline attached — a deadline that a pass would have
+    // violated, so nothing here is passing by accident.
+    expect(silent("t0")).toEqual(silent());
+  });
+
+  it("leaves an undecidable check undecidable, rather than re-answering it", () => {
+    const ours = (before?: string): CriterionResult[] =>
+      runChecklist(
+        working({
+          criteria: [criterion({ before, twin: "slack", kind: "posted", expect: "ops" })],
+          refs: REFS,
+        }),
+      ).results;
+    expect(ours()[0].status).toBe("notApplicable");
+    expect(ours("t0")).toEqual(ours());
+  });
+
+  it("changes nothing whatsoever for a criterion that names no deadline", () => {
+    // The purely-additive guard, asserted on the whole row rather than on a field:
+    // no clause appended to the evidence, no field gained, with beat ticks sitting
+    // right there in `refs` for an over-eager refinement to reach for.
+    const { results } = runChecklist(replied(2, { criteria: [criterion()] }));
+    expect(results).toEqual([
+      {
+        id: "c1",
+        description: "the client got an answer",
+        twin: "gmail",
+        kind: "replied",
+        severity: "must",
+        weight: 1,
+        status: "passed",
+        evidence:
+          "replied: [audit 1] POST /gmail/v1/users/me/messages/send thread T1 — " +
+          "replied to Dana Reyes on T1",
+        tick: 2,
+      },
+    ]);
+  });
+
+  it("carries the deadline through a cross-surface criterion", () => {
+    // `any` puts the same question to every surface and hands back the winner's
+    // fact, tick and all — so ordering must work through it without a second
+    // implementation living inside `acrossSurfaces`.
+    const { results } = runChecklist(
+      replied(2, { criteria: [criterion({ twin: "any", before: "t1" })] }),
+    );
+    expect(results[0].status).toBe("failed");
+    expect(results[0].evidence).toContain("too late");
   });
 });
 

@@ -271,11 +271,49 @@ export function asCriterionKind(value: string): CriterionKind | null {
 
 export interface Criterion {
   id: string;
-  /** Written as the outcome, not the action: "the client got an answer before noon". */
+  /**
+   * Written as the outcome, not the action: "the client got an answer before noon".
+   * The "before noon" half is `before` below — prose here is never read by a check,
+   * so until that field existed the example in this very comment was a claim only
+   * half of which the system could settle.
+   */
   description: string;
   /** `any` for criteria that span surfaces, e.g. cross-surface consistency. */
   twin: TwinName | "any";
   kind: CriterionKind;
+  /**
+   * Ordering: the thing this criterion checks must ALSO have happened before a
+   * moment in the day. Two spellings, one field:
+   *
+   *   "escalation"  a beat's `ref` — before that scripted moment fired
+   *   "t12"         an absolute tick — "before noon", on a day that starts at 09:00
+   *
+   * ONE field rather than a `beforeRef`/`beforeTick` pair, because a deadline is
+   * one thing and two fields can contradict each other: an author who sets both
+   * has written a criterion whose meaning depends on which one some checker
+   * happens to read first. A single string cannot disagree with itself. It is
+   * also the only shape the generator's wire schema wants — every property
+   * required, the empty string when unused (see `CRITERION_SCHEMA`).
+   *
+   * Read as a beat ref first, and as `t<n>` only when no beat answers to that
+   * name. A `before` that is BOTH — a beat whose ref is literally "t12" — is
+   * refused at authoring, because a checker only knows the beats that FIRED and
+   * would otherwise read the same word two different ways in two runs of one spec.
+   *
+   * A REFINEMENT and never a replacement: a criterion whose underlying check
+   * failed keeps failing for that reason, with that evidence. Ordering can only
+   * turn a pass into a late failure, or into "we cannot tell when" — see
+   * `runChecklist` in @sonata/judge.
+   *
+   * Only on a check that records WHEN: a reply, a send, a phrase the agent wrote.
+   * A check settled from the state at the END of the day — the labels a thread
+   * ends up with, whether it is out of the inbox, a meeting on the calendar —
+   * records no tick, so a deadline on one comes back unmeasured in every run, and
+   * an unmeasured `must` leaves the whole day ungraded. `bindCriteria` refuses
+   * those pairs by name; a hand-written spec has no such gate and must not write
+   * one.
+   */
+  before?: string;
   /**
    * The beat this is about, by `BeatMeta.ref`. Optional because some criteria are
    * about something the agent should have originated ("told the team"), which no

@@ -7,6 +7,7 @@ import {
   type BeatBody,
   type Clock,
   type Criterion,
+  type DirectorPersona,
   type EpisodeSpec,
   type Person,
   type Termination,
@@ -30,10 +31,28 @@ import { newId } from "./store";
 export interface AuthoredPerson {
   name: string;
   role: string;
-  /** How they stand to the mailbox owner: "manager", "peer", "client", "vendor". */
+  /**
+   * How they stand to the mailbox owner. One of `RELATIONSHIPS`, which is a
+   * closed vocabulary because `surfacesFor` decides containment by reading it.
+   */
   relationship: string;
-  /** Style notes: sentence length, greeting, quirks, mood. */
+  /** Style notes: sentence length, greeting, quirks, mood. HOW THEY TYPE. */
   voice: string;
+  /**
+   * HOW THEY BEHAVE: what they want, what they will accept, what they will never
+   * do. Becomes `DirectorPersona.brief`, which the director renders as that
+   * person's standing instruction.
+   *
+   * Optional, and every field below it is, because both producers must survive
+   * without one: the shipped templates predate these fields, and a model that
+   * omits them still has to yield a runnable day. `personaFor` falls back rather
+   * than dropping the person.
+   */
+  brief?: string;
+  /** 0..1 — how likely they are to answer when addressed. Clamped in `personaFor`. */
+  responsiveness?: number;
+  /** Ticks between being addressed and answering. Clamped in `personaFor`. */
+  replyDelayTicks?: number;
 }
 
 export interface AuthoredChannel {
@@ -155,6 +174,14 @@ export interface AuthoredScenario {
   owner: string;
   cast: AuthoredPerson[];
   channels: AuthoredChannel[];
+  /**
+   * Facts nobody in this company may volunteer and moves nobody may make — the
+   * things that would hand the agent the answer. ADDED to `ALWAYS_OFF_LIMITS`,
+   * never in place of it; see that constant for why.
+   */
+  offLimits?: string[];
+  /** The register everyone writes in. Falls back to `DEFAULT_STYLE` when absent. */
+  style?: string;
   episode: AuthoredEpisode;
 }
 
@@ -186,7 +213,12 @@ function toPerson(authored: AuthoredPerson, domain: string): Person {
     email: `${local}@${domain}`,
     slackUserId: `U${id.replace(/-/g, "").toUpperCase().slice(0, 10)}`,
     role: authored.role,
-    relationship: authored.relationship,
+    // Folded to the vocabulary here and nowhere else, so `Person.relationship`
+    // is the one reading of the word: the persona's surfaces, the seeder's
+    // prompt and the preview all take it from this field, and a "Client" that
+    // stayed capitalised would have to be re-normalised by every one of them —
+    // which is the shape the containment bug had in the first place.
+    relationship: authoredText(authored.relationship)?.toLowerCase() ?? "",
     voice: authored.voice,
   };
 }
@@ -251,6 +283,182 @@ function guardsFor(clock: Clock): Termination {
     maxCostUsd: Math.max(MIN_COST_USD, Number((clock.ticks * USD_PER_TICK).toFixed(2))),
   };
 }
+
+// ---------------------------------------------------------------------------
+// The director's cast — who these people are, and what the engine may be told.
+//
+// The split is the same one the file header sets out. Prose is the author's:
+// a brief — what someone wants, what they will accept, what they will never do —
+// is the only thing that makes two generated people different people, and it
+// cannot be derived from a relationship. Every generated persona used to BE
+// three if-statements on `relationship` with no brief at all, which is why six
+// people out of the same company read as one person in six fonts.
+//
+// Structure stays code's, and there are two halves to that here:
+//
+//   - NUMBERS ARE VALIDATED. `responsiveness` and `replyDelayTicks` are printed
+//     into the director's prompt and used to schedule replies, so an authored
+//     1.4 or -3 would reach the engine exactly as the model wrote it. Authored
+//     values are clamped into the range the field means; anything unusable falls
+//     back to the derivation rather than costing the day a character.
+//   - `surfaces` IS NOT AUTHORABLE AT ALL. It is the one persona field that is a
+//     containment rule rather than a characterisation: a client lives outside
+//     the company and must never appear in Slack. The moment a model can write
+//     that field, a model can put one there — and who-knows-what stops being
+//     structural and goes back to being a bullet point we hope it reads.
+//
+//     Which is why `relationship` is a closed vocabulary and not free text: the
+//     rule is only as structural as the word it reads. Unauthorable `surfaces`
+//     plus an authorable "Client" is the same leak by a longer route, and that
+//     was the actual state of it — see `RELATIONSHIPS`.
+// ---------------------------------------------------------------------------
+
+/**
+ * How a cast member may stand to the mailbox owner, and the whole vocabulary.
+ *
+ * Closed and exported because draft.ts builds the model's enum from this list.
+ * `surfaces` is only a containment rule for as long as the word it reads is one
+ * this file has decided about: it used to be a free-text field with the six
+ * values in a `description`, so `"Client"` — one capital, the shape a model
+ * writes when it is echoing a role — matched neither arm of the ternary, and the
+ * outsider it named was handed Slack. `twin` and `kind` are pinned this way in
+ * the same schema for the same reason.
+ */
+export const RELATIONSHIPS = [
+  "self",
+  "manager",
+  "peer",
+  "report",
+  "client",
+  "vendor",
+  "candidate",
+] as const;
+
+/**
+ * The ones who are not in the company, and so answer on email and nowhere else.
+ *
+ * `candidate` belongs here and was missing: an interviewee with a competing
+ * offer is as outside the company as a client, and the shipped
+ * candidate-scheduling day put her in #hiring — where the debrief, the other
+ * candidate and the loop's own scheduling live. The hand-written
+ * packages/scenarios version of that day has always had the candidate on
+ * ["gmail"], and this is the derivation being held to it.
+ *
+ * A word outside `RELATIONSHIPS` is treated as internal, which is the deliberate
+ * side to fail on: an unrecognised word that meant "colleague" would otherwise
+ * empty the whole company out of Slack and the day's cross-surface difficulty
+ * with it, which is silent and total, where the other way round is one person
+ * and visible in the transcript. The enum is what keeps that case rare.
+ */
+const EXTERNAL_RELATIONSHIPS: ReadonlySet<string> = new Set(["client", "vendor", "candidate"]);
+
+/** Where someone answers, from where they stand to the company. Never authored. */
+function surfacesFor(relationship: string): TwinName[] {
+  return EXTERNAL_RELATIONSHIPS.has(relationship)
+    ? (["gmail"] as TwinName[])
+    : (["gmail", "slack"] as TwinName[]);
+}
+
+/**
+ * An authored number, or undefined when the model did not actually give one.
+ *
+ * `Number("")` is 0, and "" is this file's marker for a field left blank — so the
+ * naive read turns "the model said nothing" into "responsiveness 0", a cast
+ * member who never speaks and cannot be told apart from one the model forgot.
+ * A numeral arriving as a string is accepted, because that is the other thing
+ * models do to a `number` field.
+ */
+function authoredNumber(value: unknown): number | undefined {
+  if (typeof value === "number") return Number.isFinite(value) ? value : undefined;
+  if (typeof value === "string" && value.trim() !== "") {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+  return undefined;
+}
+
+/**
+ * An authored string, or undefined when the model did not actually write one.
+ *
+ * The sibling of `authoredNumber`, and it exists for the harder half of the same
+ * reason. The schema is sent with `strict: false` and llm.ts falls back to
+ * asking for the JSON in prose when a provider cannot do structured outputs —
+ * "the assembler validates instead" is that file's own note — so a field typed
+ * `string` arrives as whatever the model felt like: a number, a list, an object.
+ * `.trim()` on one of those threw a TypeError out of the whole assembly, and
+ * `draftScenario` caught it and handed the user a template with "line.trim is
+ * not a function" where the reason should be. One mistyped off-limits line cost
+ * a whole good day — the cast, the beats and the criteria were all fine.
+ */
+function authoredText(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed === "" ? undefined : trimmed;
+}
+
+/**
+ * The longest an authored delay may be. Four ticks is an hour of simulated time;
+ * beyond that a persona in a short day never gets to answer at all, which reads
+ * on the transcript as a character the world forgot to write.
+ */
+const MAX_REPLY_DELAY_TICKS = 4;
+
+/** Two of the old three if-statements, kept exactly — they are now the fallback, not the rule. */
+function derivedResponsiveness(relationship: string): number {
+  return relationship === "client" ? 0.7 : 0.85;
+}
+function derivedReplyDelay(relationship: string): number {
+  return relationship === "client" ? 2 : 1;
+}
+
+/**
+ * One cast member's persona: authored where the author spoke, derived where they
+ * did not.
+ *
+ * Takes the assembled `Person` rather than a bare id so the three derivations
+ * below read the same normalised `relationship` the rest of the world does —
+ * `toPerson` folds it once, and nothing here gets to fold it differently.
+ */
+function personaFor(authored: AuthoredPerson, person: Person): DirectorPersona {
+  const responsiveness = authoredNumber(authored.responsiveness);
+  const delay = authoredNumber(authored.replyDelayTicks);
+  const brief = authoredText(authored.brief);
+  const relationship = person.relationship;
+  return {
+    personId: person.id,
+    responsiveness:
+      responsiveness === undefined
+        ? derivedResponsiveness(relationship)
+        : Math.min(1, Math.max(0, responsiveness)),
+    replyDelayTicks:
+      delay === undefined
+        ? derivedReplyDelay(relationship)
+        : Math.min(MAX_REPLY_DELAY_TICKS, Math.max(0, Math.round(delay))),
+    surfaces: surfacesFor(relationship),
+    // Omitted rather than blank: the director prints the standing-instruction
+    // line only when there is one, and an empty one reads to a model as an
+    // instruction it failed to receive.
+    ...(brief ? { brief } : {}),
+  };
+}
+
+/**
+ * Prohibitions that hold for every generated day, whatever else was authored.
+ *
+ * Not generic filler to be replaced — they are the two rules that keep the
+ * benchmark measuring the agent instead of the world's helpfulness. A model
+ * asked to write off-limits for a logistics firm writes about the logistics
+ * firm; it does not think to restate "do not do the agent's job for it", and a
+ * world that coaches is a world that scores itself. Authored lines are added to
+ * these, and the specific ones are where the day's real secrets live.
+ */
+const ALWAYS_OFF_LIMITS: readonly string[] = [
+  "Never tell the agent what to do next, or name the action it should take.",
+  "Never volunteer a fact it has not asked for.",
+];
+
+/** The register when nobody authored one. */
+const DEFAULT_STYLE = "Short, busy, specific. Write like someone with six other things open.";
 
 // ---------------------------------------------------------------------------
 // Assembly
@@ -391,11 +599,25 @@ export function plannedCounts(seed: WorldSeed, beats: Beat[]): WorldCounts {
   };
 }
 
-/** The beats a criterion is allowed to point at: the ones that survived assembly. */
-function bindableBeats(beats: Beat[]): BindableBeat[] {
+/**
+ * The beats a criterion is allowed to point at: the ones that survived assembly.
+ *
+ * Exported because `repairCriteria` in draft.ts needs the same list to build the
+ * prompt it re-asks with, and it used to build its own copy. They have to agree:
+ * one produces the refs and ticks the model is TOLD it may name, the other is the
+ * gate that throws away what it names. A field on one copy and not the other — as
+ * `tick` was — shows up as a model inventing deadlines with no schedule in front
+ * of it and `bindCriteria` rejecting them, which reads like a bad model rather
+ * than two lists that disagree.
+ *
+ * `tick` matters and is not decoration: it is the only thing that lets
+ * `bindCriteria` catch a deadline EARLIER than the beat the criterion is about —
+ * "reply to the t12 email before t4" — which no agent could ever satisfy.
+ */
+export function bindableBeats(beats: Beat[]): BindableBeat[] {
   return beats
     .filter((b): b is Beat & { ref: string } => Boolean(b.ref))
-    .map((b) => ({ ref: b.ref, twin: b.twin, kind: b.kind }));
+    .map((b) => ({ ref: b.ref, twin: b.twin, kind: b.kind, tick: b.tick }));
 }
 
 export interface AssembledScenario {
@@ -435,7 +657,12 @@ export function assembleScenario(
   options: AssembleOptions,
 ): AssembledScenario {
   const domain = emailDomain(authored.business.name);
-  const cast = authored.cast.map((p) => toPerson(p, domain));
+  // Paired rather than zipped by index further down: a persona needs `brief`,
+  // `responsiveness` and `replyDelayTicks`, which live on the authored person and
+  // not on `Person`, and holding the two together here is what stops a filter on
+  // one list silently misaligning the other.
+  const castMembers = authored.cast.map((p) => ({ authored: p, person: toPerson(p, domain) }));
+  const cast = castMembers.map((m) => m.person);
   const byName = new Map(cast.map((p) => [p.name.trim().toLowerCase(), p]));
   const owner = byName.get(authored.owner.trim().toLowerCase()) ?? cast[0];
   if (!owner) throw new Error("a world needs at least one person in its cast");
@@ -493,6 +720,19 @@ export function assembleScenario(
     });
   }
 
+  // Blank lines dropped, and anything word-for-word identical to a standing
+  // prohibition dropped with them: the director renders these as a bulleted list,
+  // and the same sentence twice reads as emphasis on the wrong rule.
+  //
+  // Anything that is not a line of prose is dropped the same way rather than
+  // thrown over — a model answering a list-of-rules field with
+  // `[{"rule": "..."}]`, or with one newline-separated string, is the single most
+  // ordinary way for this field to come back wrong, and it must cost that field
+  // and not the day. See `authoredText`.
+  const authoredOffLimits = (Array.isArray(authored.offLimits) ? authored.offLimits : [])
+    .map(authoredText)
+    .filter((line): line is string => line !== undefined && !ALWAYS_OFF_LIMITS.includes(line));
+
   // The kind first, because everything after it assumes one that can be routed:
   // `bindCriteria` looks up a rule by `${twin}/${kind}` and the judge looks up a
   // checker the same way, so an unknown kind would fall out of both as an absent
@@ -517,12 +757,21 @@ export function assembleScenario(
   // loss — a claim about this workday that nothing will ever answer.
   const unbound: RejectedCriterion[] = [...vetted.rejected, ...notBound];
 
+  // Field by field, and not a spread, because `id` and `target` are rewritten and
+  // a stray authored key must not reach the saved spec. The cost of that shape is
+  // that a field added to `Criterion` is dropped here silently — it type-checks,
+  // because every one of them is optional — so ANY new field must be added to
+  // this list too. `before` is the standing example: `bindCriteria` validates the
+  // deadline, `normalize` in @sonata/world deliberately keeps it, and then this
+  // projection threw it away, so ordering worked in every test and in none of the
+  // generated scenarios that are the only way it is ever authored.
   const checklist: Criterion[] = bound.map((c, index) => ({
     id: `c${index + 1}`,
     description: c.description,
     twin: c.twin,
     kind: c.kind,
     ...(c.ref ? { ref: c.ref } : {}),
+    ...(c.before ? { before: c.before } : {}),
     ...(c.expect ? { expect: c.expect } : {}),
     ...(c.target ? { target: resolveRef(c.target, byName) ?? c.target } : {}),
     weight: c.weight ?? 1,
@@ -539,23 +788,14 @@ export function assembleScenario(
     beats,
     director: {
       maxEventsPerTick: 2,
-      personas: cast
-        .filter((p) => p.id !== owner.id)
-        .map((p) => ({
-          personId: p.id,
-          responsiveness: p.relationship === "client" ? 0.7 : 0.85,
-          replyDelayTicks: p.relationship === "client" ? 2 : 1,
-          // A client lives outside the company, so they never appear in Slack.
-          surfaces:
-            p.relationship === "client" || p.relationship === "vendor"
-              ? (["gmail"] as TwinName[])
-              : (["gmail", "slack"] as TwinName[]),
-        })),
-      offLimits: [
-        "Never tell the agent what to do next, or name the action it should take.",
-        "Never volunteer a fact it has not asked for.",
-      ],
-      style: "Short, busy, specific. Write like someone with six other things open.",
+      // The owner is not a persona: the agent is already writing from that
+      // mailbox, and a director that could answer as them would be answering
+      // itself.
+      personas: castMembers
+        .filter((m) => m.person.id !== owner.id)
+        .map((m) => personaFor(m.authored, m.person)),
+      offLimits: [...ALWAYS_OFF_LIMITS, ...authoredOffLimits],
+      style: authoredText(authored.style) ?? DEFAULT_STYLE,
     },
     success: {
       checklist,
