@@ -3,7 +3,6 @@ import { completeJSON, type CompleteJSON, type Effort } from "./llm";
 import {
   asSchema,
   STORYLINE_SEEDS_SCHEMA,
-  TWIN_SEEDS_SCHEMA,
   WORLD_DRAFT_SCHEMA,
   WORLD_SPINE_SCHEMA,
   type CalendarEventSeed,
@@ -862,63 +861,6 @@ export async function draftWorld(
     schemaName: "world_draft",
     model: opts.model,
     effort: "medium",
-  });
-}
-
-/**
- * The whole company in one pass, on all three surfaces at once.
- *
- * The from-scratch path no longer uses this — see `narrateByStoryline` — but
- * growing a BACKLOG onto a world whose day already exists is a different job:
- * the cast, the channels and the plot are all fixed by the day, so there is no
- * spine to agree on and nothing to write in parallel. One call, one story.
- */
-export async function narrateSurfaces(
-  description: string,
-  draft: WorldDraft,
-  cast: Person[],
-  ownerId: string,
-  opts: GenerateOptions = {},
-): Promise<TwinSeeds> {
-  const complete = opts.complete ?? completeJSON;
-  const owner = cast.find((p) => p.id === ownerId) ?? cast[0];
-  return complete<TwinSeeds>({
-    system: SYSTEM,
-    prompt:
-      `COMPANY: ${draft.business.name} — ${draft.business.industry}, ${draft.business.size} people.\n` +
-      `${draft.business.description}\n\n` +
-      `THE BRIEF THIS GREW FROM: ${description}\n\n` +
-      `ROSTER (refer to people ONLY by these ids):\n${rosterBlock(cast, ownerId)}\n\n` +
-      `You are writing the last few days of this company as they appear in three places at once: ` +
-      `${owner.name}'s inbox, the company Slack, and ${owner.name}'s calendar. This is one story, ` +
-      `not three. The thread that is worrying people in email is the thread #channel is arguing ` +
-      `about; the meeting on the calendar is the meeting someone proposed in that thread; a ` +
-      `decision made in Slack shows up in an email an hour later. Someone should contradict ` +
-      `themselves across two surfaces, because people do.\n\n` +
-      `GMAIL — 5 to 8 threads. Most 2 to 4 messages, at least one long and messy. Real subjects, ` +
-      `real quoting habits, real ambiguity. Some are unread; some are already handled; at least ` +
-      `one needs an answer today and nobody has given one.\n\n` +
-      (opts.channels?.length
-        ? `SLACK — write in exactly these channels and invent no others: ` +
-          `${opts.channels.map((c) => `#${c}`).join(", ")}. Short lines, lowercase, ` +
-          `half-sentences, the odd :emoji:. Use threads where a conversation actually forked. ` +
-          `Not everyone speaks in every channel.\n\n`
-        : `SLACK — 3 to 5 channels. Short lines, lowercase, half-sentences, the odd :emoji:. Use ` +
-          `threads where a conversation actually forked. Not everyone speaks in every channel.\n\n`) +
-      `CALENDAR — ${owner.name}'s own calendar plus any shared one that matters. 6 to 12 events ` +
-      `spread from about two days ago to two days ahead: standing meetings with a recurrence rule, ` +
-      `one-off meetings the emails reference, and at least one clash worth noticing.\n\n` +
-      `TIME: every offset is relative to right now. Gmail and Slack use minutesAgo (bigger = ` +
-      `older, never negative). The calendar uses startOffsetMin, negative for meetings that ` +
-      `already happened. Keep offsets consistent with what people say: nobody may write "as we ` +
-      `agreed this morning" about something that happens tomorrow.\n\n` +
-      `Do not invent ids, email addresses, Slack handles or timestamps. Use the roster ids exactly ` +
-      `as written above; everything else is attached afterwards.`,
-    schema: asSchema(TWIN_SEEDS_SCHEMA),
-    schemaName: "twin_seeds",
-    model: opts.model,
-    effort: opts.effort ?? "high",
-    maxTokens: 32000,
   });
 }
 

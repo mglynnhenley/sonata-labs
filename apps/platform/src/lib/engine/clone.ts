@@ -2,7 +2,7 @@ import type { EpisodeSpec, TwinName, WorldSeed } from "@sonata/core";
 import { TWIN_NAMES, owner } from "@sonata/core";
 import {
   canonicalize,
-  narrateSurfaces,
+  narrateByStoryline,
   resetClient,
   type GeneratedWorld,
   type SlackSeed,
@@ -28,7 +28,7 @@ import { loadClone } from "./preflight";
 // rather than as its own generation: two generators would give the same brief
 // two different companies, and the whole product is that they are one.
 
-/** `narrateSurfaces` reads `business` and the cast; `people` is carried so the
+/** The narrator reads `business` and the cast; `people` is carried so the
  *  draft is a whole WorldDraft rather than a convincing-looking partial. */
 function draftFrom(seed: WorldSeed): WorldDraft {
   const me = owner(seed);
@@ -104,10 +104,28 @@ export async function growBacklog(
 ): Promise<GeneratedWorld> {
   const seed = spec.world;
   const draft = draftFrom(seed);
-  const seeds = await narrateSurfaces(brief, draft, seed.cast, seed.mailboxOwner, {
-    ...(opts.model ? { model: opts.model } : {}),
-    channels: seed.channels.map((c) => c.name),
-  });
+  // By storyline, not in one call. One call had to write every thread, channel
+  // and meeting this company has ever had, and it ran out of room in the tail:
+  // the last channels came back two lines deep, and a single failure lost the
+  // whole company. Each storyline is now written across all three surfaces at
+  // once — its emails, the argument about it and the meeting it proposed — so
+  // the coherence a reader notices survives, and a writer that fails costs one
+  // storyline instead of the backlog.
+  //
+  // `channels` is pinned to the day's own list for the same reason it always
+  // was: a beat posts into "#ops" by name, and a spine that invented
+  // "#operations" would leave every one of those beats with nowhere to land.
+  const { seeds, warnings, ambient } = await narrateByStoryline(
+    brief,
+    draft,
+    seed.cast,
+    seed.mailboxOwner,
+    {
+      ...(opts.model ? { model: opts.model } : {}),
+      ...(opts.say ? { say: opts.say } : {}),
+      channels: seed.channels.map((c) => c.name),
+    },
+  );
 
   return canonicalize({
     id: spec.id,
@@ -117,6 +135,12 @@ export async function growBacklog(
     gmail: seeds.gmail,
     slack: withEveryChannel(seeds.slack, seed),
     calendar: seeds.calendar,
+    // Carried, not dropped. These are the harness's own gaps — a storyline that
+    // never got written, a fact two writers spelled differently — and this
+    // repo's rule is that what we could not guarantee stays visible rather than
+    // being discovered as a strange company three screens later.
+    ...(warnings.length ? { warnings } : {}),
+    ...(ambient.threads.length || ambient.events.length ? { ambient } : {}),
   });
 }
 

@@ -1,9 +1,8 @@
 // What the model is allowed to write, and nothing more.
 //
 // One schema per generation pass: the company and its people; the spine every
-// writer must agree on; then one storyline at a time across all three surfaces
-// (and `TWIN_SEEDS_SCHEMA`, the whole company in one pass, which the backlog
-// path still uses). Everything mechanical — person ids, email addresses, Slack
+// writer must agree on; then one storyline at a time across all three surfaces.
+// Everything mechanical — person ids, email addresses, Slack
 // user/channel ids, calendar ids, absolute timestamps, threading, channel
 // membership — is absent from all of them, because it is assembled in code (see
 // generate.ts and inject.ts). A model that could set its own addresses would
@@ -202,8 +201,7 @@ export interface CalendarSeed {
   events: CalendarEventSeed[];
 }
 
-/** All three surfaces together: what the merge produces, and what one
- *  whole-company pass produces when a backlog is grown onto an existing world. */
+/** All three surfaces together: what merging the storyline writers produces. */
 export interface TwinSeeds {
   gmail: GmailSeed;
   slack: SlackSeed;
@@ -373,17 +371,6 @@ const CALENDAR_SEED_SCHEMA = {
       items: CALENDAR_ITEM_SCHEMA,
     },
     events: { type: "array", items: CALENDAR_EVENT_ITEM_SCHEMA },
-  },
-} as const;
-
-export const TWIN_SEEDS_SCHEMA = {
-  type: "object",
-  additionalProperties: false,
-  required: ["gmail", "slack", "calendar"],
-  properties: {
-    gmail: GMAIL_SEED_SCHEMA,
-    slack: SLACK_SEED_SCHEMA,
-    calendar: CALENDAR_SEED_SCHEMA,
   },
 } as const;
 
