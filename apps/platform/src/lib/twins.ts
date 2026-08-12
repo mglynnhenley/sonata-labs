@@ -2,7 +2,15 @@ import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, openSync, readFileSync } from "node:fs";
 import { connect } from "node:net";
 import path from "node:path";
-import { TWIN_NAMES, type TwinName } from "@sonata/core";
+import {
+  TWIN_API_PORTS,
+  TWIN_NAMES,
+  TWIN_UI_PORTS,
+  hasUiService,
+  resolveTwinApiUrl,
+  resolveTwinUiUrl,
+  type TwinName,
+} from "@sonata/core";
 import {
   DATA_DIR,
   clearTwinProcess,
@@ -16,11 +24,8 @@ import {
 // it needs answer, so this is the first thing the product has to make obvious —
 // and the one thing a first-time user should never have to open a terminal for.
 
-export const TWIN_PORTS: Record<TwinName, number> = {
-  gmail: 3101,
-  slack: 3200,
-  calendar: 3400,
-};
+/** The API port per twin. Re-exported from @sonata/core, which owns the numbers. */
+export const TWIN_PORTS: Record<TwinName, number> = TWIN_API_PORTS;
 
 export const TWIN_LABELS: Record<TwinName, string> = {
   gmail: "Gmail",
@@ -35,8 +40,17 @@ export const TWIN_BLURBS: Record<TwinName, string> = {
   calendar: "Events, invites, RSVPs and free/busy across the whole cast.",
 };
 
+/** Where the twin actually is: env-resolved, same precedence as every other
+ *  consumer, so SONATA_GMAIL_URL moves the supervisor's probes too. */
 export function twinUrl(twin: TwinName): string {
-  return `http://localhost:${TWIN_PORTS[twin]}`;
+  return resolveTwinApiUrl(twin, process.env);
+}
+
+/** The twin's web client, for twins that ship one. */
+export interface TwinUiStatus {
+  port: number;
+  url: string;
+  ok: boolean;
 }
 
 export interface TwinStatus {
@@ -53,6 +67,18 @@ export interface TwinStatus {
   pid: number | null;
   /** Epoch ms of this check. */
   checkedAt: number;
+  /**
+   * The paired UI service, when the twin has one. A twin is one logical unit
+   * started and stopped together, so this is a sub-status rather than its own
+   * row: the API is what a run needs, the UI is what a human looks at. Absent
+   * for twins with no UI service yet.
+   */
+  ui?: TwinUiStatus;
+  /**
+   * How the twin's provider API is gated right now, for twins that report it on
+   * /api/health (gmail). Absent for twins with no auth modes.
+   */
+  auth?: "token" | "oauth";
 }
 
 // ---------------------------------------------------------------------------
@@ -170,13 +196,55 @@ function portBusy(port: number): Promise<boolean> {
   });
 }
 
+/** The port of the URL actually probed. A malformed env override (a missing
+ *  scheme is the easy typo) degrades to the default port rather than throwing
+ *  the whole status call. */
+function portOf(url: string, fallback: number): number {
+  try {
+    return Number(new URL(url).port) || fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+/**
+ * Does the twin's web client answer? Same health-probe shape as the API, so
+ * there is one code path for "is this service up". Never throws: a UI that is
+ * down must not make a healthy API report as broken — a run only needs the API.
+ */
+async function probeUi(twin: TwinName): Promise<TwinUiStatus | undefined> {
+  if (!hasUiService(twin)) return undefined;
+  const url = resolveTwinUiUrl(twin, process.env);
+  const status: TwinUiStatus = { port: portOf(url, TWIN_UI_PORTS[twin]), url, ok: false };
+  try {
+    const res = await fetch(`${url}/api/health`, {
+      cache: "no-store",
+      signal: AbortSignal.timeout(HEALTH_TIMEOUT_MS),
+    });
+    return { ...status, ok: res.ok };
+  } catch {
+    return status;
+  }
+}
+
+/** Both halves of a twin at once: the UI probe never throws, so it can neither
+ *  fail nor slow the API's answer beyond the longer of the two round trips. */
 async function probe(twin: TwinName): Promise<TwinStatus> {
+  const [status, ui] = await Promise.all([probeApi(twin), probeUi(twin)]);
+  return ui ? { ...status, ui } : status;
+}
+
+async function probeApi(twin: TwinName): Promise<Omit<TwinStatus, "ui">> {
   const proc = livingProcess(twin);
-  const base: Omit<TwinStatus, "ok" | "detail"> = {
+  const url = twinUrl(twin);
+  const base: Omit<TwinStatus, "ok" | "detail" | "ui"> = {
     twin,
     label: TWIN_LABELS[twin],
-    port: TWIN_PORTS[twin],
-    url: twinUrl(twin),
+    // The port of the URL actually probed — with an env override these differ
+    // from the defaults, and the card must not claim one port while reporting
+    // another one's health. TWIN_PORTS stays what startTwin binds locally.
+    port: portOf(url, TWIN_PORTS[twin]),
+    url,
     managed: proc !== null,
     pid: proc?.pid ?? null,
     checkedAt: Date.now(),
@@ -205,7 +273,13 @@ async function probe(twin: TwinName): Promise<TwinStatus> {
       return { ...base, ok: false, detail: `answered ${res.status}${said ? `: ${said}` : ""}` };
     }
     const { ok, detail } = describe(twin, body);
-    return { ...base, ok, detail };
+    const reported = (body as { auth?: unknown } | undefined)?.auth;
+    return {
+      ...base,
+      ok,
+      detail,
+      ...(reported === "token" || reported === "oauth" ? { auth: reported } : {}),
+    };
   } catch {
     // A managed process that is not answering yet is starting, not broken —
     // Next's first compile takes a few seconds and must not read as a failure.
@@ -325,6 +399,29 @@ export async function stopTwin(twin: TwinName): Promise<TwinStatus> {
       }
     }
     clearTwinProcess(twin);
+  }
+  return twinStatus(twin, true);
+}
+
+/**
+ * Flip how a twin's provider API is gated, live — the demo switch. Talks to the
+ * twin's admin-gated control plane; the twin holds the override in process
+ * memory, so its SANDBOX_AUTH env stays the durable setting.
+ */
+export async function setTwinAuthMode(
+  twin: TwinName,
+  mode: "token" | "oauth",
+): Promise<TwinStatus> {
+  const adminToken = process.env.SANDBOX_TOKEN || "sandbox-token";
+  const res = await fetch(`${twinUrl(twin)}/api/sandbox/auth-mode`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${adminToken}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ mode }),
+    signal: AbortSignal.timeout(HEALTH_TIMEOUT_MS),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`the ${TWIN_LABELS[twin]} clone refused the auth change: ${text.slice(0, 160)}`);
   }
   return twinStatus(twin, true);
 }

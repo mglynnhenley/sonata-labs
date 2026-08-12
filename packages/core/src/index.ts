@@ -9,6 +9,7 @@ export * from "./types/run";
 export * from "./types/judge";
 export * from "./failureModes";
 export * from "./twin";
+export * from "./ports";
 export * from "./clock";
 export * from "./score";
 export * from "./executed";

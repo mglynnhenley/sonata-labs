@@ -15,7 +15,7 @@ const BLURBS: Record<TwinName, string> = {
   calendar: "Events, invites and free/busy",
 };
 
-type Action = "start" | "stop";
+type Action = "start" | "stop" | "auth-token" | "auth-oauth";
 
 export interface TwinStripProps {
   twins: TwinStatus[];
@@ -110,6 +110,25 @@ export function TwinStrip({ twins, onChanged }: TwinStripProps) {
                   ) : (
                     // Not ours to stop — someone started it from a terminal.
                     <span className="text-[12px] text-sn-subtle">started outside Sonata</span>
+                  )}
+                  {twin.auth && (
+                    // The demo switch: flip the clone's API between the static
+                    // token and its real OAuth server, live. Only twins that
+                    // report a mode on /api/health get one.
+                    <button
+                      title={
+                        twin.auth === "token"
+                          ? "The static token works on the provider API. Click to require OAuth."
+                          : "The provider API requires OAuth tokens. Click to accept the static token."
+                      }
+                      disabled={busy === twin.twin}
+                      onClick={() =>
+                        void act(twin.twin, twin.auth === "token" ? "auth-oauth" : "auth-token")
+                      }
+                      className="ml-auto inline-flex h-7 items-center rounded-sn-md px-2 text-[12px] font-medium text-sn-muted transition-colors duration-150 ease-sn hover:bg-sn-bg-subtle"
+                    >
+                      auth: <span data-numeric className="ml-1">{twin.auth}</span>
+                    </button>
                   )}
                 </>
               ) : (

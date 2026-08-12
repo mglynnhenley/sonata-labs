@@ -12,15 +12,22 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "npm run dev -w apps/platform",
+    "dev": "PORT= concurrently -n platform,gmail-api,gmail-ui,slack,calendar -c magenta,red,yellow,green,blue \"npm:dev:platform\" \"npm:dev:gmail:api\" \"npm:dev:gmail:ui\" \"npm:dev:slack\" \"npm:dev:calendar\"",
     "dev:platform": "npm run dev -w apps/platform",
-    "dev:gmail": "PORT=3101 npm run dev -w apps/gmail",
-    "dev:slack": "PORT=3200 npm run dev -w apps/slack",
-    "dev:calendar": "PORT=3400 npm run dev -w apps/calendar",
+    "dev:gmail": "PORT= concurrently -n api,ui -c red,yellow \"npm:dev:gmail:api\" \"npm:dev:gmail:ui\"",
+    "dev:gmail:api": "PORT=${PORT:-3101} npm run dev -w apps/gmail",
+    "dev:gmail:ui": "PORT=${PORT:-3901} npm run dev -w apps/gmail-ui",
+    "dev:slack": "PORT=${PORT:-3200} npm run dev -w apps/slack",
+    "dev:calendar": "PORT=${PORT:-3400} npm run dev -w apps/calendar",
     "sonata": "node packages/cli/bin/sonata.mjs",
-    "test": "npm run test -w apps/gmail && npm run test -w apps/slack",
+    "test": "npm run test --workspaces --if-present",
     "test:gmail": "npm run test -w apps/gmail",
     "test:slack": "npm run test -w apps/slack",
-    "typecheck": "npm run typecheck --workspaces --if-present"
+    "test:calendar": "npm run test -w apps/calendar",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "check:twin": "tsx packages/engine/scripts/twin-contract-check.ts"
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.4"
   }
 }

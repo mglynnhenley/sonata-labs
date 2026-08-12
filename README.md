@@ -92,6 +92,35 @@ npm run sonata -- world list            # what you have cloned, and what ships
 npm run sonata -- run client-escalation --ticks 4
 ```
 
+## Where the mailbox comes from
+
+A clone needs data, and there are two ways to get it. They are interchangeable:
+both write the same `snapshot.db`, so nothing downstream can tell which you used,
+and `npm run reset -w apps/gmail` restores from whichever it was.
+
+**Synthetic** — a generated company. No accounts, no setup, safe to screenshot.
+This is what `sonata world` and the dashboard's Companies page produce, and for
+Gmail alone there is also a fixture mailbox:
+
+```bash
+npm run seed -w apps/gmail      # 18 messages, 16 threads, 16 labels
+```
+
+**Your own Gmail** — a read-only copy of your real mailbox, pulled in once and
+then operated on locally.
+
+```bash
+npm run sync -w apps/gmail -- --query "newer_than:90d" --max 1000
+```
+
+This is the only place real Google credentials are ever used, the scope requested
+is `gmail.readonly`, and nothing is written back to Google. The clone's runtime
+never sees your Google token — the sync CLI holds it and nothing else does.
+
+One-time setup: create a Desktop OAuth client in Google Cloud with the Gmail API
+enabled and download its JSON to `apps/gmail/data/credentials.json`, or point
+`GOOGLE_CREDENTIALS_PATH` at it. Without it `sync` says exactly that and stops.
+
 ## One real example
 
 This went in:
@@ -158,22 +187,41 @@ this day will have a different cast and a different verdict.
 | 3400 | `apps/calendar` | Calendar clone — Google Calendar v3, `/calendar/v3/…` |
 | 3901 | `apps/gmail-ui` | the Gmail front end, as a real third-party OAuth client |
 
-`npm run dev:platform`, `dev:gmail`, `dev:slack` and `dev:calendar` bind the
-first four; the dashboard starts the three clones itself when a run needs them.
-The Gmail front end is optional and picks no port of its own — 3901 is where its
-default OAuth redirect points, so run it with
-`npm run dev -w apps/gmail-ui -- --port 3901`.
+`npm run dev` brings up all five at once. Each also runs alone:
 
-### Two credentials, and they are not interchangeable
+```bash
+npm run dev:platform      # dashboard only
+npm run dev:gmail         # the Gmail API and its front end, as one unit
+npm run dev:gmail:api     # just the API
+npm run dev:gmail:ui      # just the front end
+npm run dev:slack
+npm run dev:calendar
+```
+
+The dashboard starts the clones itself when a run needs them, and `sonata up`
+goes through the same scripts, so the Gmail front end comes up with its API
+either way. Each single-service script defaults to the port in the table and
+yields to an outer `PORT=`, which is what a second checkout on the same machine
+needs. The multi-service scripts (`dev`, `dev:gmail`) ignore an outer `PORT` —
+one value cannot bind five services.
+
+### Two credentials, and when they are interchangeable
 
 `SANDBOX_TOKEN` (default `sandbox-token`) is the **control-plane admin** token.
 It opens `/api/sandbox/*` on all three clones — seed, inject, snapshot, reset,
 mint — and it is Slack's and Calendar's API token as well. It is a seatbelt, not
 a lock.
 
-Gmail's `/gmail/v1/*` is behind the clone's own OAuth2 server and takes only an
-access token that server minted; the admin token earns a Gmail-shaped 401 there.
-Mint one in a single call:
+Gmail also carries its own OAuth2 server, and `SANDBOX_AUTH` decides whether it
+gates `/gmail/v1/*`. The default is `token`: the admin token works there too,
+full scope, zero setup. Set `SANDBOX_AUTH=oauth` and `/gmail/v1/*` takes only an
+access token that server minted — the admin token earns a Gmail-shaped 401, and
+per-route scopes are enforced. The OAuth endpoints (authorize, consent, token,
+the mint bridge below) are mounted in both modes, so the flow is always there to
+exercise; the mode only changes what the provider API accepts. `/api/health`
+reports the active mode.
+
+In `oauth` mode, mint a token in a single call:
 
 ```bash
 # Slack and Calendar: the admin token is the API token.
@@ -269,6 +317,27 @@ No model calls, no network, no secrets: the suites run on a clean clone with no
 `.env`. [CI](.github/workflows/ci.yml) runs these on every push and pull
 request, plus `tsc --noEmit` over the few workspaces that ship no `typecheck`
 script of their own.
+
+None of that talks to a running server, and the defects that have actually cost
+time here all passed the type checker. Two gates drive the real thing, against a
+clone that is up:
+
+```bash
+npm run dev:gmail:api                  # in one shell
+
+PORT=3101 npm run smoke -w apps/gmail  # the official SDK, incl. a real OAuth handshake
+npm run check:twin                     # the harness, against a live clone
+```
+
+`smoke` is the clone's own gate: it drives the *official* `googleapis` SDK
+through a full authorize → consent → token exchange, then 59 checks over reads,
+writes, per-route scopes and consent denial.
+
+`check:twin` is the other direction — the engine's `TwinAdapter` contract against
+a running clone — and it asserts the property above rather than assuming it: the
+admin token is refused by `/gmail/v1/*`, and the mint bridge is refused without
+the admin token. Three separate code paths have now grown their own idea of how
+to authenticate to Gmail; this is the check that notices the fourth.
 
 ## What this is not
 

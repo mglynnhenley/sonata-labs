@@ -1,5 +1,6 @@
 import {
   displayAddress,
+  resolveTwinApiUrl,
   type BeatBody,
   type EpisodeSpec,
   type GmailDiff,
@@ -65,7 +66,10 @@ export interface GmailAdapterOptions extends Omit<TwinHttpOptions, "baseUrl"> {
 }
 
 export function createGmailAdapter(opts: GmailAdapterOptions = {}): TwinAdapter {
-  const baseUrl = opts.baseUrl ?? process.env.GMAIL_TWIN_URL ?? "http://localhost:3101";
+  // Where the twin is, and how to authenticate to it, are both decided in one
+  // place each: the URL by core's resolver (which honours either env spelling),
+  // the credential by createTwinHttp (which knows gmail is behind OAuth2).
+  const baseUrl = resolveTwinApiUrl("gmail", process.env, { override: opts.baseUrl });
   const http = createTwinHttp("gmail", { ...opts, baseUrl });
   const userId = opts.userId ?? "me";
   const api = `/gmail/v1/users/${encodeURIComponent(userId)}`;
