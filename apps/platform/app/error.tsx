@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import Link from "next/link";
-import { Button, EmptyState, IconAlert, IconArrowRight } from "@sonata/ui";
+import { Button, buttonClasses, EmptyState, IconAlert, IconArrowRight } from "@sonata/ui";
 import { ROUTES } from "@/lib/routes";
 
 // The catch-all for a page that throws while it renders. Without it, one bad
@@ -43,10 +43,11 @@ export default function AppError({
           </Button>
         }
         secondaryAction={
-          <Link href={ROUTES.home}>
-            <Button variant="ghost" iconRight={<IconArrowRight size={14} />}>
-              Back to the overview
-            </Button>
+          // Try again is an action and stays a button; the way out is an address,
+          // so the Link IS the button rather than wrapping one.
+          <Link href={ROUTES.home} className={buttonClasses("ghost", "md")}>
+            Back to the overview
+            <IconArrowRight size={14} />
           </Link>
         }
       />

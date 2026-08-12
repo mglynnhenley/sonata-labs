@@ -79,14 +79,18 @@ export function BenchmarkTable({ benchmark }: { benchmark: Benchmark }) {
         </Button>
       </div>
 
-      <div className="sn-scroll overflow-x-auto">
+      {/* One column per scenario, so this grid outgrows its card early. The
+          shaded edge is the only thing telling you the failure column is there. */}
+      <div className="sn-scroll sn-scroll-x">
         <table className="w-full border-collapse text-[13px]">
           <caption className="sr-only">Autonomy by model and scenario</caption>
           <thead className="border-b border-sn-line">
             <tr>
+              {/* Pinned: scrolling right to reach the failure column must not
+                  take the name of the model you are reading it for. */}
               <th
                 scope="col"
-                className="px-4 py-2.5 text-left text-[11px] font-medium tracking-[0.06em] text-sn-subtle uppercase"
+                className="sticky left-0 z-10 bg-sn-surface shadow-[1px_0_0_0_var(--color-sn-line)] px-4 py-2.5 text-left text-[11px] font-medium tracking-[0.06em] text-sn-subtle uppercase"
               >
                 Model
               </th>
@@ -124,7 +128,10 @@ export function BenchmarkTable({ benchmark }: { benchmark: Benchmark }) {
               <tr key={row.model} className="border-b border-sn-line/70 last:border-b-0">
                 {/* Label above, slug below: the article reads the first and
                     reproduces from the second. */}
-                <th scope="row" className="px-4 py-2.5 text-left align-middle font-normal">
+                <th
+                  scope="row"
+                  className="sticky left-0 z-10 bg-sn-surface shadow-[1px_0_0_0_var(--color-sn-line)] px-4 py-2.5 text-left align-middle font-normal"
+                >
                   <span className="block text-[13px] font-medium text-sn-ink">
                     {modelLabel(row.model)}
                     <span className="ml-2 text-[11px] font-normal text-sn-subtle">

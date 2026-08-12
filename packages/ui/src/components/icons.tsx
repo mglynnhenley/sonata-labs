@@ -34,6 +34,8 @@ export const IconCheck = makeIcon("IconCheck", <path d="M20 6 9 17l-5-5" />);
 
 export const IconClose = makeIcon("IconClose", <path d="M18 6 6 18M6 6l12 12" />);
 
+export const IconMenu = makeIcon("IconMenu", <path d="M4 7h16M4 12h16M4 17h16" />);
+
 export const IconCopy = makeIcon(
   "IconCopy",
   <>

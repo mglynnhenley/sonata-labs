@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Badge,
   Button,
+  buttonClasses,
   Card,
   Chip,
   IconAlert,
@@ -142,13 +143,16 @@ export function LiveSession({ initial, twinLinks }: LiveSessionProps) {
               Stop the day
             </Button>
           ) : (
-            <Button
-              variant="primary"
-              iconRight={<IconArrowRight size={14} />}
+            // Stop is an action and stays a button; the results are an address,
+            // so it is a real anchor wearing the button's clothes.
+            <a
+              href={resultsHref}
               onClick={(e) => go(e, resultsHref)}
+              className={buttonClasses("primary", "md")}
             >
               See the results
-            </Button>
+              <IconArrowRight size={14} />
+            </a>
           )
         }
       />
@@ -221,7 +225,11 @@ export function LiveSession({ initial, twinLinks }: LiveSessionProps) {
       <Card padding="none" className="overflow-hidden">
         <div className="flex flex-wrap items-center gap-3 border-b border-sn-line px-6 py-4">
           <h2 className="font-display text-[24px] text-sn-ink">The day, as it happened</h2>
-          <span className="text-[12px] text-sn-subtle">
+          {/* The count is the live region, not the story below it: a screen
+              reader given the list would read every arriving row aloud over
+              whatever the listener was already reading. This says how much has
+              happened, once, and stays out of the way. */}
+          <span aria-live="polite" className="text-[12px] text-sn-subtle">
             {rows.length} moment{rows.length === 1 ? "" : "s"}
           </span>
           <div className="ml-auto flex items-center gap-2">
@@ -256,7 +264,9 @@ export function LiveSession({ initial, twinLinks }: LiveSessionProps) {
             if (!node) return;
             setFollow(node.scrollHeight - node.scrollTop - node.clientHeight < 60);
           }}
-          className="sn-scroll max-h-[62vh] min-h-[360px] overflow-y-auto px-6 py-6"
+          // `overscroll-contain`: hitting the end of the story must not carry on
+          // and scroll the page out from under someone reading it.
+          className="sn-scroll max-h-[62vh] min-h-[360px] overflow-y-auto overscroll-contain px-6 py-6"
         >
           {rows.length === 0 ? (
             <p className="py-16 text-center text-[13px] text-sn-subtle">
@@ -268,7 +278,7 @@ export function LiveSession({ initial, twinLinks }: LiveSessionProps) {
         </div>
       </Card>
 
-      {live ? null : <Closing session={session} onOpen={(e) => go(e, resultsHref)} />}
+      {live ? null : <Closing session={session} resultsHref={resultsHref} />}
     </div>
   );
 }
@@ -425,11 +435,14 @@ function Key({ className, label }: { className: string; label: string }) {
 
 function Closing({
   session,
-  onOpen,
+  resultsHref,
 }: {
   session: SessionView;
-  onOpen: (event: MouseEvent<HTMLElement>) => void;
+  /** Where the verdict lives. A URL rather than a handler, so the last thing on
+   *  the page is a real link. */
+  resultsHref: string;
 }) {
+  const go = useGo();
   return (
     <Card padding="lg">
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
@@ -470,9 +483,14 @@ function Closing({
       ) : null}
 
       <div className="mt-6 flex flex-wrap items-center gap-4 border-t border-sn-line pt-5">
-        <Button variant="primary" iconRight={<IconArrowRight size={14} />} onClick={onOpen}>
+        <a
+          href={resultsHref}
+          onClick={(e) => go(e, resultsHref)}
+          className={buttonClasses("primary", "md")}
+        >
           Read the results
-        </Button>
+          <IconArrowRight size={14} />
+        </a>
         <p className="text-[12px] text-sn-subtle">
           It sits in Results beside the benchmark runs, marked {session.model} so it is never read as
           a model's score.

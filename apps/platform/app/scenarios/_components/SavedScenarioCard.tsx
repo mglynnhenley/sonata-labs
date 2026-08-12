@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Badge, Button, Card, Chip, IconClock, IconPlay, SERVICE_LABELS } from "@sonata/ui";
+import { Badge, Button, buttonClasses, Card, Chip, IconClock, IconPlay, SERVICE_LABELS } from "@sonata/ui";
 import type { BadgeStatus } from "@sonata/ui";
 import type { EpisodeSummary } from "../../api/_lib/types";
 
@@ -14,8 +14,11 @@ const RUN_STATUS: Record<string, BadgeStatus> = {
   aborted: "neutral",
 };
 
-function ago(at: number): string {
-  const seconds = Math.max(1, Math.round((Date.now() - at) / 1000));
+// `now` is passed in, never read off the clock here: this card is server-rendered
+// and the two machines disagree by enough to change the string between the HTML
+// and the hydrated render.
+function ago(at: number, now: number): string {
+  const seconds = Math.max(1, Math.round((now - at) / 1000));
   if (seconds < 60) return `${seconds}s ago`;
   const minutes = Math.round(seconds / 60);
   if (minutes < 60) return `${minutes} min ago`;
@@ -26,11 +29,13 @@ function ago(at: number): string {
 
 export type SavedScenarioCardProps = {
   episode: EpisodeSummary;
+  /** The server's clock, threaded down rather than read during render. */
+  now: number;
   deleting: boolean;
   onDelete: (episode: EpisodeSummary) => void;
 };
 
-export function SavedScenarioCard({ episode, deleting, onDelete }: SavedScenarioCardProps) {
+export function SavedScenarioCard({ episode, now, deleting, onDelete }: SavedScenarioCardProps) {
   const lastRun = episode.lastRun;
 
   return (
@@ -70,13 +75,17 @@ export function SavedScenarioCard({ episode, deleting, onDelete }: SavedScenario
       </div>
 
       <div className="mt-6 flex flex-wrap items-center gap-2">
-        <Link href={`/runs?scenario=${encodeURIComponent(episode.id)}`}>
-          <Button size="sm" variant="primary" icon={<IconPlay size={12} />}>
-            Start a run
-          </Button>
+        {/* The Link IS the button — a `<button>` inside an `<a>` is invalid, and
+            it swallowed Cmd-click on the card's way to a run. */}
+        <Link
+          href={`/runs?scenario=${encodeURIComponent(episode.id)}`}
+          className={buttonClasses("primary", "sm")}
+        >
+          <IconPlay size={12} />
+          Start a run
         </Link>
         <span className="ml-auto text-[12px] text-sn-subtle">
-          {lastRun ? `Last run ${ago(lastRun.startedAt)}` : `Saved ${ago(episode.createdAt)}`}
+          {lastRun ? `Last run ${ago(lastRun.startedAt, now)}` : `Saved ${ago(episode.createdAt, now)}`}
         </span>
         <Button
           size="sm"

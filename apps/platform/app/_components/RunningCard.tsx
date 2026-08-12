@@ -1,6 +1,6 @@
 "use client";
 
-import { Badge, Button, Card, Chip, IconArrowRight, IconClock, ProgressBar } from "@sonata/ui";
+import { Badge, buttonClasses, Card, Chip, IconArrowRight, IconClock, ProgressBar } from "@sonata/ui";
 import { ago, elapsed, simClock } from "@/lib/format";
 import { modelLabel } from "@/lib/models";
 import { ROUTES } from "@/lib/routes";
@@ -43,14 +43,10 @@ export function RunningCard({ run, now }: RunningCardProps) {
           </p>
         </div>
 
-        <Button
-          variant="primary"
-          size="lg"
-          iconRight={<IconArrowRight size={15} />}
-          onClick={(e) => go(e, href)}
-        >
+        <a href={href} onClick={(e) => go(e, href)} className={buttonClasses("primary", "lg")}>
           Watch the day
-        </Button>
+          <IconArrowRight size={15} />
+        </a>
       </div>
 
       <div className="mt-7 flex flex-wrap items-end gap-8">

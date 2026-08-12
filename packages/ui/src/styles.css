@@ -193,6 +193,23 @@
   html {
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
+    /* The palette is cream and light-only. Without this the UA still paints
+       scrollbars, <select> menus and date pickers in the OS dark scheme. */
+    color-scheme: light;
+    /* Reserve the scrollbar track so opening a modal — which locks body scroll —
+       does not shift the whole page sideways. */
+    scrollbar-gutter: stable;
+  }
+
+  /* No 300ms double-tap delay, and no blue-grey tap flash fighting the cream. */
+  :where(a, button, [role="button"], summary, [tabindex]) {
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Anchored headings must clear the sticky top bar, not hide under it. */
+  :where(h1, h2, h3, h4)[id] {
+    scroll-margin-top: 5rem;
   }
 
   body {
@@ -234,6 +251,14 @@
       transition-duration: 0.01ms !important;
       scroll-behavior: auto !important;
     }
+
+    /* Exception: a spinner is not decoration, it is the only signal that work is
+       still happening. Collapsing it to one frame leaves a frozen arc that reads
+       as a bug, so it keeps looping — slower, and that is the reduced variant. */
+    [data-loading-motion] {
+      animation-duration: 1.6s !important;
+      animation-iteration-count: infinite !important;
+    }
   }
 }
 
@@ -272,6 +297,33 @@
 .sn-scroll::-webkit-scrollbar-thumb:hover {
   background: var(--color-sn-subtle);
   background-clip: content-box;
+}
+
+/**
+ * Horizontal scroll, with edges that admit there is more.
+ *
+ * A wide table in a narrow card simply clipped mid-word — the Compare grid's
+ * last column read "MO / CON / FAI" and nothing said it could be scrolled to.
+ * Two pairs of gradients fix that without JavaScript: the `local` pair scrolls
+ * with the content and masks the shadow whenever that edge is really the end,
+ * so a shadow appears on exactly the sides that have more to show.
+ *
+ * --sn-scroll-face is the background the cover gradients paint; set it when the
+ * scroller sits on something other than the card surface.
+ */
+.sn-scroll-x {
+  --sn-scroll-face: var(--color-sn-surface);
+  overflow-x: auto;
+  background:
+    linear-gradient(to right, var(--sn-scroll-face) 40%, transparent) left center / 44px 100%
+      no-repeat local,
+    linear-gradient(to left, var(--sn-scroll-face) 40%, transparent) right center / 44px 100%
+      no-repeat local,
+    radial-gradient(farthest-side at 0 50%, rgba(27, 26, 23, 0.13), transparent) left center /
+      16px 100% no-repeat scroll,
+    radial-gradient(farthest-side at 100% 50%, rgba(27, 26, 23, 0.13), transparent) right center /
+      16px 100% no-repeat scroll;
+  background-color: var(--sn-scroll-face);
 }
 
 /* Timeline rail: every item draws the vertical line, the last one must not —

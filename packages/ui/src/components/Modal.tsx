@@ -118,7 +118,7 @@ export function Modal({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[60] flex items-center justify-center p-4"
+      className="fixed inset-0 z-[60] flex items-center justify-center overscroll-contain p-4"
       onKeyDown={onKeyDown}
     >
       <div
@@ -135,6 +135,10 @@ export function Modal({
         tabIndex={-1}
         className={cn(
           "animate-sn-pop relative w-full rounded-sn-3xl border border-sn-line bg-sn-surface p-6 shadow-sn-lg",
+          // Opening the dialog locks body scroll, so anything taller than the
+          // viewport would be stranded off-screen with nothing left to scroll.
+          // The dialog itself scrolls instead.
+          "sn-scroll max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain",
           SIZES[size],
           className,
         )}

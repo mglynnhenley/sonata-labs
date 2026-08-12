@@ -16,5 +16,5 @@ export default async function CompaniesPage() {
   // Rendered on the server so the list is right on first paint; the client
   // polls the same route afterwards, because clone health changes under it.
   const clones = await allTwinStatuses();
-  return <CompaniesClient initial={{ companies: listCompanies(), clones }} />;
+  return <CompaniesClient initial={{ companies: listCompanies(), clones, at: Date.now() }} />;
 }

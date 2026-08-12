@@ -12,5 +12,11 @@ export const metadata = {
 };
 
 export default async function ScenariosPage() {
-  return <ScenariosClient initialEpisodes={listEpisodes()} templates={templateSummaries()} />;
+  return (
+    <ScenariosClient
+      initialEpisodes={listEpisodes()}
+      templates={templateSummaries()}
+      initialNow={Date.now()}
+    />
+  );
 }

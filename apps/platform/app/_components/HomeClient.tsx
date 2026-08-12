@@ -1,7 +1,7 @@
 "use client";
 
 import {
-  Button,
+  buttonClasses,
   Card,
   IconAlert,
   IconArrowRight,
@@ -92,14 +92,23 @@ export function HomeClient({ initial }: HomeClientProps) {
         // Permanent, and never a status line: the most-read sentence on the
         // most-visited page defines the product's central word on every visit.
         subtitle="Autonomy is the share of the day's work your agent finished without handing it back to a human."
+        // Only while a day is playing. With nothing running, the card directly
+        // below is itself a "New run" button — the page was offering the same
+        // action twice within one glance, which reads as two different actions.
+        //
+        // A real anchor wearing the button's clothes: the page's main exit has
+        // to survive middle-click and "copy link address".
         actions={
-          <Button
-            variant="primary"
-            iconRight={<IconArrowRight size={14} />}
-            onClick={(e) => go(e, ROUTES.runs)}
-          >
-            New run
-          </Button>
+          live.length > 0 ? (
+            <a
+              href={ROUTES.runs}
+              onClick={(e) => go(e, ROUTES.runs)}
+              className={buttonClasses("primary", "md")}
+            >
+              New run
+              <IconArrowRight size={14} />
+            </a>
+          ) : undefined
         }
       />
 
@@ -134,9 +143,13 @@ export function HomeClient({ initial }: HomeClientProps) {
                 </p>
               </div>
             </div>
-            <Button variant="primary" onClick={(e) => go(e, ROUTES.runs)}>
+            <a
+              href={ROUTES.runs}
+              onClick={(e) => go(e, ROUTES.runs)}
+              className={buttonClasses("primary", "md")}
+            >
               New run
-            </Button>
+            </a>
           </div>
         </Card>
       )}

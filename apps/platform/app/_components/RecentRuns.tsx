@@ -1,7 +1,7 @@
 "use client";
 
 import { NO_RESULT } from "@sonata/core";
-import { Badge, Button, Card, EmptyState, IconArrowRight, IconPlay, type BadgeStatus } from "@sonata/ui";
+import { Badge, buttonClasses, Card, EmptyState, IconArrowRight, IconPlay, type BadgeStatus } from "@sonata/ui";
 import { ago, percent } from "@/lib/format";
 import { modelLabel } from "@/lib/models";
 import { ROUTES } from "@/lib/routes";
@@ -78,9 +78,13 @@ export function RecentRuns({ runs, now, simulated }: RecentRunsProps) {
               "Every run keeps a step-by-step replay you can walk with the arrow keys",
             ]}
             action={
-              <Button variant="primary" onClick={(e) => go(e, ROUTES.runs)}>
+              <a
+                href={ROUTES.runs}
+                onClick={(e) => go(e, ROUTES.runs)}
+                className={buttonClasses("primary", "md")}
+              >
                 New run
-              </Button>
+              </a>
             }
           />
         </div>

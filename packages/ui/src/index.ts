@@ -63,10 +63,12 @@ export {
   Sidebar,
   SidebarGroup,
   SidebarItem,
+  SidebarTrigger,
   SidebarUser,
   type SidebarGroupProps,
   type SidebarItemProps,
   type SidebarProps,
+  type SidebarTriggerProps,
   type SidebarUserProps,
 } from "./components/Sidebar";
 export { Spinner, type SpinnerProps, type SpinnerSize } from "./components/Spinner";

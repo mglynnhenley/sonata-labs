@@ -5,6 +5,7 @@ import Link from "next/link";
 import {
   Badge,
   Button,
+  buttonClasses,
   Card,
   Chip,
   EmptyState,
@@ -37,6 +38,10 @@ import { ago } from "@/lib/format";
 export interface CompaniesData {
   companies: CompanyCard[];
   clones: TwinStatus[];
+  /** The server's clock at the moment this payload was built. Every "cloned 3 d
+   *  ago" is measured against it, so the server paint and the hydrated render
+   *  agree — the tiles must never read the clock themselves. */
+  at: number;
 }
 
 /** Shown in order while a company with no history is being written. */
@@ -119,10 +124,11 @@ export function CompaniesClient({ initial }: { initial: CompaniesData }) {
         title="The companies you've cloned"
         subtitle="Each one is a cast of people with an inbox, Slack channels and a calendar — the same people in all three. Put one into the clones, then go and read their mail."
         actions={
-          <Link href="/scenarios/new">
-            <Button variant="primary" iconRight={<IconArrowRight size={14} />}>
-              Clone a company
-            </Button>
+          // The Link IS the button. Wrapping one around a `<button>` is invalid
+          // markup and leaves the page's main exit deaf to Cmd-click.
+          <Link href="/scenarios/new" className={buttonClasses("primary", "md")}>
+            Clone a company
+            <IconArrowRight size={14} />
           </Link>
         }
       />
@@ -160,10 +166,9 @@ export function CompaniesClient({ initial }: { initial: CompaniesData }) {
             "Everything stays on this machine; no real account is ever touched",
           ]}
           action={
-            <Link href="/scenarios/new">
-              <Button variant="primary" iconRight={<IconArrowRight size={14} />}>
-                Clone a company
-              </Button>
+            <Link href="/scenarios/new" className={buttonClasses("primary", "md")}>
+              Clone a company
+              <IconArrowRight size={14} />
             </Link>
           }
         />
@@ -174,6 +179,7 @@ export function CompaniesClient({ initial }: { initial: CompaniesData }) {
               <CompanyTile
                 company={company}
                 clones={clones}
+                now={data.at}
                 busy={seeding === company.id}
                 busyLine={WRITING_LINES[line] ?? ""}
                 disabled={seeding !== null}
@@ -200,14 +206,15 @@ export function CompaniesClient({ initial }: { initial: CompaniesData }) {
 interface TileProps {
   company: CompanyCard;
   clones: TwinStatus[];
+  /** From the payload, not `Date.now()`: this tile is server-rendered first. */
+  now: number;
   busy: boolean;
   busyLine: string;
   disabled: boolean;
   onSeed: () => void;
 }
 
-function CompanyTile({ company, clones, busy, busyLine, disabled, onSeed }: TileProps) {
-  const now = Date.now();
+function CompanyTile({ company, clones, now, busy, busyLine, disabled, onSeed }: TileProps) {
   return (
     <Card padding="lg" radius="2xl" className="flex h-full flex-col">
       <div className="flex items-start justify-between gap-3">

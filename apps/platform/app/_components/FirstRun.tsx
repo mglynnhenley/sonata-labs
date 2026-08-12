@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, Card, Chip, IconArrowRight, IconSpark, PageHeader } from "@sonata/ui";
+import { buttonClasses, Card, Chip, IconArrowRight, IconSpark, PageHeader } from "@sonata/ui";
 import { ROUTES } from "@/lib/routes";
 import type { TwinStatus } from "@/lib/twins";
 import { TwinStrip } from "./TwinStrip";
@@ -69,22 +69,24 @@ export function FirstRun({ twins, onTwinsChanged }: FirstRunProps) {
           </>
         }
         actions={
+          // Real anchors, not buttons: the first screen anyone sees should let
+          // its two exits be middle-clicked and copied like any other link.
           <>
-            <Button
-              variant="ghost"
-              size="lg"
+            <a
+              href={ROUTES.scenarios}
               onClick={(e) => go(e, ROUTES.scenarios)}
+              className={buttonClasses("ghost", "lg")}
             >
               See the five scenarios
-            </Button>
-            <Button
-              variant="primary"
-              size="lg"
-              iconRight={<IconArrowRight size={15} />}
+            </a>
+            <a
+              href={ROUTES.guidedDemo}
               onClick={(e) => go(e, ROUTES.guidedDemo)}
+              className={buttonClasses("primary", "lg")}
             >
               Run the demo day
-            </Button>
+              <IconArrowRight size={15} />
+            </a>
           </>
         }
       />

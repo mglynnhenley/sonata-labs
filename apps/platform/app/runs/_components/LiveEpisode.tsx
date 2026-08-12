@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Badge,
   Button,
+  buttonClasses,
   Card,
   Chip,
   IconAlert,
@@ -146,13 +147,16 @@ export function LiveEpisode({ initial, twinLinks }: LiveEpisodeProps) {
                 Stop the day
               </Button>
             ) : (
-              <Button
-                variant="primary"
-                iconRight={<IconArrowRight size={14} />}
+              // Stop is an action and stays a button; the verdict is an address,
+              // so it is a real anchor wearing the button's clothes.
+              <a
+                href={resultsHref}
                 onClick={(e) => go(e, resultsHref)}
+                className={buttonClasses("primary", "md")}
               >
                 See the verdict
-              </Button>
+                <IconArrowRight size={14} />
+              </a>
             )}
           </>
         }
@@ -228,7 +232,11 @@ export function LiveEpisode({ initial, twinLinks }: LiveEpisodeProps) {
       <Card padding="none" className="overflow-hidden">
         <div className="flex flex-wrap items-center gap-3 border-b border-sn-line px-6 py-4">
           <h2 className="font-display text-[24px] text-sn-ink">The day, as it happened</h2>
-          <span className="text-[12px] text-sn-subtle">
+          {/* The count is the live region, not the story below it: a screen
+              reader given the list would read every arriving row aloud over
+              whatever the listener was already reading. This says how much has
+              happened, once, and stays out of the way. */}
+          <span aria-live="polite" className="text-[12px] text-sn-subtle">
             {rows.length} moment{rows.length === 1 ? "" : "s"}
           </span>
           <div className="ml-auto flex items-center gap-2">
@@ -250,7 +258,9 @@ export function LiveEpisode({ initial, twinLinks }: LiveEpisodeProps) {
         <div
           ref={scroller}
           onScroll={onScroll}
-          className="sn-scroll max-h-[62vh] min-h-[360px] overflow-y-auto px-6 py-6"
+          // `overscroll-contain`: hitting the end of the story must not carry on
+          // and scroll the page out from under someone reading it.
+          className="sn-scroll max-h-[62vh] min-h-[360px] overflow-y-auto overscroll-contain px-6 py-6"
         >
           {rows.length === 0 ? (
             <p className="py-16 text-center text-[13px] text-sn-subtle">

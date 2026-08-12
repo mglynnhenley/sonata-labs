@@ -20,6 +20,7 @@ import {
   Timeline,
   cn,
 } from "@sonata/ui";
+import { scrollBehavior } from "../../_components/scrollBehavior";
 import type { Moment } from "../_lib/moments";
 import { formatSimTime } from "../_lib/summary";
 
@@ -112,7 +113,7 @@ export function DayReplay({
     );
     if (!row) return;
     row.focus({ preventScroll: true });
-    row.scrollIntoView({ block: "center", behavior: "smooth" });
+    row.scrollIntoView({ block: "center", behavior: scrollBehavior() });
   }, [focusToken, selected]);
 
   const current = moments[selected];

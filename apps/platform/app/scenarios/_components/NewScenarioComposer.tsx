@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Button,
+  buttonClasses,
   Card,
   Chip,
   IconAlert,
@@ -14,6 +15,7 @@ import {
   cn,
   useToast,
 } from "@sonata/ui";
+import { scrollBehavior } from "../../_components/scrollBehavior";
 import { useGo } from "../../_components/useGo";
 import { apiSend } from "../../api/_lib/client";
 import {
@@ -152,7 +154,7 @@ export function NewScenarioComposer({ templates }: NewScenarioComposerProps) {
         { brief: brief.trim(), ticks },
       );
       setDraft(next);
-      window.scrollTo({ top: 0, behavior: "smooth" });
+      window.scrollTo({ top: 0, behavior: scrollBehavior() });
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -263,9 +265,9 @@ export function NewScenarioComposer({ templates }: NewScenarioComposerProps) {
         title="New scenario"
         subtitle="Say what the business is and what happens today, in plain language. Sonata writes the people, their inbox, their channels and their calendar — and the day that unfolds inside them."
         actions={
-          <Button variant="ghost" onClick={(e) => go(e, "/scenarios")}>
+          <a href="/scenarios" onClick={(e) => go(e, "/scenarios")} className={buttonClasses("ghost", "md")}>
             Cancel
-          </Button>
+          </a>
         }
       />
 

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Button, EmptyState, IconArrowRight, IconSearch } from "@sonata/ui";
+import { buttonClasses, EmptyState, IconArrowRight, IconSearch } from "@sonata/ui";
 import { ROUTES } from "@/lib/routes";
 
 // Every route that has no page of its own lands here. Without it Next serves its
@@ -25,10 +25,9 @@ export default function NotFound() {
         title="There's nothing at this address"
         description="The link is wrong, or whatever used to be here has been cleared away. Nothing is broken — you are just somewhere the product does not have a page for."
         action={
-          <Link href={ROUTES.home}>
-            <Button variant="primary" iconRight={<IconArrowRight size={14} />}>
-              Back to the overview
-            </Button>
+          <Link href={ROUTES.home} className={buttonClasses("primary", "md")}>
+            Back to the overview
+            <IconArrowRight size={14} />
           </Link>
         }
       />

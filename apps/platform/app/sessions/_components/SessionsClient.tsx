@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, type MouseEvent } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Badge,
-  Button,
+  buttonClasses,
   Card,
   Chip,
   EmptyState,
@@ -98,13 +98,15 @@ export function SessionsClient({ initial, scenarios, twins }: SessionsClientProp
         subtitle="A session is a simulated workday running at an agent Sonata never calls. Emails land, people answer, the calendar moves — on a wall clock, at whatever speed you choose. Your agent notices by checking its own inbox, and everything it does is scored the same way a benchmark run is."
         actions={
           live[0] ? (
-            <Button
-              variant="primary"
-              iconRight={<IconArrowRight size={14} />}
+            // A real anchor, so the live session can be opened in its own tab.
+            <a
+              href={`/sessions/${live[0].sessionId}`}
               onClick={(e) => go(e, `/sessions/${live[0].sessionId}`)}
+              className={buttonClasses("primary", "md")}
             >
               Watch the day
-            </Button>
+              <IconArrowRight size={14} />
+            </a>
           ) : undefined
         }
       />
@@ -116,7 +118,7 @@ export function SessionsClient({ initial, scenarios, twins }: SessionsClientProp
           key={session.sessionId}
           session={session}
           now={data.at}
-          onOpen={(e) => go(e, `/sessions/${session.sessionId}`)}
+          href={`/sessions/${session.sessionId}`}
         />
       ))}
 
@@ -150,12 +152,15 @@ export function SessionsClient({ initial, scenarios, twins }: SessionsClientProp
 function LiveBanner({
   session,
   now,
-  onOpen,
+  href,
 }: {
   session: SessionView;
   now: number;
-  onOpen: (event: MouseEvent<HTMLElement>) => void;
+  /** The session's own page. Passed as a URL, not a handler, so the banner's way
+   *  in is a real link. */
+  href: string;
 }) {
+  const go = useGo();
   const pulse = readPulse(session, now);
   return (
     <Card padding="lg" className="animate-sn-rise">
@@ -185,9 +190,10 @@ function LiveBanner({
               {simClock(session.simTimeISO)}
             </p>
           </div>
-          <Button variant="primary" size="lg" iconRight={<IconArrowRight size={15} />} onClick={onOpen}>
+          <a href={href} onClick={(e) => go(e, href)} className={buttonClasses("primary", "lg")}>
             Watch the day
-          </Button>
+            <IconArrowRight size={15} />
+          </a>
         </div>
       </div>
 
@@ -285,6 +291,9 @@ function PastSessions({ sessions, now }: { sessions: readonly SessionView[]; now
       rows={sessions}
       rowKey={(session) => session.sessionId}
       rowLabel={(session) => `${session.title} with ${session.agentLabel}`}
+      // The href is what Cmd-click and middle-click use; the handler routes on
+      // the client for a plain click. See PastRuns for the same pairing.
+      rowHref={(session) => `/sessions/${session.sessionId}`}
       onRowClick={(session) => router.push(`/sessions/${session.sessionId}`)}
       caption="Past sessions, newest first"
       empty={

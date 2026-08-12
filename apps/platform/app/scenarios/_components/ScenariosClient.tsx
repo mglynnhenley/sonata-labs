@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  Button,
+  buttonClasses,
   EmptyState,
   IconLayers,
   IconSpark,
@@ -24,21 +24,28 @@ import { TemplateCard, type TemplateAction } from "./TemplateCard";
 export type ScenariosClientProps = {
   initialEpisodes: EpisodeSummary[];
   templates: TemplateSummary[];
+  /** The server's clock at paint. Every "3 d ago" on a card is measured against
+   *  it, so the server HTML and the hydrated render agree. */
+  initialNow: number;
 };
 
-export function ScenariosClient({ initialEpisodes, templates }: ScenariosClientProps) {
+export function ScenariosClient({ initialEpisodes, templates, initialNow }: ScenariosClientProps) {
   const router = useRouter();
   const go = useGo();
   const { toast } = useToast();
 
   const [episodes, setEpisodes] = useState(initialEpisodes);
+  const [now, setNow] = useState(initialNow);
   const [busy, setBusy] = useState<{ id: string; action: TemplateAction } | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
 
   async function reload() {
     try {
-      const { episodes: next } = await apiGet<{ episodes: EpisodeSummary[] }>("/api/episodes");
+      const { episodes: next, at } = await apiGet<{ episodes: EpisodeSummary[]; at: number }>(
+        "/api/episodes",
+      );
       setEpisodes(next);
+      setNow(at);
     } catch {
       // The list is already on screen and still true; a failed refresh is not
       // worth a dialog. The next navigation re-reads it from the server anyway.
@@ -108,14 +115,15 @@ export function ScenariosClient({ initialEpisodes, templates }: ScenariosClientP
         title="Scenarios"
         subtitle="A scenario is one simulated workday inside a cloned business: who works there, what happens and when, and what counts as having done the job."
         actions={
-          <Button
-            variant="primary"
-            size="lg"
-            icon={<IconSpark size={14} />}
+          // A real anchor, so the page's main exit can be opened in a new tab.
+          <a
+            href="/scenarios/new"
             onClick={(e) => go(e, "/scenarios/new")}
+            className={buttonClasses("primary", "lg")}
           >
+            <IconSpark size={14} />
             New scenario
-          </Button>
+          </a>
         }
       />
 
@@ -141,9 +149,14 @@ export function ScenariosClient({ initialEpisodes, templates }: ScenariosClientP
                 "Nothing leaves this machine and no real account is ever touched",
               ]}
               action={
-                <Button variant="primary" icon={<IconSpark size={14} />} onClick={(e) => go(e, "/scenarios/new")}>
+                <a
+                  href="/scenarios/new"
+                  onClick={(e) => go(e, "/scenarios/new")}
+                  className={buttonClasses("primary", "md")}
+                >
+                  <IconSpark size={14} />
                   Describe a business
-                </Button>
+                </a>
               }
             />
           ) : (
@@ -152,6 +165,7 @@ export function ScenariosClient({ initialEpisodes, templates }: ScenariosClientP
                 <SavedScenarioCard
                   key={episode.id}
                   episode={episode}
+                  now={now}
                   deleting={deleting === episode.id}
                   onDelete={(target) => void onDelete(target)}
                 />

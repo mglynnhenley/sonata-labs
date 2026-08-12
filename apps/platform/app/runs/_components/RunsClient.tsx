@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState, type MouseEvent } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Badge,
-  Button,
+  buttonClasses,
   Card,
   Chip,
   IconArrowRight,
@@ -134,13 +134,15 @@ export function RunsClient({
         subtitle="A run is one simulated workday. Pick a scenario and a model, press start, and watch the day play out — emails arriving, the agent working, people writing back."
         actions={
           active ? (
-            <Button
-              variant="primary"
-              iconRight={<IconArrowRight size={14} />}
+            // A real anchor, so the live run can be opened in its own tab.
+            <a
+              href={`/runs/${active.runId}`}
               onClick={(e) => go(e, `/runs/${active.runId}`)}
+              className={buttonClasses("primary", "md")}
             >
               Watch the day
-            </Button>
+              <IconArrowRight size={14} />
+            </a>
           ) : undefined
         }
       />
@@ -162,7 +164,7 @@ export function RunsClient({
         </Card>
       ) : null}
 
-      {active ? <LiveRunBanner run={active} now={data.at} onOpen={(e) => go(e, `/runs/${active.runId}`)} /> : null}
+      {active ? <LiveRunBanner run={active} now={data.at} href={`/runs/${active.runId}`} /> : null}
 
       <section>
         <h2 className="font-display text-[26px] text-sn-ink">Start a run</h2>
@@ -219,12 +221,15 @@ export function RunsClient({
 function LiveRunBanner({
   run,
   now,
-  onOpen,
+  href,
 }: {
   run: RunSummary;
   now: number;
-  onOpen: (event: MouseEvent<HTMLElement>) => void;
+  /** The live run's own page. Passed as a URL, not a handler, so the banner's
+   *  way in is a real link. */
+  href: string;
 }) {
+  const go = useGo();
   return (
     <Card padding="lg" className="animate-sn-rise">
       <div className="flex flex-wrap items-start justify-between gap-4">
@@ -250,9 +255,10 @@ function LiveRunBanner({
               {simClock(run.simTimeISO)}
             </p>
           </div>
-          <Button variant="primary" size="lg" iconRight={<IconArrowRight size={15} />} onClick={onOpen}>
+          <a href={href} onClick={(e) => go(e, href)} className={buttonClasses("primary", "lg")}>
             Watch the day
-          </Button>
+            <IconArrowRight size={15} />
+          </a>
         </div>
       </div>
 

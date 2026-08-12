@@ -198,6 +198,10 @@ export function PastRuns({ runs, now, simulated }: PastRunsProps) {
       rowLabel={(run) => `${run.specTitle} on ${modelLabel(run.model)}`}
       // One run, one URL: /runs/{id} serves the day live and its verdict after,
       // so a row needs no guess about which page its run belongs on.
+      // Both, deliberately: the click routes on the client, the href is what
+      // makes Cmd-click and middle-click open the run in a tab. This list is the
+      // only way into a run, so it has to behave like the links it is.
+      rowHref={(run) => `/runs/${run.runId}`}
       onRowClick={(run) => router.push(`/runs/${run.runId}`)}
       caption="Past runs, newest first"
       empty={

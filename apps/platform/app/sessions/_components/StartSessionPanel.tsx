@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import {
   Button,
+  buttonClasses,
   Card,
   Chip,
   EmptyState,
@@ -57,10 +58,9 @@ export function StartSessionPanel({ scenarios, starting, onStart }: StartSession
           "Or describe your own business in a sentence and let Sonata write it",
         ]}
         action={
-          <a href="/scenarios">
-            <Button variant="primary" iconRight={<IconArrowRight size={14} />}>
-              Browse scenarios
-            </Button>
+          <a href="/scenarios" className={buttonClasses("primary", "md")}>
+            Browse scenarios
+            <IconArrowRight size={14} />
           </a>
         }
       />
