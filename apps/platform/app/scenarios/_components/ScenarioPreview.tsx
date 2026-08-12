@@ -66,20 +66,14 @@ function Stat({ label, twin, value }: { label: string; twin: TwinName | null; va
 
 export function ScenarioPreview({ draft }: ScenarioPreviewProps) {
   const { business, counts, cast, channels, episode } = draft;
+  // A substitution is only a substitution when something was described. Choosing
+  // a template card is also `offline`, and nobody needs telling that the day they
+  // picked is the day they picked; `offlineReason` is set only when a brief was
+  // answered with somebody else's company.
+  const standIn = draft.offline && draft.offlineReason ? draft.offlineReason : null;
 
   return (
     <div className="animate-sn-rise flex flex-col gap-6">
-      {draft.offline ? (
-        <div className="flex items-start gap-2.5 rounded-sn-lg border border-sn-gold-soft bg-sn-gold-soft px-4 py-3">
-          <IconInfo size={15} className="mt-0.5 shrink-0 text-sn-gold-ink" />
-          <p className="text-[13px] leading-[20px] text-sn-gold-ink">
-            This was built from the closest ready-made day rather than written for your description
-            {draft.offlineReason ? ` — ${draft.offlineReason}` : ""}. Fix that and preview again to
-            have the company written from scratch.
-          </p>
-        </div>
-      ) : null}
-
       <Card padding="lg">
         <p className="text-[11px] font-medium tracking-[0.08em] text-sn-subtle uppercase">
           The business
@@ -88,6 +82,28 @@ export function ScenarioPreview({ draft }: ScenarioPreviewProps) {
         <p className="mt-1 text-[13px] text-sn-subtle">
           {business.industry} · {business.size} people
         </p>
+
+        {/* Beside the name, above the description, because that is where someone
+            reads what company this is. Underneath the whole preview it was a
+            footnote, and a footnote is how "we used a template" got read as
+            "here is your business". */}
+        {standIn ? (
+          <div className="mt-4 flex items-start gap-2.5 rounded-sn-lg border border-sn-gold-soft bg-sn-gold-soft px-4 py-3">
+            <IconInfo size={15} className="mt-0.5 shrink-0 text-sn-gold-ink" />
+            <div className="min-w-0">
+              <p className="text-[13.5px] leading-[20px] font-medium text-sn-gold-ink">
+                {business.name} is a ready-made example, not the business you described.
+              </p>
+              <p className="mt-1 text-[13px] leading-[20px] text-sn-gold-ink">{standIn}</p>
+              <p className="mt-2 text-[12.5px] leading-[19px] text-sn-gold-ink/85">
+                You described: “{draft.brief}”. Everything below belongs to the example — the
+                people, the day and what it is scored on. Create it only if running that company is
+                what you want.
+              </p>
+            </div>
+          </div>
+        ) : null}
+
         <p className="mt-3 max-w-[68ch] text-[14px] leading-[22px] text-sn-muted">
           {business.description}
         </p>

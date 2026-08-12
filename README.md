@@ -17,7 +17,7 @@ tools, `gmail_*` / `slack_*` / `calendar_*` plus `sonata_whats_new`, which
 answers "what changed since I last looked" across all three surfaces.
 
 ```bash
-npx sonata-mcp connect   # prints the config to paste (after `npm install`)
+node_modules/.bin/sonata-mcp connect   # prints the config to paste
 ```
 
 No MCP is fine too — the same command prints the base URLs, the tokens and a
@@ -30,8 +30,8 @@ made. Or clone one of the five that ship with the product and skip the model
 call.
 
 ```bash
-npx sonata world create "a 30-person support desk mid-migration"
-npx sonata world template client-escalation
+npm run sonata -- world create "a 30-person support desk mid-migration"
+npm run sonata -- world template client-escalation
 ```
 
 **3. Run a day and read the report.** The clock ticks in 15 simulated minutes.
@@ -42,26 +42,26 @@ escalation before the review?") and a judge reads the day back for the twenty
 catalogued failure modes.
 
 ```bash
-npx sonata run client-escalation --model anthropic/claude-haiku-4.5 --ticks 4
+npm run sonata -- run client-escalation --model anthropic/claude-haiku-4.5 --ticks 4
 ```
 
-The same three steps are the dashboard's three pages; `sonata run` calls the
-function the Start button calls, so a terminal and a browser cannot disagree.
+The same three steps are the dashboard's three pages; the `run` command calls
+the function the Start button calls, so a terminal and a browser cannot
+disagree.
 
 ## Quickstart
 
 From a clean clone. Node >= 22 (see [Requirements](#requirements)).
 
 ```bash
-npm install          # first, always: `sonata` is a workspace bin, not a package
-npx sonata init      # writes .env, applies each clone's schema
-npx sonata up        # dashboard :3000, and the three clones
+npm install                  # workspaces, native modules, the CLI
+npm run sonata -- init       # writes .env, applies each clone's schema
+npm run sonata -- up         # dashboard :3000, and the three clones
 ```
 
-> `npm install` before anything else. `sonata` is this repo's own bin; run `npx
-> sonata` in an uninstalled checkout and npm will fetch an unrelated package of
-> that name off the public registry. `npm run sonata -- <command>` is the same
-> CLI by a path that can never do that.
+Every Sonata command below is `npm run sonata -- <command>`: it runs this
+repo's own CLI, `packages/cli/bin/sonata.mjs`, by path — so it means the same
+thing in the first minute of a clone as in the thousandth, on any machine.
 
 `init` asks for an OpenRouter key and accepts an empty answer — everything except
 the model calls works without one. It also applies the clones' schemas, which a
@@ -76,7 +76,7 @@ When something is off — a clone answering 500 after a merge, a key nothing rea
 a port already taken — ask rather than guess:
 
 ```bash
-npx sonata doctor
+npm run sonata -- doctor
 ```
 
 It reads and changes nothing, and every line that is not `ok` carries the command
@@ -87,9 +87,9 @@ server. Doctor names the missing tables and the one line that adds them.
 The terminal path is the same product:
 
 ```bash
-npx sonata status                       # clones, models, recent runs
-npx sonata world list                   # what you have cloned, and what ships
-npx sonata run client-escalation --ticks 4
+npm run sonata -- status                # clones, models, recent runs
+npm run sonata -- world list            # what you have cloned, and what ships
+npm run sonata -- run client-escalation --ticks 4
 ```
 
 ## Where the mailbox comes from
@@ -257,8 +257,8 @@ Real money, on your OpenRouter key. Roughly, on a cheap model:
 
 The day, the model and the judge all move it: the 12-tick run above cost $0.60.
 
-`sonata bench --dry-run` prices a whole matrix before running any of it, and
-`--max-cost` and `--budget` stop a run and a matrix at a number you set. A run
+`npm run sonata -- bench --dry-run` prices a whole matrix before running any of
+it, and `--max-cost` and `--budget` stop a run and a matrix at a number you set. A run
 that finished suspiciously fast at $0 did not happen — check the spend on the
 report.
 
@@ -266,9 +266,9 @@ report.
 
 Every variable the code reads is documented in
 [`.env.example`](.env.example); only `OPENROUTER_API_KEY` has no working default,
-and `npx sonata init` is what writes it. Copy the example by hand instead and the
-placeholder comes with it — `sonata doctor` reports a placeholder as no key, which
-is what it is.
+and `npm run sonata -- init` is what writes it. Copy the example by hand instead
+and the placeholder comes with it — `npm run sonata -- doctor` reports a
+placeholder as no key, which is what it is.
 
 **The name is `OPENROUTER_API_KEY`.** `OPEN_ROUTER_KEY` is silently ignored —
 the run starts, the world seeds, and then every model call fails with
@@ -292,7 +292,7 @@ dependency — but the dependency floor is the binding one. Developed on 25.
 apps/gmail  apps/slack  apps/calendar   the clones (SQLite, local)
 apps/gmail-ui                           the Gmail front end, over OAuth
 apps/platform                           the dashboard, and the commands it shares
-packages/cli        `sonata` — doctor, init, up/down, and the front door to the rest
+packages/cli        `npm run sonata` — doctor, init, up/down, and the front door to the rest
 packages/core       shared types, the failure-mode catalog, scoring
 packages/engine     the tick clock, scripted beats, the director, the agent loop
 packages/judge      checkers, the deterministic checklist, the episode judge

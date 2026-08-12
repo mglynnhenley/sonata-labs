@@ -182,35 +182,146 @@ const SCHEMA: Record<string, unknown> = {
   required: ["business", "owner", "cast", "channels", "episode"],
 };
 
+// ---------------------------------------------------------------------------
+// Matching a brief to a shipped example.
+//
+// This is the whole judgement behind the offline fallback, and it used to have
+// none: the scan started at `bestScore = -1`, so a brief sharing not one word
+// with any template still came back as TEMPLATES[0]. "A nine-person bike repair
+// chain, mid-recall" was answered with Northbeam Capital, treasury automation,
+// twelve people. The screen said a template had been used; nothing said the
+// template had nothing to do with the question.
+// ---------------------------------------------------------------------------
+
+/**
+ * Words that appear in any business description and so distinguish none of them.
+ *
+ * Without this the score is mostly grammar: a veterinary practice scored 2
+ * against the travel day on "with" and "four" — the same 2 a design agency at
+ * quarter end scored against the invoice day on "quarter" and "invoices". No
+ * floor can separate those, because the numbers are measuring different things.
+ * Three groups, and each is here for a reason: function words carry syntax, not
+ * subject; a headcount that coincides is not a subject in common; and the
+ * furniture every workday brief mentions ("company", "week", "morning") is true
+ * of all five templates at once.
+ */
+const UNDISTINGUISHING: ReadonlySet<string> = new Set(
+  (
+    "about after again against already also although always another anything around because " +
+    "been before being between both cannot come comes could does doing done during each either " +
+    "else even ever every everything from give gives going gone have having here however into " +
+    "itself just keep keeps kind last later least less like made make makes many maybe mean " +
+    "means might more most much must need needs never next none nothing only other others ought " +
+    "over past perhaps please quite rather really same seem seems several shall should since " +
+    "some someone something soon still such take takes than that their them then there these " +
+    "they thing things this those though through thus told took under until upon used uses very " +
+    "want wants well were what when where whether which while whole whom whose will with within " +
+    "without would your yours " +
+    "three four five seven eight nine multiple dozen " +
+    "person people staff headcount " +
+    "business businesses company companies firm team teams " +
+    "week weeks weekly today tomorrow yesterday morning afternoon evening tonight hour hours " +
+    "minute minutes"
+  ).split(" "),
+);
+
 /** Words that carry meaning when matching a brief to a template. */
 function keywords(text: string): Set<string> {
   return new Set(
     text
       .toLowerCase()
       .split(/[^a-z]+/)
-      .filter((w) => w.length > 3),
+      .filter((w) => w.length > 3 && !UNDISTINGUISHING.has(w)),
   );
 }
 
 /**
- * Closest shipped template to what the user described. Used when there is no
- * model access, so the flow still ends in a real, runnable day rather than an
- * error dialog — with `offline` set, and the UI says so.
+ * How many distinct subject words a brief and a shipped example must share
+ * before that example is allowed to stand in for the brief.
+ *
+ * Two — and what it means is "more than one word in common", which is the
+ * smallest claim that is not a coincidence. Scored against the shipped five,
+ * briefs that really are one of these days sit at 2 and above: a design agency
+ * at quarter end meets the invoice day on "quarter, invoices"; a support desk
+ * mid-outage meets the outage day on "checkout, customers, emailing,
+ * engineering, fixing". Briefs about a bike repair chain, a bakery, a vet's and
+ * a karate dojo all sit at exactly 0. What fills the gap between them is single
+ * words: "engineering" alone tied a SOC 2 audit to an outage, "lands" alone tied
+ * a logistics firm to a client escalation. So 1 is noise, 2 is the lowest number
+ * the shipped templates give any evidence for, and a brief below it gets no
+ * company rather than someone else's.
  */
-export function nearestTemplate(brief: string): Template {
+const MATCH_FLOOR = 2;
+
+export interface TemplateMatch {
+  template: Template;
+  /** The subject words the brief and the template actually have in common. */
+  shared: string[];
+}
+
+/**
+ * The shipped example that resembles this brief, or null when none does.
+ *
+ * Null is an answer, not a failure to produce one, and the caller may not paper
+ * over it: below the floor, the nearest template is simply a different company
+ * from the one the user described.
+ */
+export function nearestTemplate(brief: string): TemplateMatch | null {
   const wanted = keywords(brief);
-  let best = TEMPLATES[0]!;
-  let bestScore = -1;
-  for (const template of TEMPLATES) {
+  const scored = TEMPLATES.map((template) => {
     const have = keywords(`${template.title} ${template.description}`);
-    let score = 0;
-    for (const word of wanted) if (have.has(word)) score += 1;
-    if (score > bestScore) {
-      best = template;
-      bestScore = score;
-    }
-  }
+    return { template, shared: [...wanted].filter((w) => have.has(w)) };
+  }).sort((a, b) => b.shared.length - a.shared.length);
+
+  const best = scored[0];
+  if (!best || best.shared.length < MATCH_FLOOR) return null;
+  // A tie is not a match. Ties resolved by array position before, which is
+  // exactly how an unrelated company got picked; when two shipped days fit a
+  // description equally well, the user is the one who knows which they meant.
+  if (scored[1] && scored[1].shared.length === best.shared.length) return null;
   return best;
+}
+
+/**
+ * Nothing shipped resembles the brief, so nothing was built.
+ *
+ * Thrown rather than absorbed. Every other outcome of `draftScenario` hands back
+ * a company, and handing back the wrong one under a footnote is the failure this
+ * path exists to prevent — a user who has just described their business and been
+ * given someone else's has been answered, not helped.
+ */
+export class NoResemblingExample extends Error {
+  constructor(why: string) {
+    super(
+      `${why}. None of the ${TEMPLATES.length} shipped example days resembles the business you ` +
+        `described, so none was substituted for it — an unrelated company presented as yours is ` +
+        `worse than no company at all. Restore model access and preview again, or pick one of the ` +
+        `shipped days knowing it is not your business.`,
+    );
+    this.name = "NoResemblingExample";
+  }
+}
+
+/**
+ * The one way this file falls back to a shipped day.
+ *
+ * All three failures below — no key, an answer too thin to run, an exception —
+ * come through here, so what a user is told about a substitution cannot depend
+ * on which of them happened. `offlineReason` names the substitution outright,
+ * and the preview prints it beside the company's name, not in a footnote.
+ */
+export function templateStandIn(brief: string, ticks: number, why: string): AssembledScenario {
+  const match = nearestTemplate(brief);
+  if (!match) throw new NoResemblingExample(why);
+  const business = match.template.scenario.business;
+  return assembleTemplate(match.template, {
+    ticks,
+    offlineReason:
+      `${why}. What is below is not your business: it is the shipped example ` +
+      `"${match.template.title}" — ${business.name}, ${business.industry.toLowerCase()}, ` +
+      `${business.size} people — matched to your description by ${match.shared.length} shared ` +
+      `words: ${match.shared.join(", ")}.`,
+  });
 }
 
 function looksUsable(scenario: AuthoredScenario): boolean {
@@ -392,57 +503,63 @@ async function assembleWithBoundCriteria(
 }
 
 /**
- * Generate a world and a day from a plain-language brief, and park it. Falls back
- * to the nearest template — never to an error — because the preview step is the
- * moment the product has to feel effortless.
+ * The day as the model wrote it, or why it did not.
+ *
+ * Three ways this can come back a `why` and no day, and none of them decides
+ * what happens next: that is `templateStandIn`'s single job, one level up. Three
+ * failure branches each choosing their own fallback is the shape that let the
+ * three of them drift into telling a user three different things.
  */
-export async function draftScenario(brief: string, ticks: number): Promise<DraftDoc> {
-  let assembled: AssembledScenario;
-  // Why the model was not used. Carried into the draft rather than swallowed: a
-  // fallback the user cannot see is indistinguishable from the product working.
-  let reason: string | undefined;
+type Authored = { day: AssembledScenario } | { why: string };
 
-  if (hasModelAccess()) {
-    try {
-      const authored = await completeJson<AuthoredScenario>({
-        system: SYSTEM,
-        user: `Business and day to simulate:\n\n${brief}\n\nThe day runs for ${ticks} ticks, so ticks 0 to ${ticks - 1}.`,
-        schema: SCHEMA,
-        schemaName: "sonata_scenario",
-        maxTokens: 16000,
-      });
-      if (looksUsable(authored)) {
-        assembled = await assembleWithBoundCriteria(authored, brief, ticks);
-        // The day cannot be scored: its criteria were dropped, or what survived
-        // is prose for the judge. That is the same failure as a business too thin
-        // to run — say so and hand back a day that scores, rather than one that
-        // will report 100% of nothing. Every shipped template clears this bar,
-        // so the fallback is always a day whose verdict means something.
-        const shortfall = shortfallOf(assembled);
-        if (shortfall) {
-          const why = assembled.unbound.map((c) => c.why).join("; ");
-          reason =
-            `the model's criteria could not score this day, even after ${MAX_CRITERIA_REPAIRS} ` +
-            `rewrites — ${shortfall}${why ? ` (dropped: ${why})` : ""}`;
-          assembled = assembleTemplate(nearestTemplate(brief), { ticks, offlineReason: reason });
-        }
-      } else {
-        reason =
+async function authorFromModel(brief: string, ticks: number): Promise<Authored> {
+  if (!hasModelAccess()) return { why: "OPENROUTER_API_KEY is not set, so no model could be asked" };
+
+  try {
+    const authored = await completeJson<AuthoredScenario>({
+      system: SYSTEM,
+      user: `Business and day to simulate:\n\n${brief}\n\nThe day runs for ${ticks} ticks, so ticks 0 to ${ticks - 1}.`,
+      schema: SCHEMA,
+      schemaName: "sonata_scenario",
+      maxTokens: 16000,
+    });
+    if (!looksUsable(authored)) {
+      return {
+        why:
           `the model answered with too thin a business (${authored.cast?.length ?? 0} people, ` +
           `${authored.channels?.length ?? 0} channels, ${authored.episode?.beats?.length ?? 0} beats, ` +
-          `${authored.episode?.criteria?.length ?? 0} criteria)`;
-        assembled = assembleTemplate(nearestTemplate(brief), { ticks, offlineReason: reason });
-      }
-    } catch (err) {
-      // A generation failure must not cost the user their place in the flow —
-      // but it must say what happened.
-      reason = err instanceof Error ? err.message : String(err);
-      assembled = assembleTemplate(nearestTemplate(brief), { ticks, offlineReason: reason });
+          `${authored.episode?.criteria?.length ?? 0} criteria)`,
+      };
     }
-  } else {
-    reason = "OPENROUTER_API_KEY is not set, so no model could be asked";
-    assembled = assembleTemplate(nearestTemplate(brief), { ticks, offlineReason: reason });
+
+    const day = await assembleWithBoundCriteria(authored, brief, ticks);
+    // The day cannot be scored: its criteria were dropped, or what survived is
+    // prose for the judge. That is the same failure as a business too thin to
+    // run — a day that will report 100% of nothing is not a day.
+    const shortfall = shortfallOf(day);
+    if (!shortfall) return { day };
+    const dropped = day.unbound.map((c) => c.why).join("; ");
+    return {
+      why:
+        `the model's criteria could not score this day, even after ${MAX_CRITERIA_REPAIRS} ` +
+        `rewrites — ${shortfall}${dropped ? ` (dropped: ${dropped})` : ""}`,
+    };
+  } catch (err) {
+    return { why: err instanceof Error ? err.message : String(err) };
   }
+}
+
+/**
+ * Generate a world and a day from a plain-language brief, and park it.
+ *
+ * When the model cannot be reached it falls back to a shipped example, but only
+ * to one that resembles what was described — and it says which, in the draft, so
+ * the substitution reaches the screen the company is shown on. When nothing
+ * resembles it, this throws: see `NoResemblingExample`.
+ */
+export async function draftScenario(brief: string, ticks: number): Promise<DraftDoc> {
+  const authored = await authorFromModel(brief, ticks);
+  const assembled = "day" in authored ? authored.day : templateStandIn(brief, ticks, authored.why);
 
   const doc: DraftDoc = {
     draft: { ...assembled.draft, brief },
