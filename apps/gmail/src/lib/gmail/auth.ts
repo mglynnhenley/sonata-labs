@@ -22,9 +22,21 @@ export const SANDBOX_TOKEN = process.env.SANDBOX_TOKEN || "sandbox-token";
 
 export type AuthMode = "token" | "oauth";
 
+// A live override for demos, settable from the dashboard through the admin-gated
+// POST /api/sandbox/auth-mode. Process memory only, on globalThis so Next HMR
+// keeps it: SANDBOX_AUTH stays the durable setting, and a restart falls back to
+// it. Deliberately not persisted anywhere — one setting, one home.
+const g = globalThis as { __sandboxAuthMode?: AuthMode };
+
 /** Anything but an explicit "oauth" is `token` — a typo must not lock anyone out. */
 export function authMode(env: Record<string, string | undefined> = process.env): AuthMode {
-  return env.SANDBOX_AUTH === "oauth" ? "oauth" : "token";
+  return g.__sandboxAuthMode ?? (env.SANDBOX_AUTH === "oauth" ? "oauth" : "token");
+}
+
+/** Flip the live mode; `null` clears the override back to the env setting. */
+export function setAuthMode(mode: AuthMode | null): void {
+  if (mode === null) delete g.__sandboxAuthMode;
+  else g.__sandboxAuthMode = mode;
 }
 
 /** The static token's standing in `token` mode: valid for everything, forever. */

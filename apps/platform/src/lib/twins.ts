@@ -7,7 +7,7 @@ import {
   TWIN_NAMES,
   TWIN_UI_PORTS,
   hasUiService,
-  twinApiUrl,
+  resolveTwinApiUrl,
   twinUiUrl,
   type TwinName,
 } from "@sonata/core";
@@ -40,8 +40,10 @@ export const TWIN_BLURBS: Record<TwinName, string> = {
   calendar: "Events, invites, RSVPs and free/busy across the whole cast.",
 };
 
+/** Where the twin actually is: env-resolved, same precedence as every other
+ *  consumer, so SONATA_GMAIL_URL moves the supervisor's probes too. */
 export function twinUrl(twin: TwinName): string {
-  return twinApiUrl(twin);
+  return resolveTwinApiUrl(twin, process.env);
 }
 
 /** The twin's web client, for twins that ship one. */
@@ -72,6 +74,11 @@ export interface TwinStatus {
    * for twins with no UI service yet.
    */
   ui?: TwinUiStatus;
+  /**
+   * How the twin's provider API is gated right now, for twins that report it on
+   * /api/health (gmail). Absent for twins with no auth modes.
+   */
+  auth?: "token" | "oauth";
 }
 
 // ---------------------------------------------------------------------------
@@ -212,11 +219,15 @@ async function probeUi(twin: TwinName): Promise<TwinUiStatus | undefined> {
 async function probe(twin: TwinName): Promise<TwinStatus> {
   const proc = livingProcess(twin);
   const ui = await probeUi(twin);
+  const url = twinUrl(twin);
   const base: Omit<TwinStatus, "ok" | "detail"> = {
     twin,
     label: TWIN_LABELS[twin],
-    port: TWIN_PORTS[twin],
-    url: twinUrl(twin),
+    // The port of the URL actually probed — with an env override these differ
+    // from the defaults, and the card must not claim one port while reporting
+    // another one's health. TWIN_PORTS stays what startTwin binds locally.
+    port: Number(new URL(url).port) || TWIN_PORTS[twin],
+    url,
     managed: proc !== null,
     pid: proc?.pid ?? null,
     checkedAt: Date.now(),
@@ -246,7 +257,13 @@ async function probe(twin: TwinName): Promise<TwinStatus> {
       return { ...base, ok: false, detail: `answered ${res.status}${said ? `: ${said}` : ""}` };
     }
     const { ok, detail } = describe(twin, body);
-    return { ...base, ok, detail };
+    const reported = (body as { auth?: unknown } | undefined)?.auth;
+    return {
+      ...base,
+      ok,
+      detail,
+      ...(reported === "token" || reported === "oauth" ? { auth: reported } : {}),
+    };
   } catch {
     // A managed process that is not answering yet is starting, not broken —
     // Next's first compile takes a few seconds and must not read as a failure.
@@ -366,6 +383,29 @@ export async function stopTwin(twin: TwinName): Promise<TwinStatus> {
       }
     }
     clearTwinProcess(twin);
+  }
+  return twinStatus(twin, true);
+}
+
+/**
+ * Flip how a twin's provider API is gated, live — the demo switch. Talks to the
+ * twin's admin-gated control plane; the twin holds the override in process
+ * memory, so its SANDBOX_AUTH env stays the durable setting.
+ */
+export async function setTwinAuthMode(
+  twin: TwinName,
+  mode: "token" | "oauth",
+): Promise<TwinStatus> {
+  const adminToken = process.env.SANDBOX_TOKEN || "sandbox-token";
+  const res = await fetch(`${twinUrl(twin)}/api/sandbox/auth-mode`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${adminToken}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ mode }),
+    signal: AbortSignal.timeout(HEALTH_TIMEOUT_MS),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`the ${TWIN_LABELS[twin]} clone refused the auth change: ${text.slice(0, 160)}`);
   }
   return twinStatus(twin, true);
 }

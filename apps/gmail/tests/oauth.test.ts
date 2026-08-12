@@ -17,7 +17,7 @@ import { validateAuthorize, isAuthorizeRequest } from "@/lib/oauth/authorize";
 import { s256Challenge, verifyPkce, isValidCodeVerifier } from "@/lib/oauth/pkce";
 import { hasScope, parseScopes, partitionScopes, GMAIL_SCOPE } from "@/lib/oauth/scopes";
 import { revokeToken, type TokenRow } from "@/lib/oauth/store";
-import { authMode, authenticate, SANDBOX_TOKEN } from "@/lib/gmail/auth";
+import { authMode, authenticate, setAuthMode, SANDBOX_TOKEN } from "@/lib/gmail/auth";
 import { NextResponse } from "next/server";
 
 const schema = readFileSync(path.resolve(__dirname, "..", "db", "schema.sql"), "utf8");
@@ -290,6 +290,18 @@ describe("SANDBOX_AUTH modes", () => {
     expect(authMode({ SANDBOX_AUTH: "oauth" })).toBe("oauth");
     // A typo must not lock anyone out of their own fixture.
     expect(authMode({ SANDBOX_AUTH: "aouth" })).toBe("token");
+  });
+
+  it("the live override beats the env, and clearing it falls back", () => {
+    try {
+      setAuthMode("oauth");
+      expect(authMode({})).toBe("oauth");
+      expect(authMode({ SANDBOX_AUTH: "token" })).toBe("oauth");
+      setAuthMode(null);
+      expect(authMode({})).toBe("token");
+    } finally {
+      setAuthMode(null); // never leak mode into other tests
+    }
   });
 
   it("token mode: the static token is valid with full scope", () => {

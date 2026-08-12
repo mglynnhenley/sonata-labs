@@ -1,12 +1,19 @@
 import { NextResponse } from "next/server";
-import { isTwinName, startTwin, stopTwin, twinLogTail, twinStatus } from "@/lib/twins";
+import {
+  isTwinName,
+  setTwinAuthMode,
+  startTwin,
+  stopTwin,
+  twinLogTail,
+  twinStatus,
+} from "@/lib/twins";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 type Params = { params: Promise<{ twin: string; action: string }> };
 
-const ACTIONS = ["health", "start", "stop", "restart"] as const;
+const ACTIONS = ["health", "start", "stop", "restart", "auth-token", "auth-oauth"] as const;
 type Action = (typeof ACTIONS)[number];
 
 function isAction(value: string): value is Action {
@@ -36,6 +43,10 @@ async function run(twin: string, action: string) {
         await stopTwin(twin);
         return NextResponse.json({ twin: await startTwin(twin) });
       }
+      case "auth-token":
+        return NextResponse.json({ twin: await setTwinAuthMode(twin, "token") });
+      case "auth-oauth":
+        return NextResponse.json({ twin: await setTwinAuthMode(twin, "oauth") });
     }
   } catch (err) {
     // A failed start is nearly always something the twin printed on its way
