@@ -310,11 +310,33 @@ async function partScopeDenial(): Promise<void> {
     roGmail.users.messages.send({ userId: "me", requestBody: { raw: "" } }), 403);
 }
 
+/**
+ * The static token's standing depends on SANDBOX_AUTH, which the twin reports
+ * on /api/health. `token` mode: it reads /gmail/v1/* with full scope. `oauth`
+ * mode: it earns a 401 there. Either way it stays the control-plane credential.
+ */
+async function partStaticToken(): Promise<void> {
+  const health = (await fetch(`${ROOT_URL}/api/health`).then((r) => r.json())) as { auth?: string };
+  const mode = health.auth === "oauth" ? "oauth" : "token";
+  console.log(`\n\x1b[1mStatic token (SANDBOX_AUTH=${mode})\x1b[0m`);
+  const admin = new OAuth2Client();
+  admin.setCredentials({ access_token: process.env.SANDBOX_TOKEN || "sandbox-token" });
+  const g = google.gmail({ version: "v1", auth: admin, rootUrl: ROOT_URL });
+  if (mode === "token") {
+    const profile = await g.users.getProfile({ userId: "me" });
+    check("static token reads the provider API in token mode", !!profile.data.emailAddress);
+  } else {
+    await expectError("static token is refused by the provider API in oauth mode", () =>
+      g.users.getProfile({ userId: "me" }), 401);
+  }
+}
+
 async function main() {
   const mode = process.argv[2] || "all";
   // Establish a session through the real OAuth flow before any API call.
   const token = await authorize(ALL_SCOPES);
   check("OAuth handshake yields an access token", !!token);
+  await partStaticToken();
   await part1Reads();
   if (mode !== "reads") {
     try {

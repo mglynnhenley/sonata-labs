@@ -2,19 +2,44 @@ import { unauthorized, errorResponse } from "./errors";
 import { NextResponse } from "next/server";
 import type { Database } from "better-sqlite3";
 import { getDb } from "../db";
-import { validateAccessToken } from "../oauth/service";
-import { hasScope } from "../oauth/scopes";
+import { safeEqual, validateAccessToken } from "../oauth/service";
+import { GMAIL_SCOPE, hasScope } from "../oauth/scopes";
 import type { TokenRow } from "../oauth/store";
 
-// Auth for /gmail/v1/*. As of the OAuth cutover this validates a real OAuth2
-// access token against `oauth_tokens` (unrevoked, unexpired) minted by the
-// sandbox's own authorization server — the agent passes an OAuth2Client whose
-// access_token becomes an `Authorization: Bearer` header, exactly as against
-// real Gmail.
+// Auth for /gmail/v1/*, in two modes.
 //
-// SANDBOX_TOKEN survives ONLY as the control-plane admin token (/api/sandbox/*,
-// see ../sandbox/auth.ts). It is no longer accepted on the provider API.
+// `token` (the default): the static bearer below works with full scope — the
+// zero-setup path for a local fixture. OAuth tokens minted by the sandbox's own
+// authorization server work too; the flow is always mounted and can be exercised
+// without flipping the mode.
+//
+// `oauth` (SANDBOX_AUTH=oauth): only OAuth tokens are accepted, per-route scopes
+// enforced — the agent passes an OAuth2Client whose access_token becomes an
+// `Authorization: Bearer` header, exactly as against real Gmail. The static
+// token is refused here; it stays the control-plane admin credential either way
+// (/api/sandbox/*, see ../sandbox/auth.ts).
 export const SANDBOX_TOKEN = process.env.SANDBOX_TOKEN || "sandbox-token";
+
+export type AuthMode = "token" | "oauth";
+
+/** Anything but an explicit "oauth" is `token` — a typo must not lock anyone out. */
+export function authMode(env: Record<string, string | undefined> = process.env): AuthMode {
+  return env.SANDBOX_AUTH === "oauth" ? "oauth" : "token";
+}
+
+/** The static token's standing in `token` mode: valid for everything, forever. */
+function staticTokenRow(): TokenRow {
+  return {
+    access_token: SANDBOX_TOKEN,
+    refresh_token: null,
+    client_id: "sandbox-static",
+    scope: GMAIL_SCOPE.full,
+    access_token_expires_at: Number.MAX_SAFE_INTEGER,
+    refresh_token_expires_at: null,
+    revoked_at: null,
+    created_at: 0,
+  };
+}
 
 function extractToken(req: Request): string | undefined {
   const header = req.headers.get("authorization") || "";
@@ -28,10 +53,16 @@ function extractToken(req: Request): string | undefined {
  * Validate the bearer access token. Returns the token row on success, or a
  * Gmail-shaped 401 to return as-is. Shared by `checkAuth` and `handleGmail`.
  */
-export function authenticate(req: Request, db: Database): TokenRow | NextResponse {
-  const result = validateAccessToken(db, extractToken(req));
-  if (!result.ok) return unauthorized();
-  return result.token;
+export function authenticate(
+  req: Request,
+  db: Database,
+  mode: AuthMode = authMode(),
+): TokenRow | NextResponse {
+  const bearer = extractToken(req);
+  const result = validateAccessToken(db, bearer);
+  if (result.ok) return result.token;
+  if (mode === "token" && safeEqual(bearer, SANDBOX_TOKEN)) return staticTokenRow();
+  return unauthorized();
 }
 
 /**

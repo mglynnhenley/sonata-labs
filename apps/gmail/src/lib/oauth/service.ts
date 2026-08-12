@@ -25,7 +25,7 @@ function randomToken(prefix: string): string {
   return `${prefix}${randomBytes(32).toString("base64url")}`;
 }
 
-function safeEqual(a: string | null | undefined, b: string | null | undefined): boolean {
+export function safeEqual(a: string | null | undefined, b: string | null | undefined): boolean {
   if (!a || !b) return false;
   const ab = Buffer.from(a);
   const bb = Buffer.from(b);

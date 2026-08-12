@@ -111,13 +111,25 @@ async function main(): Promise<void> {
   const rendered = gmail.renderDiff(gmail.diff(before, after));
   check("diff renders the change for the judge", rendered.length > 0, rendered.slice(0, 120));
 
-  // The separation itself, asserted rather than assumed.
+  // The credential contract, asserted per mode rather than assumed. The twin
+  // reports SANDBOX_AUTH on /api/health: `oauth` means the admin token must be
+  // refused by /gmail/v1/*; `token` (the default) means it must work there.
+  const healthBody = (await fetch(`${BASE_URL}/api/health`).then((r) => r.json())) as {
+    auth?: string;
+  };
+  const mode = healthBody.auth === "oauth" ? "oauth" : "token";
   const asAdmin = await fetch(`${BASE_URL}/gmail/v1/users/me/profile`, {
     headers: { Authorization: `Bearer ${ADMIN_TOKEN}` },
   });
-  check("the admin token is refused by the provider API", asAdmin.status === 401, {
-    got: asAdmin.status,
-  });
+  if (mode === "oauth") {
+    check("the admin token is refused by the provider API (oauth mode)", asAdmin.status === 401, {
+      got: asAdmin.status,
+    });
+  } else {
+    check("the admin token reads the provider API (token mode)", asAdmin.status === 200, {
+      got: asAdmin.status,
+    });
+  }
 
   const noAuth = await fetch(`${BASE_URL}/api/sandbox/token`, {
     method: "POST",

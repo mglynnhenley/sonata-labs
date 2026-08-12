@@ -203,16 +203,23 @@ goes through the same scripts, so the Gmail front end comes up with its API
 either way. Each script defaults to the port in the table and yields to an outer
 `PORT=`, which is what a second checkout on the same machine needs.
 
-### Two credentials, and they are not interchangeable
+### Two credentials, and when they are interchangeable
 
 `SANDBOX_TOKEN` (default `sandbox-token`) is the **control-plane admin** token.
 It opens `/api/sandbox/*` on all three clones — seed, inject, snapshot, reset,
 mint — and it is Slack's and Calendar's API token as well. It is a seatbelt, not
 a lock.
 
-Gmail's `/gmail/v1/*` is behind the clone's own OAuth2 server and takes only an
-access token that server minted; the admin token earns a Gmail-shaped 401 there.
-Mint one in a single call:
+Gmail also carries its own OAuth2 server, and `SANDBOX_AUTH` decides whether it
+gates `/gmail/v1/*`. The default is `token`: the admin token works there too,
+full scope, zero setup. Set `SANDBOX_AUTH=oauth` and `/gmail/v1/*` takes only an
+access token that server minted — the admin token earns a Gmail-shaped 401, and
+per-route scopes are enforced. The OAuth endpoints (authorize, consent, token,
+the mint bridge below) are mounted in both modes, so the flow is always there to
+exercise; the mode only changes what the provider API accepts. `/api/health`
+reports the active mode.
+
+In `oauth` mode, mint a token in a single call:
 
 ```bash
 # Slack and Calendar: the admin token is the API token.
@@ -321,7 +328,7 @@ npm run check:twin                     # the harness, against a live clone
 ```
 
 `smoke` is the clone's own gate: it drives the *official* `googleapis` SDK
-through a full authorize → consent → token exchange, then 58 checks over reads,
+through a full authorize → consent → token exchange, then 59 checks over reads,
 writes, per-route scopes and consent denial.
 
 `check:twin` is the other direction — the engine's `TwinAdapter` contract against
