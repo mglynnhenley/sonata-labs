@@ -50,6 +50,14 @@ export const IconClose = makeIcon("IconClose", <path d="M18 6 6 18M6 6l12 12" />
 
 export const IconMenu = makeIcon("IconMenu", <path d="M4 7h16M4 12h16M4 17h16" />);
 
+export const IconGear = makeIcon(
+  "IconGear",
+  <>
+    <circle cx="12" cy="12" r="3" />
+    <path d="M19.2 12a7.2 7.2 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7.2 7.2 0 0 0-2-1.2L14.2 3h-4l-.5 2.6a7.2 7.2 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6a7.2 7.2 0 0 0 0 2.4l-2 1.6 2 3.4 2.4-1a7.2 7.2 0 0 0 2 1.2l.5 2.6h4l.5-2.6a7.2 7.2 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6c.06-.4.1-.8.1-1.2Z" />
+  </>,
+);
+
 export const IconCopy = makeIcon(
   "IconCopy",
   <>

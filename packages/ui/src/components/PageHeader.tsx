@@ -41,7 +41,9 @@ export const PageHeader = forwardRef<HTMLElement, PageHeaderProps>(function Page
             // orphan word, and anywhere-breaking so an unbroken run id or model
             // slug cannot push the column wider than the page.
             "font-display text-sn-ink text-balance [overflow-wrap:anywhere]",
-            size === "lg" ? "text-[32px] sm:text-[46px]" : "text-[28px] sm:text-[36px]",
+            // Satoshi 900 carries more weight per point than the serif it
+            // replaced, so the scale steps down: 26/30 reads as big as 36/46 did.
+            size === "lg" ? "text-[28px] sm:text-[32px]" : "text-[24px] sm:text-[27px]",
           )}
         >
           {title}

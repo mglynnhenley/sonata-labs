@@ -20,7 +20,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
     <html lang="en" className={fontVariables}>
       <head>
         {/* Matches --color-sn-bg, so a phone's chrome does not band against the page. */}
-        <meta name="theme-color" content="#f2f1ec" />
+        <meta name="theme-color" content="#f7f6f2" />
       </head>
       <body>
         <ToastProvider>

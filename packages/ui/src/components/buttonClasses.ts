@@ -14,7 +14,8 @@ export type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
 export type ButtonSize = "sm" | "md" | "lg";
 
 export const BUTTON_BASE =
-  "relative inline-flex select-none items-center justify-center gap-2 rounded-sn-md border font-medium " +
+  // Pills, and bold: at button sizes Satoshi 500 reads soft, 700 reads meant.
+  "relative inline-flex select-none items-center justify-center gap-2 rounded-full border font-bold " +
   "transition-[background-color,border-color,color,box-shadow,transform] duration-150 ease-sn " +
   "active:translate-y-px disabled:pointer-events-none disabled:active:translate-y-0";
 
@@ -28,10 +29,11 @@ export const BUTTON_VARIANTS: Record<ButtonVariant, string> = {
     "border-transparent bg-sn-danger text-white shadow-sn-xs hover:bg-sn-danger-hover active:bg-sn-danger-hover",
 };
 
+/** A pill needs more side-room than a rectangle or the label looks pinched. */
 export const BUTTON_SIZES: Record<ButtonSize, string> = {
-  sm: "h-7 px-2.5 text-[12px]",
-  md: "h-9 px-3.5 text-[13px]",
-  lg: "h-11 px-5 text-[15px]",
+  sm: "h-7 px-3.5 text-[12px]",
+  md: "h-9 px-4.5 text-[13px]",
+  lg: "h-11 px-6 text-[14.5px]",
 };
 
 export const BUTTON_ICON_SIZES: Record<ButtonSize, string> = {

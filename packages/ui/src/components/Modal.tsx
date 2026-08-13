@@ -122,7 +122,7 @@ export function Modal({
       onKeyDown={onKeyDown}
     >
       <div
-        className="animate-sn-fade-in absolute inset-0 bg-[#1b1a17]/35 backdrop-blur-[1px]"
+        className="animate-sn-fade-in absolute inset-0 bg-[#16181a]/35 backdrop-blur-[1px]"
         onClick={close}
         aria-hidden="true"
       />

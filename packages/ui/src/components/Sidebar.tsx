@@ -142,7 +142,7 @@ export const Sidebar = forwardRef<HTMLElement, SidebarProps>(function Sidebar(
           documented ways out, so this need not be reachable. */}
       {drawerOpen ? (
         <div
-          className="animate-sn-fade-in fixed inset-0 z-40 bg-[#1b1a17]/35 backdrop-blur-[1px] lg:hidden"
+          className="animate-sn-fade-in fixed inset-0 z-40 bg-[#16181a]/35 backdrop-blur-[1px] lg:hidden"
           onClick={onClose}
           aria-hidden="true"
         />
@@ -156,7 +156,7 @@ export const Sidebar = forwardRef<HTMLElement, SidebarProps>(function Sidebar(
         // see. Only once the client has measured — see useDesktop.
         inert={desktop === false && !open ? true : undefined}
         className={cn(
-          "fixed inset-y-0 left-0 z-50 flex h-dvh w-[252px] flex-col border-r border-sn-line bg-sn-bg",
+          "fixed inset-y-0 left-0 z-50 flex h-dvh w-[252px] flex-col border-r border-sn-line bg-sn-surface",
           "overscroll-contain transition-transform duration-200 ease-sn-out",
           open ? "translate-x-0 shadow-sn-lg" : "-translate-x-full",
           // Above the breakpoint it is a column in the flex row again, never
@@ -207,7 +207,7 @@ export function SidebarTrigger({ onClick, open, brand, className }: SidebarTrigg
   return (
     <div
       className={cn(
-        "sticky top-0 z-30 flex items-center gap-3 border-b border-sn-line bg-sn-bg/85 px-4 py-3 backdrop-blur-md lg:hidden",
+        "sticky top-0 z-30 flex items-center gap-3 border-b border-sn-line bg-sn-surface/85 px-4 py-3 backdrop-blur-md lg:hidden",
         className,
       )}
     >
@@ -287,7 +287,7 @@ export const SidebarItem = forwardRef<HTMLElement, SidebarItemProps>(function Si
     "group flex h-9 w-full items-center gap-2.5 rounded-sn-md px-2.5 text-[13px] font-medium",
     "transition-[background-color,color,box-shadow] duration-150 ease-sn",
     active
-      ? "border border-sn-line bg-sn-surface text-sn-ink shadow-sn-xs"
+      ? "border border-sn-line bg-sn-bg text-sn-ink"
       : "border border-transparent text-sn-muted hover:bg-sn-surface-hover hover:text-sn-ink",
     disabled && "pointer-events-none opacity-45",
     className,

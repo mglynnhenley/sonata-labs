@@ -115,6 +115,7 @@ export {
   IconClock,
   IconClose,
   IconCopy,
+  IconGear,
   IconInbox,
   IconInfo,
   IconLayers,
