@@ -206,6 +206,15 @@ function compileCondition(cond: Condition, spec: FieldSpec, today: string): Pred
   }
 }
 
+/**
+ * The tenant predicate for a FROM resource. `customers` is keyed by the id
+ * itself; every other table carries a `customer_id`, so the scope never depends
+ * on a join being present.
+ */
+function scopeToCustomer(from: ResourceKind): string {
+  return from === "customer" ? `${ALIAS.customer}.id = ?` : `${ALIAS[from]}.customer_id = ?`;
+}
+
 /** The joins each FROM resource can carry, added only when something asks for one. */
 function buildFrom(from: ResourceKind, referenced: Set<Selectable>, needsStats: boolean): string {
   const parts: string[] = [];
@@ -279,9 +288,14 @@ export function executeGaql(db: Database, query: GaqlQuery, customer: CustomerRo
   );
   for (const kind of idKinds) projections.push(`${ALIAS[kind]}.id AS __id_${kind}`);
 
-  const where: string[] = [];
+  // Every query is scoped to the customer in the request path, on the FROM
+  // resource itself rather than through a join that only exists when the caller
+  // happens to select a customer field. A Google Ads account is a tenant
+  // boundary: `customers/A/googleAds:search` returning B's campaigns would be
+  // the worst kind of wrong answer, because it looks like a correct one.
+  const where: string[] = [scopeToCustomer(from)];
   const having: string[] = [];
-  const whereParams: unknown[] = [];
+  const whereParams: unknown[] = [customer.id];
   const havingParams: unknown[] = [];
 
   for (const cond of query.where) {

@@ -10,7 +10,7 @@ import { badRequestError, invalidValueError, missingFieldError } from "@/lib/lin
 import { buildPaging, clampCount, nextHref, parseStart } from "@/lib/linkedin/paging";
 import { buildCreateInput } from "@/lib/linkedin/post-input";
 import { shapePost } from "@/lib/linkedin/shape";
-import { shareUrn } from "@/lib/linkedin/urn";
+import { parseUrn, shareUrn } from "@/lib/linkedin/urn";
 import { insertPost, listPostsByAuthor } from "@/lib/store/posts";
 
 export const runtime = "nodejs";
@@ -30,6 +30,14 @@ export function GET(req: Request) {
     }
     const author = sp.get("author");
     if (!author) throw missingFieldError("author");
+    // A malformed author went straight to SQL and matched nothing, so `?q=author
+    // &author=not-a-urn` answered 200 with an empty page — indistinguishable from
+    // a real author who has not posted. An agent cannot tell "you asked wrong"
+    // from "there is nothing here" unless the API says so.
+    const parsedAuthor = parseUrn(author);
+    if (!parsedAuthor || (parsedAuthor.kind !== "person" && parsedAuthor.kind !== "organization")) {
+      throw invalidValueError("author", author);
+    }
 
     const sortBy = sp.get("sortBy") ?? "LAST_MODIFIED";
     if (!(SORT_KEYS as readonly string[]).includes(sortBy)) {

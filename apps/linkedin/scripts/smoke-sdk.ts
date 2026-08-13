@@ -318,6 +318,16 @@ async function main(): Promise<void> {
     replies.body.paging,
   );
 
+  // Threads are one level, and the REST path has to say so as loudly as the wire
+  // seeder does. Left open, a reply to a reply is created at depth 2 and then
+  // nothing reads it back — listReplies returns direct children only — so an
+  // agent's answer to a customer would earn a 201 and vanish from the thread.
+  const nested = await call(`/rest/socialActions/${seg(String(reply.body.commentUrn))}/comments`, {
+    method: "POST",
+    body: { actor: orgUrn, message: { text: "a second level" } },
+  });
+  check("a reply to a REPLY is 400, not an unreadable depth-2 row", nested.status === 400, nested.body);
+
   const reaction = await call(`/rest/reactions?actor=${seg(personUrn)}`, {
     method: "POST",
     body: { root: newActivityUrn, reactionType: "LIKE" },
@@ -447,6 +457,12 @@ async function main(): Promise<void> {
     wrongParent.status === 400,
     wrongParent.body,
   );
+
+
+  // A malformed author used to reach SQL and match nothing, so the caller got a
+  // 200 empty page — the same answer as a real author who has not posted.
+  const badAuthor = await call(`/rest/posts?q=author&author=not-a-urn`);
+  check("a malformed author URN is 400, not an empty 200", badAuthor.status === 400, badAuthor.body);
 
   // The permission model, on a post the owner did not write. The seed has none —
   // everything in it belongs to the owner or to the page they administer — so the

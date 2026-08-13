@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getDb } from "@/lib/db";
+import { liveDb } from "@/lib/sandbox/live";
 import { countRecords } from "@/lib/store/records";
 import { countNotes } from "@/lib/store/notes";
 import { countTasks } from "@/lib/store/tasks";
@@ -14,9 +14,14 @@ export const dynamic = "force-dynamic";
 // disagree — the engine tests `status === "ok"` literally while the dashboard
 // and the CLI accept either — and every count is a number because the engine
 // renders each numeric field as "<n> <key>".
+//
+// liveDb() rather than getDb(): `npm run seed` swaps working.db from another
+// process, and a handle opened before the swap keeps serving the file it was
+// opened on. Health reporting the counts of a database nobody is using any more
+// is the most misleading answer this route could give.
 export function GET() {
   try {
-    const db = getDb();
+    const db = liveDb();
     return NextResponse.json({
       status: "ok",
       ok: true,

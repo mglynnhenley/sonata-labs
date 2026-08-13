@@ -154,6 +154,13 @@ export function injectComment(db: Database, spec: InjectCommentSpec): InjectedCo
     }
     const parent = getCommentRow(db, parsed.commentId);
     if (!parent) throw new BadRequestError(`comment: no such parent ${spec.parentCommentUrn}`);
+    // Same one-level rule the wire seeder and the REST route enforce. A director
+    // beat that replies to a reply would write a row nothing reads back.
+    if (parent.parent_comment_id !== null) {
+      throw new BadRequestError(
+        `comment: ${spec.parentCommentUrn} is itself a reply — LinkedIn's comment threads are one level deep`,
+      );
+    }
     postId = parent.post_id;
     parentCommentId = parent.id;
   } else {

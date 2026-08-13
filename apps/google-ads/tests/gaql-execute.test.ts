@@ -11,8 +11,12 @@ import {
   CAMPAIGN_OVER,
   CAMPAIGN_PAUSED,
   CUSTOMER_ID,
+  OTHER_AD_GROUP,
+  OTHER_BUDGET,
+  OTHER_CAMPAIGN,
   day,
   makeTestDb,
+  seedOtherCustomer,
 } from "./helpers";
 
 // The semantics — the suite that proves the parser is the front of a real engine
@@ -333,5 +337,56 @@ describe("ordering and paging", () => {
         "SELECT segments.date, metrics.clicks FROM campaign WHERE segments.date DURING LAST_14_DAYS AND campaign.id = 17204885331",
       ).rows,
     ).toHaveLength(14);
+  });
+});
+
+// The account boundary. A Google Ads customer is a tenant: the id in the request
+// path is the whole of an advertiser's isolation, and a query that ignores it
+// returns a superset that still parses, still has the right shape, and is wrong
+// in the one way nobody checks for. The fixture seeds a second advertiser whose
+// numbers are deliberately unmistakable — 9999 impressions, $999/day — so a
+// missing scope shows up as a value no assertion here would ever expect.
+describe("customer scoping", () => {
+  beforeEach(() => seedOtherCustomer(db));
+
+  it("keeps another advertiser's campaigns out of an attribute query", () => {
+    const res = run("SELECT campaign.id, campaign.name FROM campaign");
+    const ids = res.rows.map((r) => r.campaign.id);
+    expect(ids).toContain(CAMPAIGN_OVER);
+    expect(ids).not.toContain(OTHER_CAMPAIGN);
+  });
+
+  it("keeps another advertiser's spend out of a metrics query", () => {
+    const res = run("SELECT campaign.id, metrics.cost_micros FROM campaign");
+    const ids = res.rows.map((r) => r.campaign.id);
+    expect(ids).not.toContain(OTHER_CAMPAIGN);
+    // $312/day for fourteen days on the Payments campaign plus $28/day for the
+    // five days the Northwind one ran. The other advertiser's $999/day appears
+    // nowhere — an unscoped SUM would be nearly four times this.
+    const total = res.rows.reduce((sum, row) => sum + Number(row.metrics!.costMicros), 0);
+    expect(total).toBe(14 * DAILY_COST + 5 * 28 * DOLLAR);
+  });
+
+  it("scopes ad groups and budgets too, not just campaigns", () => {
+    const ags = run("SELECT ad_group.id FROM ad_group").rows.map((r) => r.adGroup.id);
+    expect(ags).toContain(AG_OVER_A);
+    expect(ags).not.toContain(OTHER_AD_GROUP);
+
+    const budgets = run("SELECT campaign_budget.id FROM campaign_budget").rows.map(
+      (r) => r.campaignBudget.id,
+    );
+    expect(budgets).toContain(BUDGET_OVER);
+    expect(budgets).not.toContain(OTHER_BUDGET);
+  });
+
+  it("returns only the requesting customer from a customer query", () => {
+    const res = run("SELECT customer.id, customer.descriptive_name FROM customer");
+    expect(res.rows).toHaveLength(1);
+    expect(res.rows[0].customer.id).toBe(CUSTOMER_ID);
+  });
+
+  it("totalResultsCount counts the scoped rows, not every advertiser's", () => {
+    const res = run("SELECT campaign.id FROM campaign");
+    expect(res.totalCount).toBe(2);
   });
 });

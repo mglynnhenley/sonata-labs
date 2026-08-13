@@ -15,6 +15,12 @@ import { insertDailyStat } from "@/lib/store/stats";
 const schema = readFileSync(path.resolve(__dirname, "..", "db", "schema.sql"), "utf8");
 
 export const CUSTOMER_ID = "4802938157";
+/** A second advertiser, so "scoped to one account" is a testable claim and not
+ *  an assumption that holds only while the fixture has a single tenant. */
+export const OTHER_CUSTOMER_ID = "9911002233";
+export const OTHER_BUDGET = "11938209991";
+export const OTHER_CAMPAIGN = "17204889991";
+export const OTHER_AD_GROUP = "14802939991";
 export const TZ = "America/New_York";
 
 /** The same Monday 2026-08-03 09:00 ET the demo seed uses, so the two cannot drift. */
@@ -150,4 +156,54 @@ export function makeTestDb(): Database.Database {
   }
 
   return db;
+}
+
+/**
+ * A second advertiser with its own budget, campaign, ad group and spend on the
+ * same dates, added ON REQUEST rather than by default. A query scoped to
+ * CUSTOMER_ID that quietly forgot to scope itself returns this advertiser's rows
+ * too, which is the only way to catch it; but the base fixture stays a
+ * single-tenant world so the counts every other suite asserts still mean what
+ * they say.
+ */
+export function seedOtherCustomer(db: Database.Database): void {
+  insertCustomer(db, {
+    id: OTHER_CUSTOMER_ID,
+    descriptiveName: "Vertex Logistics",
+    currencyCode: "USD",
+    timeZone: TZ,
+  });
+  insertBudget(db, {
+    id: OTHER_BUDGET,
+    customerId: OTHER_CUSTOMER_ID,
+    name: "Vertex daily budget",
+    amountMicros: 500 * DOLLAR,
+  });
+  insertCampaign(db, {
+    id: OTHER_CAMPAIGN,
+    customerId: OTHER_CUSTOMER_ID,
+    budgetId: OTHER_BUDGET,
+    name: "Vertex — Freight (Search)",
+    startDate: "2026-04-01",
+  });
+  insertAdGroup(db, {
+    id: OTHER_AD_GROUP,
+    customerId: OTHER_CUSTOMER_ID,
+    campaignId: OTHER_CAMPAIGN,
+    name: "Freight — Core",
+    cpcBidMicros: 9 * DOLLAR,
+  });
+  for (let offset = -14; offset <= -1; offset++) {
+    insertDailyStat(db, {
+      customerId: OTHER_CUSTOMER_ID,
+      campaignId: OTHER_CAMPAIGN,
+      adGroupId: OTHER_AD_GROUP,
+      date: day(offset),
+      impressions: 9999,
+      clicks: 999,
+      costMicros: 999 * DOLLAR,
+      conversions: 99,
+      conversionsValue: 99999,
+    });
+  }
 }

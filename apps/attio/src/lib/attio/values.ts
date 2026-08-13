@@ -362,7 +362,7 @@ export function writeValues(
 
     const active = db
       .prepare(
-        `SELECT id, text_value, number_value, ref_record_id, status_id, pos
+        `SELECT id, text_value, number_value, ref_record_id, status_id, pos, active_from_ms
            FROM attribute_values
           WHERE record_id = ? AND attribute_id = ? AND active_until_ms IS NULL
           ORDER BY pos, id`,
@@ -374,6 +374,7 @@ export function writeValues(
       ref_record_id: string | null;
       status_id: string | null;
       pos: number;
+      active_from_ms: number;
     }>;
     const before = active.length ? describeActive(db, attr, active) : null;
 
@@ -406,6 +407,18 @@ export function writeValues(
     }
 
     if (opts.mode === "append" && active.length) {
+      // A value cannot stop being true before it started. `atMs` is the world's
+      // clock, and /api/sandbox/inject lets a director backdate a beat, so this
+      // is reachable: closing a row at an instant before its own active_from
+      // writes an interval that runs backwards, and shapeValue emits it verbatim
+      // for an agent to reason about. Refuse rather than clamp — a zero-length
+      // interval would claim the superseded value was never true at all.
+      const opened = Math.max(...active.map((r) => r.active_from_ms));
+      if (opts.atMs < opened) {
+        throw badRequestError(
+          `Cannot supersede "${attr.api_slug}" at ${new Date(opts.atMs).toISOString()}: its current value has been active since ${new Date(opened).toISOString()}.`,
+        );
+      }
       // Supersede: the old row is closed at exactly the instant the new one
       // opens, so the two are contiguous and a reader never sees a gap.
       db.prepare(

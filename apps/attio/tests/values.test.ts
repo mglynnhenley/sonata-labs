@@ -58,6 +58,36 @@ describe("supersede", () => {
     expect(rows[1].text_value).toBe("Northwind Group");
   });
 
+  it("refuses to close a value before it opened, rather than inverting the interval", () => {
+    const db = makeEmptyDb();
+    newRecord(db, "companies", CO);
+    write(db, OBJ_COMPANIES, "companies", CO, { name: "Northwind" }, "create", NOW);
+
+    // /api/sandbox/inject lets a director backdate a beat, so this is reachable
+    // from the control plane. An interval that runs backwards is emitted
+    // verbatim to the agent, so it has to be refused at the write.
+    expect(() =>
+      write(db, OBJ_COMPANIES, "companies", CO, { name: "Earlier" }, "append", NOW - 5000),
+    ).toThrow(/has been active since/);
+
+    const attr = getAttribute(db, OBJ_COMPANIES, "name")!;
+    const rows = activeRows(db, CO, attr.id);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].active_until_ms).toBeNull();
+  });
+
+  it("allows a supersede at exactly the instant the current value opened", () => {
+    const db = makeEmptyDb();
+    newRecord(db, "companies", CO);
+    write(db, OBJ_COMPANIES, "companies", CO, { name: "Northwind" }, "create", NOW);
+    write(db, OBJ_COMPANIES, "companies", CO, { name: "Same instant" }, "append", NOW);
+
+    const attr = getAttribute(db, OBJ_COMPANIES, "name")!;
+    const rows = activeRows(db, CO, attr.id);
+    expect(rows).toHaveLength(2);
+    expect(rows[0].active_until_ms).toBe(NOW);
+  });
+
   it("reports the transition the audit summary quotes", () => {
     const db = makeSeededDb();
     const changes = write(

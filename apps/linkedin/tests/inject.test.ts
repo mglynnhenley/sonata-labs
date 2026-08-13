@@ -107,6 +107,27 @@ describe("injectComment", () => {
     expect(row.is_sandbox_created).toBe(0);
   });
 
+  it("refuses to reply to a reply — threads are one level deep", () => {
+    const db = makeTestDb(CORPUS);
+    const reply = injectComment(db, {
+      parentCommentUrn: commentUrn(POST_BUSY, COMMENT_JORDAN),
+      actorEmail: "priya@acme.co",
+      text: "Following up on this.",
+      ...AT,
+    });
+    // The wire seeder and the REST route both enforce one level; a director beat
+    // that got a second one would write a row listReplies never returns, so the
+    // thread would read as if the comment had never been made.
+    expect(() =>
+      injectComment(db, {
+        parentCommentUrn: commentUrn(POST_BUSY, reply.id),
+        actorEmail: "priya@acme.co",
+        text: "And another thing.",
+        ...AT,
+      }),
+    ).toThrow(/one level deep/);
+  });
+
   it("never invents a timestamp", () => {
     // Wall-clock time inside a simulated Tuesday makes the day incoherent, and
     // the row still looks fine — so the failure has to be loud and up front.

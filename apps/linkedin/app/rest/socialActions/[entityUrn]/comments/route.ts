@@ -51,6 +51,17 @@ interface Target {
 function resolveTarget(db: Database, urn: string): Target {
   if (parseCommentUrn(urn)) {
     const row = requireComment(db, urn);
+    // One level, and the REST path has to enforce it as hard as the wire seeder
+    // in sandbox/parse.ts already does. Left open, a reply to a reply is created
+    // at depth 2 and then vanishes: listReplies only returns direct children, so
+    // nothing reads it back from the post's thread or the parent's, and the seed
+    // format cannot even express the row the API just wrote.
+    if (row.parent_comment_id !== null) {
+      throw badRequestError(
+        "A reply cannot be answered directly — LinkedIn's comment threads are one level deep. " +
+          "Address the comment the reply is under.",
+      );
+    }
     // Published-only, like the post form below: an unpublished post has no
     // thread to read or to answer.
     const post = requirePublishedPost(db, activityUrn(row.post_id));
