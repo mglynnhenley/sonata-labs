@@ -1,8 +1,10 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import {
   Badge,
+  Card,
   Chip,
   EmptyState,
   IconClock,
@@ -68,13 +70,15 @@ function statusOf(run: RunSummary, simulated: boolean): { tone: BadgeStatus; lab
 
 export type PastRunsProps = {
   runs: readonly RunSummary[];
+  /** Right-hand side of the card's own heading row. */
+  actions?: ReactNode;
   /** Server time from the last poll, so "4 min ago" never drifts. */
   now: number;
   /** Run ids the stand-in fabricated. Empty until /api/results/simulated answers. */
   simulated: ReadonlySet<string>;
 };
 
-export function PastRuns({ runs, now, simulated }: PastRunsProps) {
+export function PastRuns({ runs, now, simulated, actions }: PastRunsProps) {
   const router = useRouter();
 
   // A fabricated run's numbers are not small or stale, they are invented — the
@@ -191,6 +195,14 @@ export function PastRuns({ runs, now, simulated }: PastRunsProps) {
   ];
 
   return (
+    // The card names itself: the page is a stack of titled panels, not a
+    // column of headings with tables hanging beneath them.
+    <Card
+      padding="none"
+      title="Past runs"
+      subtitle="Every day played from this dashboard, newest first"
+      actions={actions}
+    >
     <Table
       columns={columns}
       rows={runs}
@@ -217,5 +229,6 @@ export function PastRuns({ runs, now, simulated }: PastRunsProps) {
         />
       }
     />
+    </Card>
   );
 }

@@ -49,9 +49,14 @@ export function RecentRuns({ runs, now, simulated }: RecentRunsProps) {
   const go = useGo();
 
   return (
-    <Card padding="none">
-      <div className="flex items-center justify-between gap-4 px-5 pt-5 pb-3">
-        <h2 className="text-[14px] font-medium text-sn-ink">Recent runs</h2>
+    // The card owns its own heading now: on the dashboard every panel names
+    // itself, so the page is a grid of titled cards rather than a column of
+    // h2s with cards hanging under them.
+    <Card
+      padding="none"
+      title="Recent runs"
+      subtitle="The latest days played, whatever they scored"
+      actions={
         <a
           href={ROUTES.runs}
           onClick={(e) => go(e, ROUTES.runs)}
@@ -63,7 +68,8 @@ export function RecentRuns({ runs, now, simulated }: RecentRunsProps) {
             className="transition-transform duration-150 ease-sn group-hover:translate-x-0.5"
           />
         </a>
-      </div>
+      }
+    >
 
       {runs.length === 0 ? (
         <div className="px-5 pb-5">

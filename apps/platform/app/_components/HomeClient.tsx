@@ -3,7 +3,6 @@
 import {
   buttonClasses,
   Card,
-  IconAlert,
   IconArrowRight,
   IconLayers,
   IconPlay,
@@ -20,11 +19,10 @@ import type { Overview } from "@/lib/overview";
 import { PASS_RATE_HINT, PASS_RATE_LABEL } from "../results/_lib/summary";
 import { FirstRun } from "./FirstRun";
 import { useSimulated } from "./useSimulated";
-import { QuickStart } from "./QuickStart";
 import { RecentRuns } from "./RecentRuns";
+import { QueueHealth } from "./QueueHealth";
 import { RunningCard } from "./RunningCard";
 import { StaleNotice } from "./StaleNotice";
-import { TwinStrip } from "./TwinStrip";
 import { useGo } from "./useGo";
 import { usePoll } from "./usePoll";
 
@@ -81,8 +79,6 @@ export function HomeClient({ initial }: HomeClientProps) {
   if (data.firstRun) {
     return <FirstRun twins={twins} onTwinsChanged={refresh} />;
   }
-
-  const twinsDown = twins.filter((t) => !t.ok);
 
   return (
     <div className="sn-stack-section">
@@ -223,28 +219,13 @@ export function HomeClient({ initial }: HomeClientProps) {
         </div>
       </section>
 
-      <RecentRuns runs={recent} now={data.at} simulated={simulated} />
+      {/* The dashboard shape: what happened on the left, how the benchmark
+          itself is doing on the right. */}
+      <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+        <RecentRuns runs={recent} now={data.at} simulated={simulated} />
+        <QueueHealth stats={stats} twins={twins} />
+      </div>
 
-      {twinsDown.length > 0 ? (
-        <section>
-          <div className="flex items-center gap-2">
-            <IconAlert size="md" className="text-sn-warning" />
-            <h2 className="text-[14px] font-medium text-sn-ink">
-              {twinsDown.length === 1
-                ? `${twinsDown[0].label} is not running`
-                : `${twinsDown.map((t) => t.label).join(" and ")} are not running`}
-            </h2>
-          </div>
-          <p className="mt-1.5 text-[13px] text-sn-muted">
-            A scenario can only use an app that is up. Start them here.
-          </p>
-          <div className="mt-6">
-            <TwinStrip twins={twins} onChanged={refresh} />
-          </div>
-        </section>
-      ) : null}
-
-      <QuickStart />
     </div>
   );
 }

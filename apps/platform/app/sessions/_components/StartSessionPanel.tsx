@@ -71,7 +71,11 @@ export function StartSessionPanel({ scenarios, starting, onStart }: StartSession
   const perTick = scenario ? duration / Math.max(1, scenario.ticks) : 0;
 
   return (
-    <Card padding="lg">
+    <Card
+      padding="lg"
+      title="Start a session"
+      subtitle="The scenario decides what happens and what counts as done. Nobody plays the agent — that is the seat your own is sitting in."
+    >
       <div className="grid gap-6 lg:grid-cols-2">
         <div>
           <label htmlFor="session-scenario" className="text-[13px] font-medium text-sn-ink">

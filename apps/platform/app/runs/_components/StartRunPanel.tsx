@@ -155,7 +155,13 @@ export function StartRunPanel({
   const canStart = Boolean(episodeId) && twins.length > 0 && !blocked && !needsConsent;
 
   return (
-    <Card padding="lg">
+    // The panel names itself — the page used to carry an h2 above it, and on a
+    // dashboard every panel is a titled card instead.
+    <Card
+      padding="lg"
+      title="Start a run"
+      subtitle="The scenario decides what happens and what counts as done. The model is the thing being tested — everyone else in the company is played by the harness."
+    >
       {/* Only the two selects are peers, so only they pair off. Beside the lengths
           — three priced buttons, a tick box and a truncation notice — the chip row
           ran out about 150px short and left the start button below a hole. The two

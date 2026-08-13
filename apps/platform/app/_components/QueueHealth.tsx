@@ -1,0 +1,75 @@
+"use client";
+
+import { Card, Chip, ProgressBar, SERVICE_LABELS } from "@sonata/ui";
+import type { Overview } from "@/lib/overview";
+
+// The dashboard's right rail: how the benchmark itself is doing, and what is
+// currently standing. Three bars and a chip row — every number here comes off
+// the same overview payload the stat row reads, because a rail that quietly
+// invents a metric is worse than a shorter rail.
+
+export type QueueHealthProps = {
+  stats: Overview["stats"];
+  twins: Overview["twins"];
+};
+
+export function QueueHealth({ stats, twins }: QueueHealthProps) {
+  const attempted = stats.scored + stats.unscored;
+  const up = twins.filter((twin) => twin.ok).length;
+
+  return (
+    <Card
+      title="Benchmark health"
+      subtitle={twins.length > 0 ? `${up} of ${twins.length} apps answering` : "Checking the three apps…"}
+    >
+      <div className="flex flex-col gap-5 pt-1">
+        {/* Not a quality score — the share of days that produced a result at
+            all. A low bar here means runs are falling over, which is a
+            different problem from an agent doing badly. */}
+        <ProgressBar
+          label="Runs that scored"
+          value={stats.scored}
+          max={Math.max(attempted, 1)}
+          showValue
+          valueLabel={attempted === 0 ? "none yet" : `${stats.scored} of ${attempted}`}
+        />
+        <ProgressBar
+          label="Runs passed"
+          value={stats.passRate === null ? 0 : Math.round(stats.passRate * 100)}
+          tone="success"
+          showValue
+          valueLabel={stats.passRate === null ? "—" : `${Math.round(stats.passRate * 100)}%`}
+        />
+        <ProgressBar
+          label="Mean autonomy"
+          value={stats.autonomy === null ? 0 : Math.round(stats.autonomy * 100)}
+          tone="gold"
+          showValue
+          valueLabel={stats.autonomy === null ? "—" : `${Math.round(stats.autonomy * 100)}%`}
+        />
+
+        <div className="flex flex-col gap-2.5 border-t border-sn-line pt-4">
+          <p className="text-[11px] font-medium tracking-[0.08em] text-sn-subtle uppercase">
+            Systems cloned
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {twins.map((twin) => (
+              // Down apps read as absent rather than fine: the chip dims and
+              // says so, because "Slack" beside two live apps looks identical
+              // to a working one at a glance.
+              <Chip
+                key={twin.twin}
+                service={twin.twin}
+                size="sm"
+                className={twin.ok ? undefined : "opacity-45"}
+                title={`${twin.label} · ${twin.detail}`}
+              >
+                {twin.ok ? SERVICE_LABELS[twin.twin] : `${SERVICE_LABELS[twin.twin]} · down`}
+              </Chip>
+            ))}
+          </div>
+        </div>
+      </div>
+    </Card>
+  );
+}

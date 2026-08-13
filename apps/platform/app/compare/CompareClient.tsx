@@ -21,7 +21,7 @@ export function CompareClient({ benchmark, view }: { benchmark: Benchmark; view:
   const router = useRouter();
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="sn-stack-section">
       <PageHeader
         eyebrow="Results"
         title="Which model handled the day"

@@ -118,7 +118,7 @@ export function CompaniesClient({ initial }: { initial: CompaniesData }) {
   }
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="sn-stack-section">
       <PageHeader
         eyebrow="Companies"
         title="The companies you've cloned"

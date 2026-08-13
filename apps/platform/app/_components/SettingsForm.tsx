@@ -345,20 +345,26 @@ export function SettingsForm({ initialSettings, initialTwins }: SettingsFormProp
         </div>
       </Card>
 
-      <section>
-        <h2 className="text-[14px] font-medium text-sn-ink">The clones</h2>
-        <p className="mt-1 max-w-[62ch] text-[13px] leading-[20px] text-sn-muted">
-          Three local services on fixed ports. Starting one here runs the workspace&apos;s own dev
-          script; the first compile takes a few seconds. Boot output goes to{" "}
-          <code className="rounded-sn-sm bg-sn-bg-subtle px-1 py-0.5 text-[12px]">
-            apps/platform/data/logs
-          </code>
-          .
-        </p>
-        <div className="mt-6">
+      {/* The last section on the page that still wore a bare h2. Every panel
+          names itself now, so the page reads as a stack of titled cards. */}
+      <Card
+        padding="lg"
+        title="The clones"
+        subtitle={
+          <>
+            Three local services on fixed ports. Starting one here runs the workspace&apos;s own dev
+            script; the first compile takes a few seconds. Boot output goes to{" "}
+            <code className="rounded-sn-sm bg-sn-bg-subtle px-1 py-0.5 text-[12px]">
+              apps/platform/data/logs
+            </code>
+            .
+          </>
+        }
+      >
+        <div className="pt-1">
           <TwinStrip twins={twinPoll.data.twins} onChanged={twinPoll.refresh} />
         </div>
-      </section>
+      </Card>
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   buttonClasses,
+  Card,
   EmptyState,
   IconLayers,
   IconSpark,
@@ -127,17 +128,19 @@ export function ScenariosClient({ initialEpisodes, templates, initialNow }: Scen
         }
       />
 
-      <section>
-        <div className="flex flex-wrap items-baseline justify-between gap-3">
-          <h2 className="font-display text-[26px] text-sn-ink">Saved scenarios</h2>
-          {episodes.length > 0 ? (
+      <Card
+        padding="lg"
+        title="Saved scenarios"
+        subtitle="Days you have written or kept, each with its own success criteria"
+        actions={
+          episodes.length > 0 ? (
             <span className="text-[12px] text-sn-subtle">
               {episodes.length} saved on this machine
             </span>
-          ) : null}
-        </div>
-
-        <div className="mt-6">
+          ) : undefined
+        }
+      >
+        <div className="pt-1">
           {episodes.length === 0 ? (
             <EmptyState
               icon={<IconLayers size="lg" />}
@@ -173,17 +176,14 @@ export function ScenariosClient({ initialEpisodes, templates, initialNow }: Scen
             </div>
           )}
         </div>
-      </section>
+      </Card>
 
-      <section>
-        <h2 className="font-display text-[26px] text-sn-ink">Templates</h2>
-        <p className="mt-1.5 max-w-[68ch] text-[13.5px] leading-[21px] text-sn-muted">
-          The five days the benchmark runs. Each one is written so it cannot be solved by reading a
-          single message — the fact the agent needs is always on a different surface from the place
-          it is asked for, and the day keeps changing after the agent starts working.
-        </p>
-
-        <div className="mt-6 grid gap-4 lg:grid-cols-2">
+      <Card
+        padding="lg"
+        title="Templates"
+        subtitle="The five days the benchmark runs. Each one is written so it cannot be solved by reading a single message — the fact the agent needs is always on a different surface from the place it is asked for, and the day keeps changing after the agent starts working."
+      >
+        <div className="grid gap-4 pt-1 lg:grid-cols-2">
           {templates.map((template) => (
             <TemplateCard
               key={template.id}
@@ -193,7 +193,7 @@ export function ScenariosClient({ initialEpisodes, templates, initialNow }: Scen
             />
           ))}
         </div>
-      </section>
+      </Card>
     </div>
   );
 }

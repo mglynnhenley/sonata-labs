@@ -166,33 +166,26 @@ export function RunsClient({
 
       {active ? <LiveRunBanner run={active} now={data.at} href={`/runs/${active.runId}`} /> : null}
 
-      <section>
-        <h2 className="font-display text-[26px] text-sn-ink">Start a run</h2>
-        <p className="mt-1.5 max-w-[62ch] text-[13.5px] leading-[21px] text-sn-muted">
-          The scenario decides what happens and what counts as done. The model is the thing being
-          tested — everyone else in the company is played by the harness.
-        </p>
-        <div className="mt-6">
-          <StartRunPanel
-            episodes={episodes}
-            defaultModel={defaultModel}
-            beatTicks={beatTicks}
-            initialEpisodeId={initialEpisodeId}
-            starting={starting}
-            onStart={(input) => void start(input)}
-          />
-        </div>
-      </section>
+      <StartRunPanel
+        episodes={episodes}
+        defaultModel={defaultModel}
+        beatTicks={beatTicks}
+        initialEpisodeId={initialEpisodeId}
+        starting={starting}
+        onStart={(input) => void start(input)}
+      />
 
-      <section>
-        <div className="flex flex-wrap items-baseline justify-between gap-3">
-          <h2 className="font-display text-[26px] text-sn-ink">Past runs</h2>
-          {/* NOT "on this machine". This list is `/api/runs`, which reads the
-              dashboard's own document store; runs started by the CLI land in the
-              artifact directory, and only there. Saying "on this machine" over
-              one of two stores is how this page claimed 1 run while the old
-              results page counted 11 of the same days. The benchmark reads the
-              full record, so the outbound link goes there. */}
+      {/* The count and the outbound link are the card's own actions now. NOT
+          "on this machine": this list is `/api/runs`, the dashboard's document
+          store, while CLI runs land only in the artifact directory. Saying "on
+          this machine" over one of two stores is how this page claimed 1 run
+          while the results page counted 11 of the same days — so the link goes
+          to the benchmark, which reads the full record. */}
+      <PastRuns
+        runs={data.runs}
+        now={data.at}
+        simulated={simulated}
+        actions={
           <div className="flex items-center gap-3 text-[12px] text-sn-subtle">
             <button
               type="button"
@@ -209,11 +202,8 @@ export function RunsClient({
               Every scored run, compared
             </a>
           </div>
-        </div>
-        <div className="mt-6">
-          <PastRuns runs={data.runs} now={data.at} simulated={simulated} />
-        </div>
-      </section>
+        }
+      />
     </div>
   );
 }

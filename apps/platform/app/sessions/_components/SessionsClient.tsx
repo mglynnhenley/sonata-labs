@@ -124,27 +124,13 @@ export function SessionsClient({ initial, scenarios, twins }: SessionsClientProp
 
       <ConnectPanel twins={twins} />
 
-      <section>
-        <h2 className="font-display text-[26px] text-sn-ink">Start a session</h2>
-        <p className="mt-1.5 max-w-[62ch] text-[13.5px] leading-[21px] text-sn-muted">
-          The scenario decides what happens and what counts as done. Nobody plays the agent — that
-          is the seat your own is sitting in.
-        </p>
-        <div className="mt-6">
-          <StartSessionPanel
-            scenarios={scenarios}
-            starting={starting}
-            onStart={(input) => void start(input)}
-          />
-        </div>
-      </section>
+      <StartSessionPanel
+        scenarios={scenarios}
+        starting={starting}
+        onStart={(input) => void start(input)}
+      />
 
-      <section>
-        <h2 className="font-display text-[26px] text-sn-ink">Past sessions</h2>
-        <div className="mt-6">
-          <PastSessions sessions={past} now={data.at} />
-        </div>
-      </section>
+      <PastSessions sessions={past} now={data.at} />
     </div>
   );
 }
@@ -286,6 +272,11 @@ function PastSessions({ sessions, now }: { sessions: readonly SessionView[]; now
   ];
 
   return (
+    <Card
+      padding="none"
+      title="Past sessions"
+      subtitle="Days your own agent played, newest first"
+    >
     <Table
       columns={columns}
       rows={sessions}
@@ -309,5 +300,6 @@ function PastSessions({ sessions, now }: { sessions: readonly SessionView[]; now
         />
       }
     />
+    </Card>
   );
 }

@@ -92,10 +92,8 @@ function AutonomyChart({ rows, sliceTitle }: { rows: Ranked[]; sliceTitle: strin
   if (drawn.length === 0) return null;
 
   return (
-    <Card padding="lg">
-      <h3 className="text-[14px] font-bold text-sn-ink">Autonomy</h3>
-      <p className="mt-0.5 text-[12px] text-sn-muted">{sliceTitle}</p>
-      <div className="mt-4 flex flex-col" style={{ gap: 13 }}>
+    <Card padding="lg" title="Autonomy" subtitle={sliceTitle}>
+      <div className="mt-1 flex flex-col" style={{ gap: 13 }}>
         {drawn.map((row, index) => {
           const pct = Math.round((row.autonomy ?? 0) * 100);
           return (
@@ -248,7 +246,7 @@ export function Leaderboard({ benchmark }: { benchmark: Benchmark }) {
   ];
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="sn-stack-block">
       <div className="flex flex-wrap gap-2" role="group" aria-label="Slice the leaderboard by scenario">
         <Chip
           tone="neutral"
