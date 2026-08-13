@@ -22,6 +22,7 @@ import {
   beatWords,
   createRefRegistry,
   fireBeats,
+  NO_ASSESSMENTS,
   injectBody,
   missingFacts,
   scheduleBeats,
@@ -131,12 +132,25 @@ export function specWarnings(spec: EpisodeSpec, used: ByTwin<TwinAdapter>): stri
   for (const twin of new Set(spec.beats.map((b) => b.twin))) {
     if (!used[twin]) notes.push(`no ${twin} adapter in this run, so its beats cannot land`);
   }
-  // An adaptive beat that can never adapt. Both of these are silent at runtime —
+  // An adaptive beat that can never adapt. All of these are silent at runtime —
   // the beat just fires as authored, forever, and the note explaining why is
   // buried in one tick — so they are said once, up front, where an author looks.
+  // Silently-always-authored is the failure that looks exactly like working.
+  const created = new Set(spec.beats.map((b) => b.ref).filter((r): r is string => Boolean(r)));
   for (const beat of spec.beats) {
     const adapt = beat.adapt;
     if (!adapt) continue;
+    // A condition pointing at a beat nothing in this spec creates. `danglingRefs`
+    // in @sonata/core reads payloads and criteria and does not look in here, so
+    // nothing else catches it: the checklist refuses the condition as a harness
+    // defect on every tick of every run, and the beat never adapts once.
+    const on = adapt.when.ref;
+    if (on && !created.has(on)) {
+      notes.push(
+        `beat "${beat.id}" adapts on beat ref "${on}", which no beat in this spec creates — the ` +
+          `condition can never be settled, so this beat will always fire as authored`,
+      );
+    }
     const words = beatWords(beat);
     if (words === null) {
       notes.push(
@@ -156,6 +170,56 @@ export function specWarnings(spec: EpisodeSpec, used: ByTwin<TwinAdapter>): stri
           `no rewrite can ever pass, so this beat will always fire as authored`,
       );
     }
+    notes.push(...unprotectedPhrases(beat, words, adapt.facts, spec));
+  }
+  return notes;
+}
+
+/**
+ * Phrases a `mentions` criterion demands of the AGENT that only this beat's
+ * rewritable wording ever says, and that the beat does not declare as facts.
+ *
+ * The one way scoring can still be moved by a rewrite, and it has to be said out
+ * loud because nothing downstream can see it. `mentions` asks whether the agent
+ * wrote a phrase; the agent can only write a phrase somebody told it; and if the
+ * only sentence in the day carrying it is one a model is about to reword, a
+ * dropped phrase fails the criterion. The usual backstop does not fire either —
+ * `runTruncation.shownText` is built from the AUTHORED payloads, so it reports the
+ * phrase as shown whatever actually went out (see `missingFacts` in ./beats).
+ *
+ * Adding the phrase to `adapt.facts` closes it completely: a rewrite that loses a
+ * declared fact is discarded and the authored words go out instead.
+ *
+ * Deliberately narrow. Only `mentions` is checked, because that is the only kind
+ * whose `expect` is a phrase the agent has to have been told rather than a channel,
+ * a label or an event title. And only when NO other beat's wording says it, so a
+ * fact the day repeats elsewhere is not reported as at risk.
+ */
+function unprotectedPhrases(
+  beat: EpisodeSpec["beats"][number],
+  words: string,
+  facts: string[],
+  spec: EpisodeSpec,
+): string[] {
+  const elsewhere = spec.beats
+    .filter((b) => b.id !== beat.id)
+    .map((b) => beatWords(b) ?? "")
+    .join("\n");
+  const notes: string[] = [];
+  for (const c of spec.success.checklist) {
+    const phrase = c.expect;
+    if (c.kind !== "mentions" || !phrase?.trim()) continue;
+    // Said here, said nowhere else, and not already guaranteed by a declared fact
+    // that contains it — "£40k" is safe the moment "the £40k credit" must survive.
+    if (missingFacts(words, [phrase]).length) continue;
+    if (!missingFacts(elsewhere, [phrase]).length) continue;
+    if (facts.some((f) => !missingFacts(f, [phrase]).length)) continue;
+    notes.push(
+      `criterion "${c.id}" is scored on the agent repeating "${phrase}", and the only place the ` +
+        `day says it is beat "${beat.id}", whose wording adapts. Add it to that beat's ` +
+        `\`adapt.facts\` or a rewrite can drop it and the agent will be failed for not saying ` +
+        `something it was never told`,
+    );
   }
   return notes;
 }
@@ -328,15 +392,16 @@ export async function runTick(deps: TickDeps, input: TickInput): Promise<TickRec
         tick,
         simTimeLabel: deps.clock.labelAt(tick),
       })
-    : { beats: due, notes: [] };
+    : { beats: due, notes: [], assessments: NO_ASSESSMENTS };
   notes.push(...adapted.notes);
 
   // 1. Beats.
-  const beatsFired: BeatFired[] = await fireBeats(adapted.beats, simTimeISO, {
-    adapters: deps.used,
-    world: deps.spec.world,
-    refs: deps.refs,
-  });
+  const beatsFired: BeatFired[] = await fireBeats(
+    adapted.beats,
+    simTimeISO,
+    { adapters: deps.used, world: deps.spec.world, refs: deps.refs },
+    adapted.assessments,
+  );
 
   // 2. Director. The deltas are what the agent did in the PREVIOUS tick — the
   // audit rows written since the last read — which is exactly what a coworker

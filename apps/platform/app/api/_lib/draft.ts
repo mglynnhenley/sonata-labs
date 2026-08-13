@@ -1,6 +1,8 @@
 import { isCriterionKind, type CriterionKind, type EpisodeSpec, type WorldSeed } from "@sonata/core";
 import {
+  adaptationRules,
   AUTHORABLE_KINDS,
+  CONDITION_KINDS,
   CRITERIA_SCHEMA,
   CRITERION_SCHEMA,
   checklistShortfall,
@@ -70,14 +72,23 @@ const WORLD_RULES = `OFF LIMITS AND STYLE, for the company as a whole:
 - "offLimits": 3 to 6 lines. Facts nobody in this world may volunteer, and moves nobody may make. Each line should name something that, if a person here said or did it, would hand the agent the answer or do the job for it — the clash it has to find for itself, the reply it has to write, the summary of what is still outstanding. Write them about THIS day, in the manner of: "Nobody mentions that the grade review and the Q3 forecast are both at 14:00 — the clash exists on the calendar and has to be found there." / "Nobody offers to move a meeting, and nobody proposes a new time for the client call." / "Nobody summarises the day, lists what is outstanding, or points out that the first email was never answered."
 - "style": one or two sentences on the register everyone writes in, naming the surfaces where it differs, in the manner of: "Agency register. Slack is lower case, fragmentary, no sign-offs, two lines at most. Email is friendly, complimentary and completely immovable. Nobody writes a status report; nobody is ever more than four sentences long."`;
 
-const SYSTEM = `You write simulation scenarios for testing AI agents inside a cloned business.
+/**
+ * Everything the model is told before it writes a day.
+ *
+ * Exported for the same reason `SCENARIO_SCHEMA` is: the two have to agree, and
+ * nothing else can see that they do. A rule enforced in code and absent from here
+ * costs a retry every time the model breaks a rule it was never given — which is
+ * the note above `criteriaRules` in @sonata/world, and `adaptationRules` is now
+ * the second thing rendered on that promise.
+ */
+export const SYSTEM = `You write simulation scenarios for testing AI agents inside a cloned business.
 
 You are given a one-line description of a business and a day. You return ONE JSON object describing:
 - the business (name, industry, headcount, one paragraph of what state it is in this week)
 - a cast of 5-7 named people, including the person whose accounts the agent operates ("owner"), each with a real character
 - 3 Slack channels the company actually uses
 - how this world behaves: what nobody in it may say or do, and the register everyone writes in
-- an episode: the day as a story, the agent's standing brief, 5-8 scheduled beats, and 4-5 success criteria
+- an episode: the day as a story, the agent's standing brief, 5-8 scheduled beats — two or three of which reword themselves if the agent has already dealt with them — and 4-5 success criteria
 
 Hard rules:
 - Refer to people ONLY by their full name as written in the cast. Never write an email address, a Slack id, a user handle or an ISO timestamp — those are generated for you.
@@ -87,6 +98,8 @@ Hard rules:
 - The day must NOT be solvable by reading one message. Put a fact the agent needs on a different surface from where it is asked for, and make something change after the agent starts working.
 - At least one beat must land in the second half of the day.
 - Write like a real workplace: short, specific, slightly impatient. No lorem ipsum, no placeholder names like "John Doe".
+
+${adaptationRules()}
 
 ${CHARACTER_RULES}
 
@@ -120,6 +133,19 @@ if (UNROUTABLE_KINDS.length > 0) {
       `could route a criterion authored with one — but the two vocabularies have drifted.`,
   );
 }
+
+/**
+ * The same intersection for a BEAT's condition, which is a criterion with the
+ * score taken off and so must be held to the same closed vocabulary.
+ *
+ * @sonata/world has already dropped `judged` from this list — the judge does not
+ * run mid-day, so a condition it would have to answer is a beat that never adapts
+ * — and `bindAdaptation` refuses it again in code. This is the third and cheapest
+ * of the three: the enum on the wire, so the model is never offered the word.
+ */
+const ROUTABLE_CONDITION_KINDS: CriterionKind[] = CONDITION_KINDS.filter((k): k is CriterionKind =>
+  isCriterionKind(k),
+);
 
 /** `CRITERION_SCHEMA` with `kind` pinned to the kinds the judge can actually route. */
 const CRITERION_ITEM: Record<string, unknown> = {
@@ -248,8 +274,67 @@ export const SCENARIO_SCHEMA: Record<string, unknown> = {
               durationMinutes: { type: "integer" },
               eventRef: { type: "string" },
               reason: { type: "string" },
+              // The adaptation, flat and required-and-empty — the house pattern,
+              // and here for the sharpest version of the reason behind it. Most
+              // beats do not adapt, so an OPTIONAL adapt field is one a model
+              // never has to think about and therefore never writes: the feature
+              // would ship, be prompted for, and come back absent from every
+              // generated day, looking exactly like a model that declined to use
+              // it. Required, the model answers "" on the beats that do not adapt
+              // and has to decide about the ones that do. `authoredAdaptation`
+              // reads "" back as absent.
+              adaptWhenTwin: {
+                type: "string",
+                enum: ["", "gmail", "slack", "calendar", "any"],
+                description:
+                  "Which surface the condition asks about. Empty string on every beat that does not adapt.",
+              },
+              adaptWhenKind: {
+                type: "string",
+                enum: ["", ...ROUTABLE_CONDITION_KINDS],
+                description:
+                  "What the agent must already have done for this beat to reword itself — the same vocabulary as a success criterion. Empty string on every beat that does not adapt.",
+              },
+              adaptWhenRef: {
+                type: "string",
+                description:
+                  "REQUIRED for a `replied` condition: the ref of the beat the agent must already have answered. That beat MUST fire on an earlier tick than this one. Empty string otherwise.",
+              },
+              adaptWhenExpect: {
+                type: "string",
+                description:
+                  "The channel, label or short phrase the condition looks for, for posted/labelled/mentions. Empty string otherwise.",
+              },
+              adaptWhenTarget: {
+                type: "string",
+                description:
+                  "REQUIRED for a `sent` condition: the full name of the person the agent must already have written to. Empty string otherwise.",
+              },
+              adaptWhenDescription: {
+                type: "string",
+                description:
+                  "One line naming what is being asked, written as a fact about the agent. Goes into the run record verbatim. Empty string on every beat that does not adapt.",
+              },
+              adaptFacts: {
+                type: "array",
+                items: { type: "string" },
+                description:
+                  "Short literals this beat must still say however it is reworded — an amount, a name, a time. EVERY ONE must already appear word for word in this beat's own body or text. Empty list on every beat that does not adapt.",
+              },
             },
-            required: ["tick", "twin", "kind", "from"],
+            required: [
+              "tick",
+              "twin",
+              "kind",
+              "from",
+              "adaptWhenTwin",
+              "adaptWhenKind",
+              "adaptWhenRef",
+              "adaptWhenExpect",
+              "adaptWhenTarget",
+              "adaptWhenDescription",
+              "adaptFacts",
+            ],
           },
         },
         // Every field required, unused ones sent as "" — the house pattern for
@@ -583,6 +668,19 @@ async function assembleWithBoundCriteria(
   }
   const shortfall = shortfallOf(best);
   if (shortfall) console.warn(`[sonata] "${best.spec.title}": ${shortfall}`);
+  // A different loss from the one above, and quieter: the day's shape and its
+  // score are untouched, because a refused adaptation costs the adaptation and
+  // never the beat. What it costs is that this beat will chase an agent that
+  // already answered, in the words it was written with, in every run — which is
+  // the original defect, and it would otherwise look exactly like a model that
+  // chose not to use the feature. Not worth a repair round-trip; worth a line.
+  if (best.droppedAdaptations.length > 0) {
+    console.warn(
+      `[sonata] "${best.spec.title}": ${best.droppedAdaptations.length} beat(s) will not adapt to ` +
+        `what the agent did, and will send their authored wording in every run:\n` +
+        best.droppedAdaptations.map((d) => `  - "${d.beat}" (t${d.tick}) — ${d.why}`).join("\n"),
+    );
+  }
   return best;
 }
 

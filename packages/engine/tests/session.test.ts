@@ -802,6 +802,30 @@ describe("lifecycle", () => {
     expect(timer.pending).toBe(0);
   });
 
+  it("says on the record that a tick failed, whichever tick it was", async () => {
+    // A tick that throws pushes no record of its own, so the day carries on around
+    // a hole. The message used to be parked on a list that only tick 0 ever read,
+    // so a failure at any later tick left no trace at all — a report claiming a
+    // whole day it did not have.
+    const failing = stubDirector();
+    const realReact = failing.react.bind(failing);
+    failing.react = (ctx) => {
+      if (ctx.tick === 1) throw new Error("the world fell over");
+      return realReact(ctx);
+    };
+    const w = world({ director: failing });
+    await w.session.start();
+    await step(w.session, w.timer, TICK_MS);
+    await step(w.session, w.timer, TICK_MS);
+
+    expect(w.ticks.map((t) => t.tick)).toEqual([0, 2]);
+    expect(w.ticks[1].notes[0]).toBe("tick 1 failed: the world fell over");
+    // And it is said once, not re-printed on every tick from then on.
+    await step(w.session, w.timer, TICK_MS);
+    expect(w.ticks[2].notes.filter((n) => n.includes("tick 1 failed"))).toEqual([]);
+    await w.session.stop();
+  });
+
   it("ignores a second start", async () => {
     const w = world();
     await w.session.start();

@@ -338,6 +338,44 @@ describe("adaptBeats", () => {
     expect(model.asked[0].saw).toContain("gmail-c");
   });
 
+  it("carries what the sender made of the agent onto the beat that fired", async () => {
+    // The wiring this asserts is the whole point of the feature for the judge:
+    // the person rewording a beat has already worked out whether the reply
+    // satisfied them, and without this it was computed and thrown away.
+    const view = { personId: "dana", satisfied: "partly" as const, missing: "a date" };
+    const rewrite = () => Promise.resolve({ words: "Still need a date on the £40k credit.", assessment: view });
+    const out = await adaptBeats(
+      [escalation()],
+      adaptDeps({ audit: [repliedRow], director: { rewrite } }),
+    );
+    expect(out.assessments.get("esc")).toEqual(view);
+
+    const fired = await fireBeats(out.beats, "2026-01-01T09:30:00.000Z", deps().inject, out.assessments);
+    expect(fired[0].assessment).toEqual(view);
+  });
+
+  it("keeps the sender's view even when their words were thrown away", async () => {
+    // A rewrite that lost a required fact is discarded and the beat fires as
+    // authored — but what Dana made of the reply is true either way, and it is
+    // the only evidence the day has for why the world behaved as it did.
+    const view = { personId: "dana", satisfied: "no" as const };
+    const rewrite = () => Promise.resolve({ words: "no numbers here at all", assessment: view });
+    const out = await adaptBeats(
+      [escalation()],
+      adaptDeps({ audit: [repliedRow], director: { rewrite } }),
+    );
+    expect(beatWords(out.beats[0])).toBe(AUTHORED);
+    expect(out.notes[0]).toContain("dropped");
+    expect(out.assessments.get("esc")).toEqual(view);
+  });
+
+  it("stamps nothing on a beat nobody was asked about", async () => {
+    const plain = [beat({ id: "a", tick: 2 })];
+    const out = await adaptBeats(plain, adaptDeps({}));
+    const fired = await fireBeats(out.beats, "2026-01-01T09:30:00.000Z", deps().inject, out.assessments);
+    expect("assessment" in fired[0]).toBe(false);
+  });
+
   it("fires the authored text when the agent has not acted", async () => {
     // No audit row, so the same checker that grades the day answers "no reply
     // landed" — and the beat reads exactly as it does today.
@@ -417,6 +455,75 @@ describe("adaptBeats", () => {
     const not = await adaptBeats([escalation()], adaptDeps({}));
     expect(not.notes[0]).toContain("beat esc adapt: asked gmail/replied");
     expect(not.notes[0]).toContain("Fired as authored.");
+  });
+
+  it("keeps the words it sent, because nothing else in the artifact does", async () => {
+    // `BeatFired.summary` for an email is sender, recipients and subject — no body
+    // — so without this the record says "Dana escalated about something else" and
+    // never says what, and two runs whose escalations read completely differently
+    // diff identically. The twin database that does hold it is overwritten by the
+    // next run's reset.
+    const out = await adaptBeats(
+      [escalation()],
+      adaptDeps({
+        audit: [repliedRow],
+        director: rewriter("Thanks — but the £40k credit\nstill needs a date."),
+      }),
+    );
+    expect(out.notes[0]).toContain("It said: “Thanks — but the £40k credit still needs a date.”");
+  });
+
+  it("fires the authored text when adapting the beat throws outright", async () => {
+    // `Director` is an interface an embedding app implements, and one that raises
+    // took `runTick` with it: the run was marked failed and this beat AND every
+    // beat after it never fired. A bad sentence costs one beat's wording; a throw
+    // used to cost the rest of the day.
+    const out = await adaptBeats(
+      [escalation()],
+      adaptDeps({
+        audit: [repliedRow],
+        director: {
+          rewrite: () => {
+            throw new Error("the world's writer blew up");
+          },
+        },
+      }),
+    );
+    expect(out.beats).toHaveLength(1);
+    expect(beatWords(out.beats[0])).toBe(AUTHORED);
+    expect(out.notes[0]).toContain("adapting it failed outright (the world's writer blew up)");
+  });
+
+  it("fires the authored text when a rewriter resolves to nothing at all", async () => {
+    // The other half of the same hazard: a hand-rolled `Director` whose `rewrite`
+    // returns undefined satisfies no type check at the call site and read a field
+    // of undefined inside `adaptOne`.
+    const out = await adaptBeats(
+      [escalation()],
+      adaptDeps({
+        director: { rewrite: () => Promise.resolve(undefined) } as unknown as AdaptDeps["director"],
+        audit: [repliedRow],
+      }),
+    );
+    expect(beatWords(out.beats[0])).toBe(AUTHORED);
+    expect(out.notes[0]).toContain("adapting it failed outright");
+  });
+
+  it("still fires the other beats on a tick where one of them blows up", async () => {
+    const boom = escalation();
+    boom.id = "boom";
+    const out = await adaptBeats(
+      [boom, beat({ id: "quiet", tick: 2 })],
+      adaptDeps({
+        audit: [repliedRow],
+        director: {
+          rewrite: () => {
+            throw new Error("nope");
+          },
+        },
+      }),
+    );
+    expect(out.beats.map((b) => b.id)).toEqual(["boom", "quiet"]);
   });
 
   it("says so, and adapts nothing, when the kind carries no wording", async () => {

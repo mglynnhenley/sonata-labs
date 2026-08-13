@@ -801,6 +801,7 @@ describe("a beat that adapts its wording", () => {
     const warnings = specWarnings(
       spec({
         beats: [
+          beat({ id: "opener", tick: 0, ref: "opener" }),
           beat({
             id: "esc",
             tick: 1,
@@ -827,6 +828,114 @@ describe("a beat that adapts its wording", () => {
     );
     expect(warnings[0]).toContain('beat "esc" requires "£40k credit" to survive a rewrite');
     expect(warnings[1]).toContain('beat "react" is marked adaptive, but a slack reaction carries no wording');
+  });
+
+  it("names a condition pointing at a beat nothing in the spec creates", async () => {
+    // The third way an adaptive beat silently never adapts, and the only one with
+    // nothing else watching it: `danglingRefs` in @sonata/core reads payloads and
+    // criteria and never looks inside `adapt`. The checklist then refuses the
+    // condition as a harness defect on every tick of every run, the beat fires as
+    // authored forever, and that is indistinguishable from the feature working.
+    const warnings = specWarnings(
+      spec({
+        beats: [
+          beat({
+            id: "esc",
+            tick: 1,
+            payload: { from: "dana", to: ["priya"], subject: "s", body: "the £40k credit stands" },
+            adapt: {
+              when: { description: "replied", twin: "gmail", kind: "replied", ref: "never-authored" },
+              facts: ["£40k credit"],
+            },
+          }),
+        ],
+      }),
+      { gmail: fakeAdapter("gmail") },
+    );
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain('beat "esc" adapts on beat ref "never-authored"');
+    expect(warnings[0]).toContain("can never be settled");
+  });
+
+  it("names a phrase a criterion scores the agent on that only an adaptive beat says", async () => {
+    // The one way a rewrite can still move the score. `mentions` asks whether the
+    // agent wrote a phrase; the agent can only write one it was told; and the
+    // fairness backstop cannot see the problem, because `runTruncation.shownText`
+    // is built from the AUTHORED payloads and swears the phrase was shown whatever
+    // actually went out.
+    const risky = (facts: string[]) =>
+      spec({
+        beats: [
+          beat({ id: "opener", tick: 0, ref: "opener" }),
+          beat({
+            id: "esc",
+            tick: 1,
+            payload: { from: "dana", to: ["priya"], subject: "s", body: "the £40k credit stands" },
+            adapt: {
+              when: { description: "replied", twin: "gmail", kind: "replied", ref: "opener" },
+              facts,
+            },
+          }),
+        ],
+        success: {
+          checklist: [
+            {
+              id: "c1",
+              description: "the reply names the credit",
+              twin: "any",
+              kind: "mentions",
+              expect: "£40k",
+              weight: 3,
+              severity: "must",
+            },
+          ],
+          judgeQuestions: [],
+        },
+      });
+
+    const exposed = specWarnings(risky([]), { gmail: fakeAdapter("gmail") });
+    expect(exposed).toHaveLength(1);
+    expect(exposed[0]).toContain('criterion "c1"');
+    expect(exposed[0]).toContain("adapt.facts");
+
+    // Declaring a fact that contains the phrase closes it: a rewrite that lost it
+    // is discarded and the authored words go out instead.
+    expect(specWarnings(risky(["the £40k credit"]), { gmail: fakeAdapter("gmail") })).toEqual([]);
+  });
+
+  it("does not take the day down when the world's writer throws", async () => {
+    // The property that does not bend: the beat fires at its tick in every run.
+    // An exception out of `Director.rewrite` used to leave `adaptBeats`, leave
+    // `runTick`, and fail the whole episode — this beat and every beat scheduled
+    // after it never fired, and every criterion bound to them lost its subject.
+    const gmail = fakeAdapter("gmail");
+    const s = adaptiveSpec();
+    s.beats.push(beat({ id: "later", tick: 3, ref: "later" }));
+    const result = await runEpisode({
+      spec: s,
+      adapters: [gmail],
+      agent: agentRepliesAt(gmail, 1),
+      director: {
+        react: () => Promise.resolve([]),
+        lastNote: () => undefined,
+        rewrite: () => {
+          throw new Error("the world's writer blew up");
+        },
+      },
+      model: "test/model",
+      runId: "run-rewrite-throws",
+      now: (() => {
+        let clock = 1_000;
+        return () => (clock += 10);
+      })(),
+    });
+
+    expect(result.run.status).toBe("done");
+    expect(result.run.ticks).toHaveLength(4);
+    expect(result.refs.escalation).toBeTruthy();
+    expect(result.refs.later).toBeTruthy();
+    const note = result.run.ticks[2].notes.find((n) => n.startsWith("beat esc adapt:")) ?? "";
+    expect(note).toContain("adapting it failed outright");
   });
 });
 

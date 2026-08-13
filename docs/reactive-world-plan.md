@@ -2,27 +2,35 @@
 
 ## Status — 13 Aug 2026
 
-| | |
-|---|---|
-| **Done** | 1 always-zero stat · 2 calendar RSVP · 3 world reads the agent's prose · 4 real character briefs · 5 ordering on criteria · 6 one agent per person · 7 adaptive beat wording · 10 bigger companies (and wired into the backlog path) |
-| **Part done** | 8 — Clive's escalation and Bea relaying it now adapt. The other four shipped days are not marked, and the **generator cannot author `adapt` yet**, so only hand-written days can use it |
-| **Not started** | 9 — characters' assessments as judge evidence |
+**All ten steps are built, and every one has been through an adversarial review.**
+1468 tests and twelve typechecks green.
 
-**Two things to know before trusting any of it.**
+The reviews earned their place. Among what they caught and fixed: a rewrite that
+threw took the whole episode with it, so the adaptive beat *and every beat after
+it* never fired — the one property this design does not bend on. A question the
+per-tick cap cut could never be asked again on a day nobody was delayed on. An
+audit-row id collision put one twin's prose under another twin's action. Ordering
+was validated and then silently dropped on the only path that authors it.
 
-**Nothing has been run.** 1396 tests and twelve typechecks are green, and no model
-call has been made — not one day, not one company. This repo's own AGENTS.md is
-blunt that every serious defect in it passed the type checker and the tests.
+### What is still not true of it
 
-**Steps 7 and 8 were never adversarially reviewed.** Steps 1–6 and 10 each got a
-second agent whose job was to break them, and they found a lot: a cut question
-that could never be asked again, a stat that stayed zero, ordering silently
-dropped on the only path that authors it. Step 7 got none of that — the reviewer
-never ran. Treat it as first-draft code.
+**Nothing has been run.** Not one model call, not one day, not one company. This
+repo's own AGENTS.md is blunt that every serious defect in it passed the type
+checker and the tests — a stand-in runner survived weeks with 1070 tests green.
+Until a real day is played, none of this is known to work.
 
-**Cost went up per company.** Wiring the storyline writers into `growBacklog`
-turns one model call into a spine, one per storyline and an ambient pass. That is
+**Cost per company went up.** Wiring the storyline writers into `growBacklog`
+turns one model call into a spine, one per storyline, and an ambient pass. That is
 the trade the bigger backlog is bought with, and it is unmeasured.
+
+**Two prompts changed, so runs are not comparable across this work.** Every
+character's prompt now carries the assessment ask, and `becauseSeq` is now written
+where it never was. Compare runs within an era, not across it.
+
+**Known and deliberate:** a character's assessment is readable in the saved run
+JSON and in the judge's prompt, but is **not rendered on the results page** yet.
+`danglingRefs` in @sonata/core still does not look inside `adapt.when.ref` —
+`specWarnings` catches it instead, so a bad ref is named before a run, not after.
 
 ---
 

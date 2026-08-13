@@ -20,6 +20,12 @@ import type { BeatKind, CriterionKind, TwinName } from "@sonata/core";
 // are deliberately a little stricter than the checkers: the checker's job is to
 // salvage what it can from whatever it is handed, and this file's job is to make
 // sure it is never handed anything it would have to salvage.
+//
+// One more thing is authored in this vocabulary, and so is gated here rather than
+// somewhere of its own: the condition on an ADAPTIVE BEAT — "reword this chaser
+// if the agent has already replied". `BeatCondition` in @sonata/core is a
+// `Criterion` with the score taken off, precisely so that the world's idea of
+// "replied" and the scorer's cannot come apart. See `bindAdaptation`.
 
 // ---------------------------------------------------------------------------
 // The shape both producers write — the model in the platform's draft flow, and
@@ -521,6 +527,177 @@ export function bindCriteria(criteria: DraftCriterion[], ctx: BindingContext): B
 }
 
 // ---------------------------------------------------------------------------
+// Adaptive beats. A chaser that would otherwise be factually wrong about the
+// agent may declare a condition, and reword itself when that condition holds —
+// `BeatAdaptation` in @sonata/core. The question it asks is a criterion with the
+// score taken off it, so it is gated by the table ABOVE rather than beside it:
+// one definition of "replied", whether the day is scoring the agent for it or
+// reacting to it. A world with its own second reading of the word could escalate
+// about silence the checklist was about to score as a reply.
+//
+// Every refusal below is a condition that could never be true, or a rewrite that
+// could never be kept — and each of them fails SILENTLY if it is not refused
+// here. The beat still fires on its tick, still says exactly what it was written
+// with, and reads on the page as an adaptive beat that simply never adapted. That
+// is the original defect wearing the shape of its own fix.
+//
+// So the ADAPTATION is dropped and the BEAT IS KEPT. The schedule of the day, and
+// therefore every criterion bound against it, must not depend on whether a
+// condition parsed.
+// ---------------------------------------------------------------------------
+
+/**
+ * The question an adaptive beat asks, as either producer writes it: a criterion
+ * with the score taken off. The same fields `BeatCondition` picks off `Criterion`
+ * in @sonata/core, for the same reason.
+ *
+ * No `before`, deliberately. A condition is asked at the moment its own beat
+ * fires, so that tick already IS the deadline — a second one nested inside it
+ * would be a claim the run has no way to mean, and `orderingProblem` above would
+ * refuse it outright on `slack/replied`, `gmail/labelled` and the other undated
+ * pairs, which are perfectly good questions to ask mid-day when nobody needs to
+ * know WHEN.
+ */
+export type DraftCondition = Pick<
+  DraftCriterion,
+  "description" | "twin" | "kind" | "ref" | "expect" | "target"
+>;
+
+/** An adaptation as authored, before anything has vouched for it. */
+export interface DraftAdaptation {
+  when: DraftCondition;
+  /** Substrings the reworded beat must still contain, or the rewrite is discarded. */
+  facts: string[];
+}
+
+/** The beat carrying the adaptation: where it sits, and what it says today. */
+export interface AdaptingBeat {
+  twin: TwinName;
+  kind: BeatKind;
+  /** The tick it fires on — which is the moment its condition gets asked. */
+  tick: number;
+  /**
+   * Its authored wording: an email body, or a Slack message's text. The empty
+   * string for every other beat kind, which is a refusal rather than a detail —
+   * see `adaptationProblem`.
+   */
+  words: string;
+}
+
+export interface AdaptationContext extends BindingContext {
+  /**
+   * Which of `facts` `text` does not carry — @sonata/engine's `missingFacts`.
+   *
+   * Injected exactly as `hasChecker` is, and for the same reason: the ENGINE is
+   * what throws a rewrite away for losing a fact, so this gate has to refuse
+   * precisely what the engine would throw away. A second substring matcher
+   * written here would be free to disagree with it, and the disagreement would
+   * surface as a beat that mysteriously never adapts in any run.
+   */
+  missingFacts(text: string, facts: readonly string[]): string[];
+}
+
+/** Why this beat cannot adapt, or undefined when it can. */
+function adaptationProblem(
+  adapt: DraftAdaptation,
+  beat: AdaptingBeat,
+  ctx: AdaptationContext,
+): string | undefined {
+  const when = adapt.when;
+
+  if (!beat.words.trim()) {
+    return (
+      `a ${beat.twin} ${beat.kind} carries no wording to reword — only an email body or a Slack ` +
+      `message can adapt, so this beat would fire exactly as authored in every run`
+    );
+  }
+
+  // `judged` binds as a criterion and cannot answer a condition. The judge reads
+  // the run once it is over; a beat asks its question in the middle of one, so
+  // the checklist comes back "no checker answered it", the beat fires its
+  // authored words, and it does that in every run of every model — adaptive on
+  // the page and frozen in fact. Refused here rather than left to `hasChecker`,
+  // which `problem` deliberately does not consult for this one kind.
+  if (when.kind === "judged") {
+    return (
+      "`judged` is answered by the judge in prose after the run, and a beat asks its condition " +
+      "during one — so nothing would ever answer it and the beat would always send its authored " +
+      "words. Ask something a checker settles: replied, sent, posted, mentions"
+    );
+  }
+
+  const why = problem({ ...when, severity: "should" }, ctx);
+  if (why) return `its condition cannot be checked: ${why}`;
+
+  // The mirror of `orderingProblem` above, arrived at from the other end: there a
+  // criterion's own beat had to fire before its deadline, here the condition's
+  // beat has to fire before the beat that asks about it. Beats land at the top of
+  // a tick and the agent acts at the bottom of one, so a condition about a beat at
+  // this tick or later is false at the instant it is asked, in every run.
+  const rule = RULES[key(when.twin, when.kind)];
+  const subject = rule?.refBeatKinds ? ctx.beats.find((b) => b.ref === str(when.ref)) : undefined;
+  if (subject?.tick !== undefined && subject.tick >= beat.tick) {
+    return (
+      `it adapts on "${subject.ref}", which does not fire until t${subject.tick}, and this beat is ` +
+      `at t${beat.tick} — the agent cannot have acted on something it has not been sent yet. The ` +
+      `condition would be false in every run and the beat would silently always send the words it ` +
+      `was written with`
+    );
+  }
+
+  const lost = ctx.missingFacts(beat.words, adapt.facts);
+  if (lost.length) {
+    return (
+      `it declares ${lost.map((f) => `"${f}"`).join(", ")} as ${lost.length > 1 ? "facts" : "a fact"} ` +
+      `the rewording must keep, and this beat's own wording does not contain ` +
+      `${lost.length > 1 ? "them" : "it"} — so every rewrite would be discarded for the authored ` +
+      `text and the beat could never adapt at all. A fact has to be a phrase copied out of this ` +
+      `beat's body`
+    );
+  }
+  return undefined;
+}
+
+/** An adaptation that will hold, or the sentence saying why it was refused. */
+export type AdaptationBinding = { bound: DraftAdaptation } | { why: string };
+
+/**
+ * Bind one beat's adaptation against the day it lives in.
+ *
+ * Nothing is repaired: a condition naming a beat that does not exist is a
+ * question about a moment this day never has, and inventing the nearest ref would
+ * make the beat react to something nobody authored. The whole adaptation goes, the
+ * beat stays, and the caller is handed a sentence it can print.
+ */
+export function bindAdaptation(
+  adapt: DraftAdaptation,
+  beat: AdaptingBeat,
+  ctx: AdaptationContext,
+): AdaptationBinding {
+  const why = adaptationProblem(adapt, beat, ctx);
+  if (why) return { why };
+
+  // Through `normalize`, not around it: a condition that says `#Ops` or "Chris
+  // Mott" has to reach the checker as `ops` and `chris-mott`, exactly as the same
+  // words on a criterion would. This is the whole reason a condition is a
+  // criterion with the score taken off.
+  const n = normalize({ ...adapt.when, severity: "should" }, ctx);
+  return {
+    bound: {
+      when: {
+        description: n.description,
+        twin: n.twin,
+        kind: n.kind,
+        ...(n.ref ? { ref: n.ref } : {}),
+        ...(n.expect ? { expect: n.expect } : {}),
+        ...(n.target ? { target: n.target } : {}),
+      },
+      facts: adapt.facts.map((f) => f.trim()).filter((f) => f !== ""),
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
 // The checklist as a whole. Every criterion binding is not the same thing as the
 // day being scored: `judged` binds trivially, because the judge answers it in
 // prose, and a checklist of nothing but `judged` decides nothing in code. That is
@@ -577,6 +754,23 @@ export const AUTHORABLE_PAIRS: string[] = Object.keys(RULES);
 /** Kinds the criteria schema may offer, derived from the rules so they cannot drift. */
 export const AUTHORABLE_KINDS: CriterionKind[] = [
   ...new Set(AUTHORABLE_PAIRS.map((p) => p.split("/")[1] as CriterionKind)),
+];
+
+/**
+ * The (twin, kind) pairs a beat's CONDITION may use: every authorable pair except
+ * the `judged` ones.
+ *
+ * Derived from the same table for the same reason the criteria schema is — a pair
+ * a day may not be authored with is a pair no model should be offered — and minus
+ * `judged` because a condition is asked mid-run and the judge does not run then.
+ * See `adaptationProblem`, which refuses it in code; this is the half that keeps
+ * the model from ever writing it.
+ */
+export const CONDITION_PAIRS: string[] = AUTHORABLE_PAIRS.filter((p) => !p.endsWith("/judged"));
+
+/** Kinds a condition may ask about, for the wire schema's enum. */
+export const CONDITION_KINDS: CriterionKind[] = [
+  ...new Set(CONDITION_PAIRS.map((p) => p.split("/")[1] as CriterionKind)),
 ];
 
 /**
@@ -661,6 +855,71 @@ export function criteriaRules(ctx: {
     "",
     "Write the description as the outcome, and as the SAME claim the check makes: a gmail/replied",
     "criterion says the person on that thread got an answer, not that \"all customers were handled\".",
+  ].join("\n");
+}
+
+/**
+ * The adaptive-beat half of a generation prompt: every refusal `bindAdaptation`
+ * can make, said before the model can earn one.
+ *
+ * A sibling of `criteriaRules` rather than a section inside it, and the reason is
+ * `repairCriteria` in the platform: that call renders `criteriaRules` to ask for a
+ * checklist ALONE, against beats that already exist and are not up for rewriting.
+ * A page about how to write a beat, in a prompt that cannot accept one, is an
+ * invitation to answer the wrong question.
+ *
+ * Takes no context on purpose. Which refs a condition may name is the criteria
+ * prompt's list, already rendered above it and already true of both — a second
+ * copy of the same schedule is the drift `bindableBeats` exists to stop.
+ */
+export function adaptationRules(): string {
+  return [
+    "ADAPTIVE BEATS. Every beat fires on its own tick in every run, whatever the agent did — that",
+    "is what makes two models comparable, and it is not negotiable. But a beat that CHASES or",
+    "ESCALATES is factually WRONG when the agent already answered. \"I've had nothing since nine",
+    "o'clock\" said to an agent that replied at 09:30 is the world accusing the agent of a silence",
+    "it can see was not silence, and the criterion underneath then grades the reply to a complaint",
+    "the day had no right to make.",
+    "",
+    "So a beat like that may declare a condition. When the condition holds at the moment the beat",
+    "fires, the person it is FROM rewrites it in their own voice: same tick, same thread, same",
+    "sender, same ref, same facts. Nothing else changes, and the beat is never cancelled — nobody",
+    "goes silent because you replied, they chase about something else.",
+    "",
+    "The worked example. Clive emailed at t0 asking for a plan and a time; that beat's ref is",
+    "\"clive-first\". At t12 he escalates and copies his CMO. The escalation carries:",
+    "    adaptWhenTwin: \"gmail\"",
+    "    adaptWhenKind: \"replied\"",
+    "    adaptWhenRef: \"clive-first\"",
+    "    adaptWhenDescription: \"the mailbox had already answered Clive's 09:00 email\"",
+    "    adaptFacts: [\"recut\", \"Renata\", \"Friday\"]",
+    "Ignored, he sends the words you wrote. Answered, he escalates about what he actually got —",
+    "and still says all three of those things, because a rewrite that drops one is thrown away.",
+    "",
+    "USE IT ON TWO OR THREE BEATS. The chaser, the escalation, the colleague relaying a complaint",
+    "second-hand. Never on every beat: a day where every line reacts has no script left in it, and",
+    "most beats — the first email of a thread, the standup, the meeting invite — are not about the",
+    "agent at all and have nothing to adapt to.",
+    "",
+    "Five rules, all of them refusals. An adaptation that breaks one is thrown away and the beat",
+    "sends its authored words for the rest of time:",
+    "  - adaptWhenTwin/adaptWhenKind ask the SAME question the checklist asks, in the same words.",
+    "    Only these pairs: " + CONDITION_PAIRS.join(", ") + ".",
+    "    Never \"judged\": the judge reads the run after it ends, and this question is asked during it.",
+    "  - adaptWhenRef, for a `replied` condition, is the ref of the beat the agent must already have",
+    "    answered. THAT BEAT MUST FIRE ON AN EARLIER TICK THAN THIS ONE. A condition about a beat at",
+    "    this tick or later can never be true — the agent has not been sent it yet.",
+    "  - adaptFacts are the things this beat must still say however it is reworded: the amount, the",
+    "    name, the time, the deadline. EVERY ONE MUST ALREADY APPEAR, WORD FOR WORD, IN THIS BEAT'S",
+    "    OWN BODY OR TEXT. Name what the agent could not do the job without — this beat is often the",
+    "    only place the day ever says it. Short literals, not sentences.",
+    "  - adaptWhenDescription is one line naming what is being asked. It goes into the run record",
+    "    verbatim, so write it as a fact about the agent: \"the mailbox had already answered Clive\".",
+    "  - Only an email or a Slack message can adapt. A calendar invite has no wording to reword.",
+    "",
+    "On every beat that does NOT adapt — which is most of them — leave adaptWhenTwin, adaptWhenKind,",
+    "adaptWhenRef, adaptWhenExpect, adaptWhenTarget and adaptWhenDescription as the empty string, and",
+    "adaptFacts as an empty list.",
   ].join("\n");
 }
 

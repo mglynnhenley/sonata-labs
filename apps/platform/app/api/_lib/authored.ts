@@ -14,8 +14,17 @@ import {
   type TwinName,
   type WorldSeed,
 } from "@sonata/core";
+import { beatWords, missingFacts } from "@sonata/engine";
 import { factNameFor } from "@sonata/judge";
-import { bindCriteria, type BindableBeat, type DraftCriterion, type UnboundCriterion } from "@sonata/world";
+import {
+  bindAdaptation,
+  bindCriteria,
+  type BindableBeat,
+  type BindingContext,
+  type DraftAdaptation,
+  type DraftCriterion,
+  type UnboundCriterion,
+} from "@sonata/world";
 import type { BeatPreview, ScenarioDraft, WorldCounts } from "./types";
 import { newId } from "./store";
 
@@ -88,6 +97,27 @@ export interface AuthoredBeat {
   durationMinutes?: number;
   eventRef?: string;
   reason?: string;
+  /**
+   * How this beat rewords itself when the agent has already acted — the fields
+   * of a `BeatCondition` and the facts the rewording must keep, FLAT.
+   *
+   * All of `BeatCondition` except `before`, which a condition asked in the middle
+   * of the day cannot mean: the beat's own tick already IS the deadline. A
+   * hand-written day may still set it; see `DraftCondition` in @sonata/world.
+   *
+   * Flat and not nested because the wire schema is flat and "" means absent: a
+   * nested object with every field optional is the shape a model answers by
+   * leaving out, which is exactly how a checklist of criteria that named nothing
+   * got authored. `authoredAdaptation` folds these back into one thing, and
+   * @sonata/world's `bindAdaptation` decides whether it survives.
+   */
+  adaptWhenTwin?: string;
+  adaptWhenKind?: string;
+  adaptWhenRef?: string;
+  adaptWhenExpect?: string;
+  adaptWhenTarget?: string;
+  adaptWhenDescription?: string;
+  adaptFacts?: string[];
 }
 
 /**
@@ -397,6 +427,24 @@ function authoredText(value: unknown): string | undefined {
 }
 
 /**
+ * An entry that says nothing: a trailing comma in a list, a blanked-out slot.
+ *
+ * Distinguished from an entry this code merely could not READ, because the two
+ * deserve opposite treatment — see `authoredAdaptation`. @sonata/engine's
+ * `missingFacts` skips a blank fact when it checks a rewrite, so refusing over one
+ * would cost a good adaptation for a stray comma.
+ */
+function blankEntry(value: unknown): boolean {
+  return value === null || value === undefined || (typeof value === "string" && value.trim() === "");
+}
+
+/** One unreadable entry, short enough to print in a sentence. */
+function showEntry(value: unknown): string {
+  const shown = typeof value === "string" ? value : (JSON.stringify(value) ?? String(value));
+  return `"${shown.length > 60 ? `${shown.slice(0, 57)}…` : shown}"`;
+}
+
+/**
  * The longest an authored delay may be. Four ticks is an hour of simulated time;
  * beyond that a persona in a short day never gets to answer at all, which reads
  * on the transcript as a character the world forgot to write.
@@ -553,6 +601,104 @@ function buildBody(
   return null;
 }
 
+/**
+ * The adaptation the model wrote on this beat, or undefined when it wrote none.
+ *
+ * Three answers, not two. "" everywhere means the model left the fields alone and
+ * this beat is not adaptive, which is most of them; a validated adaptation goes to
+ * `bindAdaptation`; and a HALF-filled one — a ref and a description with no kind,
+ * or a kind nothing can route — is neither. Returning undefined for that third
+ * case would drop what the model was plainly trying to write without a word
+ * anywhere, which is the silence this whole gate exists to break.
+ *
+ * `asCriterionKind` decides what the kind word means, exactly as it does for a
+ * criterion: one vocabulary, one resolver, so `mentioned` means `mentions` in a
+ * condition too rather than being refused in one place and accepted in the other.
+ */
+function authoredAdaptation(beat: AuthoredBeat): DraftAdaptation | { why: string } | undefined {
+  const kind = authoredText(beat.adaptWhenKind);
+  const twin = authoredText(beat.adaptWhenTwin);
+  const ref = authoredText(beat.adaptWhenRef);
+  const expect = authoredText(beat.adaptWhenExpect);
+  const target = authoredText(beat.adaptWhenTarget);
+  const description = authoredText(beat.adaptWhenDescription);
+  // `authoredText` on each entry, not a cast: a `string[]` field comes back
+  // holding numbers and objects often enough that one of them would otherwise
+  // reach @sonata/engine's substring match and throw out of the whole assembly.
+  const listed: unknown[] = Array.isArray(beat.adaptFacts) ? beat.adaptFacts : [];
+  const facts = listed.map(authoredText).filter((f): f is string => f !== undefined);
+
+  // But the survivors alone are NOT the answer, and reading them as one is the
+  // safety catch quietly coming off. `facts` is the whole of what stops a rewrite
+  // dropping the £40k credit that this beat is the only place the day ever says:
+  // the engine discards a rewrite that lost one, and an EMPTY list is a real
+  // statement — "nothing here is load-bearing" — so a rewrite is then accepted on
+  // its face. Silently skipping the entries this code could not read turns a
+  // declared fact into that statement, with nothing anywhere saying so. The beat
+  // adapts, the number vanishes, `shownText` still swears the agent was told it,
+  // and a criterion downstream fails the agent for a figure it was never sent.
+  //
+  // So they are counted and REPORTED, exactly like the half-filled condition
+  // below, and the adaptation goes rather than binding weakened. A whole field
+  // that is not a list counts as one unreadable entry: "recut, Renata, £40,000"
+  // arriving as a single comma-joined string is the ordinary way a `string[]`
+  // comes back wrong — the same accident `authoredText` was written for — and
+  // splitting it here would be code guessing at prose.
+  const unreadable: unknown[] = [
+    ...listed.filter((f) => !blankEntry(f) && authoredText(f) === undefined),
+    ...(Array.isArray(beat.adaptFacts) || blankEntry(beat.adaptFacts) ? [] : [beat.adaptFacts]),
+  ];
+
+  if (
+    !kind &&
+    !twin &&
+    !ref &&
+    !expect &&
+    !target &&
+    !description &&
+    facts.length === 0 &&
+    unreadable.length === 0
+  ) {
+    return undefined;
+  }
+
+  const routable = kind ? asCriterionKind(kind) : null;
+  if (!routable) {
+    return {
+      why: kind
+        ? `"${kind}" is not a criterion kind, so nothing could ever answer the condition — the ` +
+          `whole vocabulary is ${CRITERION_KINDS.join(", ")}`
+        : "it names no kind, so there is no question for a checker to answer",
+    };
+  }
+
+  if (unreadable.length > 0) {
+    return {
+      why:
+        `${unreadable.length} of the facts it declares did not arrive as text ` +
+        `(${unreadable.map(showEntry).join(", ")}). \`adaptFacts\` is the list of literals a ` +
+        `rewording must keep, and one nothing can read is one nothing enforces — the rewrite ` +
+        `would be accepted whatever it dropped, including the figure this beat may be the only ` +
+        `place the day says. Write each fact as its own short string in a list`,
+    };
+  }
+
+  return {
+    when: {
+      description: description ?? "",
+      // Trusted as far as the enum on the wire, and no further: an unknown twin
+      // has no rule in @sonata/world's table, so `bindAdaptation` refuses it by
+      // name rather than this file guessing which surface was meant.
+      twin: (twin ?? "") as TwinName | "any",
+      kind: routable,
+      ...(ref ? { ref } : {}),
+      ...(expect ? { expect } : {}),
+      ...(target ? { target } : {}),
+    },
+    facts,
+  };
+}
+
 /** One line for the timeline and the preview: who did what, on which surface. */
 export function beatSummary(beat: AuthoredBeat, byName: Map<string, Person>): string {
   const who = beat.from ? (byName.get(beat.from.trim().toLowerCase())?.name ?? beat.from) : "The world";
@@ -620,10 +766,32 @@ export function bindableBeats(beats: Beat[]): BindableBeat[] {
     .map((b) => ({ ref: b.ref, twin: b.twin, kind: b.kind, tick: b.tick }));
 }
 
+/**
+ * A beat that will keep its authored wording, because its adaptation would never
+ * have done anything.
+ *
+ * Not the same loss as an unbound criterion, and not silent for the same reason.
+ * Nothing about the day's shape or its score changes — the beat fires on its tick
+ * either way, which is the guarantee that made adaptation safe in the first place.
+ * What is lost is that the beat will chase an agent that already answered, in the
+ * words it was written with, in every run. That reads on the timeline as a feature
+ * that simply did not happen, and it has to be attributable to the condition
+ * rather than to the mechanism.
+ */
+export interface DroppedAdaptation {
+  /** The beat that keeps its authored wording: its `ref`, or its id when it has none. */
+  beat: string;
+  tick: number;
+  /** Reads as the second half of "…this beat could not adapt because …". */
+  why: string;
+}
+
 export interface AssembledScenario {
   seed: WorldSeed;
   spec: EpisodeSpec;
   draft: ScenarioDraft;
+  /** Adaptations thrown away, with the reason for each. Empty on a healthy day. */
+  droppedAdaptations: DroppedAdaptation[];
   /**
    * Criteria that were thrown away because nothing could have checked them, with
    * the reason for each. Empty is the only acceptable steady state: the caller
@@ -698,18 +866,24 @@ export function assembleScenario(
   const channelNames = new Set(channels.map((c) => c.name));
 
   const sorted = [...authored.episode.beats].sort((a, b) => a.tick - b.tick);
-  const beats: Beat[] = [];
+  // Paired rather than zipped by index, for the same reason the cast is: the
+  // adaptation pass below needs the authored beat and the assembled one together,
+  // and a beat that `buildBody` refuses drops out of one list only.
+  const built: Array<{ authored: AuthoredBeat; beat: Beat }> = [];
   const previews: BeatPreview[] = [];
   for (const authoredBeat of sorted) {
     const tick = Math.max(0, Math.min(Math.round(authoredBeat.tick), clock.ticks - 1));
     const body = buildBody({ ...authoredBeat, tick }, byName, channelNames, clock, owner.id);
     if (!body) continue;
-    beats.push({
-      ...body,
-      id: newId("beat"),
-      tick,
-      ...(authoredBeat.ref ? { ref: authoredBeat.ref } : {}),
-      ...(authoredBeat.note ? { note: authoredBeat.note } : {}),
+    built.push({
+      authored: authoredBeat,
+      beat: {
+        ...body,
+        id: newId("beat"),
+        tick,
+        ...(authoredBeat.ref ? { ref: authoredBeat.ref } : {}),
+        ...(authoredBeat.note ? { note: authoredBeat.note } : {}),
+      },
     });
     previews.push({
       tick,
@@ -719,6 +893,48 @@ export function assembleScenario(
       summary: authoredBeat.note ?? beatSummary({ ...authoredBeat, tick }, byName),
     });
   }
+
+  // One context, two gates. A condition and a criterion name the same refs, the
+  // same channels and the same people, and both are answered by the judge's own
+  // provider table — a second copy of any of that is a place for the two to
+  // disagree about what "replied on `clive-first`" means.
+  const binding: BindingContext = {
+    beats: bindableBeats(built.map((b) => b.beat)),
+    channels: channels.map((c) => c.name),
+    person: (ref) => byName.get(ref.trim().toLowerCase())?.id,
+    hasChecker: (twin, kind) => factNameFor(twin, kind) !== null,
+  };
+
+  // Adaptations second, and in their own pass, because a condition may name ANY
+  // beat in the day — including one the loop above had not reached yet. Validating
+  // inside the loop would refuse a perfectly good backward-looking condition on
+  // half the beats and accept it on the other half, decided by author order.
+  //
+  // A refused adaptation costs the ADAPTATION and never the BEAT: the day's
+  // schedule, and every criterion bound against it below, must not move because a
+  // condition failed to parse.
+  const droppedAdaptations: DroppedAdaptation[] = [];
+  const beats: Beat[] = built.map(({ authored: authoredBeat, beat }) => {
+    const parsed = authoredAdaptation(authoredBeat);
+    if (!parsed) return beat;
+    const outcome =
+      "why" in parsed
+        ? parsed
+        : bindAdaptation(
+            parsed,
+            // `beatWords` is @sonata/engine's, and it is the same function the
+            // rewrite itself calls: a beat kind it cannot read words off is a beat
+            // that could never adapt, and this gate has to agree with the runtime
+            // about which those are.
+            { twin: beat.twin, kind: beat.kind, tick: beat.tick, words: beatWords(beat) ?? "" },
+            { ...binding, missingFacts },
+          );
+    if ("why" in outcome) {
+      droppedAdaptations.push({ beat: beat.ref ?? beat.id, tick: beat.tick, why: outcome.why });
+      return beat;
+    }
+    return { ...beat, adapt: outcome.bound };
+  });
 
   // Blank lines dropped, and anything word-for-word identical to a standing
   // prohibition dropped with them: the director renders these as a bulleted list,
@@ -744,12 +960,7 @@ export function assembleScenario(
   // beats, these channels, this cast — before the scenario exists. A criterion
   // that will not bind is dropped here rather than saved to be discovered as
   // "could not be checked" on a report someone is already sharing.
-  const { bound, unbound: notBound } = bindCriteria(vetted.ok, {
-    beats: bindableBeats(beats),
-    channels: channels.map((c) => c.name),
-    person: (ref) => byName.get(ref.trim().toLowerCase())?.id,
-    hasChecker: (twin, kind) => factNameFor(twin, kind) !== null,
-  });
+  const { bound, unbound: notBound } = bindCriteria(vetted.ok, binding);
 
   // One list, both reasons: a kind nothing can route, and a criterion that names
   // nothing to route it at. The repair loop and the judge questions below treat
@@ -862,5 +1073,5 @@ export function assembleScenario(
     },
   };
 
-  return { seed, spec, draft, unbound };
+  return { seed, spec, draft, unbound, droppedAdaptations };
 }

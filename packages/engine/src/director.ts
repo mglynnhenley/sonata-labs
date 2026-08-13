@@ -13,6 +13,7 @@ import {
   type TimelineEntry,
   type TwinAuditRow,
   type TwinName,
+  type WorldAssessment,
   type WorldSeed,
 } from "@sonata/core";
 import type { WrittenText } from "@sonata/judge/checklist";
@@ -173,6 +174,16 @@ export interface BeatRewrite {
 export interface RewriteOutcome {
   words?: string;
   error?: string;
+  /**
+   * What the sender made of the agent's work while rewording, when they offered a
+   * view. Independent of the other two on purpose: a rewrite discarded for losing
+   * a required fact still tells us what its author concluded, and that conclusion
+   * is the same conclusion whichever sentence went out.
+   *
+   * The caller decides whether to keep it — `BeatFired.assessment` is where it
+   * belongs on the artifact. Nothing here may make it a condition of the words.
+   */
+  assessment?: WorldAssessment;
 }
 
 export interface DirectorOptions {
@@ -223,20 +234,37 @@ export interface RawDirectorEvent {
   eventRef: string;
   /** "accepted" | "declined" | "tentative" for an RSVP; "" otherwise. */
   response: string;
+  /**
+   * The speaker's own read of where things stand, filled in by CODE from the one
+   * assessment their call returned — never a per-event field the model writes.
+   *
+   * It rides on the event because an event is the only thing this tick keeps: a
+   * person who returned no move said nothing in the world, and an opinion with no
+   * sentence attached to it is a thought nobody had. `boundEvents` carries it onto
+   * the `DirectorEvent`, so an opinion outlives its tick exactly as far as the
+   * words that came with it do, and no further.
+   */
+  assessment?: WorldAssessment;
 }
 
 /**
- * What the model is asked for: the same shape WITHOUT `personId`.
+ * What the model is asked for: the same shape WITHOUT `personId` or `assessment`.
  *
  * The call is about one person, so who acted is not a question the model gets to
  * answer — code fills it in from the casting. That is one more thing a character
  * cannot get wrong: a model writing as Clive cannot put words in Bea's mouth,
- * because there is no field to name her in.
+ * because there is no field to name her in. `assessment` is off the event for the
+ * neighbouring reason: a person has ONE view of where the day stands, not one per
+ * message, and a per-event field invites a model to argue a different case in each.
  */
-type PersonEvent = Omit<RawDirectorEvent, "personId">;
+type PersonEvent = Omit<RawDirectorEvent, "personId" | "assessment">;
 
 interface PersonPlan {
   events: PersonEvent[];
+  /** "yes" | "partly" | "no" | "none" — see `assessmentOf`. */
+  satisfied: string;
+  /** One line: what is still outstanding. "" when nothing is. */
+  missing: string;
 }
 
 /** The kind a surface can carry. Anything else is the model mixing its metaphors. */
@@ -271,6 +299,94 @@ export function personaFor(
     if (resolvePerson(world, persona.personId)?.id === person.id) return { person, persona };
   }
   return undefined;
+}
+
+// ---------------------------------------------------------------------------
+// What a character CONCLUDED, as opposed to what they said
+//
+// A character deciding whether to escalate has already done a piece of work worth
+// keeping: they have read the agent's reply and worked out whether it settled the
+// thing they were waiting for, and what is still missing if it did not. Until now
+// that was computed inside a prompt and thrown away, and the judge then re-read
+// the whole day cold to answer the same question.
+//
+// It is asked for on the SAME call, which is the only reason it is affordable: no
+// second model call, no second prompt, no cost that scales with anything. Two
+// string fields on a schema that was already being filled in.
+//
+// AND IT NEVER SCORES. `WorldAssessment` in @sonata/core carries no weight and no
+// severity for the same reason `BeatCondition` does not, and nothing derived from
+// one reaches `score.ts`, the checklist or `autonomy`. It reaches the judge's
+// prompt as the world's opinion, plainly labelled, and nowhere else.
+// ---------------------------------------------------------------------------
+
+/**
+ * "none", and everything unrecognised, means the speaker had no view.
+ *
+ * Strict structured output puts every property in `required`, so the model cannot
+ * omit these two fields — it has to be given a way to SAY nothing instead, or the
+ * absence that is meant to be the common case becomes impossible to express and
+ * every speaker invents an opinion. Same trick as the empty strings on
+ * `RawDirectorEvent`, and the same reason.
+ */
+const ASSESSMENT_SCHEMA_PROPERTIES: Record<string, unknown> = {
+  satisfied: {
+    type: "string",
+    enum: ["yes", "partly", "no", "none"],
+    description:
+      "Your own view: has the assistant given this person what they were waiting for? " +
+      '"none" when they were not waiting on anything, or cannot tell — that is the common answer.',
+  },
+  missing: {
+    type: "string",
+    description:
+      "If not satisfied, the one thing still outstanding, in a few words. Empty otherwise.",
+  },
+};
+
+const ASSESSMENT_REQUIRED = ["satisfied", "missing"];
+
+/**
+ * The one thing a character is asked that is not a move.
+ *
+ * It lives in the system prompt both calls share, because both calls carry the two
+ * fields — the tick's reaction and a beat being reworded — and a second copy of
+ * this wording would be a second place for its last clause to fall out of.
+ *
+ * That clause is the load-bearing one, and it is in the PROMPT and not only in a
+ * comment for a concrete reason: a character told their answer is a verdict on the
+ * assistant writes to win, and these are small models playing people with a
+ * standing reason to be unhappy. Told instead that it is filed next to what they
+ * said and scores nothing, they answer the question that was actually asked. The
+ * judge is told the same thing from the other side — see `renderOpinions` in
+ * @sonata/judge's prompt.
+ */
+const ASSESSMENT_ASK = [
+  "AND YOUR OWN VIEW — `satisfied` and `missing`, which are not something you send anybody:",
+  "- Has the assistant given this person what they were waiting for? yes, partly, or no.",
+  '- Answer "none" unless they were actually waiting on something and can see whether it',
+  "  arrived. Having no view is the ordinary answer here and it costs nothing.",
+  "- `missing`: the one thing still outstanding, in a few words, or empty.",
+  "- This is your in-character opinion. It is filed next to what you said, it grades nobody and",
+  "  it changes no score, so answer it as this person honestly sees it and do not argue a case.",
+].join("\n");
+
+/**
+ * The two fields as a recorded assessment, or nothing at all.
+ *
+ * Nothing is the ordinary answer and every caller has to cope with it, which is
+ * why it is `undefined` and not a "none" that travels: a reader that had to filter
+ * out no-view assessments would eventually forget, and a run of empty opinions in
+ * the judge's prompt reads as a world that found the agent wanting.
+ */
+function assessmentOf(
+  personId: string,
+  raw: { satisfied?: unknown; missing?: unknown } | null | undefined,
+): WorldAssessment | undefined {
+  const satisfied = typeof raw?.satisfied === "string" ? raw.satisfied.trim().toLowerCase() : "";
+  if (satisfied !== "yes" && satisfied !== "partly" && satisfied !== "no") return undefined;
+  const missing = typeof raw?.missing === "string" ? oneLine(raw.missing) : "";
+  return { personId, satisfied, ...(missing ? { missing } : {}) };
 }
 
 /**
@@ -318,8 +434,8 @@ function personPlanSchema(persona: DirectorPersona): Record<string, unknown> {
   return {
     type: "object",
     additionalProperties: false,
-    required: ["events"],
-    properties: { events: { type: "array", items: event } },
+    required: ["events", ...ASSESSMENT_REQUIRED],
+    properties: { events: { type: "array", items: event }, ...ASSESSMENT_SCHEMA_PROPERTIES },
   };
 }
 
@@ -507,6 +623,12 @@ export function boundEvents(
       ...event,
       id: idFor(out.length),
       ...(because === undefined ? {} : { becauseSeq: because }),
+      // Carried, never re-derived. This gate is the last place the speaker's own
+      // view and the words it explains are still the same object; one line later
+      // the raw event is gone and an opinion would have to be matched back to a
+      // sentence by person id, which is exactly the join that goes wrong on a tick
+      // where one person got two moves and only one of them survived.
+      ...(item.assessment ? { assessment: item.assessment } : {}),
     });
   }
   return out;
@@ -1052,6 +1174,8 @@ export function personSystemPrompt(
     "- You have been shown everything you have seen and nothing you have not. If something is not",
     "  in this prompt then you do not know it: do not infer it, do not hint at it, do not ask about it.",
     "- Write what they would write. No narration, no stage directions, nobody else's voice.",
+    "",
+    ASSESSMENT_ASK,
   ].join("\n");
 }
 
@@ -1303,21 +1427,37 @@ export function personPrompt(ctx: DirectorContext, member: CastMember): string {
 const REWRITE_SCHEMA: Record<string, unknown> = {
   type: "object",
   additionalProperties: false,
-  required: ["text"],
+  // `satisfied` and `missing` are the exception to "one string and nothing else",
+  // and they are not one: neither is anything the world SENDS. The message is
+  // still the only field that becomes a beat, and `withBeatWords` reads `text`
+  // alone — a person's private read of the day cannot move the day.
+  required: ["text", ...ASSESSMENT_REQUIRED],
   properties: {
     text: { type: "string", description: "The message, in this person's own voice." },
+    ...ASSESSMENT_SCHEMA_PROPERTIES,
   },
 };
 
 /**
  * What the agent has written today, as quotable lines under the shared budget.
- * Newest first, because the budget must be spent on the most recent thing it said
- * — which is the thing this beat is reacting to.
+ *
+ * NEWEST FIRST, and the reversal is the whole function. `writtenFromTicks` walks
+ * the ticks in order, so its answer is oldest first, and a budget spent from the
+ * front of that list buys four emails from nine o'clock and then stops. The reply
+ * this beat is reacting to is the LAST thing the agent wrote, so on any day with
+ * more than `PROSE_CHARS_PER_TICK` of prose behind it — four ordinary emails — the
+ * one message that decides what the new wording should say was the one that got
+ * cut. Clive would then be shown the morning, told the agent had acted, and asked
+ * to react to something he could not see.
+ *
+ * The lines are still printed newest first rather than re-sorted afterwards: the
+ * order they are drawn in is the order they matter in, and a quiet re-sort would
+ * put the budget's own reasoning back out of sight.
  */
 function wroteLines(items: readonly WrittenText[]): string[] {
   const budget = { left: PROSE_CHARS_PER_TICK };
   const lines: string[] = [];
-  for (const item of items) {
+  for (const item of [...items].reverse()) {
     const shown = excerpt(item.text, budget);
     if (!shown) break;
     lines.push(`- [${item.twin}] it wrote: “${shown}”`);
@@ -1528,8 +1668,17 @@ export function createDirector(opts: DirectorOptions): Director {
         ),
       );
       const events = Array.isArray(plan?.events) ? plan.events : [];
+      // One view per person per call, stamped onto every move they offered. Only
+      // one of those moves can survive `boundEvents` anyway — one move per person
+      // per tick — so this is one opinion reaching the artifact, attached to the
+      // sentence it explains.
+      const assessment = assessmentOf(member.person.id, plan);
       return {
-        raw: withoutRivalAnswers(events, member).map((e) => ({ ...e, personId: member.person.id })),
+        raw: withoutRivalAnswers(events, member).map((e) => ({
+          ...e,
+          personId: member.person.id,
+          ...(assessment ? { assessment } : {}),
+        })),
       };
     } catch (err) {
       return { raw: [], error: errorMessage(err) };
@@ -1567,7 +1716,7 @@ export function createDirector(opts: DirectorOptions): Director {
       try {
         const said = await withTick(req.tick, () =>
           withRole("director", () =>
-            complete<{ text: string }>({
+            complete<{ text: string; satisfied?: string; missing?: string }>({
               system: personSystemPrompt(spec, found),
               prompt: rewritePrompt(req, found),
               schema: REWRITE_SCHEMA,
@@ -1579,6 +1728,11 @@ export function createDirector(opts: DirectorOptions): Director {
             }),
           ),
         );
+        // Read before the words are judged, and returned even when they are
+        // rejected below: what this person concluded is true of them whether or
+        // not the sentence they wrote was usable.
+        const view = assessmentOf(found.person.id, said);
+        const assessed = view ? { assessment: view } : {};
         const words = typeof said?.text === "string" ? said.text.trim() : "";
         // An empty answer is a FAILURE, not a beat that says nothing. The caller
         // reads `words` and sends it: returning "" here would replace the angry
@@ -1586,9 +1740,9 @@ export function createDirector(opts: DirectorOptions): Director {
         // authored text and silence — the beat still fires, still mints its ref,
         // and every criterion about it is then graded against nothing.
         if (!words) {
-          return { error: `${found.person.name} answered with an empty message` };
+          return { error: `${found.person.name} answered with an empty message`, ...assessed };
         }
-        return { words };
+        return { words, ...assessed };
       } catch (err) {
         return { error: errorMessage(err) };
       }

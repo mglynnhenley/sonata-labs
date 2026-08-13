@@ -503,11 +503,12 @@ export function createSession(opts: SessionOptions): Session {
     });
     notes.push(...adapted.notes);
 
-    const beatsFired: BeatFired[] = await fireBeats(adapted.beats, simTimeISO, {
-      adapters: used,
-      world: spec.world,
-      refs,
-    });
+    const beatsFired: BeatFired[] = await fireBeats(
+      adapted.beats,
+      simTimeISO,
+      { adapters: used, world: spec.world, refs },
+      adapted.assessments,
+    );
 
     // 3. DIRECTOR. The same inputs a scored episode gives it, minus the one a
     // session cannot have: it is shown the deltas and this tick's beats but not
@@ -560,7 +561,16 @@ export function createSession(opts: SessionOptions): Session {
       }
     }
 
-    if (at === 0) tickRecord.notes.unshift(...sessionNotes);
+    // Drained onto whichever tick comes next, not onto tick 0 alone.
+    //
+    // Tick 0 is where the authoring warnings land and that is unchanged, because
+    // they are the only thing on the list when it runs. What was being thrown away
+    // is the other writer: `guarded` puts "tick N failed" here when a tick threw
+    // before it could push a record of its own, and for every N but 0 that message
+    // went onto a list nothing read again. A tick that vanished from the artifact,
+    // with the day carrying on around the hole and no note anywhere saying so, is
+    // the report overstating its evidence.
+    if (sessionNotes.length) tickRecord.notes.unshift(...sessionNotes.splice(0));
     run.ticks.push(tickRecord);
     try {
       opts.onTick?.(tickRecord);

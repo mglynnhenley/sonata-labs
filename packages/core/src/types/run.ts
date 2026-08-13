@@ -80,6 +80,40 @@ export interface InjectedRef {
   url?: string;
 }
 
+/**
+ * What one of the simulated people concluded about the agent's work, in their own
+ * words, at the moment they spoke.
+ *
+ * EVIDENCE, NEVER A SCORE — and the shape is what enforces that rather than a rule
+ * anybody has to remember. It carries no weight, no severity, no criterion id and
+ * no pass/fail: the same omissions, for the same reason, as `BeatCondition` in
+ * ./episode. A character deciding whether to escalate has already worked out "did
+ * that reply satisfy me, and if not what is missing"; today that reasoning is
+ * computed and thrown away, and the judge then re-reads the whole day cold to
+ * answer the same question. This is where it is kept instead.
+ *
+ * NOTHING DERIVED FROM ONE MAY REACH A NUMBER. Not `score.ts`, not the checklist,
+ * not `autonomy`. These are cheap in-world models playing characters with a
+ * standing reason to be dissatisfied, and a benchmark whose score moved with their
+ * mood would be measuring the world instead of the agent — see "Don't let a
+ * character's opinion move the score" in the plan. The judge is shown them
+ * alongside everything else, labelled as the world's opinion and explicitly not as
+ * a finding; @sonata/judge's `prompt.ts` carries that wording and the reasoning
+ * behind it.
+ *
+ * ABSENT IS THE ORDINARY CASE. Most speakers form no view — nobody is asked to —
+ * so no reader may require one, and a run without a single assessment must behave
+ * exactly as a run from before this existed.
+ */
+export interface WorldAssessment {
+  /** Whose view this is, by `Person.id`: the person who was speaking. */
+  personId: PersonRef;
+  /** Their own read of whether the agent settled the thing they were waiting on. */
+  satisfied: "yes" | "partly" | "no";
+  /** One line on what they say is still outstanding. Absent when nothing is. */
+  missing?: string;
+}
+
 export interface BeatFired {
   beatId: string;
   /** `BeatMeta.ref`, carried through so criteria can resolve it to `handle`. */
@@ -91,6 +125,12 @@ export interface BeatFired {
   /** One line for the timeline: "Dana Reyes emailed about the missed SLA". */
   summary: string;
   error?: string;
+  /**
+   * The sender's own read of where things stand, when a rewritten beat came back
+   * with one. Only an adapted beat can carry this: an authored beat is a sentence
+   * fixed before the run started, and nobody was asked anything.
+   */
+  assessment?: WorldAssessment;
 }
 
 /**
@@ -108,6 +148,12 @@ export type DirectorEvent = BeatBody & {
   becauseSeq?: number;
   handle?: InjectedRef;
   error?: string;
+  /**
+   * What the person who wrote this made of the agent's work, when they offered a
+   * view. Recorded next to what they SAID and never instead of it: the words are
+   * what happened in the world, and this is only the reasoning behind them.
+   */
+  assessment?: WorldAssessment;
 };
 
 /**
@@ -154,6 +200,13 @@ export interface TimelineEntry {
   text: string;
   /** `AgentStep.seq`, when this row is an agent step. */
   seq?: number;
+  /**
+   * The speaker's own read of the agent, when this row is something a person said
+   * and they offered one. Carried on the timeline because the timeline is the only
+   * projection of a run that reaches the judge — see `EpisodeJudgeInput`, and
+   * `renderOpinions` in @sonata/judge's prompt for how it is framed once there.
+   */
+  assessment?: WorldAssessment;
 }
 
 // ---------------------------------------------------------------------------

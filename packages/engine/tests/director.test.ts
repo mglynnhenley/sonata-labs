@@ -1232,6 +1232,25 @@ describe("rewritePrompt", () => {
     const prompt = rewritePrompt(rewriteReq({ facts: [] }), member());
     expect(prompt).not.toContain("or it will be thrown away");
   });
+
+  it("spends the text budget on the newest thing the agent wrote, not the oldest", () => {
+    // `writtenFromTicks` answers oldest first, and the budget is four ordinary
+    // emails wide. Spent from the front of that list it buys the morning and cuts
+    // the reply this beat exists to react to — so the person would be told the
+    // assistant had acted and shown nothing of what it actually said.
+    const long = (tag: string): string => `${tag} ${"filler ".repeat(120)}`;
+    const prompt = rewritePrompt(
+      rewriteReq({
+        wrote: ["NINE-OCLOCK", "TEN-OCLOCK", "ELEVEN-OCLOCK", "NOON", "THE-REPLY-IT-IS-ANSWERING"].map(
+          (tag, i) => ({ twin: "gmail" as const, source: "gmail_send", text: long(tag), tick: i }),
+        ),
+      }),
+      member(),
+    );
+    expect(prompt).toContain("THE-REPLY-IT-IS-ANSWERING");
+    // And the budget really is the reason: the oldest is what falls off the end.
+    expect(prompt).not.toContain("NINE-OCLOCK");
+  });
 });
 
 describe("createDirector().rewrite", () => {
@@ -1377,5 +1396,186 @@ describe("what the world is told when the agent is quiet this tick", () => {
     expect(line).toContain("at any point today");
     expect(line).not.toContain("working elsewhere");
     expect(line).not.toContain("I will get to this");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// What a character CONCLUDED, as opposed to what they said
+//
+// A person deciding whether to escalate has already worked out "did that reply
+// satisfy me, and if not, what is missing" — and until now the world computed it
+// inside a prompt and threw it away, leaving the judge to re-read the whole day
+// cold to answer the same question.
+//
+// Every test here also guards the boundary it is allowed to live inside: it is
+// asked for on a call that was already happening, it is recorded next to the words
+// it explains and nowhere else, and it can neither make somebody speak nor change
+// what they sent.
+// ---------------------------------------------------------------------------
+
+describe("what a character concluded", () => {
+  /** `stub`, plus the two fields a person's own view comes back in. */
+  function viewStub(
+    view: { satisfied?: unknown; missing?: unknown },
+    answer: (opts: CompleteJSONOptions) => unknown[] = () => [{ ...RAW }],
+  ) {
+    const asked: CompleteJSONOptions[] = [];
+    const complete = async <T>(opts: CompleteJSONOptions): Promise<T> => {
+      asked.push(opts);
+      return { events: answer(opts), ...view } as T;
+    };
+    return { complete, asked };
+  }
+
+  it("records the speaker's own view on the thing they said", async () => {
+    const { complete } = viewStub({
+      satisfied: "partly",
+      missing: "a date for the £40k credit",
+    });
+    const director = createDirector({ spec: spec({ director: immediate() }), complete });
+    const [event] = await director.react(ctx({ deltas: [emailedDana] }));
+
+    expect(event.assessment).toEqual({
+      personId: "dana",
+      satisfied: "partly",
+      missing: "a date for the £40k credit",
+    });
+  });
+
+  it("asks the model for it, and tells the character it grades nobody", () => {
+    // A character told their answer is a verdict on the assistant writes to win.
+    const prompt = personSystemPrompt(spec(), member());
+    expect(prompt).toContain("AND YOUR OWN VIEW");
+    expect(prompt).toContain("it grades nobody and");
+    expect(prompt).toContain("it changes no score");
+  });
+
+  it("treats no view as the ordinary answer, and records nothing at all", async () => {
+    // Strict structured output cannot omit a required property, so "none" is how a
+    // person says they were not waiting on anything. Recorded, a run of empty
+    // opinions reads to the judge as a world that found the agent wanting.
+    for (const view of [{ satisfied: "none", missing: "" }, {}, { satisfied: "  " }]) {
+      const { complete } = viewStub(view);
+      const director = createDirector({ spec: spec({ director: immediate() }), complete });
+      const [event] = await director.react(ctx({ deltas: [emailedDana] }));
+      expect(event.assessment).toBeUndefined();
+    }
+  });
+
+  it("drops the `missing` line when there is nothing outstanding", async () => {
+    const { complete } = viewStub({ satisfied: "yes", missing: "   " });
+    const director = createDirector({ spec: spec({ director: immediate() }), complete });
+    const [event] = await director.react(ctx({ deltas: [emailedDana] }));
+    expect(event.assessment).toEqual({ personId: "dana", satisfied: "yes" });
+  });
+
+  it("flattens `missing` to one line, because a run record is diffed line for line", async () => {
+    const { complete } = viewStub({ satisfied: "no", missing: "the credit\n\nand the date" });
+    const director = createDirector({ spec: spec({ director: immediate() }), complete });
+    const [event] = await director.react(ctx({ deltas: [emailedDana] }));
+    expect(event.assessment?.missing).toBe("the credit and the date");
+  });
+
+  it("attributes the view to the person whose call it was, never to whom they name", async () => {
+    // `personId` is filled from the casting, exactly as the event's is: a model
+    // writing as Dana cannot file an opinion under Sam.
+    const { complete } = viewStub({ satisfied: "no", missing: "everything" }, (o) =>
+      speaker(o) === "Dana Reyes"
+        ? [{ ...RAW }]
+        : [{ ...RAW, surface: "slack", kind: "message", channel: "ops", body: "on it" }],
+    );
+    const director = createDirector({ spec: spec({ director: immediate() }), complete });
+    const events = await director.react(ctx({ deltas: [emailedDana, postedOps] }));
+    expect(events.map((e) => e.assessment?.personId)).toEqual(["dana", "sam"]);
+  });
+
+  it("lives exactly as long as the words it came with, and no longer", async () => {
+    // The view rides on an event because an event is the only thing the tick keeps.
+    // A move the cap cut is a thing nobody in the world ever saw, and an opinion
+    // explaining a sentence that was never sent is a thought nobody had.
+    const { complete } = viewStub({ satisfied: "no", missing: "everything" }, (o) =>
+      speaker(o) === "Dana Reyes"
+        ? [{ ...RAW }]
+        : [{ ...RAW, surface: "slack", kind: "message", channel: "ops", body: "on it" }],
+    );
+    const director = createDirector({
+      spec: spec({ director: immediate({ maxEventsPerTick: 1 }) }),
+      complete,
+    });
+    const events = await director.react(ctx({ deltas: [emailedDana, postedOps] }));
+
+    expect(events.map((e) => e.personId)).toEqual(["dana"]);
+    expect(events[0].assessment?.personId).toBe("dana");
+    // And nobody else's view is anywhere on the tick.
+    expect(events).toHaveLength(1);
+  });
+
+  it("changes nothing about the event it is attached to", async () => {
+    // The world's opinion is evidence and never an action: same payload, same id,
+    // same person, whether or not a view came back with it.
+    const answer = () => [{ ...RAW, replyToRef: "act:gmail:9" }];
+    const bare = createDirector({
+      spec: spec({ director: immediate() }),
+      complete: viewStub({}, answer).complete,
+    });
+    const opinionated = createDirector({
+      spec: spec({ director: immediate() }),
+      complete: viewStub({ satisfied: "no", missing: "the credit" }, answer).complete,
+    });
+
+    const [plain] = await bare.react(ctx({ deltas: [emailedDana] }));
+    const [judged] = await opinionated.react(ctx({ deltas: [emailedDana] }));
+    expect(plain.assessment).toBeUndefined();
+    expect(judged.assessment).toBeDefined();
+    const { assessment, ...rest } = judged;
+    expect(rest).toEqual(plain);
+  });
+
+  it("comes back from a beat rewrite too, on the same call", async () => {
+    const asked: CompleteJSONOptions[] = [];
+    const complete = async <T>(opts: CompleteJSONOptions): Promise<T> => {
+      asked.push(opts);
+      return {
+        text: "Second time of asking — the £40k credit needs a date.",
+        satisfied: "partly",
+        missing: "a date",
+      } as T;
+    };
+    const director = createDirector({ spec: spec(), complete });
+    const outcome = await director.rewrite!(rewriteReq());
+
+    // One call, not two: the reasoning was already being done inside it.
+    expect(asked).toHaveLength(1);
+    expect(outcome.words).toContain("£40k credit");
+    expect(outcome.assessment).toEqual({ personId: "dana", satisfied: "partly", missing: "a date" });
+  });
+
+  it("survives the rewrite being thrown away", async () => {
+    // What this person concluded is true of them whether or not the sentence they
+    // wrote was usable — and a discarded rewrite is exactly the run where knowing
+    // what the world made of the day is worth most.
+    const complete = async <T>(): Promise<T> =>
+      ({ text: "   ", satisfied: "no", missing: "the credit" }) as T;
+    const director = createDirector({ spec: spec(), complete });
+    const outcome = await director.rewrite!(rewriteReq());
+
+    expect(outcome.words).toBeUndefined();
+    expect(outcome.error).toContain("empty");
+    expect(outcome.assessment).toEqual({ personId: "dana", satisfied: "no", missing: "the credit" });
+  });
+
+  it("is not invented for a call that was refused before the provider was reached", async () => {
+    // Both halves, one director, one seam: a refused rewrite buys nothing at all,
+    // and the only reason it has no view is that nobody was asked for one.
+    const complete = async <T>(): Promise<T> =>
+      ({ text: "chasing again", satisfied: "no", missing: "everything" }) as T;
+    const director = createDirector({ spec: spec(), complete });
+
+    expect((await director.rewrite!(rewriteReq({ twin: "slack" }))).assessment).toBeUndefined();
+    expect((await director.rewrite!(rewriteReq())).assessment).toEqual({
+      personId: "dana",
+      satisfied: "no",
+      missing: "everything",
+    });
   });
 });
