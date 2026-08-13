@@ -1,5 +1,32 @@
 # Make the fake world behave like a real company
 
+## Status — 13 Aug 2026
+
+| | |
+|---|---|
+| **Done** | 1 always-zero stat · 2 calendar RSVP · 3 world reads the agent's prose · 4 real character briefs · 5 ordering on criteria · 6 one agent per person · 7 adaptive beat wording · 10 bigger companies (and wired into the backlog path) |
+| **Part done** | 8 — Clive's escalation and Bea relaying it now adapt. The other four shipped days are not marked, and the **generator cannot author `adapt` yet**, so only hand-written days can use it |
+| **Not started** | 9 — characters' assessments as judge evidence |
+
+**Two things to know before trusting any of it.**
+
+**Nothing has been run.** 1396 tests and twelve typechecks are green, and no model
+call has been made — not one day, not one company. This repo's own AGENTS.md is
+blunt that every serious defect in it passed the type checker and the tests.
+
+**Steps 7 and 8 were never adversarially reviewed.** Steps 1–6 and 10 each got a
+second agent whose job was to break them, and they found a lot: a cut question
+that could never be asked again, a stat that stayed zero, ordering silently
+dropped on the only path that authors it. Step 7 got none of that — the reviewer
+never ran. Treat it as first-draft code.
+
+**Cost went up per company.** Wiring the storyline writers into `growBacklog`
+turns one model call into a spine, one per storyline and an ambient pass. That is
+the trade the bigger backlog is bought with, and it is unmeasured.
+
+---
+
+
 **Purpose:** the scripted parts of a simulated day ignore the agent completely, and everyone in the world is written by one model that can see everything. So the world accuses the agent of ignoring emails it already answered, and every character sounds the same. Fix both — without losing the fixed skeleton that lets two models be compared.
 
 ---
