@@ -19,6 +19,7 @@ import {
 } from "@sonata/core";
 import { createClock, type SimClock } from "./clock";
 import {
+  adaptBeats,
   createRefRegistry,
   fireBeats,
   injectBody,
@@ -294,6 +295,7 @@ const CAVEATS = [
   "Audit rows carry a summary, not a request body, so the prose the agent wrote is not recoverable; `mentions` criteria will read as unverifiable rather than passing.",
   "The world therefore reacted to metadata alone — subjects, recipients, what changed — and never to what the agent actually wrote. A scored episode's director is shown the reply itself, so a session's people cannot tell a thorough answer from a thin one and may be harsher, or kinder, than the reply deserved.",
   "That metadata is also all that decides WHO in this world has a reason to answer: casting reads the audit summary, so someone the agent named only inside a message body is never cast here, where a scored episode would have cast them.",
+  "An adaptive beat still adapts here — its condition is settled from the audit log and the snapshots, which a session has — but the person rewording it is shown no prose either, so their new wording reacts to the fact of a reply and never to its content.",
   "Escalations appear only if the harness in front of the agent reported them; without that the autonomy score's independence component reads as fully autonomous.",
   "The trace holds the harness's own model calls (the director's) and none of the agent's, so a cost figure from it is the cost of running the world, not of running the agent.",
 ];
@@ -482,7 +484,26 @@ export function createSession(opts: SessionOptions): Session {
 
     // 2. BEATS. Injected through the twins' sandbox routes, which are not audited —
     // which is exactly why the delta above is the agent's work and nobody else's.
-    const beatsFired: BeatFired[] = await fireBeats(schedule.at(at), simTimeISO, {
+    //
+    // An adaptive beat needs no reordering here, and that is a property of this
+    // loop rather than an accident: a session reads the agent's work FIRST, above,
+    // because the agent has been running the whole time. So by the time a beat is
+    // reworded, `allAudit` already holds everything the agent did up to this
+    // instant — where a scored episode has to go and read it early on purpose.
+    // What a session cannot give the rewrite is the agent's PROSE; see CAVEATS.
+    const adapted = await adaptBeats(schedule.at(at), {
+      spec,
+      director,
+      adapters: used,
+      before,
+      audit: allAudit,
+      ticks: run.ticks,
+      tick: at,
+      simTimeLabel: clock.labelAt(at),
+    });
+    notes.push(...adapted.notes);
+
+    const beatsFired: BeatFired[] = await fireBeats(adapted.beats, simTimeISO, {
       adapters: used,
       world: spec.world,
       refs,

@@ -610,6 +610,226 @@ describe("the world reads what the agent wrote", () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// Adaptive beat wording, through the real loop.
+//
+// The bug: `ce-b10` fires at t12 saying "I've had nothing since nine o'clock"
+// whether or not the agent answered at t2, and a 3-point `must` then grades the
+// agent on its reply to that false accusation.
+//
+// The fix is not cancelling the beat. It fires at the same tick either way; only
+// the sentence moves. Everything here is about the two halves of that: the beat
+// still lands where the script put it, and the world has actually READ the run
+// before it opens its mouth.
+// ---------------------------------------------------------------------------
+
+describe("a beat that adapts its wording", () => {
+  const AUTHORED = "I've had nothing since nine o'clock. The £40k credit still stands.";
+  const REWORDED = "Thanks — but that leaves the £40k credit unanswered, and I need a date.";
+
+  /** A spec whose escalation at tick 2 adapts to whether the opener was answered. */
+  function adaptiveSpec(adapt = true) {
+    return spec({
+      beats: [
+        beat({ id: "opener", tick: 0, ref: "opener" }),
+        beat({
+          id: "esc",
+          tick: 2,
+          ref: "escalation",
+          payload: { from: "dana", to: ["priya"], subject: "Where is my freight", body: AUTHORED },
+          ...(adapt
+            ? {
+                adapt: {
+                  when: {
+                    description: "the assistant already answered the opening email",
+                    twin: "gmail" as const,
+                    kind: "replied" as const,
+                    ref: "opener",
+                  },
+                  facts: ["£40k credit"],
+                },
+              }
+            : {}),
+        }),
+      ],
+      director: client(["gmail"]),
+    });
+  }
+
+  /** A model seam that answers both schemas, and counts what it was asked for. */
+  function worldModel(rewriteAs = REWORDED) {
+    const rewrites: CompleteJSONOptions[] = [];
+    const complete = async <T>(opts: CompleteJSONOptions): Promise<T> => {
+      if (opts.schemaName === "beat_rewrite") {
+        rewrites.push(opts);
+        return { text: rewriteAs } as T;
+      }
+      return { events: [] } as T;
+    };
+    return { complete, rewrites };
+  }
+
+  /** The agent replying on the client's thread at `tick`, as the twin logs it. */
+  function agentRepliesAt(gmail: FakeAdapter, tick: number): Agent {
+    return {
+      act: (c: AgentContext) => {
+        if (c.tick !== tick) return Promise.resolve([]);
+        gmail.rows.push(
+          auditRow({
+            id: 7,
+            twin: "gmail",
+            ts: 5_000,
+            actionType: "send",
+            targetId: "gmail-c",
+            summary: 'Sent "Re: Where is my freight" to dana@acme.test',
+          }),
+        );
+        return Promise.resolve([
+          {
+            kind: "tool",
+            seq: 0,
+            at: 5_000,
+            twin: "gmail",
+            name: "gmail_send",
+            args: { body: "The £40k credit is approved, I will come back with a time." },
+            resultSummary: "sent",
+            isMutation: true,
+          } satisfies AgentStep,
+        ]);
+      },
+      wrapUp: () => Promise.resolve("done"),
+    };
+  }
+
+  async function day(opts: { adapt?: boolean; repliesAt?: number; rewriteAs?: string } = {}) {
+    const gmail = fakeAdapter("gmail");
+    let snapshots = 0;
+    let reads = 0;
+    const realSnapshot = gmail.snapshot.bind(gmail);
+    gmail.snapshot = () => {
+      snapshots += 1;
+      return realSnapshot();
+    };
+    const realAudit = gmail.auditSince.bind(gmail);
+    gmail.auditSince = (since) => {
+      reads += 1;
+      return realAudit(since);
+    };
+    const model = worldModel(opts.rewriteAs ?? REWORDED);
+    const s = adaptiveSpec(opts.adapt ?? true);
+    let clock = 1_000;
+    const result = await runEpisode({
+      spec: s,
+      adapters: [gmail],
+      agent:
+        opts.repliesAt === undefined
+          ? { act: () => Promise.resolve([]), wrapUp: () => Promise.resolve("done") }
+          : agentRepliesAt(gmail, opts.repliesAt),
+      director: createDirector({ spec: s, complete: model.complete }),
+      model: "test/model",
+      runId: "run-adapt",
+      now: () => (clock += 10),
+    });
+    const esc = result.run.ticks[2].beatsFired.find((b) => b.beatId === "esc");
+    return { result, model, snapshots, reads, esc, gmail };
+  }
+
+  it("sees a reply sent in the PREVIOUS tick, which the loop's own order hides", async () => {
+    // The whole point. This loop fires beats before it reads the audit log, so at
+    // tick 2 it would otherwise know only what happened by tick 0 — and the beat
+    // would accuse the agent of a silence it broke fifteen minutes earlier.
+    const { result, model } = await day({ repliesAt: 1 });
+    expect(model.rewrites).toHaveLength(1);
+    expect(model.rewrites[0].prompt).toContain(AUTHORED);
+    const note = result.run.ticks[2].notes.find((n) => n.startsWith("beat esc adapt:")) ?? "";
+    expect(note).toContain("the agent has:");
+    expect(note).toContain("Reworded in character as Dana Reyes");
+  });
+
+  it("fires at the same tick, with the same ref, in both branches", async () => {
+    // The comparability property: the shape of the day is identical whatever the
+    // agent did, so every criterion binds exactly as it does today.
+    const answered = await day({ repliesAt: 1 });
+    const ignored = await day({});
+
+    for (const outcome of [answered, ignored]) {
+      expect(outcome.result.run.ticks[2].beatsFired.map((b) => b.beatId)).toEqual(["esc"]);
+      expect(outcome.esc?.ref).toBe("escalation");
+      expect(outcome.esc?.handle?.twin).toBe("gmail");
+      expect(outcome.esc?.error).toBeUndefined();
+      expect(outcome.result.refs.escalation).toBeTruthy();
+    }
+    // Only the words differ, and the ignored branch reads exactly as it does today.
+    const sent = (d: Awaited<ReturnType<typeof day>>) =>
+      d.gmail.injected.filter((i) => i.kind === "email").length;
+    expect(sent(answered)).toBe(sent(ignored));
+    expect(ignored.model.rewrites).toHaveLength(0);
+  });
+
+  it("keeps the authored text when the rewrite drops a required fact", async () => {
+    const { result, model } = await day({
+      repliesAt: 1,
+      rewriteAs: "Thanks, that is fine, I will wait.",
+    });
+    expect(model.rewrites).toHaveLength(1);
+    const note = result.run.ticks[2].notes.find((n) => n.startsWith("beat esc adapt:")) ?? "";
+    expect(note).toContain('dropped "£40k credit"');
+    // And the beat still fired, with everything it was always going to say.
+    expect(result.run.ticks[2].beatsFired[0].error).toBeUndefined();
+  });
+
+  it("costs nothing at all on a day with nothing marked adaptive", async () => {
+    // The regression bar, and it is about reads as much as about model calls. The
+    // early delta read that lets a beat see the tick just gone is bought per
+    // ADAPTIVE TICK, not per tick: an unconditional one would add a round trip to
+    // every twin on every tick of every scenario shipped today, for nothing.
+    const plain = await day({ adapt: false, repliesAt: 1 });
+    expect(plain.model.rewrites).toHaveLength(0);
+    // The run's own `before` and `after`, and no third.
+    expect(plain.snapshots).toBe(2);
+    // The opening cursor read, one per tick, and the closing attribution read.
+    expect(plain.reads).toBe(6);
+    expect(plain.result.run.ticks.flatMap((t) => t.notes).filter((n) => n.includes("adapt:"))).toEqual([]);
+
+    // The same day with one beat marked adaptive pays for exactly that one tick.
+    const adaptive = await day({ repliesAt: 1 });
+    expect(adaptive.reads).toBe(7);
+    expect(adaptive.snapshots).toBe(3);
+  });
+
+  it("names an adaptive beat that could never adapt, before the run rather than after", async () => {
+    const warnings = specWarnings(
+      spec({
+        beats: [
+          beat({
+            id: "esc",
+            tick: 1,
+            payload: { from: "dana", to: ["priya"], subject: "s", body: "no numbers here" },
+            adapt: {
+              when: { description: "replied", twin: "gmail", kind: "replied", ref: "opener" },
+              facts: ["£40k credit"],
+            },
+          }),
+          beat({
+            id: "react",
+            tick: 1,
+            twin: "slack",
+            kind: "reaction",
+            payload: { messageRef: "x", from: "sam", emoji: "eyes" },
+            adapt: {
+              when: { description: "replied", twin: "gmail", kind: "replied", ref: "opener" },
+              facts: [],
+            },
+          }),
+        ],
+      }),
+      { gmail: fakeAdapter("gmail"), slack: fakeAdapter("slack") },
+    );
+    expect(warnings[0]).toContain('beat "esc" requires "£40k credit" to survive a rewrite');
+    expect(warnings[1]).toContain('beat "react" is marked adaptive, but a slack reaction carries no wording');
+  });
+});
+
 describe("preflight", () => {
   it("uses only the twins the episode's beats and criteria name", () => {
     const gmail = fakeAdapter("gmail");

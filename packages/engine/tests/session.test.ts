@@ -416,6 +416,113 @@ describe("the director reacts to an agent it never called", () => {
   });
 });
 
+describe("an adaptive beat, with the agent on the outside", () => {
+  const AUTHORED = "I've had nothing since nine o'clock. The £40k credit still stands.";
+
+  /** The escalation at tick 2, adapting to whether the opener was answered. */
+  const escalation = beat({
+    id: "esc",
+    tick: 2,
+    ref: "escalation",
+    payload: { from: "dana", to: ["priya"], subject: "Where is my freight", body: AUTHORED },
+    adapt: {
+      when: {
+        description: "the assistant already answered the opening email",
+        twin: "gmail",
+        kind: "replied",
+        ref: "opener",
+      },
+      facts: ["£40k credit"],
+    },
+  });
+
+  function adaptiveWorld(rewriteAs: string) {
+    const gmail = fakeAdapter("gmail");
+    const timer = fakeTimer();
+    const rewrites: CompleteJSONOptions[] = [];
+    const complete = async <T>(opts: CompleteJSONOptions): Promise<T> => {
+      if (opts.schemaName !== "beat_rewrite") return { events: [] } as T;
+      rewrites.push(opts);
+      return { text: rewriteAs } as T;
+    };
+    const s = spec({
+      beats: [beat({ id: "b0", tick: 0, ref: "opener" }), escalation],
+      director: {
+        ...spec().director,
+        personas: [{ personId: "dana", responsiveness: 0.8, replyDelayTicks: 0, surfaces: ["gmail"] }],
+      },
+    });
+    const ticks: TickRecord[] = [];
+    const session = createSession({
+      spec: s,
+      adapters: [gmail],
+      compression: COMPRESSION,
+      timer,
+      director: createDirector({ spec: s, complete }),
+      sessionId: "sess-adapt",
+      onTick: (t) => ticks.push(t),
+    });
+    return { gmail, timer, session, rewrites, ticks };
+  }
+
+  it("needs no reordering here: the deltas are already read when the beat fires", async () => {
+    // A scored episode has to go and read the audit log early on purpose, because
+    // it fires beats first. A session reads it first by construction — the agent
+    // has been running the whole time — so an external agent's reply, written
+    // between two ticks, is in hand before the beat that would otherwise deny it.
+    const w = adaptiveWorld("Second time of asking — the £40k credit still needs a date.");
+    await w.session.start();
+    w.gmail.rows.push(
+      auditRow({
+        id: 7,
+        twin: "gmail",
+        ts: 5_000,
+        actionType: "send",
+        targetId: "gmail-c",
+        summary: 'Sent "Re: Where is my freight" to dana@acme.test',
+      }),
+    );
+    await step(w.session, w.timer, TICK_MS);
+    await step(w.session, w.timer, TICK_MS);
+
+    expect(w.rewrites).toHaveLength(1);
+    const note = w.ticks[2].notes.find((n) => n.startsWith("beat esc adapt:")) ?? "";
+    expect(note).toContain("Reworded in character as Dana Reyes");
+    // Same tick, same ref: nothing a criterion binds through has moved.
+    expect(w.ticks[2].beatsFired.map((b) => b.beatId)).toEqual(["esc"]);
+    expect(w.ticks[2].beatsFired[0].ref).toBe("escalation");
+    await w.session.stop();
+  });
+
+  it("rewords without the agent's prose, and says so on the record", async () => {
+    // A session never sees a request body, so the person rewording reacts to the
+    // fact of a reply and never to its content. That is a caveat, not a silence.
+    const w = adaptiveWorld("Second time of asking — the £40k credit still needs a date.");
+    await w.session.start();
+    w.gmail.rows.push(
+      auditRow({ id: 7, twin: "gmail", ts: 5_000, actionType: "send", targetId: "gmail-c", summary: "Sent a reply" }),
+    );
+    await step(w.session, w.timer, TICK_MS);
+    await step(w.session, w.timer, TICK_MS);
+
+    expect(w.rewrites[0].prompt).not.toContain("it wrote:");
+    const record = await w.session.stop();
+    expect(record.caveats.join(" ")).toContain("An adaptive beat still adapts here");
+  });
+
+  it("fires the authored words when the agent has done nothing", async () => {
+    const w = adaptiveWorld("should never be used");
+    await w.session.start();
+    await step(w.session, w.timer, TICK_MS);
+    await step(w.session, w.timer, TICK_MS);
+
+    expect(w.rewrites).toHaveLength(0);
+    expect(w.ticks[2].beatsFired.map((b) => b.beatId)).toEqual(["esc"]);
+    expect(w.ticks[2].notes.join(" ")).toContain("the agent has not");
+    await w.session.stop();
+  });
+});
+
 describe("the record the judge already knows how to read", () => {
   it("is an EpisodeRun with ticks in the shape every later reader depends on", async () => {
     const w = world();

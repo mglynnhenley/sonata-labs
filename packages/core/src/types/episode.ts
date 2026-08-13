@@ -118,10 +118,65 @@ export type BeatBody = GmailBeatBody | SlackBeatBody | CalendarBeatBody;
 /** Every `kind` string in use, across all twins. */
 export type BeatKind = BeatBody["kind"];
 
+/**
+ * What the agent may already have done by the time a beat fires — asked in the
+ * SCORER's words, and never in a second vocabulary of the world's own.
+ *
+ * Every field here is picked off `Criterion` below, so the question goes to the
+ * same fact providers in @sonata/judge that grade the run. That is the whole
+ * design and not a convenience: if the world had its own idea of "replied", a day
+ * could escalate about silence that the checklist was about to score as a reply,
+ * and the report would contradict itself in one paragraph. One definition of
+ * "replied", two readers of it.
+ *
+ * It is NOT a `Criterion`, and the two missing fields are why. `weight` and
+ * `severity` are absent because this is a question and never a score: a condition
+ * that could carry a weight is a condition somebody eventually pastes into a
+ * checklist, and the world's reading of the agent must not move the number. See
+ * "Don't let a character's opinion move the score" in the plan.
+ */
+export interface BeatCondition
+  extends Pick<Criterion, "twin" | "kind" | "ref" | "target" | "expect" | "before"> {
+  /** One line naming what is being asked. Goes on the tick record verbatim. */
+  description: string;
+}
+
+/**
+ * How a beat's WORDING adapts to what the agent actually did.
+ *
+ * Never WHETHER it fires. The beat happens on its own tick in every run, whatever
+ * the agent did — that is the property that makes two models comparable, and it is
+ * also just true of people: nobody goes silent because you replied, they chase
+ * with different words. What adapts is the sentence, and only when `when` says in
+ * code that the agent has already acted.
+ *
+ * `facts` is the safety catch. A beat is often the only place a number is ever
+ * said — the £40k credit, the 15:00 machine — and every criterion downstream
+ * depends on the agent having been told it. So the beat declares what it must
+ * still get across whatever words it uses, and a rewrite that loses one is thrown
+ * away in favour of the authored text. An empty list is a real statement — "no
+ * fact here is load-bearing" — and it means a rewrite is accepted on its face.
+ */
+export interface BeatAdaptation {
+  when: BeatCondition;
+  /** Substrings the new wording must still contain, verbatim, or it is discarded. */
+  facts: string[];
+}
+
 export interface BeatMeta {
   id: string;
   /** Which tick this fires on, 0-based. */
   tick: number;
+  /**
+   * Reword this beat when the agent has already done what `when` describes. The
+   * tick, the sender, the surface, the thread and the beat's `ref` are untouched,
+   * so every criterion binds exactly as it does without this field.
+   *
+   * Absent — which is every beat shipped today — is not a code path: the engine
+   * checks for it before it does anything at all, so a beat without it fires the
+   * bytes its author wrote and costs no model call and no extra read.
+   */
+  adapt?: BeatAdaptation;
   /**
    * Name this beat so later beats and criteria can point at what it created —
    * "the escalation email", "the 2pm review". The engine records the real

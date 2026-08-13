@@ -1,14 +1,20 @@
 import { describe, it, expect } from "vitest";
-import type { Beat } from "@sonata/core";
+import type { Beat, BeatAdaptation, TickRecord, TwinSnapshot } from "@sonata/core";
 import {
+  adaptBeats,
+  beatWords,
   createRefRegistry,
   fireBeats,
   injectBody,
+  missingFacts,
   scheduleBeats,
   summarizeBody,
   unreachableBeats,
+  withBeatWords,
+  type AdaptDeps,
 } from "../src/beats";
-import { beat, fakeAdapter, world } from "./fixtures";
+import type { BeatRewrite, RewriteOutcome } from "../src/director";
+import { auditRow, beat, fakeAdapter, spec, world } from "./fixtures";
 
 const at = "2026-08-04T09:15:00.000Z";
 
@@ -161,6 +167,279 @@ describe("fireBeats", () => {
     expect(d.inject.refs.entries()).toEqual({
       later: { twin: "gmail", id: "gmail-1", containerId: "gmail-c" },
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Adaptive wording.
+//
+// The one property under all of these: the beat still fires, on its own tick,
+// with its own ref. Only the sentence moves — and only when the judge's own
+// checkers say, in code, that the agent already acted.
+// ---------------------------------------------------------------------------
+
+const AUTHORED = "I've had nothing since nine o'clock. I need a plan and a time, and the £40k credit stands.";
+
+/** The escalation: the same shape as `ce-b10`, adaptive, with a fact to protect. */
+function escalation(over: Partial<BeatAdaptation> = {}): Beat {
+  return beat({
+    id: "esc",
+    tick: 2,
+    ref: "escalation",
+    payload: { from: "dana", to: ["priya"], subject: "Where is my freight", body: AUTHORED },
+    adapt: {
+      when: {
+        description: "the assistant already answered the opening email",
+        twin: "gmail",
+        kind: "replied",
+        ref: "opener",
+      },
+      facts: ["£40k credit"],
+      ...over,
+    },
+  });
+}
+
+const emptyGmail: TwinSnapshot = { twin: "gmail", capturedAt: 0, labels: [], threads: [], drafts: [] };
+
+/** A tick in which the opening beat landed, so `refsFromTicks` can resolve it. */
+function openerFired(): TickRecord {
+  return {
+    tick: 0,
+    simTimeISO: "2026-08-04T09:00:00.000Z",
+    startedAt: 0,
+    endedAt: 100,
+    beatsFired: [
+      {
+        beatId: "opener",
+        ref: "opener",
+        twin: "gmail",
+        kind: "email",
+        handle: { twin: "gmail", id: "gmail-1", containerId: "gmail-c" },
+        summary: "Dana emailed Priya",
+      },
+    ],
+    directorEvents: [],
+    agentSteps: [],
+    notes: [],
+  };
+}
+
+/** A rewriter that records what it was asked and answers with `words`. */
+function rewriter(words: string | { error: string }) {
+  const asked: BeatRewrite[] = [];
+  const rewrite = (req: BeatRewrite): Promise<RewriteOutcome> => {
+    asked.push(req);
+    return Promise.resolve(typeof words === "string" ? { words } : words);
+  };
+  return { rewrite, asked };
+}
+
+function adaptDeps(over: Partial<AdaptDeps> = {}): AdaptDeps {
+  const gmail = fakeAdapter("gmail");
+  return {
+    spec: spec(),
+    director: rewriter("Second time of asking — the £40k credit still needs a date."),
+    adapters: { gmail },
+    before: { gmail: emptyGmail },
+    audit: [],
+    ticks: [openerFired()],
+    tick: 2,
+    simTimeLabel: "09:30",
+    ...over,
+  };
+}
+
+/** The agent's reply, as the twin logged it: a send that touches the thread. */
+const repliedRow = auditRow({
+  id: 7,
+  twin: "gmail",
+  ts: 50,
+  actionType: "send",
+  targetId: "gmail-c",
+  summary: 'Sent "Re: Where is my freight" to dana@acme.test',
+});
+
+describe("beatWords", () => {
+  it("finds the wording of the two kinds that have one, and refuses the rest", () => {
+    expect(beatWords(escalation())).toBe(AUTHORED);
+    expect(
+      beatWords({ twin: "slack", kind: "message", payload: { channel: "ops", from: "sam", text: "hi" } }),
+    ).toBe("hi");
+    // A reaction is an emoji and an invitation is a time and a guest list. Letting
+    // a model reword either would be letting it reword the day's facts.
+    expect(
+      beatWords({ twin: "slack", kind: "reaction", payload: { messageRef: "x", from: "sam", emoji: "eyes" } }),
+    ).toBeNull();
+    expect(
+      beatWords({ twin: "calendar", kind: "cancel", payload: { eventRef: "x", reason: "clash" } }),
+    ).toBeNull();
+  });
+
+  it("replaces the wording and nothing else", () => {
+    const next = withBeatWords(escalation(), "different words");
+    expect(beatWords(next)).toBe("different words");
+    // Everything a criterion binds through is untouched.
+    expect(next.id).toBe("esc");
+    expect(next.ref).toBe("escalation");
+    expect(next.tick).toBe(2);
+    expect(next.twin).toBe("gmail");
+    expect(next.kind === "email" && next.payload.subject).toBe("Where is my freight");
+    expect(next.kind === "email" && next.payload.to).toEqual(["priya"]);
+  });
+});
+
+describe("missingFacts", () => {
+  it("survives a line break and a change of case, and names what was lost", () => {
+    expect(missingFacts("the £40K\nCREDIT stands", ["£40k credit"])).toEqual([]);
+    expect(missingFacts("nothing of the sort", ["£40k credit", "Friday"])).toEqual([
+      "£40k credit",
+      "Friday",
+    ]);
+    // An empty list is a real statement: nothing here is load-bearing.
+    expect(missingFacts("anything at all", [])).toEqual([]);
+  });
+});
+
+describe("adaptBeats", () => {
+  it("leaves a tick with no adaptive beat alone, and reads nothing to do it", async () => {
+    // The regression bar: a scenario with nothing marked adaptive costs no
+    // snapshot, no model call, and produces the same array it was handed.
+    const gmail = fakeAdapter("gmail");
+    let snapshots = 0;
+    gmail.snapshot = () => {
+      snapshots += 1;
+      return Promise.resolve(emptyGmail);
+    };
+    const model = rewriter("never asked");
+    const plain = [beat({ id: "a", tick: 2 }), beat({ id: "b", tick: 2 })];
+    const out = await adaptBeats(plain, adaptDeps({ adapters: { gmail }, director: model }));
+
+    expect(out.beats).toBe(plain);
+    expect(out.notes).toEqual([]);
+    expect(snapshots).toBe(0);
+    expect(model.asked).toHaveLength(0);
+  });
+
+  it("rewords the beat when the checker says the agent replied, keeping tick and ref", async () => {
+    const model = rewriter("Second time of asking — the £40k credit still needs a date.");
+    const out = await adaptBeats(
+      [escalation()],
+      adaptDeps({ audit: [repliedRow], director: model }),
+    );
+
+    expect(out.beats[0].tick).toBe(2);
+    expect(out.beats[0].ref).toBe("escalation");
+    expect(beatWords(out.beats[0])).toBe("Second time of asking — the £40k credit still needs a date.");
+    // The person the beat was always from, and the words they were going to send.
+    expect(model.asked[0].personId).toBe("dana");
+    expect(model.asked[0].authored).toBe(AUTHORED);
+    expect(model.asked[0].facts).toEqual(["£40k credit"]);
+    expect(model.asked[0].saw).toContain("gmail-c");
+  });
+
+  it("fires the authored text when the agent has not acted", async () => {
+    // No audit row, so the same checker that grades the day answers "no reply
+    // landed" — and the beat reads exactly as it does today.
+    const model = rewriter("should never be used");
+    const out = await adaptBeats([escalation()], adaptDeps({ director: model }));
+
+    expect(beatWords(out.beats[0])).toBe(AUTHORED);
+    expect(model.asked).toHaveLength(0);
+    expect(out.notes[0]).toContain("the agent has not");
+    expect(out.notes[0]).toContain("no reply landed");
+  });
+
+  it("fires the authored text when the condition cannot be decided", async () => {
+    const model = rewriter("should never be used");
+    const out = await adaptBeats(
+      [escalation({ when: { description: "answered the beat that never fired", twin: "gmail", kind: "replied", ref: "no-such-beat" } })],
+      adaptDeps({ audit: [repliedRow], director: model }),
+    );
+
+    expect(beatWords(out.beats[0])).toBe(AUTHORED);
+    expect(model.asked).toHaveLength(0);
+    expect(out.notes[0]).toContain("undecidable");
+  });
+
+  it("fires the authored text when the rewrite drops a required fact", async () => {
+    // The beat may be the only place the day ever says the number every criterion
+    // downstream assumes the agent was told. A wording that lost it is discarded
+    // whole, not patched.
+    const model = rewriter("Second time of asking. I need a date.");
+    const out = await adaptBeats(
+      [escalation()],
+      adaptDeps({ audit: [repliedRow], director: model }),
+    );
+
+    expect(model.asked).toHaveLength(1);
+    expect(beatWords(out.beats[0])).toBe(AUTHORED);
+    expect(out.notes[0]).toContain('dropped "£40k credit"');
+  });
+
+  it("fires the authored text when the rewrite call fails", async () => {
+    const out = await adaptBeats(
+      [escalation()],
+      adaptDeps({ audit: [repliedRow], director: rewriter({ error: "provider timed out" }) }),
+    );
+    expect(beatWords(out.beats[0])).toBe(AUTHORED);
+    expect(out.notes[0]).toContain("provider timed out");
+  });
+
+  it("fires the authored text when the run has no rewriter at all", async () => {
+    // Every hand-rolled `Director` predating this — the beat still fires, on time.
+    const out = await adaptBeats([escalation()], adaptDeps({ audit: [repliedRow], director: {} }));
+    expect(beatWords(out.beats[0])).toBe(AUTHORED);
+    expect(out.notes[0]).toContain("No rewriter in this run");
+  });
+
+  it("fires the authored text when the surface could not be captured", async () => {
+    const gmail = fakeAdapter("gmail");
+    gmail.snapshot = () => Promise.reject(new Error("twin is down"));
+    const out = await adaptBeats(
+      [escalation()],
+      adaptDeps({ audit: [repliedRow], adapters: { gmail } }),
+    );
+    expect(beatWords(out.beats[0])).toBe(AUTHORED);
+    expect(out.notes[0]).toContain("no gmail snapshot");
+  });
+
+  it("records what was asked, what it saw and what it concluded, every time", async () => {
+    // Two runs of one spec have to diff line for line, and a rewrite has to be
+    // explainable months later off the artifact alone.
+    const acted = await adaptBeats([escalation()], adaptDeps({ audit: [repliedRow] }));
+    expect(acted.notes).toHaveLength(1);
+    expect(acted.notes[0]).toContain("beat esc adapt: asked gmail/replied");
+    expect(acted.notes[0]).toContain('on "opener"');
+    expect(acted.notes[0]).toContain("the assistant already answered the opening email");
+    expect(acted.notes[0]).toContain("Reworded in character as Dana Reyes");
+
+    const not = await adaptBeats([escalation()], adaptDeps({}));
+    expect(not.notes[0]).toContain("beat esc adapt: asked gmail/replied");
+    expect(not.notes[0]).toContain("Fired as authored.");
+  });
+
+  it("says so, and adapts nothing, when the kind carries no wording", async () => {
+    const invite = beat({
+      id: "cal",
+      tick: 2,
+      twin: "calendar",
+      kind: "invite",
+      payload: {
+        title: "SLA review",
+        organizer: "priya",
+        attendees: ["dana"],
+        startISO: "2026-08-04T14:00:00Z",
+        endISO: "2026-08-04T14:30:00Z",
+      },
+      adapt: {
+        when: { description: "already replied", twin: "gmail", kind: "replied", ref: "opener" },
+        facts: [],
+      },
+    });
+    const out = await adaptBeats([invite], adaptDeps({ audit: [repliedRow] }));
+    expect(out.beats[0]).toBe(invite);
+    expect(out.notes[0]).toContain("carries no wording to adapt");
   });
 });
 

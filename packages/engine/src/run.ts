@@ -18,9 +18,12 @@ import {
 import { writtenFromTicks } from "@sonata/judge/checklist";
 import { createClock, type SimClock } from "./clock";
 import {
+  adaptBeats,
+  beatWords,
   createRefRegistry,
   fireBeats,
   injectBody,
+  missingFacts,
   scheduleBeats,
   summarizeBody,
   unreachableBeats,
@@ -128,6 +131,32 @@ export function specWarnings(spec: EpisodeSpec, used: ByTwin<TwinAdapter>): stri
   for (const twin of new Set(spec.beats.map((b) => b.twin))) {
     if (!used[twin]) notes.push(`no ${twin} adapter in this run, so its beats cannot land`);
   }
+  // An adaptive beat that can never adapt. Both of these are silent at runtime —
+  // the beat just fires as authored, forever, and the note explaining why is
+  // buried in one tick — so they are said once, up front, where an author looks.
+  for (const beat of spec.beats) {
+    const adapt = beat.adapt;
+    if (!adapt) continue;
+    const words = beatWords(beat);
+    if (words === null) {
+      notes.push(
+        `beat "${beat.id}" is marked adaptive, but a ${beat.twin} ${beat.kind} carries no wording ` +
+          `to adapt, so it will always fire exactly as authored`,
+      );
+      continue;
+    }
+    // A fact the beat does not itself say cannot survive a rewrite, because it was
+    // never there: every rewrite would be discarded and the adaptation would be
+    // dead weight paid for once a run.
+    const absent = missingFacts(words, adapt.facts);
+    if (absent.length) {
+      notes.push(
+        `beat "${beat.id}" requires ${absent.map((f) => `"${f}"`).join(", ")} to survive a ` +
+          `rewrite, but its own authored text does not say ${absent.length === 1 ? "it" : "them"} — ` +
+          `no rewrite can ever pass, so this beat will always fire as authored`,
+      );
+    }
+  }
   return notes;
 }
 
@@ -144,6 +173,12 @@ interface TickDeps {
   agent: Agent;
   historyLimit: number;
   now: () => number;
+  /**
+   * Each twin's snapshot from before tick 0. Read only by an adaptive beat, whose
+   * condition is settled by the judge's checkers and so needs both halves of a
+   * diff; nothing else in the tick looks at it.
+   */
+  before: ByTwin<TwinSnapshot>;
 }
 
 /** Director events, injected in order, each recording what it created or why not. */
@@ -188,6 +223,17 @@ export interface TickInput {
   ticks: TickRecord[];
   /** Highest audit row id already attributed, per twin. */
   cursors: Map<TwinName, number>;
+  /**
+   * Every audit row read so far this run, ascending — appended to as ticks read
+   * their deltas.
+   *
+   * Carried rather than derived because it cannot be derived: a `TickRecord` holds
+   * the agent's STEPS and no audit rows, and an adaptive beat's condition goes to
+   * the judge's own checkers, which read the log. `runEpisode` gathers the same
+   * rows again at the end for the artifact; that pass runs off `auditSince(0)` and
+   * is untouched by this one.
+   */
+  audit: TwinAuditRow[];
 }
 
 async function readDeltas(deps: TickDeps, cursors: Map<TwinName, number>): Promise<TwinAuditRow[]> {
@@ -253,9 +299,40 @@ export async function runTick(deps: TickDeps, input: TickInput): Promise<TickRec
   const simTimeISO = deps.clock.isoAt(tick);
   const notes: string[] = [];
 
-  // 1. Beats.
   const schedule = scheduleBeats(deps.spec.beats);
-  const beatsFired: BeatFired[] = await fireBeats(schedule.at(tick), simTimeISO, {
+  const due = schedule.at(tick);
+
+  // 0. ADAPTIVE WORDING, and only on a tick that has some.
+  //
+  // This loop fires beats BEFORE it reads the audit log, so at tick T the world
+  // knows what the agent did up to tick T-2 — fine for the director, which reacts
+  // a tick late on purpose, and wrong for a beat, which would escalate about a
+  // silence the agent broke fifteen minutes ago. So the deltas are read FIRST
+  // here, and the rows go on to be the same rows the director then sees.
+  //
+  // Guarded on `some(b.adapt)` so that a tick with no adaptive beat — every tick
+  // of every scenario shipped today — takes byte-for-byte the path it took before
+  // this existed: one delta read, in the same place, and no snapshot.
+  const adaptive = due.some((b) => b.adapt);
+  const early = adaptive ? await readDeltas(deps, input.cursors) : [];
+  input.audit.push(...early);
+
+  const adapted = adaptive
+    ? await adaptBeats(due, {
+        spec: deps.spec,
+        director: deps.director,
+        adapters: deps.used,
+        before: deps.before,
+        audit: input.audit,
+        ticks: input.ticks,
+        tick,
+        simTimeLabel: deps.clock.labelAt(tick),
+      })
+    : { beats: due, notes: [] };
+  notes.push(...adapted.notes);
+
+  // 1. Beats.
+  const beatsFired: BeatFired[] = await fireBeats(adapted.beats, simTimeISO, {
     adapters: deps.used,
     world: deps.spec.world,
     refs: deps.refs,
@@ -263,8 +340,13 @@ export async function runTick(deps: TickDeps, input: TickInput): Promise<TickRec
 
   // 2. Director. The deltas are what the agent did in the PREVIOUS tick — the
   // audit rows written since the last read — which is exactly what a coworker
-  // would have seen by now.
-  const deltas = await readDeltas(deps, input.cursors);
+  // would have seen by now. On an adaptive tick most of them were already read
+  // above; the cursor moved with them, so the second read only picks up anything
+  // that landed while the beats were being reworded, and the merged list is the
+  // one the director would have been handed either way.
+  const fresh = await readDeltas(deps, input.cursors);
+  input.audit.push(...fresh);
+  const deltas = early.length ? [...early, ...fresh].sort((a, b) => a.id - b.id) : fresh;
   // Offer the world a ref for each thing the agent just did, under the same name
   // the prompt hands the model, so a reply can attach to it.
   for (const row of deltas) {
@@ -391,6 +473,12 @@ export async function runEpisode(opts: RunOptions): Promise<RunResult> {
   const preflight: TwinHealth[] = [];
   for (const adapter of Object.values(used)) preflight.push(await adapter.health());
 
+  // Filled once, from the `before` snapshot below, and read only by an adaptive
+  // beat. Held out here rather than passed around so `deps` can be built in one
+  // place while the snapshot it needs is taken inside the try, where a twin that
+  // refuses is a failed run rather than a thrown constructor.
+  const before: ByTwin<TwinSnapshot> = {};
+
   const deps: TickDeps = {
     spec,
     clock,
@@ -400,10 +488,13 @@ export async function runEpisode(opts: RunOptions): Promise<RunResult> {
     agent: opts.agent,
     historyLimit: opts.historyLimit ?? 40,
     now,
+    before,
   };
 
   const cursors = new Map<TwinName, number>();
   const allAudit: TwinAuditRow[] = [];
+  /** Rows read tick by tick, for an adaptive beat's condition. See `TickInput`. */
+  const readSoFar: TwinAuditRow[] = [];
   const result = (): RunResult => ({
     run,
     trace,
@@ -418,7 +509,7 @@ export async function runEpisode(opts: RunOptions): Promise<RunResult> {
 
     // The `before` snapshot is taken AFTER seeding: the diff has to show what the
     // agent changed, not what the seeder wrote.
-    const before = await snapshotAll(used);
+    Object.assign(before, await snapshotAll(used));
 
     // The audit cursor starts at whatever seeding left behind, so setup writes are
     // never read back as the agent's work.
@@ -438,7 +529,7 @@ export async function runEpisode(opts: RunOptions): Promise<RunResult> {
 
     await withTrace(trace, async () => {
       for (let tick = 0; tick < total; tick++) {
-        const record = await runTick(deps, { tick, ticks: run.ticks, cursors });
+        const record = await runTick(deps, { tick, ticks: run.ticks, cursors, audit: readSoFar });
         // Authoring warnings ride on tick 0, which is the only tick a reader of
         // the artifact is guaranteed to look at.
         if (tick === 0) record.notes.unshift(...warnings);

@@ -235,6 +235,36 @@ describe.each(SPECS.map((s) => [s.id, s] as const))("%s", (_id, spec) => {
     expect(spec.success.judgeQuestions.length).toBeLessThanOrEqual(3);
   });
 
+  it("only asks an adaptive beat to keep facts it actually states, about a beat that precedes it", () => {
+    const byRef = new Map(spec.beats.filter((b) => b.ref).map((b) => [b.ref!, b]));
+
+    for (const beat of spec.beats) {
+      const adapt = beat.adapt;
+      if (!adapt) continue;
+
+      // A fact the authored wording does not contain is one the fallback cannot
+      // satisfy either: every rewrite would be discarded, and the beat would be
+      // permanently frozen at text nobody could ever replace. Silently, since
+      // falling back is the safe branch and looks like nothing happening.
+      const authored = JSON.stringify(beat.payload);
+      for (const fact of adapt.facts) {
+        expect(authored, `${beat.id} declares the fact "${fact}"`).toContain(fact);
+      }
+
+      // The condition must be answerable by the time it is asked. A beat that
+      // adapts on something scheduled later than itself can never adapt, and the
+      // failure is invisible — it just always sends the authored words.
+      const named = adapt.when.ref;
+      if (named) {
+        const about = byRef.get(named);
+        expect(about, `${beat.id} adapts on ref "${named}"`).toBeDefined();
+        expect(about!.tick, `${beat.id} adapts on ${named}, which fires later`).toBeLessThan(
+          beat.tick,
+        );
+      }
+    }
+  });
+
   it("directs the world without letting it solve the day", () => {
     const { director } = spec;
     expect(director.maxEventsPerTick).toBeGreaterThanOrEqual(2);
