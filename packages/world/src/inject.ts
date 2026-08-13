@@ -425,7 +425,17 @@ export function resolveCalendarSeed(
   };
 }
 
-/** The exact body posted to one twin. Exported so a caller can dry-run it. */
+/**
+ * The exact body posted to one twin. Exported so a caller can dry-run it.
+ *
+ * Four twins throw rather than return, and the throw is the honest answer: a
+ * `GeneratedWorld` carries a mailbox, a workspace and a diary and nothing else,
+ * so there is no CRM, no document set, no ad account and no feed to resolve into
+ * a wire seed. The alternative — an empty seed — would post successfully, wipe
+ * whatever the twin held, and leave the agent working a surface the story says
+ * is full. That failure surfaces as a badly behaved agent hours later; this one
+ * surfaces as a sentence naming the twin.
+ */
 export function buildSeedRequest(
   generated: GeneratedWorld,
   twin: TwinName,
@@ -443,6 +453,16 @@ export function buildSeedRequest(
         twin,
         seed: resolveCalendarSeed(world, generated.calendar, nowMs, promoteToSnapshot),
       };
+    case "attio":
+    case "google-docs":
+    case "google-ads":
+    case "linkedin":
+      throw new Error(
+        `World generation does not cover the ${twin} twin yet: a generated world holds a ` +
+          `mailbox, a Slack workspace and a diary, and nothing that could be seeded into ` +
+          `${twin}. Leave it out of the run's twins, or seed it out of band and run with ` +
+          `seedWorld: false.`,
+      );
   }
 }
 
@@ -507,7 +527,17 @@ export async function injectWorld(
   // buys nothing, and a failure order that matches the log is worth more.
   for (const twin of twins) {
     const url = `${twinBaseUrl(twin, opts.baseUrls)}/api/sandbox/seed`;
-    const body = buildSeedRequest(generated, twin, nowMs, opts.promoteToSnapshot ?? true);
+    // A twin this generator cannot build a seed for is reported like any other
+    // failure rather than thrown out of the whole load: the other surfaces still
+    // get their world, and the caller — `loadClone` — still refuses to start a
+    // run on a report that is not ok. The dashboard shows which one and why.
+    let body: SeedRequest;
+    try {
+      body = buildSeedRequest(generated, twin, nowMs, opts.promoteToSnapshot ?? true);
+    } catch (err) {
+      results.push({ twin, url, ok: false, status: 0, error: (err as Error).message });
+      continue;
+    }
     say(`seeding ${twin} at ${url}`);
     try {
       const res = await doFetch(url, {

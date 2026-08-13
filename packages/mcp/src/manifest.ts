@@ -1,6 +1,15 @@
 import { createTwinHttp, TwinHttp } from "@sonata/engine/http";
-import { calendarTools, gmailTools, slackTools, type EngineTool } from "@sonata/engine/tools/index";
-import { asServedTwin, TWINS, type ServedTwin, type SonataConfig } from "./config";
+import {
+  attioTools,
+  calendarTools,
+  gmailTools,
+  googleAdsTools,
+  googleDocsTools,
+  linkedInTools,
+  slackTools,
+  type EngineTool,
+} from "@sonata/engine/tools/index";
+import { TWINS, type ServedTwin, type SonataConfig } from "./config";
 
 // The tool manifest, derived — not copied — from packages/engine/src/tools.
 //
@@ -13,8 +22,8 @@ import { asServedTwin, TWINS, type ServedTwin, type SonataConfig } from "./confi
 // and execution is the engine's own `run`, which speaks the twin's REST API over
 // the same TwinHttp the episode engine uses.
 //
-// The one thing added is the prefix: an agent sees all three sets at once, and
-// three tools called `send_message` in one list is a coin toss.
+// The one thing added is the prefix: an agent sees every set at once, and two
+// tools called `send_message` in one list is a coin toss.
 
 /** The JSON Schema shape MCP's tools/list requires — an object schema, always. */
 export interface ObjectSchema {
@@ -75,9 +84,22 @@ export function twinClient(twin: ServedTwin, opts: ClientOptions): TwinClient {
 
 /** The engine's curated toolset for one twin, unchanged. */
 export function engineToolsFor(twin: ServedTwin, http: TwinHttp): EngineTool[] {
-  if (twin === "gmail") return gmailTools(http);
-  if (twin === "slack") return slackTools(http);
-  return calendarTools(http);
+  switch (twin) {
+    case "gmail":
+      return gmailTools(http);
+    case "slack":
+      return slackTools(http);
+    case "calendar":
+      return calendarTools(http);
+    case "attio":
+      return attioTools(http);
+    case "google-docs":
+      return googleDocsTools(http);
+    case "google-ads":
+      return googleAdsTools(http);
+    case "linkedin":
+      return linkedInTools(http);
+  }
 }
 
 /** `gmail` + `list_messages` -> `gmail_list_messages`. */
@@ -109,7 +131,7 @@ export function toEntry(tool: EngineTool): McpToolEntry {
   // escalation and note-taking, which belong to a scored episode, not to a live
   // connection. Anything else would be a new tool the engine grew without a home.
   if (tool.twin === null) throw new Error(`engine tool "${tool.name}" has no twin and cannot be served over MCP`);
-  const twin = asServedTwin(tool.twin);
+  const twin = tool.twin;
   if (tool.def.type !== "function") throw new Error(`engine tool "${tool.name}" is not a function tool`);
   return {
     name: prefixed(twin, tool.name),
@@ -123,7 +145,7 @@ export function toEntry(tool: EngineTool): McpToolEntry {
 }
 
 export interface ManifestOptions extends ClientOptions {
-  /** Which twins this process fronts. Defaults to all three. */
+  /** Which twins this process fronts. Defaults to every twin. */
   twins?: readonly ServedTwin[];
 }
 

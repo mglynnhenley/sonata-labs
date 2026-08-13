@@ -1,6 +1,6 @@
 import type { TwinName } from "@sonata/core";
 import { assembleScenario, type AssembledScenario, type AuthoredPerson, type AuthoredScenario } from "./authored";
-import type { TemplateService, TemplateSummary } from "./types";
+import type { TemplateService, TemplateSummary, WorldCounts } from "./types";
 
 // The five days that ship with the product — the ones the article runs.
 //
@@ -721,10 +721,30 @@ export function assembleTemplate(
   });
 }
 
-const UNITS: Record<TwinName, { unit: string; of: (counts: { threads: number; channels: number; events: number }) => number }> = {
+/**
+ * What each surface's chip counts, and where to read it off an assembly.
+ *
+ * Null for the four surfaces that landed later, and that is the honest entry
+ * rather than a placeholder: `WorldCounts` has no field for a CRM record, a
+ * document, a campaign or a post, no template names any of them, and the world
+ * generator does not seed them. A zero would render as "Attio · 0 records",
+ * which claims the surface was seeded and came up empty — the opposite of what
+ * is true. The chip goes out as a bare label until there is a number behind it.
+ *
+ * A full Record and not a Partial, so a twin added to `TwinName` has to be
+ * answered for here instead of quietly losing its count.
+ */
+const UNITS: Record<
+  TwinName,
+  { unit: string; of: (counts: WorldCounts) => number } | null
+> = {
   gmail: { unit: "threads", of: (c) => c.threads },
   slack: { unit: "channels", of: (c) => c.channels },
   calendar: { unit: "events", of: (c) => c.events },
+  attio: null,
+  "google-docs": null,
+  "google-ads": null,
+  linkedin: null,
 };
 
 /**
@@ -735,11 +755,10 @@ const UNITS: Record<TwinName, { unit: string; of: (counts: { threads: number; ch
 export function templateSummaries(): TemplateSummary[] {
   return TEMPLATES.map((template) => {
     const { draft } = assembleTemplate(template);
-    const services: TemplateService[] = draft.episode.twins.map((twin) => ({
-      twin,
-      count: UNITS[twin].of(draft.counts),
-      unit: UNITS[twin].unit,
-    }));
+    const services: TemplateService[] = draft.episode.twins.map((twin) => {
+      const units = UNITS[twin];
+      return units ? { twin, count: units.of(draft.counts), unit: units.unit } : { twin };
+    });
     return {
       id: template.id,
       title: template.title,

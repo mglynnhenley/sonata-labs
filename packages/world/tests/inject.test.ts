@@ -122,6 +122,19 @@ describe("buildSeedRequest", () => {
       expect(request.seed.promoteToSnapshot).toBe(true);
     }
   });
+
+  // A generated world is a mailbox, a workspace and a diary. Returning an empty
+  // seed for the surfaces it does not cover would POST successfully, wipe
+  // whatever the twin held, and leave the agent working an empty CRM inside a
+  // story that says it is full — a defect that only surfaces hours later, as a
+  // badly behaved agent.
+  it("refuses the surfaces world generation does not cover, by name", () => {
+    for (const twin of ["attio", "google-docs", "google-ads", "linkedin"] as const) {
+      expect(() => buildSeedRequest(built, twin, NOW)).toThrow(
+        new RegExp(`does not cover the ${twin} twin`),
+      );
+    }
+  });
 });
 
 describe("twinBaseUrl", () => {
@@ -230,6 +243,25 @@ describe("injectWorld over HTTP", () => {
     expect(report.results[0].status).toBe(0);
     expect(report.results[0].error).toContain("is the calendar twin running?");
     expect(report.results[0].url).toBe("http://127.0.0.1:1/api/sandbox/seed");
+  });
+
+  it("reports an unseedable twin like any other failure, and still seeds the rest", async () => {
+    seen.length = 0;
+    const report = await injectWorld(built, {
+      twins: ["gmail", "attio"],
+      baseUrls: { gmail: base, attio: base },
+      now: NOW,
+    });
+
+    // Nothing was posted for it — an empty seed would have wiped the CRM — and
+    // the mailbox still got its world, which is what keeps this a report the
+    // dashboard can draw rather than a stack trace.
+    expect(seen.map((s) => s.body.twin)).toEqual(["gmail"]);
+    expect(report.ok).toBe(false);
+    const attio = report.results.find((r) => r.twin === "attio")!;
+    expect(attio.status).toBe(0);
+    expect(attio.error).toContain("does not cover the attio twin");
+    expect(report.results.find((r) => r.twin === "gmail")!.ok).toBe(true);
   });
 
   it("reports progress for the dashboard's seeding step", async () => {

@@ -13,8 +13,19 @@ import {
 } from "../src/ports";
 
 describe("port allocation", () => {
+  // Every one of these numbers is written down somewhere else too — a dev script,
+  // an env fallback, a clone's own README — so renumbering any of them has to be
+  // a decision rather than an edit, and this is what makes it one.
   it("keeps the API ports every existing env fallback already assumes", () => {
-    expect(TWIN_API_PORTS).toEqual({ gmail: 3101, slack: 3200, calendar: 3400 });
+    expect(TWIN_API_PORTS).toEqual({
+      gmail: 3101,
+      slack: 3200,
+      calendar: 3400,
+      attio: 3500,
+      "google-docs": 3600,
+      "google-ads": 3700,
+      linkedin: 3800,
+    });
   });
 
   it("puts each UI 800 above its API, so the pairing is guessable", () => {
@@ -88,6 +99,10 @@ describe("resolution precedence", () => {
       gmail: "http://localhost:3101",
       slack: "http://s.test",
       calendar: "http://localhost:3400",
+      attio: "http://localhost:3500",
+      "google-docs": "http://localhost:3600",
+      "google-ads": "http://localhost:3700",
+      linkedin: "http://localhost:3800",
     });
   });
 });

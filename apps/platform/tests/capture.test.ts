@@ -42,12 +42,30 @@ const { explainUnpaired } = await import("../src/lib/engine/episode");
 // Fixtures
 // ---------------------------------------------------------------------------
 
-const snapshot = (twin: TwinName): TwinSnapshot =>
-  twin === "gmail"
-    ? { twin, capturedAt: 1, labels: [], threads: [], drafts: [] }
-    : twin === "slack"
-      ? { twin, capturedAt: 1, channels: [], messages: [] }
-      : { twin, capturedAt: 1, events: [] };
+/**
+ * An empty capture of any surface. A switch rather than a default arm, so a twin
+ * added to `TwinName` cannot silently be photographed as a calendar — these
+ * tests are about whether a run was observed at all, and a fixture wearing the
+ * wrong twin's shape would pass while proving nothing.
+ */
+const snapshot = (twin: TwinName): TwinSnapshot => {
+  switch (twin) {
+    case "gmail":
+      return { twin, capturedAt: 1, labels: [], threads: [], drafts: [] };
+    case "slack":
+      return { twin, capturedAt: 1, channels: [], messages: [] };
+    case "calendar":
+      return { twin, capturedAt: 1, events: [] };
+    case "attio":
+      return { twin, capturedAt: 1, records: [], notes: [], tasks: [] };
+    case "google-docs":
+      return { twin, capturedAt: 1, documents: [] };
+    case "google-ads":
+      return { twin, capturedAt: 1, campaigns: [] };
+    case "linkedin":
+      return { twin, capturedAt: 1, posts: [], comments: [] };
+  }
+};
 
 function auditRow(id: number, twin: TwinName): TwinAuditRow {
   return {

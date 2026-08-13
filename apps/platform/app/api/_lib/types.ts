@@ -147,9 +147,14 @@ export interface EpisodeRecord extends EpisodeSummary {
 /** One service chip on a template card: "Gmail · 14 threads". */
 export interface TemplateService {
   twin: TwinName;
-  count: number;
+  /**
+   * Absent when nothing seeds this surface yet, and the chip then shows the
+   * service alone. A zero would read as "seeded, and came up empty", which is a
+   * claim about the world rather than about what we can count.
+   */
+  count?: number;
   /** Plural noun for the count: "threads", "channels", "events". */
-  unit: string;
+  unit?: string;
 }
 
 export interface TemplateSummary {

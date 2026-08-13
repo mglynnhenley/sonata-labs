@@ -71,6 +71,18 @@
   --color-sn-calendar-ink: #2f6497;
   --color-sn-calendar-soft: #e5edf6;
   --color-sn-calendar-line: #cfdcea;
+  --color-sn-attio-ink: #2f6b5d;
+  --color-sn-attio-soft: #e3f0ec;
+  --color-sn-attio-line: #cadfd8;
+  --color-sn-google-docs-ink: #3a5aa8;
+  --color-sn-google-docs-soft: #e6eaf7;
+  --color-sn-google-docs-line: #d0d8ee;
+  --color-sn-google-ads-ink: #a06a24;
+  --color-sn-google-ads-soft: #f7eede;
+  --color-sn-google-ads-line: #eaddc4;
+  --color-sn-linkedin-ink: #2a5f86;
+  --color-sn-linkedin-soft: #e4eef5;
+  --color-sn-linkedin-line: #ccdfea;
 
   /* Status hues */
   --color-sn-running-ink: #4a6fa5;
