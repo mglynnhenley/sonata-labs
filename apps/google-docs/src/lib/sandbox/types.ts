@@ -135,6 +135,8 @@ export interface DocsSnapshotDocument {
   documentId: string;
   title: string;
   revisionId: string;
+  /** The cast member the seed says owns it — who a diff is happening TO. */
+  ownerEmail: string;
   /** The text of every TITLE/SUBTITLE/HEADING_* paragraph, in order, newline trimmed. */
   headings: string[];
   paragraphCount: number;

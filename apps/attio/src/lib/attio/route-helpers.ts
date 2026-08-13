@@ -5,7 +5,6 @@ import { notFoundError, notImplementedError, toErrorResponse } from "./errors";
 import { liveDb } from "../sandbox/live";
 import { logAction, type ActionEntry } from "../audit";
 import {
-  getOwnerEmail,
   getOwnerMemberId,
   getWorkspaceId,
   getWorkspaceName,
@@ -31,7 +30,6 @@ import {
 
 export interface AttioCtx extends ShapeCtx {
   db: Database;
-  ownerEmail: string;
   /** Who a write made through this API is attributed to. */
   actor: Actor;
 }
@@ -54,7 +52,6 @@ export async function handleAttio(
       workspaceSlug: getWorkspaceSlug(db),
       workspaceName: getWorkspaceName(db),
       ownerMemberId: getOwnerMemberId(db),
-      ownerEmail: getOwnerEmail(db),
       actor: { ...API_TOKEN_ACTOR },
     });
   } catch (err) {

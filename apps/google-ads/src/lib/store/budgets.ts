@@ -14,7 +14,6 @@ export interface BudgetRow {
   explicitly_shared: number;
   status: string;
   is_sandbox_created: number;
-  raw_json: string | null;
 }
 
 export interface InsertBudgetInput {
@@ -29,13 +28,17 @@ export interface InsertBudgetInput {
   isSandboxCreated?: boolean;
 }
 
-/** The keys a mutate may change; anything absent is left exactly as it was. */
+/**
+ * The keys a mutate may change; anything absent is left exactly as it was.
+ * `status` is deliberately not among them: Google has no settable status on a
+ * budget, `MUTABLE.campaignBudget` in mutate.ts refuses a mask that names one,
+ * and the only way the column ever moves is `removeBudget` below.
+ */
 export interface BudgetPatch {
   name?: string;
   amountMicros?: number;
   deliveryMethod?: string;
   explicitlyShared?: boolean;
-  status?: string;
 }
 
 export function listBudgets(db: Database, customerId: string): BudgetRow[] {
@@ -95,10 +98,6 @@ export function updateBudget(db: Database, id: string, patch: BudgetPatch): void
   if (patch.explicitlyShared !== undefined) {
     sets.push("explicitly_shared = ?");
     params.push(patch.explicitlyShared ? 1 : 0);
-  }
-  if (patch.status !== undefined) {
-    sets.push("status = ?");
-    params.push(patch.status);
   }
   if (!sets.length) return;
   db.prepare(`UPDATE campaign_budgets SET ${sets.join(", ")} WHERE id = ?`).run(...params, id);

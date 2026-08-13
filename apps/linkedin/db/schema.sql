@@ -20,8 +20,10 @@ CREATE TABLE IF NOT EXISTS members (
   email       TEXT NOT NULL,                  -- the join key to the other clones' cast
   given_name  TEXT NOT NULL,
   family_name TEXT NOT NULL,
-  headline    TEXT,
-  vanity_name TEXT,                           -- the /in/ slug
+  -- No headline and no /in/ slug: /v2/userinfo (OIDC) returns neither, and
+  -- profile lookup for anyone but the authenticated member is partner-gated and
+  -- permanently out of scope (README), so a column for either would have a
+  -- writer and never a reader.
   picture_url TEXT,
   locale      TEXT NOT NULL DEFAULT 'en-US',
   is_owner    INTEGER NOT NULL DEFAULT 0      -- the member /v2/userinfo answers as

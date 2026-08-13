@@ -11,8 +11,6 @@ export interface MemberInput {
   email: string;
   givenName: string;
   familyName: string;
-  headline?: string | null;
-  vanityName?: string | null;
   pictureUrl?: string | null;
   locale?: string;
   isOwner?: boolean;
@@ -20,14 +18,12 @@ export interface MemberInput {
 
 export function insertMember(db: Database, input: MemberInput): MemberRow {
   db.prepare(
-    `INSERT INTO members (id, email, given_name, family_name, headline, vanity_name, picture_url, locale, is_owner)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO members (id, email, given_name, family_name, picture_url, locale, is_owner)
+     VALUES (?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(id) DO UPDATE SET
        email = excluded.email,
        given_name = excluded.given_name,
        family_name = excluded.family_name,
-       headline = excluded.headline,
-       vanity_name = excluded.vanity_name,
        picture_url = excluded.picture_url,
        locale = excluded.locale,
        is_owner = excluded.is_owner`,
@@ -36,8 +32,6 @@ export function insertMember(db: Database, input: MemberInput): MemberRow {
     input.email,
     input.givenName,
     input.familyName,
-    input.headline ?? null,
-    input.vanityName ?? null,
     input.pictureUrl ?? null,
     input.locale ?? "en-US",
     input.isOwner ? 1 : 0,

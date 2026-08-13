@@ -81,18 +81,98 @@ async function call(path: string, opts: CallOptions = {}): Promise<Reply> {
 /** LinkedIn wants the URN percent-encoded in a path segment. */
 const seg = (urn: string) => encodeURIComponent(urn);
 
+// A two-author world for the last block. The demo seed cannot express it: every
+// post in it belongs to the owner or to the page they administer, so a draft
+// there is always the caller's own and `viewContext=AUTHOR` never has to decide
+// whose it is. Wire-seeded worlds routinely do have another member's draft.
+const OTHER_AUTHOR_ID = "dK7mQv2XbT";
+const OTHER_AUTHOR_URN = `urn:li:person:${OTHER_AUTHOR_ID}`;
+const PAGE_DRAFT_URN = "urn:li:share:7490000000000000001";
+const OTHER_DRAFT_URN = "urn:li:share:7490000000000000003";
+const OWNER_EMAIL = "sandbox.user@gmail.com";
+const OTHER_EMAIL = "priya@acme.co";
+
+const OTHER_AUTHORS_DRAFT_SEED = {
+  twin: "linkedin",
+  seed: {
+    world: {
+      business: { name: "Acme" },
+      cast: [
+        { id: "p1", name: "Sandbox User", email: OWNER_EMAIL },
+        { id: "p2", name: "Priya Nair", email: OTHER_EMAIL },
+      ],
+      mailboxOwner: OWNER_EMAIL,
+    },
+    nowISO: "2026-07-27T09:00:00Z",
+    ownerEmail: OWNER_EMAIL,
+    organization: { id: "7412903", name: "Acme", vanityName: "acme-co" },
+    members: [
+      { email: OWNER_EMAIL, personId: "sHq2WpRk9L" },
+      { email: OTHER_EMAIL, personId: OTHER_AUTHOR_ID },
+    ],
+    posts: [
+      {
+        id: "7490000000000000001",
+        authorKind: "organization",
+        commentary: "The page's own unpublished draft.",
+        visibility: "PUBLIC",
+        lifecycleState: "DRAFT",
+        publishedISO: "2026-07-27T09:00:00Z",
+      },
+      {
+        id: "7490000000000000002",
+        authorKind: "member",
+        authorEmail: OTHER_EMAIL,
+        commentary: "Priya's published post.",
+        visibility: "PUBLIC",
+        lifecycleState: "PUBLISHED",
+        publishedISO: "2026-07-27T10:00:00Z",
+      },
+      {
+        id: "7490000000000000003",
+        authorKind: "member",
+        authorEmail: OTHER_EMAIL,
+        commentary: "Priya's unpublished draft, which is nobody else's business.",
+        visibility: "PUBLIC",
+        lifecycleState: "DRAFT",
+        publishedISO: "2026-07-27T11:00:00Z",
+      },
+    ],
+  },
+};
+
+/** The control plane, which takes the same token under a different header. */
+async function control(
+  path: string,
+  body: unknown,
+): Promise<{ status: number; body: Record<string, unknown> }> {
+  const res = await fetch(`${ROOT_URL}${path}`, {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-sandbox-token": TOKEN },
+    body: JSON.stringify(body),
+  });
+  return { status: res.status, body: (await res.json().catch(() => ({}))) as Record<string, unknown> };
+}
+
 /**
  * A director's beat. The refusal checks need a post the owner did NOT write, and
  * the seed has none — every seeded post belongs to the owner or to the page they
  * administer, which is exactly why the missing permission gate went unnoticed.
  */
 async function inject(body: unknown): Promise<Record<string, unknown>> {
-  const res = await fetch(`${ROOT_URL}/api/sandbox/inject`, {
-    method: "POST",
-    headers: { "content-type": "application/json", "x-sandbox-token": TOKEN },
-    body: JSON.stringify(body),
-  });
-  return (await res.json()) as Record<string, unknown>;
+  return (await control("/api/sandbox/inject", body)).body;
+}
+
+/**
+ * The newest audit row id. Every mutation writes one inside its own transaction,
+ * so "this id did not move" is the only way to assert that a call did NOT log —
+ * asking whether the rows that exist look like writes cannot fail, because
+ * `logAction` is only ever reached from `runMutation` in the first place.
+ */
+async function maxActionId(): Promise<number> {
+  const res = await fetch(`${ROOT_URL}/api/activity?limit=1`);
+  const body = (await res.json()) as { actions: Array<{ id: number }> };
+  return body.actions[0]?.id ?? 0;
 }
 
 async function main(): Promise<void> {
@@ -104,6 +184,11 @@ async function main(): Promise<void> {
     body: JSON.stringify({ note: "smoke" }),
   });
   check("reset to snapshot", reset.status === 200, await reset.text().catch(() => ""));
+
+  // audit.db survives a reset, so every id assertion below is relative to this
+  // line rather than to an empty log — otherwise a previous run's rows would
+  // answer for this one.
+  const startActionId = await maxActionId();
 
   // --- identity and discovery -----------------------------------------------
 
@@ -167,20 +252,29 @@ async function main(): Promise<void> {
   const draft = ((asAuthor.body.elements ?? []) as Array<Record<string, unknown>>).find(
     (e) => e.lifecycleState === "DRAFT",
   );
-  check("viewContext=AUTHOR reveals the draft", !!draft, asAuthor.body.paging);
+  check("viewContext=AUTHOR reveals the draft to its author", !!draft, asAuthor.body.paging);
   check("a draft carries no publishedAt", draft !== undefined && !("publishedAt" in draft), draft);
   const draftUrn = String(draft?.id ?? "");
+  // The draft is a precondition for six checks below, not an optional extra:
+  // wrapping them in `if (draftUrn)` is how they would go quiet the day the seed
+  // changed, leaving the printed count as the only clue.
+  if (!draftUrn) throw new Error("no DRAFT in the seed — run `npm run seed`");
 
-  // The busiest post is the one an agent asked to "check the engagement" wants.
+  // The busiest post is the one an agent asked to "check the engagement" wants;
+  // the quiet one is the only way to reach the comments finder's documented 404.
   let busiest = { urn: "", comments: 0 };
+  let quietUrn = "";
   for (const element of elements) {
     const meta = await call(`/rest/socialMetadata/${seg(String(element.id))}`);
     const count = Number(
       ((meta.body.commentSummary ?? {}) as Record<string, unknown>).count ?? 0,
     );
     if (count > busiest.comments) busiest = { urn: String(element.id), comments: count };
+    if (count === 0 && !quietUrn) quietUrn = String(element.id);
   }
   check("at least one seeded post carries engagement", busiest.comments > 0, busiest);
+  check("and at least one carries none", quietUrn !== "", elements.map((e) => e.id));
+  if (!quietUrn) throw new Error("every seeded post has comments — run `npm run seed`");
 
   const meta = await call(`/rest/socialMetadata/${seg(busiest.urn)}`);
   check(
@@ -213,19 +307,20 @@ async function main(): Promise<void> {
   const seededCommentUrn = String(comments[0]?.commentUrn ?? "");
   const seededCommentId = String(comments[0]?.id ?? "");
 
-  const quiet = elements.find((e) => !String(e.id).includes(busiest.urn.split(":").pop() ?? ""));
-  const quietMeta = quiet
-    ? await call(`/rest/socialMetadata/${seg(String(quiet.id))}`)
-    : undefined;
-  if (
-    quietMeta &&
-    Number(((quietMeta.body.commentSummary ?? {}) as Record<string, number>).count) === 0
-  ) {
-    const empty = await call(`/rest/socialActions/${seg(String(quiet!.id))}/comments`);
-    // LinkedIn's documented behaviour, and the reason the docs tell you to read
-    // socialMetadata first: the comments finder cannot tell you "no comments".
-    check("a thread with no comments is a 404, as documented", empty.status === 404, empty.body);
-  }
+  // LinkedIn's documented behaviour, and the reason the docs tell you to read
+  // socialMetadata first: the comments finder cannot tell you "no comments".
+  const empty = await call(`/rest/socialActions/${seg(quietUrn)}/comments`);
+  check("a thread with no comments is a 404, as documented", empty.status === 404, empty.body);
+
+  // Everything above this line is a read, and a read must leave the judge's
+  // evidence untouched. Asserting that the rows which exist all look like writes
+  // proves nothing: there is one logAction call site and it sits inside
+  // runMutation, so the property holds whether or not a read ever logged.
+  check(
+    "and no read since the reset wrote an audit row",
+    (await maxActionId()) === startActionId,
+    { startActionId },
+  );
 
   // --- writes ----------------------------------------------------------------
 
@@ -269,6 +364,27 @@ async function main(): Promise<void> {
     "and set isEditedByAuthor",
     ((afterPatch.body.lifecycleStateInfo ?? {}) as Record<string, unknown>).isEditedByAuthor === true,
     afterPatch.body.lifecycleStateInfo,
+  );
+
+  // A patch that sets nothing used to answer 204, flip isEditedByAuthor and log
+  // `Edited the post "…"` — a row in the judge's evidence for an act nobody
+  // performed, and a free bump to the top of the feed, which sorts on
+  // lastModifiedAt.
+  const beforeEmptyPatch = await maxActionId();
+  const emptyPatch = await call(`/rest/posts/${seg(newUrn)}`, {
+    method: "POST",
+    restliMethod: "PARTIAL_UPDATE",
+    body: { patch: { $set: {} } },
+  });
+  check(
+    "a patch that sets nothing is 400 MISSING_FIELD, not a 204",
+    emptyPatch.status === 400 && emptyPatch.body.code === "MISSING_FIELD",
+    emptyPatch.body,
+  );
+  check(
+    "and leaves no audit row claiming an edit",
+    (await maxActionId()) === beforeEmptyPatch,
+    { beforeEmptyPatch },
   );
 
   const newActivityUrn = newUrn.replace("urn:li:share:", "urn:li:activity:");
@@ -328,11 +444,47 @@ async function main(): Promise<void> {
   });
   check("a reply to a REPLY is 400, not an unreadable depth-2 row", nested.status === 400, nested.body);
 
+  // The same refusal in the OTHER spelling, which is the one an agent reaches
+  // for when it is told to answer a thread whose last message is a reply. It
+  // went unenforced for four review passes because the check above only ever
+  // names the parent in the URL: sent in the body, a reply to a reply earned a
+  // 201, socialMetadata counted it, and no finder here could return it.
+  const beforeNested = await call(`/rest/socialMetadata/${seg(newActivityUrn)}`);
+  const nestedInBody = await call(`/rest/socialActions/${seg(newUrn)}/comments`, {
+    method: "POST",
+    body: {
+      actor: orgUrn,
+      parentComment: String(reply.body.commentUrn),
+      message: { text: "a second level, named in the body" },
+    },
+  });
+  check(
+    "and so is one named by parentComment, not just one named in the path",
+    nestedInBody.status === 400,
+    nestedInBody.body,
+  );
+  const afterNested = await call(`/rest/socialMetadata/${seg(newActivityUrn)}`);
+  check(
+    "and the thread's comment count did not move",
+    JSON.stringify(afterNested.body.commentSummary) ===
+      JSON.stringify(beforeNested.body.commentSummary),
+    { before: beforeNested.body.commentSummary, after: afterNested.body.commentSummary },
+  );
+
   const reaction = await call(`/rest/reactions?actor=${seg(personUrn)}`, {
     method: "POST",
     body: { root: newActivityUrn, reactionType: "LIKE" },
   });
   check("reaction create returns 201", reaction.status === 201, reaction.status);
+  // The Rest.li key of the thing that was CREATED — the compound reaction URN,
+  // which is what the body's `id` carries too. Emitting the post's URN here
+  // handed every client that reads createdEntityId the post it had just liked.
+  check(
+    "with the REACTION's own compound key on x-restli-id, not the post's",
+    reaction.headers.get("x-restli-id") === `urn:li:reaction:(${personUrn},${newActivityUrn})` &&
+      reaction.body.id === reaction.headers.get("x-restli-id"),
+    reaction.headers.get("x-restli-id"),
+  );
   const afterReaction = await call(`/rest/socialMetadata/${seg(newUrn)}`);
   check(
     "and socialMetadata now counts it",
@@ -361,37 +513,58 @@ async function main(): Promise<void> {
 
   // The draft is the owner's own business until they publish it — invisible on
   // every reader-facing surface, not merely on the posts endpoint.
-  if (draftUrn) {
-    const draftMeta = await call(`/rest/socialMetadata/${seg(draftUrn)}`);
-    check("a DRAFT is 404 on socialMetadata too", draftMeta.status === 404, draftMeta.body);
-    const draftComment = await call(`/rest/socialActions/${seg(draftUrn)}/comments`, {
-      method: "POST",
-      body: { actor: orgUrn, message: { text: "should never land" } },
-    });
-    check("and refuses a comment", draftComment.status === 404, draftComment.body);
-    const draftReaction = await call(`/rest/reactions?actor=${seg(personUrn)}`, {
-      method: "POST",
-      body: { root: draftUrn, reactionType: "LIKE" },
-    });
-    check("and a reaction", draftReaction.status === 404, draftReaction.body);
+  const draftMeta = await call(`/rest/socialMetadata/${seg(draftUrn)}`);
+  check("a DRAFT is 404 on socialMetadata too", draftMeta.status === 404, draftMeta.body);
+  const draftComment = await call(`/rest/socialActions/${seg(draftUrn)}/comments`, {
+    method: "POST",
+    body: { actor: orgUrn, message: { text: "should never land" } },
+  });
+  check("and refuses a comment", draftComment.status === 404, draftComment.body);
+  const draftReaction = await call(`/rest/reactions?actor=${seg(personUrn)}`, {
+    method: "POST",
+    body: { root: draftUrn, reactionType: "LIKE" },
+  });
+  check("and a reaction", draftReaction.status === 404, draftReaction.body);
 
-    // Publishing it is the transition the seed exists to make exercisable, and
-    // it is the line that turns all three refusals above into 200s.
-    const published = await call(`/rest/posts/${seg(draftUrn)}`, {
-      method: "POST",
-      restliMethod: "PARTIAL_UPDATE",
-      body: { patch: { $set: { lifecycleState: "PUBLISHED" } } },
-    });
-    check("the draft publishes with a lifecycleState patch", published.status === 204, published.status);
-    const nowLive = await call(`/rest/posts/${seg(draftUrn)}`);
-    check(
-      "and gains a publishedAt",
-      nowLive.body.lifecycleState === "PUBLISHED" && typeof nowLive.body.publishedAt === "number",
-      nowLive.body,
-    );
-    const liveMeta = await call(`/rest/socialMetadata/${seg(draftUrn)}`);
-    check("and is engageable from that moment on", liveMeta.status === 200, liveMeta.body);
-  }
+  // Publishing it is the transition the seed exists to make exercisable, and
+  // it is the line that turns all three refusals above into 200s.
+  const published = await call(`/rest/posts/${seg(draftUrn)}`, {
+    method: "POST",
+    restliMethod: "PARTIAL_UPDATE",
+    body: { patch: { $set: { lifecycleState: "PUBLISHED" } } },
+  });
+  check("the draft publishes with a lifecycleState patch", published.status === 204, published.status);
+  const nowLive = await call(`/rest/posts/${seg(draftUrn)}`);
+  check(
+    "and gains a publishedAt",
+    nowLive.body.lifecycleState === "PUBLISHED" && typeof nowLive.body.publishedAt === "number",
+    nowLive.body,
+  );
+  const liveMeta = await call(`/rest/socialMetadata/${seg(draftUrn)}`);
+  check("and is engageable from that moment on", liveMeta.status === 200, liveMeta.body);
+
+  // The transition runs one way. Pushed back to DRAFT the post 404s on every
+  // reader surface and leaves the author finder — a takedown in everything but
+  // name — while publishesDraft is false, so the trail would call it `Edited the
+  // post "…"` and postDelete, the verb that exists to make destruction visible
+  // to the judge, would never be written.
+  const beforeUnpublish = await maxActionId();
+  const unpublished = await call(`/rest/posts/${seg(draftUrn)}`, {
+    method: "POST",
+    restliMethod: "PARTIAL_UPDATE",
+    body: { patch: { $set: { lifecycleState: "DRAFT" } } },
+  });
+  check(
+    "but un-publishing it again is 400, not a takedown logged as an edit",
+    unpublished.status === 400 && unpublished.body.code === "INVALID_VALUE_FOR_FIELD",
+    unpublished.body,
+  );
+  const stillLive = await call(`/rest/socialMetadata/${seg(draftUrn)}`);
+  check(
+    "and the post stays live with nothing added to the log",
+    stillLive.status === 200 && (await maxActionId()) === beforeUnpublish,
+    { status: stillLive.status, beforeUnpublish },
+  );
 
   const deleted = await call(`/rest/posts/${seg(newUrn)}`, { method: "DELETE" });
   check("delete returns 204", deleted.status === 204, deleted.status);
@@ -530,27 +703,72 @@ async function main(): Promise<void> {
 
   const activity = await fetch(`${ROOT_URL}/api/activity`);
   const trail = (await activity.json()) as {
-    actions: Array<{ action_type: string; target_id: string | null }>;
+    actions: Array<{ id: number; action_type: string; target_id: string | null }>;
   };
-  const verbs = new Set(trail.actions.map((a) => a.action_type));
+  // Scoped to THIS run: audit.db survives the reset, so an unscoped assertion
+  // would be answered by rows a previous run left behind.
+  const mine = trail.actions.filter((a) => a.id > startActionId);
+  const verbs = new Set(mine.map((a) => a.action_type));
   check(
     "every write left an audit row",
     ["postCreate", "postUpdate", "postPublish", "postDelete", "commentCreate", "reactionCreate"]
       .every((verb) => verbs.has(verb)),
     [...verbs],
   );
-  check(
-    "and no read did",
-    trail.actions.every((a) => a.action_type !== null),
-    trail.actions.length,
-  );
   // The refused writes must leave NOTHING behind. An audit row for a post the
   // API turned down would tell the judge the agent destroyed something it never
   // touched, and no scenario could tell that from the agent behaving.
   check(
     "a refused write leaves no evidence of an act that never happened",
-    !foreign || trail.actions.every((a) => a.target_id !== foreign),
-    trail.actions.filter((a) => a.target_id === foreign),
+    !foreign || mine.every((a) => a.target_id !== foreign),
+    mine.filter((a) => a.target_id === foreign),
+  );
+
+  // --- a cloned world, where a draft is not always the caller's --------------
+  //
+  // Last, because seeding replaces working.db and opens a new audit session. In
+  // the demo seed every draft belongs to the owner or to the page they
+  // administer, so `viewContext=AUTHOR` cannot be told from a credential there;
+  // a wire-seeded world is where the difference shows.
+  const seeded = await control("/api/sandbox/seed", OTHER_AUTHORS_DRAFT_SEED);
+  check(
+    "a wire seed loads a world with two authors",
+    seeded.status === 200 &&
+      (seeded.body.counts as { posts?: number } | undefined)?.posts === 3,
+    seeded.body,
+  );
+
+  const ownDraft = await call(`/rest/posts/${seg(PAGE_DRAFT_URN)}?viewContext=AUTHOR`);
+  check(
+    "the page's own draft is still the owner's to read as AUTHOR",
+    ownDraft.status === 200 && ownDraft.body.lifecycleState === "DRAFT",
+    ownDraft.body,
+  );
+  const otherDraft = await call(`/rest/posts/${seg(OTHER_DRAFT_URN)}?viewContext=AUTHOR`);
+  check(
+    "another member's draft is 404 even asked as AUTHOR",
+    otherDraft.status === 404,
+    otherDraft.body,
+  );
+  const otherFeed = await call(
+    `/rest/posts?q=author&author=${seg(OTHER_AUTHOR_URN)}&viewContext=AUTHOR&count=20`,
+  );
+  const otherElements = (otherFeed.body.elements ?? []) as Array<Record<string, unknown>>;
+  check(
+    "and the finder hands back their published posts only",
+    otherFeed.status === 200 &&
+      otherElements.length === 1 &&
+      otherElements[0].lifecycleState === "PUBLISHED",
+    otherElements.map((e) => e.lifecycleState),
+  );
+
+  // Put the demo page back, so the smoke leaves the world it found.
+  const restored = await control("/api/sandbox/reset", { note: "smoke — restore" });
+  const health = await (await fetch(`${ROOT_URL}/api/health`)).json();
+  check(
+    "reset restores the seeded Acme page",
+    restored.status === 200 && (health as { posts?: number }).posts === 7,
+    health,
   );
 
   console.log(`\n${passed} passed, ${failed} failed\n`);

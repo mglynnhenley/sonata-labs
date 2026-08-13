@@ -87,7 +87,6 @@ export interface TaskInput {
   actorType: string;
   actorId: string | null;
   createdAtMs: number;
-  isSandboxCreated?: boolean;
   linkedRecords: Array<{ targetObject: string; targetRecordId: string }>;
   assignees: Array<{ actorType: string; actorId: string }>;
 }
@@ -96,8 +95,8 @@ export function insertTask(db: Database, input: TaskInput): void {
   db.prepare(
     `INSERT INTO tasks
        (id, content_plaintext, deadline_at, is_completed, completed_at_ms,
-        created_by_actor_type, created_by_actor_id, created_at_ms, is_sandbox_created)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        created_by_actor_type, created_by_actor_id, created_at_ms)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     input.id,
     input.contentPlaintext,
@@ -107,7 +106,6 @@ export function insertTask(db: Database, input: TaskInput): void {
     input.actorType,
     input.actorId,
     input.createdAtMs,
-    input.isSandboxCreated ? 1 : 0,
   );
   replaceLinks(db, input.id, input.linkedRecords);
   replaceAssignees(db, input.id, input.assignees);

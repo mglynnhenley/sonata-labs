@@ -7,9 +7,13 @@ import type { DocModel, ParagraphModel } from "@/lib/docs/shape";
 import { insertDocument } from "@/lib/store/documents";
 import { setMeta } from "@/lib/store/meta";
 
-// The real schema, off disk, so a schema regression fails the suite rather than
-// being papered over by a hand-written CREATE TABLE that drifted from it.
-const schema = readFileSync(path.resolve(__dirname, "..", "db", "schema.sql"), "utf8");
+// The real document schema, off disk, so a schema regression fails the suite
+// rather than being papered over by a hand-written CREATE TABLE that drifted
+// from it. Exported because one test is about what this file must NOT create.
+export const DOCUMENT_SCHEMA = readFileSync(
+  path.resolve(__dirname, "..", "db", "schema.sql"),
+  "utf8",
+);
 
 export const OWNER = "sandbox.user@gmail.com";
 /** Monday 2026-07-27, 09:00 America/New_York — the week every twin's seed uses. */
@@ -47,7 +51,6 @@ function toParagraph(p: TestParagraph): ParagraphModel {
     namedStyleType: style,
     headingId: HEADING_STYLE_TYPES.includes(style) ? `h.${style.toLowerCase()}00` : null,
     alignment: null,
-    extra: null,
     runs,
   };
 }
@@ -65,7 +68,7 @@ export function makeModel(paragraphs: TestParagraph[]): DocModel {
 
 export function makeTestDb(docs: TestDoc[] = []): Database.Database {
   const db = new Database(":memory:");
-  db.exec(schema);
+  db.exec(DOCUMENT_SCHEMA);
   // Mirror production's ATTACHed audit.db so mutation code paths that log can
   // run unchanged under test.
   db.prepare("ATTACH DATABASE ':memory:' AS audit").run();

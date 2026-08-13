@@ -24,6 +24,8 @@ export interface FieldSpec {
   /**
    * The value is an id that renders as a resource name rather than as itself —
    * `campaign.campaign_budget` is the attached budget's path, not its number.
+   * The executor SELECTS the path rather than the bare column it is stored in
+   * (see `resourceNameSql`), so the field reads and filters as the same text.
    */
   resourceRef?: ResourceKind;
   /**
@@ -173,4 +175,23 @@ export function containerFor(kind: ResourceKind): string {
 export function resourceNameFor(kind: ResourceKind, customerId: string, id?: string): string {
   if (kind === "customer") return `customers/${customerId}`;
   return `customers/${customerId}/${COLLECTION[kind]}/${id}`;
+}
+
+/**
+ * The same path as `resourceNameFor`, assembled in SQL out of the row's own
+ * columns, for the fields whose stored value is a bare id. A resource-name field
+ * is a path on the wire, so it has to be a path inside the query too: compiled
+ * to the id column instead, `WHERE campaign.resource_name =
+ * 'customers/48…/campaigns/17…'` compared a path against a number, matched
+ * nothing and said so with a 200 — which reads as "there is no such campaign".
+ * The two renderings must agree; gaql-execute.test.ts holds them to it.
+ *
+ * `alias` and `idColumn` come from this catalogue and the executor's alias
+ * table, never from the caller — the identifiers here are interpolated.
+ */
+export function resourceNameSql(kind: ResourceKind, alias: string, idColumn: string): string {
+  // A customer's name is `customers/<id>` and its id IS the customer id, so it
+  // has no collection segment and nothing to prefix with.
+  if (kind === "customer") return `('customers/' || ${alias}.${idColumn})`;
+  return `('customers/' || ${alias}.customer_id || '/${COLLECTION[kind]}/' || ${alias}.${idColumn})`;
 }

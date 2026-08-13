@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import type { Database } from "better-sqlite3";
 import { checkAuth, checkProtocolHeader, checkVersionHeader } from "./auth";
-import { notFoundError, toErrorResponse } from "./errors";
+import { badRequestError, notFoundError, toErrorResponse } from "./errors";
 import { getDb } from "../db";
 import { getCommentRow } from "../store/comments";
 import { getOwnerPersonId } from "../store/meta";
@@ -119,6 +119,26 @@ export function requireComment(db: Database, urn: string): CommentRow {
   const row = parsed ? getCommentRow(db, parsed.commentId) : null;
   if (!parsed || !row || row.post_id !== parsed.postId) {
     throw notFoundError("The requested entity was not found.");
+  }
+  return row;
+}
+
+/**
+ * The comment a reply is allowed to hang under. Threads are one level deep, and
+ * this refusal lives in ONE place because it used to live in two and only one of
+ * them ran: the comments route checked the parent named as the path segment and
+ * not the one named by `parentComment` in the body, so the body spelling wrote a
+ * depth-2 row that no reader can return — `listReplies` yields direct children
+ * only, and the finder for the row's own parent is itself this 400. The agent got
+ * a 201 and an audit line saying it answered a customer nobody can see it answer.
+ */
+export function requireThreadParent(db: Database, urn: string): CommentRow {
+  const row = requireComment(db, urn);
+  if (row.parent_comment_id !== null) {
+    throw badRequestError(
+      "A reply cannot be answered directly — LinkedIn's comment threads are one level deep. " +
+        "Address the comment the reply is under.",
+    );
   }
   return row;
 }

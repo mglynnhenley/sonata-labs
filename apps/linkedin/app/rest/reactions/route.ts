@@ -115,6 +115,13 @@ export function POST(req: Request) {
     // Still a 201 on a repeat: the primary key does the work, and the response
     // describes the reaction that now stands rather than the one that was
     // replaced.
-    return created(row.entity_urn, shapeReaction(row));
+    //
+    // The header carries the key of the resource that was CREATED — the compound
+    // (actor, entity) reaction URN, which is also the `id` in the body. Sending
+    // `row.entity_urn` named the post instead, and every LinkedIn client reads
+    // `createdEntityId` off this header, so a caller that liked a post was handed
+    // back the post as though it had just made one.
+    const resource = shapeReaction(row);
+    return created(resource.id, resource);
   });
 }

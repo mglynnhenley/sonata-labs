@@ -136,6 +136,31 @@ async function main(): Promise<void> {
     top,
   );
 
+  // The round trip. "Read a report, act on one of its rows" is the whole shape of
+  // this API, and the row's name is what identifies it — so the name a query
+  // returns has to work as the next query's operand. Compiled against the bare id
+  // column it matched nothing and said so with a 200, which an agent reads as
+  // "that campaign does not exist".
+  const byName = await search(
+    cid,
+    `SELECT campaign.id, campaign.name FROM campaign WHERE campaign.resource_name = '${top?.campaign?.resourceName}'`,
+  );
+  check(
+    "the resourceName a report returned filters back to that same campaign",
+    byName.body?.results?.length === 1 && byName.body.results[0].campaign.id === "17204885331",
+    byName.body,
+  );
+  const children = await search(
+    cid,
+    `SELECT ad_group.id, ad_group.name FROM ad_group WHERE ad_group.campaign = '${top?.campaign?.resourceName}'`,
+  );
+  check(
+    "…and walks down to the ad groups underneath it",
+    (children.body?.results ?? []).length > 0 &&
+      children.body.results.every((r: any) => r.adGroup?.name?.includes("Payments")),
+    children.body,
+  );
+
   const over = (spend.body?.results ?? []).filter(
     (r: any) => Number(r.metrics.costMicros) > Number(r.campaignBudget.amountMicros) * 7,
   );
@@ -226,6 +251,13 @@ async function main(): Promise<void> {
     { rows: limited.body?.results?.length, total: limited.body?.totalResultsCount },
   );
 
+  const empty = await search(cid, "SELECT campaign.name FROM campaign WHERE campaign.name LIKE '%nothing%'");
+  check(
+    "a query that matched nothing omits results entirely, as proto3 JSON does",
+    !("results" in empty.body) && empty.body?.fieldMask === "campaign.name",
+    empty.body,
+  );
+
   const stream = await ads(`/${API_VERSION}/customers/${cid}/googleAds:searchStream`, {
     body: { query: "SELECT campaign.name FROM campaign" },
   });
@@ -305,8 +337,9 @@ async function main(): Promise<void> {
   });
   const afterDryRun = await search(cid, "SELECT campaign.status FROM campaign WHERE campaign.id = 17204885331");
   check(
-    "validateOnly validates, returns no results and changes nothing",
-    (dryRun.body?.results ?? []).length === 0 &&
+    "validateOnly validates, answers the empty object and changes nothing",
+    !("results" in dryRun.body) &&
+      Object.keys(dryRun.body).length === 0 &&
       afterDryRun.body.results[0].campaign.status === "ENABLED",
     { dryRun: dryRun.body, after: afterDryRun.body.results[0] },
   );
@@ -358,6 +391,28 @@ async function main(): Promise<void> {
     400,
     "queryError",
     "BAD_RESOURCE_TYPE_IN_FROM_CLAUSE",
+  );
+
+  // Paging is a property of the REQUEST, not of the query, so these are
+  // requestErrors: a queryError would point an agent's fieldPath at `query` and
+  // send it back to re-inspect GAQL that was never wrong.
+  await expectError(
+    "pageSize on searchStream is requestError PAGE_SIZE_NOT_SUPPORTED",
+    ads(`/${API_VERSION}/customers/${cid}/googleAds:searchStream`, {
+      body: { query: "SELECT campaign.name FROM campaign", pageSize: 2 },
+    }),
+    400,
+    "requestError",
+    "PAGE_SIZE_NOT_SUPPORTED",
+  );
+  await expectError(
+    "pageToken on searchStream is requestError INVALID_PAGE_TOKEN",
+    ads(`/${API_VERSION}/customers/${cid}/googleAds:searchStream`, {
+      body: { query: "SELECT campaign.name FROM campaign", pageToken: "whatever" },
+    }),
+    400,
+    "requestError",
+    "INVALID_PAGE_TOKEN",
   );
 
   const streamError = await ads(`/${API_VERSION}/customers/${cid}/googleAds:searchStream`, {

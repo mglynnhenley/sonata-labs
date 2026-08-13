@@ -2,8 +2,8 @@ import {
   created,
   handleLinkedIn,
   json,
-  requireComment,
   requirePublishedPost,
+  requireThreadParent,
   runMutation,
   snippet,
 } from "@/lib/linkedin/route-helpers";
@@ -50,18 +50,10 @@ interface Target {
 
 function resolveTarget(db: Database, urn: string): Target {
   if (parseCommentUrn(urn)) {
-    const row = requireComment(db, urn);
     // One level, and the REST path has to enforce it as hard as the wire seeder
-    // in sandbox/parse.ts already does. Left open, a reply to a reply is created
-    // at depth 2 and then vanishes: listReplies only returns direct children, so
-    // nothing reads it back from the post's thread or the parent's, and the seed
-    // format cannot even express the row the API just wrote.
-    if (row.parent_comment_id !== null) {
-      throw badRequestError(
-        "A reply cannot be answered directly — LinkedIn's comment threads are one level deep. " +
-          "Address the comment the reply is under.",
-      );
-    }
+    // in sandbox/parse.ts already does — through the same helper the body
+    // spelling below uses, so the two cannot drift apart again.
+    const row = requireThreadParent(db, urn);
     // Published-only, like the post form below: an unpublished post has no
     // thread to read or to answer.
     const post = requirePublishedPost(db, activityUrn(row.post_id));
@@ -88,7 +80,9 @@ function resolveParent(db: Database, raw: unknown, target: Target): string | nul
   if (!parseCommentUrn(urn)) {
     throw badRequestError(`parentComment ${JSON.stringify(raw)} is not a comment URN.`);
   }
-  const parent = requireComment(db, urn);
+  // Same one-level refusal the path segment gets. Addressed to the POST, the URL
+  // says nothing about depth, so this field is the only thing that can say no.
+  const parent = requireThreadParent(db, urn);
   // Same rule the `object` field gets: a disagreement with the URL means the
   // caller is confused about what it is answering, and quietly preferring one
   // of the two would hide it.
@@ -152,7 +146,7 @@ export function GET(req: Request, { params }: Ctx) {
 }
 
 export function POST(req: Request, { params }: Ctx) {
-  return handleLinkedIn(req, async ({ db, ownerMemberId }) => {
+  return handleLinkedIn(req, async ({ db, ownerMemberId, ownerPersonUrn }) => {
     const { entityUrn } = await params;
     const targetUrn = decodeUrnParam(entityUrn);
     const target = resolveTarget(db, targetUrn);
@@ -234,6 +228,6 @@ export function POST(req: Request, { params }: Ctx) {
     // 201 with the BARE comment id in x-restli-id — not a URN, unlike a post
     // create — and a full body. Both halves of that asymmetry are what LinkedIn
     // does, and a client depends on the difference.
-    return created(row.id, shapeComment(row, { ownerUrn: `urn:li:person:${ownerMemberId}` }));
+    return created(row.id, shapeComment(row, { ownerUrn: ownerPersonUrn }));
   });
 }

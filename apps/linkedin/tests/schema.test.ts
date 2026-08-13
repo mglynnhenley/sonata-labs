@@ -20,10 +20,27 @@ import {
 import { listActions, logAction, startNewSession } from "@/lib/audit";
 import { newPostId } from "@/lib/linkedin/ids";
 import { activityUrn, commentUrn } from "@/lib/linkedin/urn";
-import { countCommentsForPost, listReplies, listTopLevelComments } from "@/lib/store/comments";
+import {
+  countCommentsForPost,
+  getCommentRow,
+  insertComment,
+  listReplies,
+  listTopLevelComments,
+} from "@/lib/store/comments";
 import { insertMember } from "@/lib/store/members";
-import { getLivePostRow, getPostRow, listPostsByAuthor, tombstonePost } from "@/lib/store/posts";
-import { reactionCountsByType, reactionsForEntities, upsertReaction } from "@/lib/store/reactions";
+import {
+  getLivePostRow,
+  getPostRow,
+  insertPost,
+  listPostsByAuthor,
+  tombstonePost,
+} from "@/lib/store/posts";
+import {
+  getReaction,
+  reactionCountsByType,
+  reactionsForEntities,
+  upsertReaction,
+} from "@/lib/store/reactions";
 import { hasApprovedAdminAcl, insertAcl } from "@/lib/store/organizations";
 
 const schema = readFileSync(path.resolve(__dirname, "..", "db", "schema.sql"), "utf8");
@@ -79,6 +96,25 @@ describe("schema", () => {
         familyName: "Nair",
       }),
     ).toThrow(/UNIQUE/);
+  });
+
+  it("attributes a row to the world unless its writer says the agent made it", () => {
+    // is_sandbox_created is what the judge reads to tell the agent's work from
+    // the world's, and db/schema.sql declares DEFAULT 0. A store that defaulted
+    // the other way would hand a future caller that forgets the flag the one
+    // failure this column must never have: a seeded row scored as the agent's.
+    const db = makeTestDb();
+    const id = "7488111111111111111";
+    insertPost(db, { id, authorUrn: ORG_URN, commentary: "", createdMs: at(0, 9), lastModifiedMs: at(0, 9) });
+    expect(getPostRow(db, id)?.is_sandbox_created).toBe(0);
+
+    const commentId = "7488111111111111112";
+    insertComment(db, { id: commentId, postId: id, actorUrn: OWNER_URN, text: "hi", createdMs: at(0, 10) });
+    expect(getCommentRow(db, commentId)?.is_sandbox_created).toBe(0);
+
+    const entityUrn = activityUrn(id);
+    upsertReaction(db, { actorUrn: OWNER_URN, entityUrn, reactionType: "LIKE", createdMs: at(0, 11) });
+    expect(getReaction(db, OWNER_URN, entityUrn)?.is_sandbox_created).toBe(0);
   });
 
   it("applies cleanly to a fresh audit-only database", () => {

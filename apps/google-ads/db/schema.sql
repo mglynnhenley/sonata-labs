@@ -22,10 +22,7 @@ CREATE TABLE IF NOT EXISTS customers (
   id               TEXT PRIMARY KEY,
   descriptive_name TEXT NOT NULL,
   currency_code    TEXT NOT NULL DEFAULT 'USD',
-  time_zone        TEXT NOT NULL DEFAULT 'America/New_York', -- TODAY / LAST_7_DAYS are computed in this zone, so it is a column and not a constant
-  manager          INTEGER NOT NULL DEFAULT 0,
-  test_account     INTEGER NOT NULL DEFAULT 0,
-  raw_json         TEXT                                       -- passthrough fields not modelled as columns
+  time_zone        TEXT NOT NULL DEFAULT 'America/New_York'   -- TODAY / LAST_7_DAYS are computed in this zone, so it is a column and not a constant
 );
 
 CREATE TABLE IF NOT EXISTS campaign_budgets (
@@ -38,7 +35,6 @@ CREATE TABLE IF NOT EXISTS campaign_budgets (
   explicitly_shared  INTEGER NOT NULL DEFAULT 0,
   status             TEXT NOT NULL DEFAULT 'ENABLED',         -- 'ENABLED' | 'REMOVED'
   is_sandbox_created INTEGER NOT NULL DEFAULT 0,              -- what separates the agent's budget from the world's
-  raw_json           TEXT,
   FOREIGN KEY (customer_id) REFERENCES customers (id) ON DELETE CASCADE
 );
 
@@ -56,7 +52,6 @@ CREATE TABLE IF NOT EXISTS campaigns (
   start_date               TEXT NOT NULL,                     -- YYYY-MM-DD in the account's time zone
   end_date                 TEXT,                              -- YYYY-MM-DD in the account's time zone
   is_sandbox_created       INTEGER NOT NULL DEFAULT 0,
-  raw_json                 TEXT,
   FOREIGN KEY (customer_id) REFERENCES customers (id) ON DELETE CASCADE,
   FOREIGN KEY (budget_id) REFERENCES campaign_budgets (id) ON DELETE SET NULL
 );
@@ -73,7 +68,6 @@ CREATE TABLE IF NOT EXISTS ad_groups (
   type               TEXT NOT NULL DEFAULT 'SEARCH_STANDARD',
   cpc_bid_micros     INTEGER,                                 -- micros: the currency unit x 1_000_000
   is_sandbox_created INTEGER NOT NULL DEFAULT 0,
-  raw_json           TEXT,
   FOREIGN KEY (customer_id) REFERENCES customers (id) ON DELETE CASCADE,
   FOREIGN KEY (campaign_id) REFERENCES campaigns (id) ON DELETE CASCADE
 );

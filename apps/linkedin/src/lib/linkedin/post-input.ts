@@ -129,6 +129,14 @@ export function buildPatchInput(body: unknown, row: PostRow, now: number): Built
     throw unpermittedFieldsError(unpermitted.map((key) => `/patch/$set/${key}`));
   }
 
+  // Asked BEFORE anything is stamped, because every key that survives the filter
+  // above sets something: "the patch changes nothing" and "$set names nothing"
+  // are the same question. Stamping first made `{"patch":{"$set":{}}}` a 204 that
+  // flipped isEditedByAuthor, wrote `Edited the post "…"` into the log the judge
+  // grades from, and reordered the company feed — lastModifiedAt is the author
+  // finder's default sort key — for a request that asked for no change at all.
+  if (!Object.keys(set).length) throw missingFieldError("patch.$set");
+
   const patch: PostPatch = { lastModifiedMs: now, isEdited: true };
   if (set.commentary !== undefined) patch.commentary = requireCommentary(set.commentary);
 
@@ -137,6 +145,17 @@ export function buildPatchInput(body: unknown, row: PostRow, now: number): Built
     const next = set.lifecycleState;
     if (next !== "PUBLISHED" && next !== "DRAFT") {
       throw invalidValueError("lifecycleState", String(next));
+    }
+    // DRAFT is the state content is in BEFORE it is published, and every patch
+    // LinkedIn documents runs the other way. Backwards it is a takedown wearing
+    // an edit's clothes: the post 404s on every reader surface and leaves the
+    // author finder, yet publishesDraft is false, so the trail reads `Edited the
+    // post "…"` and postDelete — the verb that exists to make destruction
+    // visible to the judge — is never written. It would also leave published_ms
+    // set, and a DRAFT carrying a publishedAt is the one post shape.ts and
+    // sandbox/parse.ts agree cannot exist.
+    if (next === "DRAFT" && row.lifecycle_state !== "DRAFT") {
+      throw invalidValueError("lifecycleState", next);
     }
     patch.lifecycleState = next;
     // published_ms is stamped exactly once, on the transition — a second patch

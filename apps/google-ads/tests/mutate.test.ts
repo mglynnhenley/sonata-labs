@@ -107,6 +107,17 @@ describe("updateMask", () => {
     expect(err.message).toContain("advertisingChannelType");
   });
 
+  it("refuses a mask naming a budget's status", () => {
+    // Google has no settable status on a budget — it is removed, never patched to
+    // REMOVED — which is why BudgetPatch carries no status for this to reach.
+    const err = failure({
+      resource: "campaignBudget",
+      operations: [{ update: { resourceName: BUDGET_NAME, status: "REMOVED" }, updateMask: "status" }],
+    });
+    expect(err.errorCode).toEqual({ fieldMaskError: "FIELD_NOT_FOUND" });
+    expect(getBudget(db, BUDGET_OVER)?.status).toBe("ENABLED");
+  });
+
   it("refuses an update with no mask at all", () => {
     const err = failure({ operations: [{ update: { resourceName: CAMPAIGN_NAME, status: "PAUSED" } }] });
     expect(err.errorCode).toEqual({ fieldMaskError: "FIELD_MASK_MISSING" });

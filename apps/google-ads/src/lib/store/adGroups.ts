@@ -13,7 +13,6 @@ export interface AdGroupRow {
   type: string;
   cpc_bid_micros: number | null;
   is_sandbox_created: number;
-  raw_json: string | null;
 }
 
 export interface InsertAdGroupInput {

@@ -152,7 +152,6 @@ function toParagraphModel(p: SeedParagraph): ParagraphModel {
     namedStyleType: style,
     headingId: HEADING_STYLE_TYPES.includes(style) ? newHeadingId() : null,
     alignment: null,
-    extra: null,
     runs,
   };
 }

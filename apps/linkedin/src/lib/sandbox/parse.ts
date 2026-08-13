@@ -151,14 +151,7 @@ function parseMembers(entries: unknown[], cast: Map<string, string>): ParsedMemb
       throw new BadRequestError(`${where}.pageAdmin must be a boolean when present`);
     }
 
-    return {
-      personId,
-      email,
-      ...splitName(name),
-      headline: optionalText(raw, "headline", where),
-      vanityName: optionalText(raw, "vanityName", where),
-      pageAdmin: pageAdmin === true,
-    };
+    return { personId, email, ...splitName(name), pageAdmin: pageAdmin === true };
   });
 }
 
@@ -232,15 +225,23 @@ function parseReactions(
   });
 }
 
+/**
+ * `key` is the wire spelling of the array being walked — `comments` at the top
+ * of a post, `replies` underneath one. It is passed in rather than assumed
+ * because the path in a refusal is the only thing telling the seed's author
+ * WHICH entry to go and fix, and reporting a bad reply at `.comments[0]` sends
+ * them to a key they did not write.
+ */
 function parseComments(
   entries: unknown[],
   where: string,
+  key: "comments" | "replies",
   dir: Directory,
   ids: Set<string>,
   parentCommentId: string | null,
 ): ParsedComment[] {
   return entries.flatMap((entry, i) => {
-    const at = `${where}.comments[${i}]`;
+    const at = `${where}.${key}[${i}]`;
     const raw = object(entry, at);
     const id = decimalId(raw, "id", at);
     if (ids.has(id)) throw new BadRequestError(`seed has two comments with id "${id}"`);
@@ -263,7 +264,7 @@ function parseComments(
         `${at}.replies nests a second level — LinkedIn's comment threads are one level deep`,
       );
     }
-    return [comment, ...parseComments(replies, at, dir, ids, id)];
+    return [comment, ...parseComments(replies, at, "replies", dir, ids, id)];
   });
 }
 
@@ -284,6 +285,7 @@ function parsePosts(entries: unknown[], dir: Directory): ParsedPost[] {
     const comments = parseComments(
       optionalArray(raw, "comments", where),
       where,
+      "comments",
       dir,
       commentIds,
       null,
@@ -337,8 +339,7 @@ export function parseSeedRequest(body: unknown): ParsedSeed {
   const known = new Map(cast.map((p) => [p.email.toLowerCase(), p.name]));
 
   const ownerEmail = text(seed, "ownerEmail", "seed");
-  const ownerName = known.get(ownerEmail.toLowerCase());
-  if (ownerName === undefined) {
+  if (!known.has(ownerEmail.toLowerCase())) {
     throw new BadRequestError(
       `seed.ownerEmail "${ownerEmail}" is not in seed.world.cast — the LinkedIn owner must ` +
         `be a member of the cast the other twins seeded from`,
@@ -376,8 +377,6 @@ export function parseSeedRequest(body: unknown): ParsedSeed {
 
   return {
     nowMs: instant(seed, "nowISO", "seed"),
-    ownerEmail,
-    ownerName,
     ownerPersonId: owner.personId,
     businessName: text(business, "name", "seed.world.business"),
     promoteToSnapshot: promote === true,

@@ -18,9 +18,11 @@ export const dynamic = "force-dynamic";
 // a task lands.
 //
 // Deliberately NOT audit-logged — injection is scenario setup, not agent
-// behaviour, and the judge reads the audit log to score the agent. Every
-// injected row carries is_sandbox_created = 0 and is attributed to the
-// workspace's own owner, so it is indistinguishable from seed.
+// behaviour, and the judge reads the audit log to score the agent. The absence
+// of a log row is the WHOLE distinction: an injected row is attributed to the
+// workspace's own owner and carries no marker of its own, so inside the CRM it
+// is indistinguishable from seed, which is exactly what a director wants when a
+// beat has to read as the world's history rather than as something staged.
 
 interface InjectRecord {
   ref?: string;
@@ -114,7 +116,7 @@ export async function POST(req: Request) {
           db,
           { recordId: id, objectId: object.id, objectSlug: object.api_slug },
           spec.values ?? {},
-          { atMs, actor, mode: "create", isSandboxCreated: false },
+          { atMs, actor, mode: "create" },
         );
         madeRecords.push({ ref: spec.ref ?? id, id, object: object.api_slug });
       }
@@ -128,7 +130,7 @@ export async function POST(req: Request) {
           db,
           { recordId: spec.recordId, objectId: object.id, objectSlug: object.api_slug },
           spec.values ?? {},
-          { atMs, actor, mode: "append", isSandboxCreated: false },
+          { atMs, actor, mode: "append" },
         );
         madeUpdates.push({ id: spec.recordId, object: object.api_slug });
       }
@@ -153,7 +155,6 @@ export async function POST(req: Request) {
           actorType: "workspace-member",
           actorId: ownerMemberId,
           createdAtMs: atMs,
-          isSandboxCreated: false,
         });
         madeNotes.push({ ref: spec.ref ?? id, id });
       }
@@ -186,7 +187,6 @@ export async function POST(req: Request) {
           actorType: "workspace-member",
           actorId: ownerMemberId,
           createdAtMs: atMs,
-          isSandboxCreated: false,
           linkedRecords: links,
           assignees,
         });

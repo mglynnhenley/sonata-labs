@@ -209,7 +209,7 @@ function conjoin(fragments: Fragment[], joiner: "AND" | "OR"): Fragment {
   };
 }
 
-/** `created_at` is the one leaf that hits the record row rather than a value. */
+/** `created_at` hits the record row rather than a value row, so it has its own leaf. */
 function createdAtLeaf(raw: unknown): Fragment {
   const bounds = typeof raw === "object" && raw !== null ? (raw as Record<string, unknown>) : {};
   const parts: Fragment[] = [];
@@ -228,6 +228,46 @@ function createdAtLeaf(raw: unknown): Fragment {
     throw filterError(`Error in filter: created_at needs at least one bound.`);
   }
   return conjoin(parts, "AND");
+}
+
+/**
+ * The other record-row leaf. Attio's filtering guide documents `record_id` with
+ * both `$eq` and `$in`, and `$in` is how a client re-fetches a set of records it
+ * already holds ids for instead of issuing one GET each — a filter agents copy
+ * verbatim, and without this leaf it comes back as `unknown attribute
+ * "record_id"` listing every attribute except the one the docs promised.
+ */
+function recordIdLeaf(raw: unknown): Fragment {
+  // Ids are opaque strings; a number or a null here is a client bug worth
+  // naming, not something to coerce into a WHERE that silently matches nothing.
+  const asId = (value: unknown): string => {
+    if (typeof value !== "string") {
+      throw filterError(
+        `Error in filter: record_id takes a record id string, got ${JSON.stringify(value)}.`,
+      );
+    }
+    return value;
+  };
+  if (typeof raw !== "object" || raw === null) return { sql: `r.id = ?`, params: [asId(raw)] };
+  if (Array.isArray(raw)) {
+    throw filterError(`Error in filter: record_id takes a string or an object — use $in.`);
+  }
+  const entries = Object.entries(raw as Record<string, unknown>);
+  if (!entries.length) throw filterError(`Error in filter: record_id is empty.`);
+  return conjoin(
+    entries.map(([op, value]) => {
+      if (op === "$eq") return { sql: `r.id = ?`, params: [asId(value)] };
+      if (op === "$in") {
+        if (!Array.isArray(value) || !value.length) {
+          throw filterError(`Error in filter: $in expects a non-empty array.`);
+        }
+        const ids = value.map(asId);
+        return { sql: `r.id IN (${ids.map(() => "?").join(", ")})`, params: ids };
+      }
+      throw filterError(`Error in filter: record_id supports $eq and $in, not "${op}".`);
+    }),
+    "AND",
+  );
 }
 
 function compileNode(
@@ -267,6 +307,7 @@ function compileNode(
       );
     }
     if (key === "created_at") return createdAtLeaf(value);
+    if (key === "record_id") return recordIdLeaf(value);
 
     const attr = attrs.get(key);
     if (!attr) {

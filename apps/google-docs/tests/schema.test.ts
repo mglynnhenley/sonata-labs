@@ -8,10 +8,11 @@ import {
   countDocuments,
   countParagraphs,
   insertDocument,
+  listDocumentRows,
   loadDocument,
   saveDocument,
 } from "@/lib/store/documents";
-import { CORPUS, makeTestDb, makeModel } from "./helpers";
+import { CORPUS, DOCUMENT_SCHEMA, makeTestDb, makeModel, OWNER } from "./helpers";
 
 // The scaffold suite: the schema the API depends on, the store round trip, and
 // the audit invariant every mutation rests on.
@@ -59,6 +60,22 @@ describe("schema", () => {
     }
   });
 
+  it("keeps sessions and action_log out of a document database", () => {
+    // They belong to audit.db alone. A copy of them in working.db would sit
+    // empty forever and shadow the ATTACHed ones, so the day a query lost its
+    // `audit.` prefix it would still succeed — writing the trail into the file
+    // the next reset overwrites.
+    const documents = new Database(":memory:");
+    documents.exec(DOCUMENT_SCHEMA);
+    const names = (
+      documents.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as {
+        name: string;
+      }[]
+    ).map((r) => r.name);
+    expect(names).not.toContain("sessions");
+    expect(names).not.toContain("action_log");
+  });
+
   it("applies cleanly to a fresh audit-only in-memory database", () => {
     const fresh = new Database(":memory:");
     fresh.prepare("ATTACH DATABASE ':memory:' AS audit").run();
@@ -71,7 +88,6 @@ describe("store", () => {
     const db = makeTestDb(CORPUS);
     const model = loadDocument(db, CORPUS[0].id)!;
     model.paragraphs[0].alignment = "CENTER";
-    model.paragraphs[0].extra = { spaceAbove: { magnitude: 12, unit: "PT" } };
     model.namedRanges = [{ id: "kix.aaaaaaaaaaaa", name: "n", startIndex: 1, endIndex: 4 }];
     saveDocument(db, model, 1);
     expect(loadDocument(db, CORPUS[0].id)).toEqual(model);
@@ -79,18 +95,43 @@ describe("store", () => {
 
   it("mints a Google-shaped id and a revision id when none is supplied", () => {
     const db = makeTestDb();
-    const row = insertDocument(db, { title: "Untitled document", createdMs: 1, updatedMs: 1 });
+    const row = insertDocument(db, {
+      title: "Untitled document",
+      ownerEmail: OWNER,
+      createdMs: 1,
+      updatedMs: 1,
+    });
     expect(row.id).toMatch(/^1[A-Za-z0-9_-]{43}$/);
     expect(row.revision_id.length).toBeGreaterThan(0);
   });
 
   it("writes the blank-document shape when no paragraphs are given", () => {
     const db = makeTestDb();
-    const row = insertDocument(db, { title: "Blank", createdMs: 1, updatedMs: 1 });
+    const row = insertDocument(db, { title: "Blank", ownerEmail: OWNER, createdMs: 1, updatedMs: 1 });
     const model = loadDocument(db, row.id)!;
     expect(model.paragraphs).toHaveLength(1);
     expect(model.paragraphs[0].runs).toEqual([{ content: "\n", style: null }]);
     expect(layout(model).endIndex).toBe(2);
+  });
+
+  it("breaks a tie on updated_ms with created_ms, newest authored first", () => {
+    // A seeded workspace is written at one instant, so every document ties on
+    // updated_ms and the listing order — the landing page's and the judge's —
+    // would otherwise be whatever order the rows happen to come back in.
+    const db = makeTestDb();
+    const older = insertDocument(db, {
+      title: "Authored last week",
+      ownerEmail: OWNER,
+      createdMs: 1_000,
+      updatedMs: 9_000,
+    });
+    const newer = insertDocument(db, {
+      title: "Authored yesterday",
+      ownerEmail: OWNER,
+      createdMs: 2_000,
+      updatedMs: 9_000,
+    });
+    expect(listDocumentRows(db).map((r) => r.id)).toEqual([newer.id, older.id]);
   });
 
   it("counts what the health route reports", () => {

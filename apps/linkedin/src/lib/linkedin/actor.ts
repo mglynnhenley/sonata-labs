@@ -3,6 +3,7 @@ import {
   accessDeniedError,
   invalidUrnIdError,
   invalidUrnTypeError,
+  LinkedInError,
   missingFieldError,
 } from "./errors";
 import { parseUrn, personUrn } from "./urn";
@@ -79,4 +80,28 @@ export function requirePostAuthor(
     ownerMemberId: opts.ownerMemberId,
     action: opts.action,
   });
+}
+
+/**
+ * The same rule again, asked without an opinion about the refusal — a delegation
+ * rather than a second copy, because a permission model that exists twice is one
+ * that will disagree with itself.
+ *
+ * The DRAFT reader is what needs it. `viewContext=AUTHOR` is not a password:
+ * without this the owner could read — and the author finder could list — a draft
+ * some OTHER member left unpublished, merely by naming them. And the answer
+ * there has to be the 404 a reader already gets rather than the 403 the write
+ * paths raise, because a 403 confirms the unpublished post exists, which is the
+ * one thing a draft is entitled to hide.
+ */
+export function mayActAs(db: Database, actorUrn: string, ownerMemberId: string): boolean {
+  try {
+    requireActor(db, actorUrn, { field: "author", ownerMemberId, action: "GET /posts" });
+    return true;
+  } catch (err) {
+    // Only the documented refusals mean "no". Anything else is a broken twin and
+    // must not read as a permission answer.
+    if (err instanceof LinkedInError) return false;
+    throw err;
+  }
 }

@@ -63,6 +63,25 @@ function intOf(value: unknown): number {
 }
 
 /**
+ * Whether a oneof member was set. JSON `null` is how proto3 spells "leave this
+ * message field unset", so it has to read as absent — otherwise `{"location":
+ * null, "endOfSegmentLocation":{}}`, which the real parser accepts, would be
+ * refused here as setting two members of a union.
+ */
+function isSet(value: unknown): boolean {
+  return value !== undefined && value !== null;
+}
+
+/**
+ * Half a surrogate pair, on either side. It is not a character: SQLite stores
+ * text as UTF-8, so a lone surrogate that reaches a column comes back to the
+ * agent as U+FFFD — the same silent corruption the index-space guards below
+ * refuse, arriving inside the payload instead of at its edges. V8's JSON.parse
+ * accepts an unpaired surrogate in a body, so nothing upstream catches it.
+ */
+const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
+
+/**
  * The vendor filters exactly these code points on insert — the C0 controls other
  * than tab and newline, plus the private use area. A clone that stores them
  * produces documents whose indexes disagree with the real API's, which is the
@@ -107,14 +126,33 @@ export interface InsertTextRequest {
 export function insertText(model: DocModel, n: number, req: InsertTextRequest): void {
   requireBodySegment(n, "insertText", req.location, req.endOfSegmentLocation);
 
+  // `location` and `endOfSegmentLocation` are the two members of the
+  // insertion_location oneof, which is to say two spellings of one field: the
+  // real parser refuses a body that sets both and a body that sets neither.
+  // Preferring one of the two silently would answer 200 to a request that asked
+  // for an insert in two places, and reading an absent location as index 0 would
+  // report a bounds problem for what is really a missing field. Same rule
+  // batch.ts states one level up for the Request union, same words.
+  const atLocation = isSet(req.location);
+  const atEndOfSegment = isSet(req.endOfSegmentLocation);
+  if (atLocation && atEndOfSegment) {
+    throw invalid(n, "insertText", "exactly one insertion location field may be set.");
+  }
+  if (!atLocation && !atEndOfSegment) {
+    throw invalid(n, "insertText", "an insertion location field must be set.");
+  }
+
   const raw = typeof req.text === "string" ? req.text : "";
   const text = stripControlChars(raw);
   if (!text) throw invalid(n, "insertText", "The text to insert cannot be empty.");
+  if (LONE_SURROGATE.test(text)) {
+    throw invalid(n, "insertText", "The text to insert cannot contain an unpaired surrogate.");
+  }
 
   const l = layout(model);
   // endOfSegmentLocation lands immediately BEFORE the body's final newline —
   // exactly what the vendor does, and the reason appending a paragraph works.
-  const requested = req.endOfSegmentLocation ? l.endIndex - 1 : intOf(req.location?.index);
+  const requested = atEndOfSegment ? l.endIndex - 1 : intOf(req.location?.index);
   if (requested < 1 || requested > l.endIndex - 1) {
     throw invalid(
       n,
@@ -156,9 +194,11 @@ export function insertText(model: DocModel, n: number, req: InsertTextRequest): 
 
 /**
  * Cells containing newlines become several paragraphs, each keeping its own
- * terminating "\n". They all inherit `from`'s style, but the headingId stays on
- * the FIRST result only: a heading id names one heading, and duplicating it would
- * give the document two anchors answering to one id.
+ * terminating "\n". They all inherit `from`'s style, and a split of a heading is
+ * therefore several headings — each of which needs an anchor id of its own. The
+ * first keeps `from`'s, because a link already pointing at that heading has to
+ * keep resolving; the rest are minted, never copied, because one id naming two
+ * anchors is the same outline corruption from the other direction.
  */
 function splitCells(cells: CharCell[], from: ParagraphModel): ParagraphModel[] {
   const paragraphs: ParagraphModel[] = [];
@@ -178,11 +218,20 @@ function splitCells(cells: CharCell[], from: ParagraphModel): ParagraphModel[] {
 }
 
 function paragraphFrom(cells: CharCell[], from: ParagraphModel, first: boolean): ParagraphModel {
+  // Nulling the continuations instead would answer HEADING_1 with no headingId,
+  // which the vendor's own field doc calls a contradiction — an empty headingId
+  // means the paragraph is not a heading. It also splits the judge from the
+  // agent: the twin snapshot counts headings by namedStyleType and would list a
+  // heading the agent, reading paragraphStyle.headingId, cannot see.
+  const headingId = first
+    ? from.headingId
+    : HEADING_STYLE_TYPES.includes(from.namedStyleType)
+      ? newHeadingId()
+      : null;
   return {
     namedStyleType: from.namedStyleType,
-    headingId: first ? from.headingId : null,
+    headingId,
     alignment: from.alignment,
-    extra: from.extra,
     runs: implodeRuns(cells),
   };
 }
@@ -280,6 +329,18 @@ export function replaceAllText(model: DocModel, n: number, req: ReplaceAllTextRe
   if (!needle) throw invalid(n, "replaceAllText", "The text to find cannot be empty.");
   const matchCase = req.containsText?.matchCase === true;
   const replaceText = typeof req.replaceText === "string" ? req.replaceText : "";
+  // Checked here rather than left to the insertText this delegates to, for the
+  // same reason a needle is never allowed to match half a pair: the agent sent
+  // replaceAllText, and a 400 naming a request it never sent sends it looking
+  // for a bug in the wrong place. The needle itself is not checked — a lone
+  // surrogate there simply matches nothing, which is answered below.
+  if (LONE_SURROGATE.test(replaceText)) {
+    throw invalid(
+      n,
+      "replaceAllText",
+      "The replacement text cannot contain an unpaired surrogate.",
+    );
+  }
 
   // Each paragraph is searched EXCLUDING its trailing "\n", so a match can never
   // span a paragraph boundary or eat a newline — which would silently merge two
@@ -387,6 +448,15 @@ export function updateParagraphStyle(
       ? startIndex >= p.startIndex && startIndex < p.endIndex
       : p.startIndex < endIndex && p.endIndex > startIndex,
   );
+  // The paragraphs tile [1, endIndex), so a collapsed range at exactly
+  // l.endIndex clears the bounds check above and still names no paragraph.
+  // Applying nothing and answering 200 with a fresh revisionId is the one
+  // failure an agent cannot see: it looks exactly like the promotion it asked
+  // for. Pointing at the end of the document is what an agent does when it means
+  // "the line I just appended", so this is a mistake worth naming.
+  if (!targets.length) {
+    throw invalid(n, "updateParagraphStyle", "The range must overlap at least one paragraph.");
+  }
 
   let namedStyleType: string | null = null;
   if (wants("namedStyleType")) {

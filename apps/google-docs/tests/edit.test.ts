@@ -63,11 +63,25 @@ describe("insertText", () => {
     insertText(model, 0, { text: "X\nY", location: { index: 2 } });
     expect(text(model)).toBe("AX\nYB\n");
     expect(model.paragraphs).toHaveLength(2);
-    // Both keep the paragraph style; the heading id stays on the first only,
-    // because one id must not name two anchors.
+    // Both keep the paragraph style, so both are headings and both need an
+    // anchor: an empty headingId is how the API spells "this paragraph is not a
+    // heading", and HEADING_1 with none is a document it cannot emit. The first
+    // keeps the id a link may already point at; the second gets its own, because
+    // one id must not name two anchors.
     expect(model.paragraphs.map((p) => p.namedStyleType)).toEqual(["HEADING_1", "HEADING_1"]);
     expect(model.paragraphs[0].headingId).toBe(headingId);
-    expect(model.paragraphs[1].headingId).toBeNull();
+    expect(model.paragraphs[1].headingId).toMatch(/^h\.[a-z0-9]{12}$/);
+    expect(model.paragraphs[1].headingId).not.toBe(headingId);
+  });
+
+  it("gives the paragraphs split off body text no heading id at all", () => {
+    // The other half of the rule above: NORMAL_TEXT is the one style that carries
+    // no anchor, so minting on every split would put ids in the outline for
+    // paragraphs that are not headings.
+    const model = makeModel([{ text: "AB" }]);
+    insertText(model, 0, { text: "X\nY\nZ", location: { index: 2 } });
+    expect(model.paragraphs).toHaveLength(3);
+    expect(model.paragraphs.every((p) => p.headingId === null)).toBe(true);
   });
 
   it("appends immediately before the body's final newline with endOfSegmentLocation", () => {
@@ -84,6 +98,30 @@ describe("insertText", () => {
         "Invalid requests[0].insertText: The insertion index must be inside the bounds of an existing paragraph.",
       );
     }
+  });
+
+  it("rejects setting both insertion locations, and setting neither, as one rule", () => {
+    // insertion_location is a oneof: two spellings of one field. Both set is a
+    // request that asks for an insert in two places, and neither is a missing
+    // field — not an index of 0, which is what falling through used to report.
+    const model = makeModel([{ text: "Hi" }]);
+    expect(() =>
+      insertText(model, 0, { text: "x", location: { index: 1 }, endOfSegmentLocation: {} }),
+    ).toThrow("Invalid requests[0].insertText: exactly one insertion location field may be set.");
+    expect(() => insertText(model, 1, { text: "x" })).toThrow(
+      "Invalid requests[1].insertText: an insertion location field must be set.",
+    );
+    expect(text(model)).toBe("Hi\n");
+
+    // A JSON null is proto3 for "leave this message field unset", so a body the
+    // real parser reads as an append must not be refused here as setting two.
+    const nulled = makeModel([{ text: "Hi" }]);
+    insertText(nulled, 0, {
+      text: "!",
+      location: null as unknown as undefined,
+      endOfSegmentLocation: {},
+    });
+    expect(text(nulled)).toBe("Hi!\n");
   });
 
   it("rejects an empty insert and a non-empty segmentId", () => {
@@ -110,6 +148,21 @@ describe("insertText", () => {
     const after = makeModel([{ text: EMOJI_PARAGRAPH }]);
     insertText(after, 0, { text: "X", location: { index: 5 } });
     expect(text(after)).toBe("a 😄X b\n");
+  });
+
+  it("refuses text carrying half a surrogate pair, which SQLite would answer as U+FFFD", () => {
+    // The guard the boundary checks cannot give: this half arrives inside the
+    // payload, well formed as far as JSON.parse is concerned, and would be
+    // written to a UTF-8 column and read back as a replacement character.
+    const model = makeModel([{ text: "Hi" }]);
+    expect(() => insertText(model, 0, { text: "a\uD83Db", location: { index: 1 } })).toThrow(
+      "Invalid requests[0].insertText: The text to insert cannot contain an unpaired surrogate.",
+    );
+    expect(text(model)).toBe("Hi\n");
+    // A whole pair is a character and stays welcome.
+    insertText(model, 0, { text: "😄", location: { index: 1 } });
+    expect(text(model)).toBe("😄Hi\n");
+    expect(hasLoneSurrogate(text(model))).toBe(false);
   });
 
   it("strips control characters but keeps tab and newline", () => {
@@ -259,6 +312,18 @@ describe("replaceAllText", () => {
     expect(text(model)).toBe("a 😄 b\n");
   });
 
+  it("refuses a replacement carrying half a pair, under its own request name", () => {
+    // The insert this delegates to would have caught it too, but named
+    // insertText — a request the agent never sent.
+    const model = makeModel([{ text: "abc" }]);
+    expect(() =>
+      replaceAllText(model, 0, { containsText: { text: "b" }, replaceText: "\uDC00" }),
+    ).toThrow(
+      "Invalid requests[0].replaceAllText: The replacement text cannot contain an unpaired surrogate.",
+    );
+    expect(text(model)).toBe("abc\n");
+  });
+
   it("rejects an empty needle", () => {
     const model = makeModel([{ text: "abc" }]);
     expect(() => replaceAllText(model, 3, { containsText: { text: "" }, replaceText: "x" })).toThrow(
@@ -291,6 +356,22 @@ describe("updateParagraphStyle", () => {
     const at = layout(model).paragraphs[1].startIndex;
     style(model, at, at, "HEADING_1");
     expect(model.paragraphs.map((p) => p.namedStyleType)).toEqual(["NORMAL_TEXT", "HEADING_1"]);
+  });
+
+  it("refuses a collapsed range at the end of the body instead of styling nothing", () => {
+    // It clears the bounds check — endIndex is inside [1, l.endIndex] — but the
+    // paragraphs stop one short of it, so the request used to be a 200 that
+    // changed nothing and still minted a revisionId. An agent aiming at the end
+    // of the document to promote the line it just appended reads that as success.
+    const model = makeModel([{ text: "one" }, { text: "two" }]);
+    const end = layout(model).endIndex;
+    expect(() => style(model, end, end, "HEADING_1")).toThrow(
+      "Invalid requests[0].updateParagraphStyle: The range must overlap at least one paragraph.",
+    );
+    expect(model.paragraphs.map((p) => p.namedStyleType)).toEqual(["NORMAL_TEXT", "NORMAL_TEXT"]);
+    // One index earlier is the last paragraph's own newline, and still works.
+    style(model, end - 1, end - 1, "HEADING_1");
+    expect(model.paragraphs[1].namedStyleType).toBe("HEADING_1");
   });
 
   it("mints a headingId on a heading and clears it on NORMAL_TEXT", () => {

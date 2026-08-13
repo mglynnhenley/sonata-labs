@@ -16,6 +16,9 @@ export interface CommentInput {
   attributes?: unknown[] | null;
   createdMs: number;
   lastModifiedMs?: number;
+  /** Absent means the WORLD wrote this row, matching db/schema.sql's DEFAULT 0.
+   *  A directed comment scored as the agent's reply is the worst thing this
+   *  column can get wrong, so the safe answer is the one a caller falls into. */
   isSandboxCreated?: boolean;
 }
 
@@ -34,7 +37,7 @@ export function insertComment(db: Database, input: CommentInput): CommentRow {
     input.attributes && input.attributes.length ? JSON.stringify(input.attributes) : null,
     input.createdMs,
     input.lastModifiedMs ?? input.createdMs,
-    input.isSandboxCreated === false ? 0 : 1,
+    input.isSandboxCreated ? 1 : 0,
   );
   const row = getCommentRow(db, input.id);
   if (!row) throw new Error(`comment ${input.id} vanished after insert`);

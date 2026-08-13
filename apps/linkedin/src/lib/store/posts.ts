@@ -15,6 +15,8 @@ export interface PostInput {
   lastModifiedMs: number;
   /** The passthrough blob (content, contentCallToActionLabel, contentLandingPage). */
   extra?: Record<string, unknown> | null;
+  /** Absent means the WORLD wrote this row, matching db/schema.sql's DEFAULT 0.
+   *  Only a write that came from the agent may claim the agent made it. */
   isSandboxCreated?: boolean;
 }
 
@@ -37,7 +39,7 @@ export function insertPost(db: Database, input: PostInput): PostRow {
     input.publishedMs ?? null,
     input.lastModifiedMs,
     input.extra && Object.keys(input.extra).length ? JSON.stringify(input.extra) : null,
-    input.isSandboxCreated === false ? 0 : 1,
+    input.isSandboxCreated ? 1 : 0,
   );
   const row = getPostRow(db, input.id);
   if (!row) throw new Error(`post ${input.id} vanished after insert`);

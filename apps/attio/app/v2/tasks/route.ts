@@ -101,7 +101,6 @@ export function POST(req: Request) {
           actorType: ctx.actor.type,
           actorId: ctx.actor.id,
           createdAtMs: now,
-          isSandboxCreated: true,
           linkedRecords,
           assignees,
         });

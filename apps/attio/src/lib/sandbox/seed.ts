@@ -1,5 +1,6 @@
 import { startNewSession } from "../audit";
 import { applySchema, getDb } from "../db";
+import { liveDb } from "./live";
 import { snapshotWorking } from "../reset";
 import { installStandardSchema } from "../seed";
 import { newUuid } from "../attio/ids";
@@ -41,7 +42,12 @@ const TABLES = [
 ];
 
 export function seedFromWire(seed: ParsedSeed): SeedResult {
-  const db = getDb();
+  // liveDb(), never getDb(): `npm run seed` rebuilds working.db from another
+  // process, so a handle opened before that swap writes this entire world into
+  // an unlinked inode nobody else can open — and the counts read back through
+  // the same dead handle still answer 200, which is the worst possible lie for
+  // the one call that loads the episode.
+  const db = liveDb();
   // Idempotent, and it makes a working.db that was never `db:init`ed seedable.
   applySchema(db);
 
@@ -91,7 +97,6 @@ export function seedFromWire(seed: ParsedSeed): SeedResult {
       atMs: seed.nowMs,
       actor: owner,
       mode: "create" as const,
-      isSandboxCreated: false,
     };
 
     for (const company of seed.companies) {
@@ -167,7 +172,6 @@ export function seedFromWire(seed: ParsedSeed): SeedResult {
         actorType: "workspace-member",
         actorId: ownerMember.id,
         createdAtMs: note.createdMs,
-        isSandboxCreated: false,
       });
     }
 
@@ -187,7 +191,6 @@ export function seedFromWire(seed: ParsedSeed): SeedResult {
         actorType: "workspace-member",
         actorId: ownerMember.id,
         createdAtMs: task.createdMs,
-        isSandboxCreated: false,
         linkedRecords: task.linkedRecords.map((l) => ({
           targetObject: l.object,
           targetRecordId: l.recordId,

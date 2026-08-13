@@ -1,7 +1,7 @@
 import { copyFileSync, existsSync, rmSync } from "node:fs";
 import { getDb, closeWorkingDb, SNAPSHOT_PATH, WORKING_PATH } from "./db";
 import { startNewSession } from "./audit";
-import { markWorkingSwapped } from "./sandbox/live";
+import { liveDb, markWorkingSwapped } from "./sandbox/live";
 import { countRecords } from "./store/records";
 import { countNotes } from "./store/notes";
 import { countTasks } from "./store/tasks";
@@ -51,7 +51,12 @@ export function resetWorking(note = "reset to snapshot"): ResetResult {
  * recent writes, which are still sitting in the WAL.
  */
 export function snapshotWorking(): ResetResult {
-  const db = getDb();
+  // liveDb() for the same reason the wire seeder uses it: the counts reported
+  // back and the WAL checkpointed here have to belong to the working.db that is
+  // on disk right now. Promote through a handle another process swapped away and
+  // the baseline every later reset returns to is a world nobody asked for,
+  // announced with the record counts of a file that no longer has a name.
+  const db = liveDb();
   const result = {
     records: countRecords(db),
     notes: countNotes(db),

@@ -59,10 +59,23 @@ will happily reset a different server on the port you gave it and report success
 ## Definition of done for API changes
 
 `npx tsc --noEmit` clean, `npm test` green, `PORT=3800 npm run smoke` all-pass
-(71 checks today). The smoke needs a running server and a seeded world, is not
+(86 checks today). The smoke needs a running server and a seeded world, is not
 part of `npm test`, and CI never runs it — so the acceptance gate only runs when
 a human runs it. It also resets to the snapshot as its first act, which destroys
 whatever world is loaded; never point it at a twin mid-episode.
+
+**There is no HTTP-level test harness here**, and that is the gap to know about:
+`tests/` aliases `@` to `src` and `getDb()` would open the real `data/` files, so
+a route can only be unit-tested through the library it calls. Everything that
+lives in the wiring rather than in a function is therefore proven by the smoke
+alone — the 403s on another member's post, the one-level thread refusal, the
+`viewContext=AUTHOR` author check, every status code, and every response header.
+Change a route and the unit suite can stay green while the surface breaks; run
+the smoke.
+
+Its last block seeds a two-author world over `/api/sandbox/seed` and resets
+afterwards, because the demo seed cannot express the case it tests: every post in
+it belongs to the owner or to the page they administer.
 
 ## Environment quirks
 
@@ -74,6 +87,13 @@ whatever world is loaded; never point it at a twin mid-episode.
   resolves `localhost` to `::1` first and the Next dev server listens on IPv4
   only; the resulting ECONNREFUSED reads as "the twin is down" when it is fine.
   Both `src/cli/reset.ts` and `scripts/smoke-sdk.ts` learned this the hard way.
+- In a detached shell, `next dev` needs stdin held open or it prints Ready,
+  serves one request and exits. `tail -f /dev/null | PORT=3800 npm run dev -w
+  apps/linkedin` is the incantation; the symptom otherwise is a smoke that passes
+  its first few checks and then cannot connect.
+- Kill this server BY PORT (`lsof -nP -iTCP:3800 -sTCP:LISTEN`), never by name.
+  A `pkill -f 'next dev'` takes out every sibling clone's dev server too, and
+  they are all `next dev`.
 
 ## Layout
 
@@ -126,10 +146,33 @@ src/lib/{db,audit,reset,seed}.ts
   one (the posts resource serves it under `viewContext=AUTHOR` and publishes it
   by patch); everything else — socialMetadata, the comments finder and create,
   reactions, and the director's own beats — goes through `requirePublishedPost`.
+  `viewContext=AUTHOR` is a VIEW, not a credential: both posts routes ask
+  `mayActAs` whether the caller is the draft's author before revealing one, and
+  answer the reader's 404 when they are not, because a 403 there would confirm
+  the unpublished post exists. The demo seed cannot reach that branch — every
+  draft in it is the page's — but a wire-seeded world reaches it immediately.
 - **A reply may name its parent in either documented spelling**: the comment URN
   as the path segment, or `parentComment` in the body of a POST addressed to the
   post. They must agree when both are present; dropping the body field would put
-  an agent's answer to a customer at the top of the thread with a 201.
+  an agent's answer to a customer at the top of the thread with a 201. Threads
+  are ONE level deep on every spelling — the REST route, the director's beats and
+  the wire seeder all refuse a reply to a reply, because `listReplies` returns
+  direct children only and a depth-2 row would be written and never read back.
+  The route asks that through `requireThreadParent`, once, for both spellings:
+  the rule was written twice, ran on the path segment only, and the body field
+  quietly created depth-2 rows through four review passes.
+- **DRAFT -> PUBLISHED is one-way.** `buildPatchInput` refuses
+  `lifecycleState: "DRAFT"` on a post that is not already one. Backwards, the
+  patch is a takedown — the post 404s on every reader surface and leaves the
+  author finder — but `publishesDraft` is false, so the trail would read
+  `Edited the post "…"` and `postDelete`, the verb that exists to make
+  destruction visible, would never be written. It would also leave
+  `published_ms` set, and a DRAFT carrying a `publishedAt` is the one state
+  `shape.ts` and `sandbox/parse.ts` both refuse to express.
+- **A patch that sets nothing is a 400, not a 204.** `buildPatchInput` decides
+  that before it stamps anything: an empty `$set` used to flip
+  `isEditedByAuthor`, write `Edited the post "…"` into the audit log the judge
+  grades from, and reorder the company feed, which sorts on `lastModifiedAt`.
 - Repo-wide, and they apply here: store functions take `db` first and use raw SQL;
   every route declares `runtime = "nodejs"` and `dynamic = "force-dynamic"`; every
   mutation goes through `runMutation` so the change and its audit row commit

@@ -38,6 +38,10 @@ export function captureTwinSnapshot(db: Database): DocsTwinSnapshot {
           documentId: model.documentId,
           title: model.title,
           revisionId: model.revisionId,
+          // The seed names an owner per document and checks it against the
+          // cast; without it here the judge cannot tell "the agent edited its
+          // own draft" from "the agent edited Priya's".
+          ownerEmail: row.owner_email,
           headings: model.paragraphs
             .filter((p) => HEADING_STYLE_TYPES.includes(p.namedStyleType))
             .map((p) => p.runs.map((r) => r.content).join("").trimEnd()),

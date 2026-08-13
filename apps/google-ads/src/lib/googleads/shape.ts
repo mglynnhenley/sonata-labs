@@ -16,8 +16,11 @@ import {
 // Number()s the other is doing the right thing against the real API, and a clone
 // that emits raw numbers quietly teaches it the opposite.
 //
-// Columns are the source of truth for anything filterable or mutable; the
-// vendor's long tail lives in raw_json and is layered UNDER them, never over.
+// The same mapping decides what is NOT in the row. proto3 JSON omits an unset
+// field rather than spelling it out, so a NULL column becomes an ABSENT key and
+// never a null — Google has no way to send `endDate: null` for a campaign with
+// no end date, and an agent branching on `'endDate' in row.campaign` has to get
+// the same answer here that it gets there.
 
 export type GoogleAdsRow = Record<string, Record<string, unknown>>;
 
@@ -30,9 +33,14 @@ export interface SelectedField {
 /** The id of each resource present in a row, so every one can carry its name. */
 export type ResourceIds = Partial<Record<ResourceKind, string | null>>;
 
-function coerce(spec: FieldSpec, value: unknown, customerId: string): unknown {
+/**
+ * A field's own type decides how its value crosses the wire. A resource-name
+ * field needs no case here: the executor selects it as its path already, so that
+ * a WHERE clause on it compares against the same text — it arrives as the string
+ * it will be sent as.
+ */
+function coerce(spec: FieldSpec, value: unknown): unknown {
   if (value === null || value === undefined) return null;
-  if (spec.resourceRef) return resourceNameFor(spec.resourceRef, customerId, String(value));
   switch (spec.type) {
     case "int64":
       // proto3 JSON mapping: 64-bit integers are strings on the wire.
@@ -72,15 +80,22 @@ export function buildRow(
 
   for (const { spec, alias } of selected) {
     const [container, leaf] = spec.json.split(".");
+    // Registered before the value is looked at, so a resource whose every
+    // selected field is unset still reaches the resourceName pass below.
     touched.set(resourceOf(spec.gaql), container);
-    (out[container] ??= {})[leaf] = coerce(spec, sqlRow[alias], customerId);
+    const value = coerce(spec, sqlRow[alias]);
+    if (value === null) continue;
+    (out[container] ??= {})[leaf] = value;
   }
 
   for (const [kind, container] of touched) {
     if (kind === "metrics" || kind === "segments") continue;
     const id = ids[kind];
     if (id === undefined || id === null) continue;
-    out[container].resourceName = resourceNameFor(kind, customerId, id);
+    // The container may not exist yet: `SELECT campaign.end_date FROM ad_group`
+    // against a campaign with no end date selects nothing that survives, and the
+    // resource is still in the row because it is still in the join.
+    (out[container] ??= {}).resourceName = resourceNameFor(kind, customerId, id);
   }
 
   return out;

@@ -157,7 +157,6 @@ export function toParagraphModels(paragraphs: ParsedParagraph[]): ParagraphModel
     // cannot spot a seeded heading by the id it is missing.
     headingId: HEADING_STYLE_TYPES.includes(p.namedStyleType) ? newHeadingId() : null,
     alignment: null,
-    extra: null,
     runs: p.runs.map((run) => {
       const style: Record<string, unknown> = {};
       if (run.bold) style.bold = true;

@@ -1,4 +1,4 @@
-import { methodNotFound, queryError, requestError } from "@/lib/googleads/errors";
+import { methodNotFound, requestError } from "@/lib/googleads/errors";
 import { executeGaql, type ExecuteResult } from "@/lib/googleads/gaql/execute";
 import { parseGaql } from "@/lib/googleads/gaql/parse";
 import { applyOperations, type MutateResource } from "@/lib/googleads/mutate";
@@ -42,9 +42,15 @@ function search(ctx: GoogleAdsCtx, body: SearchBody) {
   const pageSize = clampPageSize(body.pageSize);
   const page = rows.slice(offset, offset + pageSize);
 
-  const payload: Record<string, unknown> = { results: page, fieldMask };
-  // Present ONLY when another page exists — never null, because a client that
-  // loops "while nextPageToken" would never stop.
+  // proto3 JSON omits an empty repeated field, so a query that matched nothing
+  // answers with no `results` key at all. A client that walks `body.results`
+  // without checking crashes against the real API, and it has to crash here too
+  // or the sandbox is where it learned the habit.
+  const payload: Record<string, unknown> = {};
+  if (page.length) payload.results = page;
+  payload.fieldMask = fieldMask;
+  // nextPageToken is present ONLY when another page exists — never null, because
+  // a client that loops "while nextPageToken" would never stop.
   if (offset + pageSize < rows.length) {
     payload.nextPageToken = encodePageToken({ offset: offset + pageSize });
   }
@@ -56,8 +62,19 @@ function search(ctx: GoogleAdsCtx, body: SearchBody) {
 }
 
 function searchStream(ctx: GoogleAdsCtx, body: SearchBody) {
-  if (body.pageSize !== undefined || body.pageToken !== undefined) {
-    throw queryError("BAD_VALUE", "searchStream does not support pageSize or pageToken.");
+  // The stream request has no pageSize and no pageToken field to begin with, so
+  // sending one is a malformed REQUEST and not a malformed query. A queryError
+  // here would point its fieldPath at `query` and send an agent back to
+  // re-inspect GAQL that was never wrong. Both codes below are real RequestError
+  // members — a code an SDK cannot find in its generated enum is worse than none.
+  if (body.pageSize !== undefined) {
+    throw requestError(
+      "PAGE_SIZE_NOT_SUPPORTED",
+      "Setting the page size is not supported. searchStream returns every matching row.",
+    );
+  }
+  if (body.pageToken !== undefined) {
+    throw requestError("INVALID_PAGE_TOKEN", "searchStream does not paginate, so it takes no page token.");
   }
   const { rows, fieldMask } = runQuery(ctx, requireQuery(body));
   const chunks: Array<Record<string, unknown>> = [];
@@ -65,8 +82,10 @@ function searchStream(ctx: GoogleAdsCtx, body: SearchBody) {
     chunks.push({ results: rows.slice(i, i + STREAM_CHUNK), fieldMask, requestId: ctx.requestId });
   }
   // A stream that matched nothing is still one chunk: the array shape is what a
-  // client parses, and an empty array has nothing to read the fieldMask off.
-  if (!chunks.length) chunks.push({ results: [], fieldMask, requestId: ctx.requestId });
+  // client parses, and an empty array has nothing to read the fieldMask off. The
+  // chunk carries no `results` key, for the same reason search's response does
+  // not — an empty repeated field is absent in proto3 JSON.
+  if (!chunks.length) chunks.push({ fieldMask, requestId: ctx.requestId });
   return json(chunks);
 }
 
@@ -88,7 +107,11 @@ function mutate(ctx: GoogleAdsCtx, body: SearchBody, resource: MutateResource) {
     // change — a batch that rolled back leaves none of them behind.
     (result) => result.entries,
   );
-  const payload: Record<string, unknown> = { results: outcome.results };
+  // Empty repeated field, absent key: a validateOnly batch reports only what was
+  // wrong, so a clean dry run is the empty object `{}` the real API answers with
+  // and not a `results` key an agent could learn to read a resource name off.
+  const payload: Record<string, unknown> = {};
+  if (outcome.results.length) payload.results = outcome.results;
   if (outcome.partialFailureError) payload.partialFailureError = outcome.partialFailureError;
   return json(payload);
 }

@@ -71,11 +71,18 @@ against them, because that is how LinkedIn scopes `w_member_social`:
   inside both audit stamps).
 - **Editing and deleting a post are decided by the post's own author**, since a
   patch body names no actor at all. Another member's post is a 403 both times,
-  including on the repeat DELETE that would otherwise be an idempotent 204.
-- A **DRAFT** is the author's own business. `viewContext=AUTHOR` reveals it and a
-  `lifecycleState` patch publishes it; until then socialMetadata, the comments
-  finder, comment create and reactions all answer 404, the same as a post that
-  never existed.
+  including on the repeat DELETE that would otherwise be an idempotent 204. A
+  patch that sets nothing is a `400 MISSING_FIELD`, not a 204: an edit that
+  changed nothing would still be logged as an edit.
+- A **DRAFT** is the author's own business — *its* author, not whoever asks.
+  `viewContext=AUTHOR` reveals it to the member who wrote it (or to an
+  administrator of the page that did) and a `lifecycleState` patch publishes it;
+  until then socialMetadata, the comments finder, comment create and reactions
+  all answer 404, the same as a post that never existed. Asking as `AUTHOR` about
+  somebody else's drafts is not an error, it is simply the reader's view. That
+  transition runs one way: patching a live post back to `DRAFT` is a 400, because
+  it would take the post off every reader surface while logging the removal as an
+  edit.
 
 ## The API surface
 
@@ -95,7 +102,7 @@ sunset window). `X-Restli-Protocol-Version: 2.0.0` is accepted and optional; a
 | `POST /rest/posts/{urn}` + `X-RestLi-Method: PARTIAL_UPDATE` | Posts API partial update — **204** |
 | `DELETE /rest/posts/{urn}` | Posts API delete — **204, idempotent** |
 | `GET /rest/socialMetadata/{urn}` | socialMetadata |
-| `GET\|POST /rest/socialActions/{urn}/comments` | socialActions comments — a reply names its parent either as the `{urn}` segment or as `parentComment` in the body |
+| `GET\|POST /rest/socialActions/{urn}/comments` | socialActions comments — a reply names its parent either as the `{urn}` segment or as `parentComment` in the body, and threads are one level deep on both spellings |
 | `POST /rest/reactions?actor={urn}` | Reactions API create |
 
 ```bash

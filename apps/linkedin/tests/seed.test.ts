@@ -143,9 +143,9 @@ function wire(overrides: Record<string, unknown> = {}): unknown {
       ownerEmail: OWNER_EMAIL,
       organization: { id: ORG_ID, name: "Acme", vanityName: "acme-co" },
       members: [
-        { email: OWNER_EMAIL, personId: OWNER_PERSON_ID, headline: "Ops", vanityName: "sandbox" },
-        { email: "priya@acme.co", personId: "dK7mQv2XbT", headline: "Support", vanityName: "priya" },
-        { email: "j.rivera@example.com", personId: "xF5cNr7QsE", headline: "Ops", vanityName: "jr" },
+        { email: OWNER_EMAIL, personId: OWNER_PERSON_ID },
+        { email: "priya@acme.co", personId: "dK7mQv2XbT" },
+        { email: "j.rivera@example.com", personId: "xF5cNr7QsE" },
       ],
       posts: [
         {
@@ -264,6 +264,12 @@ describe("parseSeedRequest", () => {
       },
     ];
     expect(() => parseSeedRequest(body)).toThrow(/one level deep/);
+    // And it names the key the seed's author actually wrote. Reporting the
+    // offending entry at `.comments[0].comments[0]` sends them looking for a
+    // `comments` array that is not there.
+    expect(() => parseSeedRequest(body)).toThrow(
+      /seed\.posts\[0\]\.comments\[0\]\.replies\[0\]\.replies nests a second level/,
+    );
   });
 
   it("throws BadRequestError, so the route answers 400 rather than 500", () => {

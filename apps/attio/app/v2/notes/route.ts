@@ -92,7 +92,6 @@ export function POST(req: Request) {
           actorType: ctx.actor.type,
           actorId: ctx.actor.id,
           createdAtMs,
-          isSandboxCreated: true,
         });
         return noteId;
       },

@@ -17,13 +17,14 @@ export interface RecordInput {
   id: string;
   objectId: string;
   createdAtMs: number;
-  isSandboxCreated?: boolean;
 }
 
 export function insertRecord(db: Database, input: RecordInput): void {
-  db.prepare(
-    "INSERT INTO records (id, object_id, created_at_ms, is_sandbox_created) VALUES (?, ?, ?, ?)",
-  ).run(input.id, input.objectId, input.createdAtMs, input.isSandboxCreated ? 1 : 0);
+  db.prepare("INSERT INTO records (id, object_id, created_at_ms) VALUES (?, ?, ?)").run(
+    input.id,
+    input.objectId,
+    input.createdAtMs,
+  );
 }
 
 export interface RecordQuery {

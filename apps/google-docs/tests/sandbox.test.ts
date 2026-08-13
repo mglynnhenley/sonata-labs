@@ -192,6 +192,14 @@ describe("captureTwinSnapshot", () => {
     expect(doc.isSandboxCreated).toBe(false);
   });
 
+  it("reports who owns each document, which is who a diff happened to", () => {
+    // The seed makes every document's owner a member of the cast and refuses
+    // one it has never heard of; a snapshot that dropped the owner would throw
+    // that away exactly where the judge needs it.
+    const db = makeTestDb(CORPUS);
+    expect(captureTwinSnapshot(db).documents[0].ownerEmail).toBe(OWNER);
+  });
+
   it("names every named range on the document", () => {
     const db = makeTestDb(CORPUS);
     db.prepare(

@@ -43,13 +43,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ object:
           id: recordId,
           objectId: obj.id,
           createdAtMs: now,
-          isSandboxCreated: true,
         });
         const changes = writeValues(
           db,
           { recordId, objectId: obj.id, objectSlug: obj.api_slug },
           values,
-          { atMs: now, actor: ctx.actor, mode: "create", isSandboxCreated: true },
+          { atMs: now, actor: ctx.actor, mode: "create" },
         );
         const primary = changes.find((c) => c.slug === primarySlug);
         return { recordId, name: primary?.after ?? recordId };

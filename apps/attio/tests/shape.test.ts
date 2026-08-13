@@ -70,7 +70,7 @@ describe("record", () => {
       db,
       { recordId: id, objectId: OBJ_COMPANIES, objectSlug: "companies" },
       { name: "Sparse Co" },
-      { atMs: NOW, actor: OWNER_ACTOR, mode: "create", isSandboxCreated: false },
+      { atMs: NOW, actor: OWNER_ACTOR, mode: "create" },
     );
     const record = queryRecords(db, "companies", { filter: { name: "Sparse Co" } })[0] as {
       values: Record<string, unknown>;

@@ -23,9 +23,16 @@ export function countParagraphs(db: Database): number {
   return (db.prepare("SELECT COUNT(*) AS n FROM paragraphs").get() as { n: number }).n;
 }
 
-/** Newest-edited first — the order the landing page and the snapshot both want. */
+/**
+ * Newest-edited first — the order the landing page and the snapshot both want.
+ * A whole seeded workspace is written at one instant, so `updated_ms` alone
+ * leaves every document tied and the order down to whatever SQLite feels like
+ * returning; `created_ms` breaks the tie with the world's own authoring dates.
+ */
 export function listDocumentRows(db: Database): DocumentRow[] {
-  return db.prepare("SELECT * FROM documents ORDER BY updated_ms DESC").all() as DocumentRow[];
+  return db
+    .prepare("SELECT * FROM documents ORDER BY updated_ms DESC, created_ms DESC")
+    .all() as DocumentRow[];
 }
 
 export function getDocumentRow(db: Database, id: string): DocumentRow | null {
@@ -80,8 +87,8 @@ function clearContent(db: Database, documentId: string): void {
 
 function writeContent(db: Database, documentId: string, paragraphs: ParagraphModel[]): void {
   const insertParagraph = db.prepare(
-    `INSERT INTO paragraphs (document_id, para_index, named_style_type, heading_id, alignment, raw_json)
-     VALUES (?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO paragraphs (document_id, para_index, named_style_type, heading_id, alignment)
+     VALUES (?, ?, ?, ?, ?)`,
   );
   const insertRun = db.prepare(
     `INSERT INTO text_runs (document_id, para_index, run_index, content, style_json)
@@ -94,7 +101,6 @@ function writeContent(db: Database, documentId: string, paragraphs: ParagraphMod
       p.namedStyleType,
       p.headingId,
       p.alignment,
-      p.extra ? JSON.stringify(p.extra) : null,
     );
     p.runs.forEach((run, runIndex) => {
       // Canonical on the way in so two runs that look the same to normalise also
@@ -107,7 +113,8 @@ function writeContent(db: Database, documentId: string, paragraphs: ParagraphMod
 export interface InsertDocumentInput {
   id?: string;
   title: string;
-  ownerEmail?: string | null;
+  /** Required: every document in a cloned business belongs to someone in its cast. */
+  ownerEmail: string;
   revisionId?: string;
   /** Omitted means the blank-document shape: one NORMAL_TEXT paragraph holding "\n". */
   paragraphs?: ParagraphModel[];
@@ -126,7 +133,7 @@ export function insertDocument(db: Database, input: InsertDocumentInput): Docume
     id,
     input.title,
     revisionId,
-    input.ownerEmail ?? null,
+    input.ownerEmail,
     input.createdMs,
     input.updatedMs,
     input.isSandboxCreated ? 1 : 0,

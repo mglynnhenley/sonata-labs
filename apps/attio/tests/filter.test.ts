@@ -120,7 +120,7 @@ describe("operators", () => {
       local,
       { recordId: blank, objectId: OBJ_COMPANIES, objectSlug: "companies" },
       { name: "Blank Co" },
-      { atMs: NOW, actor: OWNER_ACTOR, mode: "create", isSandboxCreated: false },
+      { atMs: NOW, actor: OWNER_ACTOR, mode: "create" },
     );
     const found = queryIds(local, "companies", {
       filter: { description: { $not_empty: true } },
@@ -150,6 +150,32 @@ describe("operators", () => {
       "Harbor Health — Expansion",
       "Northwind — Platform renewal",
     ]);
+  });
+
+  it("filters on record_id, which is a record column and not an attribute", () => {
+    expect(queryIds(db, "deals", { filter: { record_id: SEED_DEAL_NORTHWIND } })).toEqual([
+      SEED_DEAL_NORTHWIND,
+    ]);
+    expect(
+      queryIds(db, "deals", { filter: { record_id: { $eq: SEED_DEAL_NORTHWIND } } }),
+    ).toEqual([SEED_DEAL_NORTHWIND]);
+  });
+
+  it("$in over record_id re-fetches a set of ids in one query", () => {
+    // The form Attio's filtering guide spells out, and the reason an agent
+    // holding five ids does not issue five GETs.
+    const [first, , third] = queryIds(db, "companies");
+    expect(queryIds(db, "companies", { filter: { record_id: { $in: [first, third] } } })).toEqual(
+      [first, third],
+    );
+  });
+
+  it("ANDs record_id with an attribute filter", () => {
+    expect(
+      queryIds(db, "deals", {
+        filter: { record_id: SEED_DEAL_NORTHWIND, stage: "Lead" },
+      }),
+    ).toEqual([]);
   });
 
   it("bounds created_at against the record's own column", () => {
@@ -196,7 +222,7 @@ describe("sorts", () => {
       local,
       { recordId: id, objectId: OBJ_COMPANIES, objectSlug: "companies" },
       { name: "Blank Co" },
-      { atMs: NOW, actor: OWNER_ACTOR, mode: "create", isSandboxCreated: false },
+      { atMs: NOW, actor: OWNER_ACTOR, mode: "create" },
     );
     const asc = queryIds(local, "companies", { sorts: [{ attribute: "description" }] });
     const desc = queryIds(local, "companies", {
@@ -254,5 +280,16 @@ describe("loud refusals", () => {
 
   it("rejects an unknown attribute and names the ones that exist", () => {
     rejects({ filter: { probability: 0.5 } }, /unknown attribute "probability"/);
+  });
+
+  it("rejects an operator record_id does not take", () => {
+    rejects(
+      { filter: { record_id: { $contains: "31fedb90" } } },
+      /record_id supports \$eq and \$in/,
+    );
+  });
+
+  it("rejects a record_id that is not a string", () => {
+    rejects({ filter: { record_id: { $in: [17] } } }, /record_id takes a record id string/);
   });
 });

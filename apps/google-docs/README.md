@@ -21,7 +21,9 @@ one flat, document-wide space measured in UTF-16 code units, and `batchUpdate`
 operates on those numbers — so an agent that reads a heading's `endIndex` and
 inserts there lands where it expects to. An emoji costs two of those indexes, and
 the one between its halves behaves the way Google's does: a delete that would
-split it is a 400 and an insert is nudged past it.
+split it is a 400 and an insert is nudged past it. Text that arrives already
+carrying half a pair is refused for the same reason — stored, it would come back
+as U+FFFD, a character destroyed with a 200 to say it went well.
 
 ## Ports
 
@@ -42,6 +44,11 @@ PORT=3600 npm run smoke -w apps/google-docs   # the acceptance gate, needs the s
 
 `data/*.db` is gitignored, so `db:init` is the first thing to run on a fresh
 checkout — without it every route answers `no such table`.
+
+The smoke is a writer, not an observer: it resets to the pristine snapshot first
+(so it repeats cleanly, and so it wipes whatever world is loaded — never run it
+against a twin mid-episode), then creates a document and edits a seeded one. Run
+`npm run seed -w apps/google-docs` afterwards to get the pristine workspace back.
 
 ## The three databases
 

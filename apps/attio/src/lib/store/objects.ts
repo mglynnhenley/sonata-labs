@@ -6,10 +6,6 @@ import type { AttributeRow, ObjectRow, StatusRow } from "../attio/shape";
 // status attribute is allowed to take. Read on every request, written only by
 // the two seeders.
 
-export function listObjects(db: Database): ObjectRow[] {
-  return db.prepare("SELECT * FROM objects ORDER BY pos, api_slug").all() as ObjectRow[];
-}
-
 export function getObjectBySlug(db: Database, slug: string): ObjectRow | null {
   return (
     (db.prepare("SELECT * FROM objects WHERE api_slug = ?").get(slug) as ObjectRow) ?? null
@@ -32,23 +28,15 @@ export interface ObjectInput {
   id: string;
   apiSlug: string;
   singularNoun: string;
-  pluralNoun: string;
   createdAtMs: number;
   pos?: number;
 }
 
 export function insertObject(db: Database, input: ObjectInput): void {
   db.prepare(
-    `INSERT INTO objects (id, api_slug, singular_noun, plural_noun, created_at_ms, pos)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-  ).run(
-    input.id,
-    input.apiSlug,
-    input.singularNoun,
-    input.pluralNoun,
-    input.createdAtMs,
-    input.pos ?? 0,
-  );
+    `INSERT INTO objects (id, api_slug, singular_noun, created_at_ms, pos)
+     VALUES (?, ?, ?, ?, ?)`,
+  ).run(input.id, input.apiSlug, input.singularNoun, input.createdAtMs, input.pos ?? 0);
 }
 
 export function listAttributes(db: Database, objectId: string): AttributeRow[] {

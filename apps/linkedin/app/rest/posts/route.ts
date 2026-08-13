@@ -6,6 +6,7 @@ import {
   runMutation,
   snippet,
 } from "@/lib/linkedin/route-helpers";
+import { mayActAs } from "@/lib/linkedin/actor";
 import { badRequestError, invalidValueError, missingFieldError } from "@/lib/linkedin/errors";
 import { buildPaging, clampCount, nextHref, parseStart } from "@/lib/linkedin/paging";
 import { buildCreateInput } from "@/lib/linkedin/post-input";
@@ -22,7 +23,7 @@ const SORT_KEYS = ["LAST_MODIFIED", "CREATED"] as const;
 // headline read. Descending by the chosen sort key; no paging.total, because
 // LinkedIn's posts finder does not return one.
 export function GET(req: Request) {
-  return handleLinkedIn(req, ({ db }) => {
+  return handleLinkedIn(req, ({ db, ownerMemberId }) => {
     const url = new URL(req.url);
     const sp = url.searchParams;
     if (sp.get("q") !== "author") {
@@ -50,8 +51,13 @@ export function GET(req: Request) {
       authorUrn: author,
       sortBy: sortBy as (typeof SORT_KEYS)[number],
       // A DRAFT is the author's own business: READER (the default) never sees
-      // one, AUTHOR does. Tombstoned posts are invisible to both.
-      includeDrafts: sp.get("viewContext") === "AUTHOR",
+      // one, AUTHOR does — and only when the caller is that author, or an
+      // administrator of the page that is. Asking as AUTHOR about somebody else
+      // simply returns their published posts, the same page a reader gets;
+      // refusing outright would confirm there is a draft to refuse.
+      // Tombstoned posts are invisible to both.
+      includeDrafts:
+        sp.get("viewContext") === "AUTHOR" && mayActAs(db, author, ownerMemberId),
       start,
       count,
     });

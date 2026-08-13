@@ -90,7 +90,6 @@ export function installStandardSchema(db: Database, atMs: number): void {
     id: OBJ_COMPANIES,
     apiSlug: "companies",
     singularNoun: "company",
-    pluralNoun: "companies",
     createdAtMs: atMs,
     pos: 0,
   });
@@ -98,7 +97,6 @@ export function installStandardSchema(db: Database, atMs: number): void {
     id: OBJ_PEOPLE,
     apiSlug: "people",
     singularNoun: "person",
-    pluralNoun: "people",
     createdAtMs: atMs,
     pos: 1,
   });
@@ -106,7 +104,6 @@ export function installStandardSchema(db: Database, atMs: number): void {
     id: OBJ_DEALS,
     apiSlug: "deals",
     singularNoun: "deal",
-    pluralNoun: "deals",
     createdAtMs: atMs,
     pos: 2,
   });
@@ -333,13 +330,12 @@ export function seedDatabase(db: Database): void {
       id: spec.id,
       objectId: spec.objectId,
       createdAtMs: spec.createdAtMs,
-      isSandboxCreated: false,
     });
     writeValues(
       db,
       { recordId: spec.id, objectId: spec.objectId, objectSlug: spec.objectSlug },
       spec.values,
-      { atMs: spec.createdAtMs, actor: owner, mode: "create", isSandboxCreated: false },
+      { atMs: spec.createdAtMs, actor: owner, mode: "create" },
     );
   }
 
@@ -359,7 +355,6 @@ export function seedDatabase(db: Database): void {
       atMs: SEED_STAGE_MOVE_MS,
       actor: owner,
       mode: "append",
-      isSandboxCreated: false,
     },
   );
 
@@ -381,7 +376,6 @@ export function seedDatabase(db: Database): void {
       actorType: "workspace-member",
       actorId: SEED_MEMBER_OWNER,
       createdAtMs,
-      isSandboxCreated: false,
     });
 
   note(
@@ -418,7 +412,6 @@ export function seedDatabase(db: Database): void {
     actorType: "workspace-member",
     actorId: SEED_MEMBER_OWNER,
     createdAtMs: daysBefore(3),
-    isSandboxCreated: false,
     linkedRecords: [{ targetObject: "deals", targetRecordId: SEED_DEAL_NORTHWIND }],
     assignees: [{ actorType: "workspace-member", actorId: SEED_MEMBER_OWNER }],
   });
@@ -431,7 +424,6 @@ export function seedDatabase(db: Database): void {
     actorType: "workspace-member",
     actorId: SEED_MEMBER_PRIYA,
     createdAtMs: daysBefore(9),
-    isSandboxCreated: false,
     linkedRecords: [{ targetObject: "deals", targetRecordId: DEAL_VERTEX }],
     assignees: [{ actorType: "workspace-member", actorId: SEED_MEMBER_PRIYA }],
   });

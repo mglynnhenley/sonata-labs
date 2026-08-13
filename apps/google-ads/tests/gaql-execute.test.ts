@@ -8,12 +8,14 @@ import {
   AG_OVER_A,
   AG_OVER_B,
   BUDGET_OVER,
+  BUDGET_QUIET,
   CAMPAIGN_OVER,
   CAMPAIGN_PAUSED,
   CUSTOMER_ID,
   OTHER_AD_GROUP,
   OTHER_BUDGET,
   OTHER_CAMPAIGN,
+  OTHER_CUSTOMER_ID,
   day,
   makeTestDb,
   seedOtherCustomer,
@@ -194,6 +196,27 @@ describe("proto3 JSON types", () => {
     expect(row.metrics.averageCpc).toBeCloseTo((7 * DAILY_COST) / 350, 6);
   });
 
+  it("omits an unset field instead of sending it as null", () => {
+    // The fixture's campaigns run open-endedly, so end_date is NULL. proto3 JSON
+    // has no way to say "null" for a string field: Google omits it, and an agent
+    // asking `'endDate' in row.campaign` must get false here too.
+    const row = run(`SELECT campaign.id, campaign.end_date FROM campaign WHERE campaign.id = ${CAMPAIGN_OVER}`)
+      .rows[0];
+    expect(row.campaign.id).toBe(CAMPAIGN_OVER);
+    expect("endDate" in row.campaign).toBe(false);
+  });
+
+  it("still names a joined resource whose every selected field was unset", () => {
+    // Nothing about the campaign survives the omission, but the campaign is still
+    // in the row because it is still in the join — so its resourceName is the
+    // whole of its container.
+    const row = run(`SELECT ad_group.name, campaign.end_date FROM ad_group WHERE ad_group.id = ${AG_OVER_A}`)
+      .rows[0];
+    expect(row.campaign).toEqual({
+      resourceName: `customers/${CUSTOMER_ID}/campaigns/${CAMPAIGN_OVER}`,
+    });
+  });
+
   it("returns 0 rather than dividing by zero", () => {
     const row = run(
       `SELECT metrics.ctr, metrics.average_cpc FROM ad_group WHERE ad_group.id = ${AG_OVER_B} AND segments.date DURING LAST_7_DAYS`,
@@ -303,6 +326,65 @@ describe("filters", () => {
       failure("SELECT campaign.id FROM campaign WHERE campaign_budget.amount_micros > 'lots'")
         .errorCode,
     ).toEqual({ queryError: "BAD_VALUE" });
+  });
+
+  // The round trip. Everything an agent does with this API is "read a report,
+  // then act on one of its rows", and a resource name is what a row is called —
+  // so the name a query hands back has to work as the next query's operand.
+  // Compiled against the bare id column instead, these matched zero rows and
+  // answered HTTP 200, which is indistinguishable from "no such campaign".
+  it("feeds every resource name it returned back into a WHERE clause", () => {
+    for (const [resource, container] of [
+      ["customer", "customer"],
+      ["campaign", "campaign"],
+      ["campaign_budget", "campaignBudget"],
+      ["ad_group", "adGroup"],
+    ] as const) {
+      const name = run(`SELECT ${resource}.resource_name FROM ${resource} LIMIT 1`).rows[0][container]
+        .resourceName as string;
+      const back = run(
+        `SELECT ${resource}.resource_name FROM ${resource} WHERE ${resource}.resource_name = '${name}'`,
+      ).rows;
+      expect(back).toHaveLength(1);
+      expect(back[0][container].resourceName).toBe(name);
+    }
+  });
+
+  it("filters an implicit join by the parent's resource name", () => {
+    // `ad_group.campaign` and `campaign.campaign_budget` are the two fields whose
+    // value is somebody ELSE's name, and they are how an agent walks down from a
+    // campaign it just found to the rows underneath it.
+    const ids = run(
+      `SELECT ad_group.id FROM ad_group WHERE ad_group.campaign = 'customers/${CUSTOMER_ID}/campaigns/${CAMPAIGN_OVER}'`,
+    ).rows.map((r) => r.adGroup.id);
+    expect(ids).toEqual([AG_OVER_A, AG_OVER_B]);
+
+    const campaigns = run(
+      `SELECT campaign.id FROM campaign WHERE campaign.campaign_budget = 'customers/${CUSTOMER_ID}/campaignBudgets/${BUDGET_QUIET}'`,
+    ).rows.map((r) => r.campaign.id);
+    expect(campaigns).toEqual([CAMPAIGN_PAUSED]);
+  });
+
+  it("gives a name built in SQL and one built in TypeScript the same text", () => {
+    // Two renderers spell this path — `resourceNameSql` for a selected field and
+    // `resourceNameFor` for the name every resource carries anyway — and the
+    // round trip above only holds while they agree.
+    const row = run(
+      `SELECT ad_group.campaign, campaign.name FROM ad_group WHERE ad_group.id = ${AG_OVER_A}`,
+    ).rows[0];
+    expect(row.adGroup.campaign).toBe(row.campaign.resourceName);
+  });
+
+  it("matches nothing for a name that belongs to another advertiser", () => {
+    // Not an error: a path is a legal operand and this one is simply not in this
+    // account. Binding the id out of it would have matched a row here whose
+    // number happened to collide.
+    seedOtherCustomer(db);
+    expect(
+      run(
+        `SELECT campaign.id FROM campaign WHERE campaign.resource_name = 'customers/${OTHER_CUSTOMER_ID}/campaigns/${OTHER_CAMPAIGN}'`,
+      ).rows,
+    ).toHaveLength(0);
   });
 });
 

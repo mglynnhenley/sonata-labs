@@ -62,9 +62,9 @@ npm run seed -w apps/attio               # 9 records / 3 notes / 2 tasks; no Att
 PORT=3500 npm run dev -w apps/attio      # dev server on :3500
 
 npm run typecheck -w apps/attio          # tsc --noEmit
-npm run test -w apps/attio               # vitest, 76 cases, in-memory
+npm run test -w apps/attio               # vitest, 86 cases (84 in-memory + 2 on real files)
 
-PORT=3500 npm run smoke -w apps/attio    # ACCEPTANCE GATE: 45 checks over real HTTP
+PORT=3500 npm run smoke -w apps/attio    # ACCEPTANCE GATE: 46 checks over real HTTP
 PORT=3500 npm run reset -w apps/attio    # restore working.db (curls the server, falls back to a copy)
 ```
 
@@ -81,13 +81,19 @@ port and a running server — so that gate only fires when a human runs it.
   `IF NOT EXISTS`.
 - **The smoke resets to the snapshot as its first act**, so it is repeatable and
   therefore destroys whatever world is loaded. Never point it at a twin that is
-  mid-episode.
+  mid-episode. It also leaves its own writes behind — a company, a note, a task
+  and a moved deal — so `npm run seed -w apps/attio` is what gets a clean world
+  back afterwards.
 - **Never run `next build` while a dev server is up.** Both write `.next/` and the
   build dies in "Collecting page data". `pkill -f "next dev"; rm -rf .next`.
 - The server holds one long-lived SQLite handle. `src/lib/sandbox/live.ts`
   notices when another process swaps `working.db` underneath it and reopens —
   and unlike the Gmail twin, `/v2/*` goes through it too, so an out-of-process
-  `npm run seed` cannot leave the API serving an unlinked inode.
+  `npm run seed` cannot leave the API serving an unlinked inode. **Every entry
+  point starts at `liveDb()`**, readers and writers alike. `getDb()` is only
+  correct where this process did the swap itself and has just reopened, which is
+  `resetWorking` and the tail of `snapshotWorking`; anywhere else it is a write
+  into a file with no name that still answers with plausible counts.
 
 ## Layout
 
@@ -113,6 +119,8 @@ app/v2/**/route.ts             the Attio API, path-for-path
 app/api/{health,activity}      liveness and the audit trail
 app/api/sandbox/**             seed / inject / snapshot / reset
 tests/                         schema, values, filter, shape, seed — in-memory, no server
+tests/live-swap.test.ts        the exception: real files in a temp cwd, because the
+                               swapped-inode defect does not exist in memory
 scripts/smoke-sdk.ts           the acceptance harness
 ```
 
@@ -134,7 +142,9 @@ scripts/smoke-sdk.ts           the acceptance harness
   drifts the first time a value is superseded.
 - **Anything the harness writes stays OUT of the audit log; anything the agent
   writes stays IN it.** That single rule is what grading reads. `/api/sandbox/*`
-  never calls `logAction`.
+  never calls `logAction`. It is also the ONLY place that distinction lives: no
+  CRM table carries a "this row was made by the agent" flag, because a second
+  copy of the answer is a second thing that can disagree with the first.
 - Schema changes go to `db/schema.sql`, and `AUDIT_DDL` in `src/lib/db.ts`
   mirrors the audit section by hand because those tables must be created against
   the ATTACHed alias. Change one and you must change the other; nothing catches
@@ -176,6 +186,11 @@ it with a bodyless 405 that names no reason. That rule is why `GET`/`DELETE` on
 `/v2/tasks/{task_id}` and `PUT` on `/v2/objects/{object}/records` have handlers
 and `GET` on the records collection does not: Attio has no such endpoint, and a
 501 saying "not implemented in the sandbox" would teach an agent it exists.
+
+Two filter leaves hit the record row rather than a value row — `created_at` and
+`record_id` — and each has its own compiler branch in `filter.ts`; everything
+else resolves through the attribute map. Anything new that filters on `records`
+rather than on `attribute_values` belongs beside them.
 
 Filter features are refused loudly with a 400 naming them rather than ignored —
 `filter_view_id` (which the spec puts BESIDE `filter`, not inside it), any body

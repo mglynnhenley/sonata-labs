@@ -13,7 +13,6 @@ export interface CampaignRow {
   start_date: string;
   end_date: string | null;
   is_sandbox_created: number;
-  raw_json: string | null;
 }
 
 export interface InsertCampaignInput {

@@ -26,7 +26,7 @@ phase 2. Until then port 3600 lives only in this clone's own scripts and docs.
 Everything from `apps/google-docs`, with `PORT=3600` on every one:
 
 ```
-npm run db:init            # apply db/schema.sql to snapshot.db, working.db, audit.db
+npm run db:init            # db/schema.sql to snapshot.db + working.db, db/audit-schema.sql to audit.db
 npm run db:init -- --force # drop and recreate working.db
 npm run seed               # build the synthetic workspace into snapshot.db, copy to working.db
 PORT=3600 npm run dev
@@ -41,6 +41,13 @@ PORT=3600 npm run reset
 workspace, is not part of `npm test`, and CI never runs it — deliberately, since CI
 has no ports and no network, which means the acceptance gate only runs when a
 human runs it.
+
+**The smoke writes.** It resets to the pristine snapshot as its first act, so it is
+repeatable, and that reset destroys whatever world is loaded — never point it at a
+twin mid-episode. It then creates a document and edits a seeded one (an `!` lands in
+"Engineering onboarding brief", which is where the seeded emoji lives), so it leaves
+the working database dirty. Run `npm run seed` afterwards to get the pristine
+5 documents / 24 paragraphs back.
 
 ## Environment quirks
 
@@ -59,7 +66,8 @@ human runs it.
 ## Layout
 
 ```
-db/schema.sql            the single source of truth for all three databases
+db/schema.sql            the document tables — snapshot.db and working.db only
+db/audit-schema.sql      the audit tables — audit.db only
 src/lib/db.ts            paths, the working+audit handle, applySchema
 src/lib/audit.ts         sessions and the action log
 src/lib/reset.ts         resetWorking / snapshotWorking — file copies, in-process
@@ -89,13 +97,23 @@ Every route file declares `runtime = "nodejs"` and `dynamic = "force-dynamic"`.
 `params` is a Promise and is awaited first. Every `/v1` body goes through
 `handleDocs`, and every write through `runMutation`, so the change and its audit
 row commit in one transaction. Store functions take `db` first. Columns are the
-source of truth and `raw_json`/`style_json` are passthrough only. Ids are minted in
-the vendor's alphabets. Errors come from `errors.ts` and copy the vendor's wording,
+source of truth and `style_json` is the only passthrough — a paragraph carries no
+echo column, because nothing writes one. Ids are minted in
+the vendor's alphabets. A paragraph styled as anything but `NORMAL_TEXT` always
+carries a `headingId`, whoever made it — seed, inject, a promotion, or the far side
+of a split, which mints a second one rather than copying the first: an empty
+`headingId` is how the API says "not a heading", and the twin snapshot counts
+headings by `namedStyleType`, so a heading without one is a heading the judge sees
+and the agent cannot. Errors come from `errors.ts` and copy the vendor's wording,
 because agents string-match on it. better-sqlite3 transactions are synchronous, so
 any async work happens before `db.transaction(...)`. Injected and seeded content is
-never audit-logged and everything the agent writes is. Schema changes go to
-`db/schema.sql` **and** the `AUDIT_DDL` mirror in `src/lib/db.ts`, which must be
-updated by hand — nothing catches the drift.
+never audit-logged and everything the agent writes is. Document schema changes go to
+`db/schema.sql`; audit ones go to `db/audit-schema.sql` **and** the `AUDIT_DDL`
+mirror in `src/lib/db.ts`, which must be updated by hand — nothing catches the
+drift. Keep the two files apart: a document database that also declared `sessions`
+and `action_log` would shadow the ATTACHed `audit.*` tables, and a query that lost
+its `audit.` prefix would then write the trail into the file the next reset
+overwrites, succeeding all the way.
 
 ## The one rule specific to this clone: the index space
 
@@ -111,7 +129,10 @@ of `src/lib/docs/index-space.ts`:
    indexes. The seed contains one so the rule is exercised outside the tests. The
    index between an emoji's two halves can be named but never acted on: a delete
    that lands there is a 400 and an insert is nudged past the low surrogate, both
-   the vendor's behaviour, because half a pair reads back as U+FFFD.
+   the vendor's behaviour, because half a pair reads back as U+FFFD. The same rule
+   applies to the payload and not only to the boundary: `insertText.text` and
+   `replaceAllText.replaceText` carrying an unpaired surrogate are a 400, since
+   `JSON.parse` accepts one and the UTF-8 column would answer it as U+FFFD.
 
 Any new request type must go through `edit.ts`, never touch rows directly, and end
 in `normalise` + `shiftNamedRanges` when it changes text.
@@ -140,15 +161,26 @@ footers, footnotes, suggestions and suggested changes, lists and bullets, page
 breaks, equations, person chips, rich links, multiple tabs (one is modelled, and
 `includeTabsContent=true` swaps the response into the `tabs` view — top-level
 `body`, `documentStyle`, `namedStyles` and `namedRanges` go unset, as upstream
-leaves them), non-empty `segmentId`, text styling requests (`updateTextStyle` and the
-rest of the Request union — existing `textStyle` is stored, echoed and inherited on
-insert, it is just not mutable through the API in this phase), document permissions
+leaves them; a `Range` never carries the `tabId` upstream may add under that view,
+so a named range reads as the same two indexes either way), non-empty `segmentId`,
+text styling requests (`updateTextStyle` and the rest of the Request union —
+existing `textStyle` is stored, echoed and inherited on insert, it is just not
+mutable through the API in this phase), document permissions
 and sharing, revision history, and anything Drive-shaped: listing, searching or
 opening a document by name. The real Docs API has no list method and neither does
 this clone — agents find documents through links in the Gmail and Slack twins,
 which is exactly the intended flow.
 
-Finally: `next dev` appends a `<!-- BEGIN:nextjs-agent-rules -->
+Finally: `next dev` maintains a managed **nextjs-agent-rules** block at the end of
+this file, fenced by a pair of HTML comment markers it writes itself — the
+generator is `node_modules/next/dist/server/lib/generate-agent-files.js`. Commit it
+rather than fighting it. Never quote either marker in prose above the block: the
+generator replaces everything from the first BEGIN marker it finds to the first END
+one, so a marker written out in a sentence swallows the rest of that sentence and
+the top of the block. That is not hypothetical — it is what happened to this
+paragraph, and the fix is to describe the markers instead of spelling them.
+
+<!-- BEGIN:nextjs-agent-rules -->
 
 # This is NOT the Next.js you know
 

@@ -37,15 +37,14 @@ export interface NoteInput {
   actorType: string;
   actorId: string | null;
   createdAtMs: number;
-  isSandboxCreated?: boolean;
 }
 
 export function insertNote(db: Database, input: NoteInput): void {
   db.prepare(
     `INSERT INTO notes
        (id, parent_object, parent_record_id, title, content_plaintext, content_markdown,
-        created_by_actor_type, created_by_actor_id, created_at_ms, is_sandbox_created)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        created_by_actor_type, created_by_actor_id, created_at_ms)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     input.id,
     input.parentObject,
@@ -56,7 +55,6 @@ export function insertNote(db: Database, input: NoteInput): void {
     input.actorType,
     input.actorId,
     input.createdAtMs,
-    input.isSandboxCreated ? 1 : 0,
   );
 }
 

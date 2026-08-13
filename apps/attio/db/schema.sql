@@ -33,11 +33,13 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_members_email
 -- The object registry. `{object}` in a path is an api_slug OR an object_id, so
 -- resolution needs a table; singular_noun is what web_url interpolates
 -- (/acme/person/<id>), which is the detail that makes a record URL look real.
+-- There is no plural_noun: this clone mounts no objects endpoint, so nothing
+-- would ever read it back, and a column only the seeders fill is a column that
+-- can quietly disagree with the api_slug beside it.
 CREATE TABLE IF NOT EXISTS objects (
   id            TEXT PRIMARY KEY,
   api_slug      TEXT NOT NULL,
   singular_noun TEXT NOT NULL,
-  plural_noun   TEXT NOT NULL,
   created_at_ms INTEGER NOT NULL,
   pos           INTEGER NOT NULL DEFAULT 0
 );
@@ -82,12 +84,14 @@ CREATE TABLE IF NOT EXISTS statuses (
 CREATE INDEX IF NOT EXISTS idx_statuses_attribute ON statuses (attribute_id, pos);
 
 -- The record itself carries almost nothing — in Attio a record IS its bag of
--- values.
+-- values. Nothing here marks a row as agent-made or harness-made either: the
+-- audit log is the one place that distinction lives, because /v2/* writes are
+-- logged and /api/sandbox/* writes are not, and a second copy of it inside the
+-- CRM tables would be a second thing the judge could read and disbelieve.
 CREATE TABLE IF NOT EXISTS records (
   id                 TEXT PRIMARY KEY,
   object_id          TEXT NOT NULL,
   created_at_ms      INTEGER NOT NULL,          -- epoch ms
-  is_sandbox_created INTEGER NOT NULL DEFAULT 0,
   FOREIGN KEY (object_id) REFERENCES objects (id) ON DELETE CASCADE
 );
 
@@ -116,7 +120,6 @@ CREATE TABLE IF NOT EXISTS attribute_values (
   ref_record_id      TEXT,                      -- record-reference target record, or an actor-reference's actor id
   status_id          TEXT,
   extra_json         TEXT,                      -- the type parts no filter reaches
-  is_sandbox_created INTEGER NOT NULL DEFAULT 0,
   pos                INTEGER NOT NULL DEFAULT 0, -- multiselect order
   FOREIGN KEY (record_id) REFERENCES records (id) ON DELETE CASCADE,
   FOREIGN KEY (attribute_id) REFERENCES attributes (id) ON DELETE CASCADE
@@ -138,8 +141,7 @@ CREATE TABLE IF NOT EXISTS notes (
   content_markdown      TEXT NOT NULL,
   created_by_actor_type TEXT NOT NULL DEFAULT 'workspace-member',
   created_by_actor_id   TEXT,
-  created_at_ms         INTEGER NOT NULL,       -- epoch ms
-  is_sandbox_created    INTEGER NOT NULL DEFAULT 0
+  created_at_ms         INTEGER NOT NULL        -- epoch ms
 );
 
 CREATE INDEX IF NOT EXISTS idx_notes_parent
@@ -156,8 +158,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   completed_at_ms       INTEGER,                -- epoch ms; set when is_completed flips to 1
   created_by_actor_type TEXT NOT NULL DEFAULT 'workspace-member',
   created_by_actor_id   TEXT,
-  created_at_ms         INTEGER NOT NULL,       -- epoch ms
-  is_sandbox_created    INTEGER NOT NULL DEFAULT 0
+  created_at_ms         INTEGER NOT NULL        -- epoch ms
 );
 
 CREATE INDEX IF NOT EXISTS idx_tasks_created ON tasks (created_at_ms);

@@ -7,7 +7,7 @@ import {
   runMutation,
   snippet,
 } from "@/lib/linkedin/route-helpers";
-import { requirePostAuthor } from "@/lib/linkedin/actor";
+import { mayActAs, requirePostAuthor } from "@/lib/linkedin/actor";
 import { badRequestError, notFoundError } from "@/lib/linkedin/errors";
 import { buildPatchInput } from "@/lib/linkedin/post-input";
 import { shapePost } from "@/lib/linkedin/shape";
@@ -24,13 +24,19 @@ type Ctx = { params: Promise<{ postUrn: string }> };
 // `object` URN off a comment and read the post with it.
 
 export function GET(req: Request, { params }: Ctx) {
-  return handleLinkedIn(req, async ({ db }) => {
+  return handleLinkedIn(req, async ({ db, ownerMemberId }) => {
     const { postUrn } = await params;
     const row = requirePost(db, decodeUrnParam(postUrn));
     // A DRAFT is invisible to a reader — same 404 as a post that never existed,
-    // which is the whole point of an unpublished post.
-    if (row.lifecycle_state === "DRAFT" && new URL(req.url).searchParams.get("viewContext") !== "AUTHOR") {
-      throw notFoundError("The requested post was not found.");
+    // which is the whole point of an unpublished post. `viewContext=AUTHOR`
+    // lifts that for the author and for nobody else: it is a view, not a
+    // credential, and without the second half any caller who could name the URN
+    // could read the draft another member left unpublished.
+    if (row.lifecycle_state === "DRAFT") {
+      const asAuthor = new URL(req.url).searchParams.get("viewContext") === "AUTHOR";
+      if (!asAuthor || !mayActAs(db, row.author_urn, ownerMemberId)) {
+        throw notFoundError("The requested post was not found.");
+      }
     }
     return json(shapePost(row));
   });

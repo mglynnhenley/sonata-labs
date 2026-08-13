@@ -150,7 +150,6 @@ export function blankParagraph(): ParagraphModel {
     namedStyleType: "NORMAL_TEXT",
     headingId: null,
     alignment: null,
-    extra: null,
     runs: [{ content: "\n", style: null }],
   };
 }

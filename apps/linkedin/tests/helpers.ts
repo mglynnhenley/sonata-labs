@@ -87,7 +87,6 @@ export function makeTestDb(posts: TestPost[] = []): Database.Database {
   db.exec(AUDIT_DDL);
 
   setMeta(db, "owner_person_id", OWNER_PERSON_ID);
-  setMeta(db, "owner_email", OWNER_EMAIL);
   setMeta(db, "organization_id", ORG_ID);
 
   for (const member of CAST) {

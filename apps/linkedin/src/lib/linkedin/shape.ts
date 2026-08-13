@@ -1,4 +1,12 @@
-import { activityUrn, commentUrn, likeUrn, personUrn, reactionUrn, shareUrn } from "./urn";
+import {
+  activityUrn,
+  commentUrn,
+  likeUrn,
+  organizationUrn,
+  personUrn,
+  reactionUrn,
+  shareUrn,
+} from "./urn";
 
 // ---------------------------------------------------------------------------
 // The fidelity linchpin, LinkedIn edition. Columns are the source of truth for
@@ -16,8 +24,6 @@ export interface MemberRow {
   email: string;
   given_name: string;
   family_name: string;
-  headline: string | null;
-  vanity_name: string | null;
   picture_url: string | null;
   locale: string;
   is_owner: number;
@@ -368,7 +374,7 @@ export function shapeOrganization(row: OrganizationRow): OrganizationResource {
     // Lookup response is the one place LinkedIn hands back the bare numeric id
     // rather than a URN or a string, and it also carries `$URN` alongside it.
     id: Number(row.id),
-    $URN: `urn:li:organization:${row.id}`,
+    $URN: organizationUrn(row.id),
     name: localized(row.name),
     localizedName: row.name,
   };
@@ -377,7 +383,7 @@ export function shapeOrganization(row: OrganizationRow): OrganizationResource {
 }
 
 export function shapeAcl(row: OrganizationAclRow): OrganizationAclElement {
-  const org = `urn:li:organization:${row.organization_id}`;
+  const org = organizationUrn(row.organization_id);
   return {
     role: row.role,
     state: row.state,

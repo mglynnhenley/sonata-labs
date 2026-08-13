@@ -39,12 +39,11 @@ export function seedFromWire(seed: ParsedSeed): SeedResult {
     db.prepare("DELETE FROM members").run();
     db.prepare("DELETE FROM meta").run();
 
+    // The two keys the API reads back, and only those. A meta row nothing reads
+    // is a claim about the world that no route can be wrong about, so nothing
+    // ever catches it going stale.
     setMeta(db, "owner_person_id", seed.ownerPersonId);
-    setMeta(db, "owner_email", seed.ownerEmail);
-    setMeta(db, "owner_name", seed.ownerName);
     setMeta(db, "organization_id", seed.organization.id);
-    setMeta(db, "business_name", seed.businessName);
-    setMeta(db, "seeded_at", String(seed.nowMs));
 
     for (const member of seed.members) {
       insertMember(db, {
@@ -52,8 +51,6 @@ export function seedFromWire(seed: ParsedSeed): SeedResult {
         email: member.email,
         givenName: member.givenName,
         familyName: member.familyName,
-        headline: member.headline || null,
-        vanityName: member.vanityName || null,
         isOwner: member.personId === seed.ownerPersonId,
       });
     }

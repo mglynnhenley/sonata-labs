@@ -34,7 +34,7 @@ function write(
     db,
     { recordId, objectId, objectSlug },
     values,
-    { atMs, actor: OWNER_ACTOR, mode, isSandboxCreated: false },
+    { atMs, actor: OWNER_ACTOR, mode },
   );
 }
 
@@ -182,6 +182,28 @@ describe("multiselect", () => {
     const attr = getAttribute(db, OBJ_COMPANIES, "domains")!;
     const rows = activeRows(db, CO, attr.id);
     expect(rows.map((r) => r.pos)).toEqual([0, 1, 2]);
+  });
+
+  it("writes a repeated value once, whichever path supplied it", () => {
+    const db = makeEmptyDb();
+    newRecord(db, "companies", CO);
+    // Create is the path that used to keep both: the append branch dedups
+    // against what the record already holds, so the two disagreed about the
+    // same input.
+    const changes = write(
+      db,
+      OBJ_COMPANIES,
+      "companies",
+      CO,
+      { domains: ["a.example", "A.example", "b.example"] },
+      "create",
+    );
+    const attr = getAttribute(db, OBJ_COMPANIES, "domains")!;
+    const rows = activeRows(db, CO, attr.id);
+    expect(rows.map((r) => r.text_value)).toEqual(["a.example", "b.example"]);
+    expect(rows.map((r) => r.pos)).toEqual([0, 1]);
+    // The audit summary quotes what was written, not what was asked for.
+    expect(changes[0].after).toBe("a.example, b.example");
   });
 
   it("refuses two values for a single-value attribute", () => {

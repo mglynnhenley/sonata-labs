@@ -4,10 +4,11 @@ import { layout } from "./index-space";
 // Rows -> a Google Docs v1 Document resource. The fidelity linchpin.
 //
 // Columns are the source of truth for everything batchUpdate can mutate —
-// paragraph style, heading id, alignment, run content. raw_json/style_json carry
-// only the fields the sandbox echoes but never reasons about. Every read
-// rebuilds the resource from the columns and lays the passthrough underneath, so
-// the official SDK cannot tell a seeded document from one an agent created.
+// paragraph style, heading id, alignment, run content. style_json carries the
+// one thing the sandbox echoes but never reasons about: a run's TextStyle, which
+// is stored and inherited but not mutable through the API. Every read rebuilds
+// the resource from the columns, so the official SDK cannot tell a seeded
+// document from one an agent created.
 
 // --- rows, exactly as SQLite returns them ------------------------------------
 
@@ -15,7 +16,7 @@ export interface DocumentRow {
   id: string;
   title: string;
   revision_id: string;
-  owner_email: string | null;
+  owner_email: string;
   created_ms: number;
   updated_ms: number;
   is_sandbox_created: number;
@@ -27,7 +28,6 @@ export interface ParagraphRow {
   named_style_type: string;
   heading_id: string | null;
   alignment: string | null;
-  raw_json: string | null;
 }
 
 export interface TextRunRow {
@@ -57,8 +57,6 @@ export interface ParagraphModel {
   namedStyleType: string;
   headingId: string | null;
   alignment: string | null;
-  /** paragraphStyle fields echoed back verbatim — spaceAbove, indentStart, bullet. */
-  extra: Record<string, unknown> | null;
   runs: RunModel[];
 }
 
@@ -107,7 +105,6 @@ export function toModel(
       namedStyleType: p.named_style_type,
       headingId: p.heading_id,
       alignment: p.alignment,
-      extra: parseJson(p.raw_json),
       runs: byPara.get(p.para_index) ?? [],
     })),
     namedRanges: ranges.map((r) => ({
@@ -139,7 +136,6 @@ function shapeBody(model: DocModel): Json {
   for (const span of l.paragraphs) {
     const p = model.paragraphs[span.paraIndex];
     const paragraphStyle: Json = {
-      ...(p.extra ?? {}),
       namedStyleType: p.namedStyleType,
       direction: "LEFT_TO_RIGHT",
     };
@@ -176,10 +172,14 @@ function shapeNamedRanges(model: DocModel): Json | undefined {
       name: string;
       namedRanges: Json[];
     };
+    // No `segmentId`, for the reason the section break above carries no
+    // `startIndex`: these ranges are all in the body, the body's segment id is
+    // the empty string, and proto3 JSON drops a zero value rather than
+    // spelling it out.
     entry.namedRanges.push({
       namedRangeId: r.id,
       name: r.name,
-      ranges: [{ startIndex: r.startIndex, endIndex: r.endIndex, segmentId: "" }],
+      ranges: [{ startIndex: r.startIndex, endIndex: r.endIndex }],
     });
   }
   return byName;

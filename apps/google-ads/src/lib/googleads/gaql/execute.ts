@@ -4,6 +4,7 @@ import { addDays, formatInZone, monthBounds } from "../dates";
 import {
   JOINABLE,
   lookupField,
+  resourceNameSql,
   resourceOf,
   type FieldSpec,
   type ResourceKind,
@@ -60,6 +61,12 @@ export interface ExecuteResult {
  * The SQL for one field. A metric is an aggregate over the window; a ratio is
  * derived from two sums in the same expression, which is what keeps it honest
  * after an injected beat rewrites a day — there is no stored ctr to go stale.
+ *
+ * A resource-name field is the other special case: its column holds a bare id,
+ * and the expression builds the PATH that id renders as, because this one
+ * expression serves the SELECT, the WHERE and the ORDER BY alike. Selecting the
+ * id and filtering the id would be self-consistent and still wrong — the name
+ * the response just handed the agent has to be usable as an operand.
  */
 function expressionFor(spec: FieldSpec): string {
   if (spec.metric === "sum") return `SUM(ds.${spec.column})`;
@@ -70,7 +77,9 @@ function expressionFor(spec: FieldSpec): string {
     return "(CASE WHEN SUM(ds.clicks) > 0 THEN CAST(SUM(ds.cost_micros) AS REAL) / SUM(ds.clicks) ELSE 0 END)";
   }
   if (spec.gaql === "segments.date") return "ds.date";
-  return `${ALIAS[resourceOf(spec.gaql) as ResourceKind]}.${spec.column}`;
+  const alias = ALIAS[resourceOf(spec.gaql) as ResourceKind];
+  if (spec.resourceRef) return resourceNameSql(spec.resourceRef, alias, spec.column as string);
+  return `${alias}.${spec.column}`;
 }
 
 /** Every field the query mentions anywhere, so joins and grain can be decided. */
@@ -163,6 +172,12 @@ interface Predicate {
  * Resource ids are the exception that has to be spelled out: they are int64 on
  * the wire but TEXT in the table — which is the whole reason there is no BigInt
  * anywhere in this clone — so `campaign.id = 17204885331` binds a string.
+ *
+ * A resource NAME needs no case of its own, and must not grow one: the field it
+ * is compared against is selected as a path too (see `expressionFor`), so the
+ * caller's `customers/…/campaigns/…` already compares like with like. Parsing it
+ * back to an id here is the fix that looks right and quietly breaks `!=`, whose
+ * operand may legitimately name another account.
  */
 function bindValue(spec: FieldSpec, value: string): unknown {
   if (spec.type === "int64") return spec.column === "id" ? value : Number(value);

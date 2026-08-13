@@ -30,8 +30,6 @@ export interface WireWorld {
 export interface LinkedInWireMember {
   email: string;
   personId: string;
-  headline: string;
-  vanityName: string;
   /** Whether this member may act as the company page. The owner always may. */
   pageAdmin?: boolean;
 }
@@ -128,8 +126,6 @@ export interface ParsedMember {
   email: string;
   givenName: string;
   familyName: string;
-  headline: string;
-  vanityName: string;
   pageAdmin: boolean;
 }
 
@@ -171,8 +167,6 @@ export interface ParsedPost {
 
 export interface ParsedSeed {
   nowMs: number;
-  ownerEmail: string;
-  ownerName: string;
   /** Resolved by matching ownerEmail against members[].personId — the owner has
    *  to have a LinkedIn identity, because every write is attributed to it. */
   ownerPersonId: string;

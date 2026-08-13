@@ -139,6 +139,15 @@ async function main(): Promise<void> {
     Object.keys(named.data.namedRanges ?? {}),
   );
   check("a document with no named ranges omits the key", got.data.namedRanges === undefined);
+  const seededRange = named.data.namedRanges?.["Evidence owners"]?.namedRanges?.[0]?.ranges?.[0];
+  check(
+    "a body range is the two indexes and nothing else — no zero-valued segmentId",
+    !!seededRange &&
+      typeof seededRange.startIndex === "number" &&
+      typeof seededRange.endIndex === "number" &&
+      !("segmentId" in seededRange),
+    seededRange,
+  );
 
   const tabbed = await docs.documents.get({
     documentId: qbr.documentId,
@@ -233,6 +242,36 @@ async function main(): Promise<void> {
   const firstStyle = afterStyle.data.body?.content?.[1]?.paragraph?.paragraphStyle;
   check("updateParagraphStyle promotes the paragraph", firstStyle?.namedStyleType === "HEADING_1");
   check("a heading gets a headingId", /^h\./.test(firstStyle?.headingId ?? ""), firstStyle?.headingId);
+
+  // The ordinary two-step agent flow — write a line, promote it, then add the
+  // line under it — lands a newline inside the heading paragraph and splits it.
+  // Both halves come back as HEADING_1, so both must carry an anchor: a heading
+  // with an empty headingId is the vendor's way of saying "not a heading", and
+  // the twin snapshot, which counts headings by namedStyleType, would report one
+  // the agent reading paragraphStyle cannot find.
+  const headingEnd = afterStyle.data.body?.content?.[1]?.endIndex ?? 2;
+  await docs.documents.batchUpdate({
+    documentId,
+    requestBody: {
+      // headingEnd - 1 is the heading's own newline: the last index inside it,
+      // which is where an agent writes the line that follows it.
+      requests: [{ insertText: { text: "\nAlso", location: { index: headingEnd - 1 } } }],
+    },
+  });
+  const afterSplit = await docs.documents.get({ documentId });
+  const splitStyles = (afterSplit.data.body?.content ?? [])
+    .slice(1, 3)
+    .map((el) => el.paragraph?.paragraphStyle);
+  check(
+    "a line added under a heading is itself a heading",
+    splitStyles.length === 2 && splitStyles.every((s) => s?.namedStyleType === "HEADING_1"),
+    splitStyles.map((s) => s?.namedStyleType),
+  );
+  check(
+    "the paragraph split off a heading carries its own headingId",
+    /^h\./.test(splitStyles[1]?.headingId ?? "") && splitStyles[1]?.headingId !== splitStyles[0]?.headingId,
+    splitStyles.map((s) => s?.headingId),
+  );
 
   const bookmark = await docs.documents.batchUpdate({
     documentId,
@@ -340,6 +379,41 @@ async function main(): Promise<void> {
         documentId,
         requestBody: {
           requests: [{ deleteContentRange: { range: { startIndex: 1, endIndex: end } } }],
+        },
+      }),
+    400,
+  );
+  // The two silent successes this sandbox used to answer with. Both are here
+  // rather than only in the unit suite because both were found over the wire:
+  // they are what an agent gets back, and a 200 is what made them invisible.
+  await expectError(
+    "insertText setting both location and endOfSegmentLocation is a 400",
+    () =>
+      docs.documents.batchUpdate({
+        documentId,
+        requestBody: {
+          requests: [
+            { insertText: { text: "ZZ", location: { index: 1 }, endOfSegmentLocation: {} } },
+          ],
+        },
+      }),
+    400,
+  );
+  await expectError(
+    "updateParagraphStyle collapsed on the body's end index matches nothing and is a 400",
+    () =>
+      docs.documents.batchUpdate({
+        documentId,
+        requestBody: {
+          requests: [
+            {
+              updateParagraphStyle: {
+                range: { startIndex: end, endIndex: end },
+                paragraphStyle: { namedStyleType: "HEADING_1" },
+                fields: "namedStyleType",
+              },
+            },
+          ],
         },
       }),
     400,

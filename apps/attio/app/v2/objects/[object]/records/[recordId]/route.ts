@@ -77,7 +77,7 @@ export async function PATCH(
           db,
           { recordId, objectId: obj.id, objectSlug: obj.api_slug },
           values,
-          { atMs: now, actor: ctx.actor, mode: "append", isSandboxCreated: true },
+          { atMs: now, actor: ctx.actor, mode: "append" },
         ),
       (changes) => ({
         method: "PATCH",

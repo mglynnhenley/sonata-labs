@@ -21,7 +21,6 @@ import { upsertReaction } from "./store/reactions";
 // than one that finds it by scanning.
 
 export const OWNER_EMAIL = "sandbox.user@gmail.com";
-export const OWNER_NAME = "Sandbox User";
 export const OWNER_PERSON_ID = "sHq2WpRk9L";
 export const OWNER_URN = personUrn(OWNER_PERSON_ID);
 export const ORG_ID = "7412903";
@@ -45,8 +44,6 @@ interface SeedMember {
   personId: string;
   givenName: string;
   familyName: string;
-  headline: string;
-  vanityName: string;
   /** APPROVED ADMINISTRATOR on the page unless `aclState` says otherwise. */
   acl?: "APPROVED" | "REQUESTED";
 }
@@ -62,8 +59,6 @@ const MEMBERS: SeedMember[] = [
     personId: OWNER_PERSON_ID,
     givenName: "Sandbox",
     familyName: "User",
-    headline: "Operations at Acme",
-    vanityName: "sandbox-user",
     acl: "APPROVED",
   },
   {
@@ -71,8 +66,6 @@ const MEMBERS: SeedMember[] = [
     personId: "dK7mQv2XbT",
     givenName: "Priya",
     familyName: "Nair",
-    headline: "Head of Support at Acme",
-    vanityName: "priya-nair",
     acl: "APPROVED",
   },
   {
@@ -80,8 +73,6 @@ const MEMBERS: SeedMember[] = [
     personId: "pR4nLz8YcW",
     givenName: "Dan",
     familyName: "Okafor",
-    headline: "Engineering at Acme",
-    vanityName: "dan-okafor",
     // Asked for page access and has not been granted it — so `state=APPROVED`
     // on the ACL finder is a filter that actually removes a row, and Dan is a
     // real answer to "who may post as the page" being no.
@@ -92,72 +83,54 @@ const MEMBERS: SeedMember[] = [
     personId: "mB9tGx3JdV",
     givenName: "Mei",
     familyName: "Lin",
-    headline: "Product at Acme",
-    vanityName: "mei-lin",
   },
   {
     email: "j.rivera@example.com",
     personId: "xF5cNr7QsE",
     givenName: "Jordan",
     familyName: "Rivera",
-    headline: "Operations at Northwind",
-    vanityName: "jordan-rivera",
   },
   {
     email: "t.alvarez@example.com",
     personId: "hQ2wKp6RtN",
     givenName: "Tom",
     familyName: "Alvarez",
-    headline: "SRE at Lumen Freight",
-    vanityName: "tom-alvarez",
   },
   {
     email: "s.okonkwo@example.com",
     personId: "vG8yUb4MzL",
     givenName: "Sade",
     familyName: "Okonkwo",
-    headline: "Platform Engineering at Trellis",
-    vanityName: "sade-okonkwo",
   },
   {
     email: "l.haddad@example.com",
     personId: "cN3sJe9WqA",
     givenName: "Layla",
     familyName: "Haddad",
-    headline: "Customer Success at Beacon",
-    vanityName: "layla-haddad",
   },
   {
     email: "m.novak@example.com",
     personId: "tY6dFh1XpB",
     givenName: "Marek",
     familyName: "Novak",
-    headline: "CTO at Vellum Logistics",
-    vanityName: "marek-novak",
   },
   {
     email: "a.chen@example.com",
     personId: "zR7kLm2VnD",
     givenName: "Alice",
     familyName: "Chen",
-    headline: "Recruiting at Harbourline",
-    vanityName: "alice-chen",
   },
   {
     email: "p.dubois@example.com",
     personId: "bW4gQt8YsC",
     givenName: "Paul",
     familyName: "Dubois",
-    headline: "Head of Ops at Cendrine",
-    vanityName: "paul-dubois",
   },
   {
     email: "e.mensah@example.com",
     personId: "nJ5vCx3HkF",
     givenName: "Esi",
     familyName: "Mensah",
-    headline: "Support Lead at Orrery",
-    vanityName: "esi-mensah",
   },
 ];
 
@@ -462,12 +435,11 @@ const POSTS: SeedPost[] = [
 ];
 
 export function seedDatabase(db: Database): void {
+  // The two keys the API reads, and only those: meta is a lookup table, not a
+  // manifest. A key nothing reads back is a fact about the world that no route
+  // can be wrong about, which makes it indistinguishable from one that drifted.
   setMeta(db, "owner_person_id", OWNER_PERSON_ID);
-  setMeta(db, "owner_email", OWNER_EMAIL);
-  setMeta(db, "owner_name", OWNER_NAME);
   setMeta(db, "organization_id", ORG_ID);
-  setMeta(db, "business_name", ORG_NAME);
-  setMeta(db, "seeded_at", String(at(0, 9)));
 
   for (const member of MEMBERS) {
     insertMember(db, {
@@ -475,8 +447,6 @@ export function seedDatabase(db: Database): void {
       email: member.email,
       givenName: member.givenName,
       familyName: member.familyName,
-      headline: member.headline,
-      vanityName: member.vanityName,
       pictureUrl:
         member.email === OWNER_EMAIL
           ? "https://media.licdn.com/dms/image/v2/D4E03AQFsandboxuser/profile-displayphoto-shrink_400_400/0/1753612800000"

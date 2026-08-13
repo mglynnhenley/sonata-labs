@@ -31,10 +31,6 @@ export function getWorkspaceName(db: Database): string {
   return getMeta(db, "workspace_name") || "Sandbox Workspace";
 }
 
-export function getOwnerEmail(db: Database): string {
-  return getMeta(db, "owner_email") || "me@sandbox.local";
-}
-
 /** `authorized_by_workspace_member_id` on /v2/self, and the seed's author. */
 export function getOwnerMemberId(db: Database): string {
   return getMeta(db, "owner_member_id") || "";

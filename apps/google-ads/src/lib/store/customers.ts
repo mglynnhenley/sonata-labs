@@ -9,9 +9,6 @@ export interface CustomerRow {
   descriptive_name: string;
   currency_code: string;
   time_zone: string;
-  manager: number;
-  test_account: number;
-  raw_json: string | null;
 }
 
 export interface InsertCustomerInput {

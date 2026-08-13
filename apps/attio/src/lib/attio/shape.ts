@@ -15,7 +15,6 @@ export interface ObjectRow {
   id: string;
   api_slug: string;
   singular_noun: string;
-  plural_noun: string;
   created_at_ms: number;
   pos: number;
 }
@@ -46,7 +45,6 @@ export interface RecordRow {
   id: string;
   object_id: string;
   created_at_ms: number;
-  is_sandbox_created: number;
 }
 
 export interface AttributeValueRow {
@@ -63,7 +61,6 @@ export interface AttributeValueRow {
   ref_record_id: string | null;
   status_id: string | null;
   extra_json: string | null;
-  is_sandbox_created: number;
   pos: number;
 }
 
@@ -87,7 +84,6 @@ export interface NoteRow {
   created_by_actor_type: string;
   created_by_actor_id: string | null;
   created_at_ms: number;
-  is_sandbox_created: number;
 }
 
 export interface TaskRow {
@@ -99,7 +95,6 @@ export interface TaskRow {
   created_by_actor_type: string;
   created_by_actor_id: string | null;
   created_at_ms: number;
-  is_sandbox_created: number;
 }
 
 export interface TaskLinkRow {

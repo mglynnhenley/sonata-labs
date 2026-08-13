@@ -29,6 +29,9 @@ export class DocsError extends Error {
   }
 }
 
+// Exactly the codes this service can answer with. 409 and 429 used to be here
+// too, and neither is reachable: nothing in a Docs sandbox collides on a name and
+// nothing rate-limits, so those branches described a service this is not.
 function defaultStatus(code: number): string {
   switch (code) {
     case 400:
@@ -39,10 +42,6 @@ function defaultStatus(code: number): string {
       return "PERMISSION_DENIED";
     case 404:
       return "NOT_FOUND";
-    case 409:
-      return "ALREADY_EXISTS";
-    case 429:
-      return "RESOURCE_EXHAUSTED";
     case 501:
       return "UNIMPLEMENTED";
     default:

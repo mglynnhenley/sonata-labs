@@ -103,12 +103,18 @@ describe("shapeDocument", () => {
     ];
     const named = shapeDocument(model, {}).namedRanges as Record<
       string,
-      { name: string; namedRanges: Array<{ namedRangeId: string; name: string; ranges: Array<{ segmentId: string }> }> }
+      { name: string; namedRanges: Array<{ namedRangeId: string; name: string; ranges: object[] }> }
     >;
     expect(Object.keys(named).sort()).toEqual(["Evidence owners", "Other"]);
     expect(named["Evidence owners"].namedRanges).toHaveLength(2);
     expect(named["Evidence owners"].namedRanges[0].namedRangeId).toBe("kix.aaaaaaaaaaaa");
-    expect(named["Evidence owners"].namedRanges[0].ranges[0].segmentId).toBe("");
+    // A body range carries the two indexes and nothing else: `segmentId: ""` is
+    // a proto3 zero value, and emitting it is the same tell as `startIndex: 0`
+    // on the section break.
+    expect(named["Evidence owners"].namedRanges[0].ranges[0]).toEqual({
+      startIndex: 1,
+      endIndex: 3,
+    });
   });
 
   it("always carries documentStyle and one namedStyles entry per named style type", () => {

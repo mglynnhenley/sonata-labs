@@ -12,7 +12,7 @@ import {
   at,
 } from "./helpers";
 import { buildCreateInput, buildPatchInput } from "@/lib/linkedin/post-input";
-import { requirePostAuthor } from "@/lib/linkedin/actor";
+import { mayActAs, requirePostAuthor } from "@/lib/linkedin/actor";
 import { LinkedInError } from "@/lib/linkedin/errors";
 import { getPostRow, tombstonePost } from "@/lib/store/posts";
 
@@ -154,6 +154,16 @@ describe("buildPatchInput", () => {
     expect(patch.publishedMs).toBeUndefined();
   });
 
+  it("refuses a patch that sets nothing rather than logging an edit nobody made", () => {
+    // The route wraps this in runMutation, so a patch that "succeeds" while
+    // changing nothing still writes `Edited the post "…"` into the log the judge
+    // grades from, flips isEditedByAuthor, and moves the post to the top of the
+    // company feed — lastModifiedAt is the author finder's default sort key.
+    for (const body of [{ $set: {} }, {}, undefined, null, "nonsense"]) {
+      expectError(() => buildPatchInput(body, busy, at(2, 9)), 400, "MISSING_FIELD");
+    }
+  });
+
   it("refuses a key outside the four LinkedIn documents as settable", () => {
     expectError(
       () => buildPatchInput({ $set: { visibility: "CONNECTIONS" } }, busy, at(2, 9)),
@@ -211,6 +221,24 @@ describe("buildPatchInput", () => {
     });
   });
 
+  it("refuses un-publishing a live post, which is a takedown wearing an edit's clothes", () => {
+    // DRAFT on a PUBLISHED post is functionally a delete — the post 404s for
+    // every reader and leaves the author finder — but publishesDraft is false,
+    // so the trail would say `Edited the post "…"` and postDelete would never be
+    // written. It would also leave published_ms set, and a DRAFT carrying a
+    // publishedAt is the state shape.ts and sandbox/parse.ts both call impossible.
+    expectError(
+      () => buildPatchInput({ $set: { lifecycleState: "DRAFT" } }, busy, at(2, 9)),
+      400,
+      "INVALID_VALUE_FOR_FIELD",
+    );
+    // Still a no-op on a post that is already a draft: the refusal is about the
+    // backwards TRANSITION, not about the word.
+    const { patch } = buildPatchInput({ $set: { lifecycleState: "DRAFT" } }, draft, at(2, 9));
+    expect(patch.lifecycleState).toBe("DRAFT");
+    expect(patch.publishedMs).toBeUndefined();
+  });
+
   it("refuses a lifecycleState LinkedIn does not have", () => {
     expectError(
       () => buildPatchInput({ $set: { lifecycleState: "ARCHIVED" } }, busy, at(2, 9)),
@@ -263,5 +291,20 @@ describe("requirePostAuthor", () => {
     const db = makeTestDb(corpus);
     tombstonePost(db, DANS_POST, at(2, 9));
     expectError(() => gate(db, DANS_POST), 403, "ACCESS_DENIED");
+  });
+
+  it("answers the same question as a boolean for the DRAFT reader", () => {
+    // Both posts routes ask this before honouring viewContext=AUTHOR, and they
+    // need a yes/no rather than a throw: an unpublished post belongs to its
+    // author, so a stranger asking for one gets the reader's 404 and not a 403
+    // that would confirm the draft is there.
+    const db = makeTestDb(corpus);
+    expect(mayActAs(db, OWNER_URN, OWNER_PERSON_ID)).toBe(true);
+    expect(mayActAs(db, ORG_URN, OWNER_PERSON_ID)).toBe(true);
+    expect(mayActAs(db, DAN_URN, OWNER_PERSON_ID)).toBe(false);
+    expect(mayActAs(db, "urn:li:person:neverHeardOf", OWNER_PERSON_ID)).toBe(false);
+    expect(mayActAs(db, "not-a-urn", OWNER_PERSON_ID)).toBe(false);
+    db.prepare("DELETE FROM organization_acls").run();
+    expect(mayActAs(db, ORG_URN, OWNER_PERSON_ID)).toBe(false);
   });
 });

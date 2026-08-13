@@ -35,6 +35,13 @@ error envelope naming what *is* mounted, rather than being faked. A verb Attio
 declares on a path this clone *does* mount answers 501 in that same envelope:
 record upsert, `PUT` and `DELETE` on a record, and task get/delete.
 
+One gap is left deliberately ragged: a verb Attio declares on *no* path — `GET`
+or `PATCH` on `/v2/objects/{object}/records`, say — gets Next's bodyless 405
+rather than an Attio-shaped error. Answering it in the envelope would mean
+saying "not implemented in the sandbox" about an endpoint the real API does not
+have either, and an agent would read that as a promise. An empty 405 teaches it
+nothing, which here is the honest answer.
+
 ## Run it
 
 ```bash
@@ -43,6 +50,11 @@ npm run seed -w apps/attio        # 9 records, 3 notes, 2 tasks — no Attio acc
 PORT=3500 npm run dev -w apps/attio
 PORT=3500 npm run smoke -w apps/attio   # the acceptance gate; needs the server up
 ```
+
+The smoke needs a port and a running server, so CI never runs it — that gate
+only fires when a human does. It also resets to the snapshot and then writes a
+company, a note, a task and a stage move, so `working.db` is left holding its
+leavings: run `npm run seed -w apps/attio` again for a clean world.
 
 A world normally arrives from the platform, which POSTs a whole company to
 `/api/sandbox/seed`. The demo seed above is what makes the clone runnable

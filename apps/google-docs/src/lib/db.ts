@@ -11,18 +11,26 @@ export const SNAPSHOT_PATH = path.join(DATA_DIR, "snapshot.db");
 export const WORKING_PATH = path.join(DATA_DIR, "working.db");
 export const AUDIT_PATH = path.join(DATA_DIR, "audit.db");
 export const SCHEMA_PATH = path.resolve(process.cwd(), "db", "schema.sql");
+export const AUDIT_SCHEMA_PATH = path.resolve(process.cwd(), "db", "audit-schema.sql");
 
 export function ensureDataDir(): void {
   if (!existsSync(DATA_DIR)) mkdirSync(DATA_DIR, { recursive: true });
 }
 
+/** The document tables — snapshot.db and working.db, and nothing else. */
 export function readSchema(): string {
   return readFileSync(SCHEMA_PATH, "utf8");
 }
 
-// audit.db DDL, addressable via the ATTACH alias `audit`. Kept in sync with the
-// audit section of db/schema.sql. Applied against the working connection after
-// ATTACH so the two tables always exist even on a brand-new file.
+/** The audit tables, unqualified — for a handle opened on audit.db directly. */
+export function readAuditSchema(): string {
+  return readFileSync(AUDIT_SCHEMA_PATH, "utf8");
+}
+
+// The same two tables, addressable via the ATTACH alias `audit`, because a bare
+// CREATE TABLE on the working connection would land them in working.db. Kept in
+// sync with db/audit-schema.sql by hand. Applied after ATTACH so the trail can
+// be written even when audit.db is a file ATTACH has just created empty.
 export const AUDIT_DDL = `
 CREATE TABLE IF NOT EXISTS audit.sessions (
   id TEXT PRIMARY KEY, started_at INTEGER NOT NULL, note TEXT
@@ -76,7 +84,7 @@ export function closeWorkingDb(): void {
   }
 }
 
-/** Apply the full document schema to an already-open handle (snapshot/working). */
+/** Apply the document schema to an already-open handle (snapshot/working). */
 export function applySchema(db: Db): void {
   db.exec(readSchema());
 }

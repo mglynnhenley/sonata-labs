@@ -32,7 +32,7 @@ export interface ParsedValue {
   refRecordId: string | null;
   statusId: string | null;
   extra: Record<string, unknown> | null;
-  /** The canonical dedup key for a multiselect append. */
+  /** The canonical key that decides when two values are the same value. */
   key: string;
   /** The human-readable form the audit summary interpolates. */
   display: string;
@@ -303,6 +303,23 @@ export function parseWriteValue(
   });
 }
 
+/**
+ * The same value supplied twice in one write is one value. A multiselect holds a
+ * set — PATCH already refuses to append a domain the record carries — so without
+ * this the create path would be the one way to get "a.example" onto a company
+ * twice, and every read of that record would hand the agent a duplicate to
+ * reason about. Case-folded, because the append path's dedup key is.
+ */
+function collapseDuplicates(values: ParsedValue[]): ParsedValue[] {
+  const seen = new Set<string>();
+  return values.filter((value) => {
+    const key = value.key.toLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 export interface ValueChange {
   slug: string;
   title: string;
@@ -325,14 +342,12 @@ export interface WriteOptions {
    * the old — Attio's documented difference between PATCH and PUT.
    */
   mode: "create" | "append";
-  isSandboxCreated: boolean;
 }
 
 const INSERT_VALUE = `INSERT INTO attribute_values
   (record_id, attribute_id, active_from_ms, active_until_ms, actor_type, actor_id,
-   text_value, number_value, ref_object, ref_record_id, status_id, extra_json,
-   is_sandbox_created, pos)
- VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+   text_value, number_value, ref_object, ref_record_id, status_id, extra_json, pos)
+ VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
 /**
  * Write a bag of values against one record and report what changed. The
@@ -358,7 +373,7 @@ export function writeValues(
         `Cannot find attribute with slug/ID "${slug}" on object "${target.objectSlug}".`,
       );
     }
-    const parsed = parseWriteValue(db, attr, raw);
+    const parsed = collapseDuplicates(parseWriteValue(db, attr, raw));
 
     const active = db
       .prepare(
@@ -379,14 +394,8 @@ export function writeValues(
     const before = active.length ? describeActive(db, attr, active) : null;
 
     if (attr.is_multiselect === 1 && opts.mode === "append") {
-      const existing = new Set(
-        active.map((row) => keyOfRow(row).toLowerCase()),
-      );
-      const added = parsed.filter((value) => {
-        if (existing.has(value.key.toLowerCase())) return false;
-        existing.add(value.key.toLowerCase());
-        return true;
-      });
+      const existing = new Set(active.map((row) => keyOfRow(row).toLowerCase()));
+      const added = parsed.filter((value) => !existing.has(value.key.toLowerCase()));
       if (!added.length) continue;
       // Attio prepends the supplied values and the supplied block KEEPS ITS
       // ORDER, so the block is laid out below the current minimum position and
@@ -458,7 +467,6 @@ function runInsert(
     value.refRecordId,
     value.statusId,
     value.extra ? JSON.stringify(value.extra) : null,
-    opts.isSandboxCreated ? 1 : 0,
     pos,
   );
 }

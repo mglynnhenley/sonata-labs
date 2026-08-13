@@ -97,7 +97,6 @@ export function testCtx(db: Database.Database): AttioCtx {
     workspaceSlug: SEED_WORKSPACE_SLUG,
     workspaceName: SEED_WORKSPACE_NAME,
     ownerMemberId: SEED_MEMBER_OWNER,
-    ownerEmail: SEED_OWNER_EMAIL,
     actor: API_ACTOR,
   };
 }

@@ -10,7 +10,12 @@ import {
   POST_QUIET,
   at,
 } from "./helpers";
-import { requireComment, requirePost, requirePublishedPost } from "@/lib/linkedin/route-helpers";
+import {
+  requireComment,
+  requirePost,
+  requirePublishedPost,
+  requireThreadParent,
+} from "@/lib/linkedin/route-helpers";
 import { LinkedInError } from "@/lib/linkedin/errors";
 import { activityUrn, commentUrn, shareUrn } from "@/lib/linkedin/urn";
 import { tombstonePost } from "@/lib/store/posts";
@@ -133,5 +138,34 @@ describe("requireComment", () => {
     const db = makeTestDb(CORPUS);
     const reply = requireComment(db, commentUrn(POST_BUSY, COMMENT_PAGE_REPLY));
     expect(reply.parent_comment_id).toBe(COMMENT_JORDAN);
+  });
+});
+
+describe("requireThreadParent", () => {
+  // The one-level rule, in the single place BOTH spellings of a reply now ask
+  // it. It was written twice and only the path-segment copy ran, so a
+  // `parentComment` body field naming a reply earned a 201 for a depth-2 row —
+  // and requireComment above resolves that reply perfectly happily, which is
+  // exactly why the refusal cannot live inside it.
+  it("hands back a top-level comment untouched", () => {
+    const db = makeTestDb(CORPUS);
+    expect(requireThreadParent(db, commentUrn(POST_BUSY, COMMENT_JORDAN)).id).toBe(COMMENT_JORDAN);
+  });
+
+  it("400s a comment that is itself a reply", () => {
+    const db = makeTestDb(CORPUS);
+    try {
+      requireThreadParent(db, commentUrn(POST_BUSY, COMMENT_PAGE_REPLY));
+      throw new Error("expected a 400 but the call succeeded");
+    } catch (err) {
+      expect(err).toBeInstanceOf(LinkedInError);
+      expect((err as LinkedInError).status).toBe(400);
+      expect((err as LinkedInError).message).toMatch(/one level deep/);
+    }
+  });
+
+  it("still 404s a URN that names no comment at all", () => {
+    const db = makeTestDb(CORPUS);
+    expect404(() => requireThreadParent(db, commentUrn(POST_QUIET, COMMENT_JORDAN)));
   });
 });

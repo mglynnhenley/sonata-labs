@@ -1,7 +1,8 @@
--- Google Docs Sandbox Clone — schema (single source of truth)
--- Applied identically to snapshot.db and working.db. audit.db uses only the
--- `sessions` + `action_log` tables at the bottom (every statement is
--- IF NOT EXISTS so this file is safe to apply wholesale to any of the three).
+-- Google Docs Sandbox Clone — document schema (single source of truth)
+-- Applied identically to snapshot.db and working.db, and to nothing else:
+-- audit.db has its own db/audit-schema.sql, so a document database can never
+-- grow a table the audit trail owns and shadow the ATTACHed one. Every
+-- statement is IF NOT EXISTS, so re-applying this to a live database is safe.
 
 PRAGMA journal_mode = WAL;
 PRAGMA foreign_keys = ON;
@@ -19,8 +20,8 @@ CREATE TABLE IF NOT EXISTS documents (
   id                 TEXT PRIMARY KEY,          -- 44 url-safe chars, Google's shape
   title              TEXT NOT NULL,
   revision_id        TEXT NOT NULL,             -- opaque; changes on every applied batchUpdate
-  owner_email        TEXT,
-  created_ms         INTEGER NOT NULL,          -- epoch ms; internal only, the Document resource has no timestamps
+  owner_email        TEXT NOT NULL,             -- the cast member the world says owns it; the judge's snapshot reports it
+  created_ms         INTEGER NOT NULL,          -- epoch ms; the Document resource has no timestamps, this breaks the listing's ties
   updated_ms         INTEGER NOT NULL,          -- epoch ms
   is_sandbox_created INTEGER NOT NULL DEFAULT 0
 );
@@ -35,7 +36,6 @@ CREATE TABLE IF NOT EXISTS paragraphs (
   named_style_type TEXT NOT NULL DEFAULT 'NORMAL_TEXT',
   heading_id       TEXT,                        -- 'h.' + 12 chars, only on TITLE/SUBTITLE/HEADING_*
   alignment        TEXT,                        -- START|CENTER|END|JUSTIFIED, NULL when unset
-  raw_json         TEXT,                        -- paragraphStyle fields echoed but not reasoned about
   FOREIGN KEY (document_id) REFERENCES documents (id) ON DELETE CASCADE
 );
 
@@ -66,29 +66,3 @@ CREATE TABLE IF NOT EXISTS named_ranges (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_paragraphs_document ON paragraphs (document_id, para_index);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_text_runs_document ON text_runs (document_id, para_index, run_index);
 CREATE INDEX IF NOT EXISTS idx_named_ranges_document ON named_ranges (document_id, start_index);
-
--- ---------------------------------------------------------------------------
--- Audit trail (audit.db) — separate file so it survives working.db resets.
--- ---------------------------------------------------------------------------
-
-CREATE TABLE IF NOT EXISTS sessions (
-  id         TEXT PRIMARY KEY,
-  started_at INTEGER NOT NULL,               -- epoch ms
-  note       TEXT
-);
-
-CREATE TABLE IF NOT EXISTS action_log (
-  id            INTEGER PRIMARY KEY AUTOINCREMENT,
-  session_id    TEXT NOT NULL,
-  ts            INTEGER NOT NULL,            -- epoch ms
-  method        TEXT NOT NULL,              -- HTTP method
-  endpoint      TEXT NOT NULL,              -- request path
-  action_type   TEXT,                       -- 'documentCreate' | 'documentBatchUpdate'
-  target_type   TEXT,                       -- 'document'
-  target_id     TEXT,
-  request_json  TEXT,
-  response_code INTEGER,
-  summary       TEXT                         -- human-readable one-liner
-);
-
-CREATE INDEX IF NOT EXISTS idx_action_log_session ON action_log (session_id, ts);

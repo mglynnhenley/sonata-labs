@@ -6,6 +6,7 @@ import {
   commentUrn,
   organizationUrn,
   parseCommentUrn,
+  personUrn,
   postIdFromUrn,
   shareUrn,
 } from "../linkedin/urn";
@@ -59,7 +60,7 @@ function actorUrnFor(
     if (!orgId) throw new BadRequestError(`${what}: this world has no company page to act as`);
     const owner = getOwnerMember(db);
     if (!owner) throw new BadRequestError(`${what}: no owner member — seed first`);
-    return { actorUrn: organizationUrn(orgId), agentUrn: `urn:li:person:${owner.id}` };
+    return { actorUrn: organizationUrn(orgId), agentUrn: personUrn(owner.id) };
   }
   if (!spec.actorEmail) throw new BadRequestError(`${what}: actorEmail is required`);
   const member = getMemberByEmail(db, spec.actorEmail);
@@ -68,7 +69,7 @@ function actorUrnFor(
       `${what}: "${spec.actorEmail}" is not a member of this world — seed them first`,
     );
   }
-  return { actorUrn: `urn:li:person:${member.id}`, agentUrn: null };
+  return { actorUrn: personUrn(member.id), agentUrn: null };
 }
 
 /**

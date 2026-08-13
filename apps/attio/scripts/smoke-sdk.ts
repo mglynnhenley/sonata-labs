@@ -141,6 +141,18 @@ async function main(): Promise<void> {
     northwind?.web_url,
   );
 
+  // record_id is a filterable field in Attio's own filtering guide, and $in is
+  // how a client re-fetches ids it already holds instead of one GET each.
+  const byId = await call("POST", "/v2/objects/companies/records/query", {
+    filter: { record_id: { $in: [northwind?.id.record_id] } },
+  });
+  check(
+    "records.query filters on record_id",
+    dataArray(byId).length === 1 &&
+      dataArray(byId)[0].id.record_id === northwind?.id.record_id,
+    byId.body,
+  );
+
   const deals = await call("POST", "/v2/objects/deals/records/query", {
     filter: { stage: "In Progress" },
   });

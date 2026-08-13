@@ -7,6 +7,7 @@ export interface ReactionInput {
   entityUrn: string;
   reactionType: string;
   createdMs: number;
+  /** Absent means the WORLD wrote this row, matching db/schema.sql's DEFAULT 0. */
   isSandboxCreated?: boolean;
 }
 
@@ -38,7 +39,7 @@ export function upsertReaction(db: Database, input: ReactionInput): ReactionRow 
     entityUrn: input.entityUrn,
     reactionType: input.reactionType,
     createdMs: input.createdMs,
-    isSandboxCreated: input.isSandboxCreated === false ? 0 : 1,
+    isSandboxCreated: input.isSandboxCreated ? 1 : 0,
   });
   const row = getReaction(db, input.actorUrn, input.entityUrn);
   if (!row) throw new Error(`reaction on ${input.entityUrn} vanished after upsert`);

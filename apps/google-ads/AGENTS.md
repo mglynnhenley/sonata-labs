@@ -123,10 +123,29 @@ app/api/…                      health, activity, sandbox
   drift.
 - **Store functions take `db` first and write raw SQL.** That is what makes the
   whole data layer testable against `:memory:`.
-- **Columns are the source of truth**; `raw_json` is passthrough for the vendor
-  fields the sandbox does not reason about, and is layered *under* the columns.
+- **Columns are the source of truth.** A field an agent can filter on, sort by or
+  mutate is a column in `db/schema.sql` and an entry in `resources.ts`; there is
+  no passthrough blob underneath, so what the catalogue lists is the whole of
+  what this twin knows.
 - **int64 crosses the wire as a STRING.** `campaign.id` is `"17204885331"`. This
   is proto3 JSON mapping and it is the single detail agents trip over.
+- **A resource-name field is a PATH in the SQL too, never the id under it.**
+  `resources.ts` builds that path twice — `resourceNameFor` in TypeScript for the
+  name every row carries, `resourceNameSql` in the executor's expression for the
+  six `resourceRef` fields — because the expression serves the SELECT and the
+  WHERE alike, and the name a report just returned has to work as the next
+  query's operand. Compiled to `c.id`, `WHERE campaign.resource_name =
+  'customers/…/campaigns/…'` compared a path against a number, matched nothing
+  and answered 200, which reads as "there is no such campaign". Parsing the id
+  back out of the operand instead is the fix that looks right and breaks `!=`,
+  whose operand may legitimately name another account. Change one renderer and
+  you must change the other; `tests/gaql-execute.test.ts` holds them together.
+- **An unset field is ABSENT, never null, and an empty list is absent too.** Also
+  proto3 JSON: Google cannot send `endDate: null` for an open-ended campaign, and
+  a search that matched nothing answers `{"fieldMask":…}` with no `results` key.
+  `shape.ts` drops any NULL column (the resource still gets its `resourceName`)
+  and the routes drop an empty `results`. A client that walks `body.results`
+  unguarded has to break here, or the sandbox is where it learned the habit.
 - **Ids are minted in decimal.** An agent must not be able to tell a budget it
   created from one the world seeded.
 - **`nextPageToken` is omitted on the last page, never null.** A client looping
@@ -172,11 +191,15 @@ app/api/…                      health, activity, sandbox
   resource's name — and rows of anonymous numbers would be unusable. The
   `fieldMask` does NOT list it, exactly as the real one does not.
 - **`validateOnly` returns NO results.** Google's contract is "only errors are
-  returned, not results", so a dry run answers `{"results":[]}` and an agent
-  cannot learn to read a resource name off one.
+  returned, not results", so a clean dry run answers the empty object `{}` — not
+  `{"results":[]}` — and an agent cannot learn to read a resource name off one.
 - **`totalResultsCount` ignores the query's own `LIMIT`.** That is the field's
   documented definition, which is why `gaql/execute.ts` applies LIMIT in
   TypeScript rather than in SQL — a clipped SELECT cannot report the real count.
+  The price is that LIMIT is a query-shaping clause here and not a cost control:
+  every matching row is materialised before it is sliced. At seed scale (5
+  campaigns, 244 stat rows) that is nothing; a fixture orders of magnitude bigger
+  would want `COUNT(*)` as a second statement instead.
 
 ## How to add things
 
@@ -203,13 +226,20 @@ the date literals outside TODAY / YESTERDAY / LAST_7_DAYS / LAST_14_DAYS /
 LAST_30_DAYS / THIS_MONTH / LAST_MONTH. A deliberately restricted grammar that
 says so teaches more than a permissive one that quietly misreads.
 
-## The one place this clone may knowingly differ from the real API
+## The two places this clone knowingly differs from the real API
 
-A metrics query with **no date condition at all** sums every stored day. Some
-Google surfaces default to a 30-day window instead. The seed makes the two
-identical — its stats run exactly 30 days back from the world date — so nothing in
-the fixture can tell them apart. If a live call says otherwise it is a one-line
-change in `gaql/execute.ts`.
+- A metrics query with **no date condition at all** sums every stored day. Some
+  Google surfaces default to a 30-day window instead. The seed makes the two
+  identical — its stats run exactly 30 days back from the world date — so nothing
+  in the fixture can tell them apart. If a live call says otherwise it is a
+  one-line change in `gaql/execute.ts`.
+- **`pageSize` on `googleAds:search` is honoured.** From v17 the real API fixes
+  the page at 10000 rows and answers `requestError: PAGE_SIZE_NOT_SUPPORTED` to
+  any other value. The whole seeded account is one page, so a clone that copied
+  that would leave paging — `pageToken`, `nextPageToken`, the omit-on-last-page
+  rule — as code no agent could ever reach. `searchStream`, which carries no page
+  fields at all, does refuse both with `PAGE_SIZE_NOT_SUPPORTED` and
+  `INVALID_PAGE_TOKEN`.
 
 <!-- BEGIN:nextjs-agent-rules -->
 
