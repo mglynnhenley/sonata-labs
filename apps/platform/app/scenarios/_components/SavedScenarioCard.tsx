@@ -42,7 +42,7 @@ export function SavedScenarioCard({ episode, now, deleting, onDelete }: SavedSce
     <Card padding="lg" radius="2xl" interactive className="flex h-full flex-col">
       <div className="flex min-h-0 flex-1 flex-col">
         <div className="flex items-start gap-3">
-          <h3 className="font-display min-w-0 flex-1 text-sn-2xl text-sn-ink">{episode.title}</h3>
+          <h3 className="min-w-0 flex-1 text-sn-md font-bold text-sn-ink">{episode.title}</h3>
           {lastRun ? (
             <Link href={`/runs/${lastRun.runId}`} className="shrink-0">
               <Badge status={RUN_STATUS[lastRun.status] ?? "neutral"} size="sm">
@@ -79,7 +79,7 @@ export function SavedScenarioCard({ episode, now, deleting, onDelete }: SavedSce
             it swallowed Cmd-click on the card's way to a run. */}
         <Link
           href={`/runs?scenario=${encodeURIComponent(episode.id)}`}
-          className={buttonClasses("primary", "sm")}
+          className={buttonClasses("secondary", "sm")}
         >
           <IconPlay size="xs" />
           Start a run

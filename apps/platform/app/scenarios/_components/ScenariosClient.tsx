@@ -113,6 +113,7 @@ export function ScenariosClient({ initialEpisodes, templates, initialNow }: Scen
   return (
     <div className="sn-stack-section">
       <PageHeader
+        eyebrow="Workspace"
         title="Scenarios"
         subtitle="A scenario is one simulated workday inside a cloned business: who works there, what happens and when, and what counts as having done the job."
         actions={

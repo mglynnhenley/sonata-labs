@@ -24,7 +24,7 @@ export function TemplateCard({ template, busy, onAction }: TemplateCardProps) {
   return (
     <Card padding="lg" radius="2xl" interactive className="flex h-full flex-col">
       <div className="flex min-h-0 flex-1 flex-col">
-        <h3 className="font-display text-sn-2xl text-sn-ink">{template.title}</h3>
+        <h3 className="text-sn-md font-bold text-sn-ink">{template.title}</h3>
         <p className="mt-2 line-clamp-2 text-sn-base text-sn-muted">
           {template.description}
         </p>
@@ -44,7 +44,7 @@ export function TemplateCard({ template, busy, onAction }: TemplateCardProps) {
       <div className="mt-6 flex flex-wrap items-center gap-2">
         <Button
           size="sm"
-          variant="primary"
+          variant="secondary"
           loading={busy === "use"}
           disabled={busy !== null && busy !== "use"}
           iconRight={<IconArrowRight size="sm" />}

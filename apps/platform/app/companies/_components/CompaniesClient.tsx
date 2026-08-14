@@ -176,7 +176,7 @@ export function CompaniesClient({ initial }: { initial: CompaniesData }) {
         // items-start: a card is as tall as its own contents. Stretched to the
         // row, a three-line company carried two hundred pixels of blank under
         // its button while the nine-line one beside it set the height.
-        <ul className="grid items-start gap-4 md:grid-cols-2">
+        <ul className="grid gap-4 md:grid-cols-2">
           {companies.map((company) => (
             <li key={company.id}>
               <CompanyTile
@@ -223,7 +223,7 @@ function CompanyTile({ company, clones, now, busy, busyLine, disabled, onSeed }:
       <div className="sn-stack-group">
         <div className="sn-stack-item">
           <div className="flex items-start justify-between gap-3">
-            <h2 className="font-display min-w-0 text-sn-2xl text-sn-ink">{company.name}</h2>
+            <h2 className="min-w-0 truncate text-sn-md font-bold text-sn-ink">{company.name}</h2>
             {stateBadge(company)}
           </div>
           {/* Not clamped. These run from 158 to 653 characters — most of them
@@ -231,7 +231,13 @@ function CompanyTile({ company, clones, now, busy, busyLine, disabled, onSeed }:
               majority of what the page is for. The dead air came from the grid
               stretching every card to its row's tallest, which `items-start`
               fixes without taking a word off the screen. */}
-          <p className="text-sn-base text-sn-muted">{company.description}</p>
+          {/* Clamped, not cut: these run to 650 characters and a tile that
+              carries all of one sits beside a tile carrying none. Three lines
+              is enough to say what the business is; the rest stays in the DOM
+              and in the tooltip. */}
+          <p title={company.description} className="line-clamp-3 text-sn-base text-sn-muted">
+            {company.description}
+          </p>
         </div>
 
         <div className="sn-stack-item">
@@ -297,7 +303,7 @@ function CompanyTile({ company, clones, now, busy, busyLine, disabled, onSeed }:
           happened to end, so a row of them reads as one row. */}
       <div className="mt-auto flex flex-wrap items-center gap-3 pt-6">
         <Button
-          variant={company.state === "seeded" ? "secondary" : "primary"}
+          variant="secondary"
           icon={<IconSpark size="sm" />}
           loading={busy}
           disabled={disabled && !busy}
