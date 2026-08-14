@@ -16,25 +16,14 @@ export type QueueHealthProps = {
 };
 
 export function QueueHealth({ stats, twins, scenarios }: QueueHealthProps) {
-  const attempted = stats.scored + stats.unscored;
   const up = twins.filter((twin) => twin.ok).length;
 
   return (
     <Card
-      title="Benchmark health"
+      title="Queue health"
       subtitle={twins.length > 0 ? `${up} of ${twins.length} apps answering` : "Checking the three apps…"}
     >
       <div className="flex flex-col gap-5 pt-1">
-        {/* Not a quality score — the share of days that produced a result at
-            all. A low bar here means runs are falling over, which is a
-            different problem from an agent doing badly. */}
-        <ProgressBar
-          label="Runs that scored"
-          value={stats.scored}
-          max={Math.max(attempted, 1)}
-          showValue
-          valueLabel={attempted === 0 ? "none yet" : `${stats.scored} of ${attempted}`}
-        />
         {/* How much of the scenario library has ever been scored. A benchmark
             that only ever runs two of its twenty days is not a benchmark. */}
         <ProgressBar

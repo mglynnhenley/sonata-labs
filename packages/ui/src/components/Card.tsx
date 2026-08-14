@@ -78,7 +78,9 @@ export const Card = forwardRef<HTMLDivElement, CardProps>(function Card(
               <p className="mt-0.5 text-[13px] text-sn-muted">{subtitle}</p>
             ) : null}
           </div>
-          {actions !== undefined ? <div className="flex shrink-0 items-center gap-2">{actions}</div> : null}
+          {actions !== undefined ? (
+            <div className="flex max-w-full shrink-0 flex-wrap items-center gap-2">{actions}</div>
+          ) : null}
         </div>
       ) : null}
 

@@ -7,7 +7,6 @@ import {
   buttonClasses,
   Card,
   EmptyState,
-  IconArrowRight,
   IconPlay,
   Table,
   type BadgeStatus,
@@ -141,16 +140,8 @@ export function RecentRuns({ runs, now, simulated, simMinutesPerTick }: RecentRu
       title="Recent runs"
       subtitle="Latest simulations across every environment"
       actions={
-        <a
-          href={ROUTES.runs}
-          onClick={(e) => go(e, ROUTES.runs)}
-          className="group inline-flex items-center gap-1.5 rounded-sn-sm text-[13px] font-medium text-sn-primary-ink"
-        >
-          All runs
-          <IconArrowRight
-            size="sm"
-            className="transition-transform duration-150 ease-sn group-hover:translate-x-0.5"
-          />
+        <a href={ROUTES.runs} onClick={(e) => go(e, ROUTES.runs)} className={buttonClasses("ghost", "sm")}>
+          View all
         </a>
       }
     >

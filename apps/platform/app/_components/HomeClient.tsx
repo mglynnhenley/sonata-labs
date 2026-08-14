@@ -2,12 +2,7 @@
 
 import {
   buttonClasses,
-  Card,
   IconArrowRight,
-  IconClock,
-  IconPlay,
-  IconSearch,
-  IconSpark,
   PageHeader,
   StatCard,
 } from "@sonata/ui";
@@ -76,6 +71,32 @@ export function HomeClient({ initial }: HomeClientProps) {
   const { counts, stats, live, recent, twins, clone, medianHorizonMin, simMinutesPerTick } = data;
   const simulated = useSimulated();
 
+  // A real export, so the button is not scenery: the runs on screen, as CSV.
+  const exportCsv = () => {
+    const head = "run_id,scenario,environment,model,status,autonomy,checklist,started_at\n";
+    const esc = (v: string) => `"${v.replace(/"/g, '""')}"`;
+    const body = recent
+      .map((run) =>
+        [
+          run.id,
+          esc(run.episodeTitle),
+          esc(run.worldName),
+          esc(run.model),
+          run.status,
+          run.autonomy ?? "",
+          run.score ?? "",
+          new Date(run.startedAt).toISOString(),
+        ].join(","),
+      )
+      .join("\n");
+    const url = URL.createObjectURL(new Blob([head + body], { type: "text/csv" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `sonata-runs-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   if (data.firstRun) {
     return <FirstRun twins={twins} onTwinsChanged={refresh} />;
   }
@@ -95,14 +116,11 @@ export function HomeClient({ initial }: HomeClientProps) {
             ? `Seeded ${ago(clone.seededAt, data.at)} from Gmail, Slack and Calendar · ${counts.episodes} ${counts.episodes === 1 ? "scenario" : "scenarios"} ready. Autonomy is the share of the day's work your agent finished without handing it back to a human.`
             : "Autonomy is the share of the day's work your agent finished without handing it back to a human."
         }
-        // Only while a day is playing. With nothing running, the card directly
-        // below is itself a "New run" button — the page was offering the same
-        // action twice within one glance, which reads as two different actions.
-        //
-        // A real anchor wearing the button's clothes: the page's main exit has
-        // to survive middle-click and "copy link address".
         actions={
-          live.length > 0 ? (
+          <>
+            <button type="button" onClick={exportCsv} className={buttonClasses("secondary", "md")}>
+              Export
+            </button>
             <a
               href={ROUTES.runs}
               onClick={(e) => go(e, ROUTES.runs)}
@@ -111,7 +129,7 @@ export function HomeClient({ initial }: HomeClientProps) {
               New run
               <IconArrowRight size="sm" />
             </a>
-          ) : undefined
+          </>
         }
       />
 
@@ -123,39 +141,7 @@ export function HomeClient({ initial }: HomeClientProps) {
             <RunningCard key={run.id} run={run} now={data.at} />
           ))}
         </div>
-      ) : (
-        <Card padding="lg" tone="outline" className="border-dashed">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div className="flex items-start gap-3">
-              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-sn-gold-soft text-sn-gold-ink">
-                <IconSpark size="md" />
-              </span>
-              <div>
-                <p className="text-[14px] font-medium text-sn-ink">Nothing is running</p>
-                {/* No clock here on purpose. This said "starts at 9am and runs
-                    24 fifteen-minute ticks" while the start time came from
-                    Settings, the length came from the scenario, and the run
-                    panel offered four lengths — three numbers, none of them
-                    this one. The panel states the day it is about to buy, in
-                    ticks and in dollars; a card with no run in front of it has
-                    nothing to be specific about. */}
-                <p className="mt-1 max-w-[54ch] text-[13px] leading-[20px] text-sn-muted">
-                  Pick a company, a scenario and a model. The run panel prices every length
-                  before you start one. Watch the day here, or inside Gmail, Slack and Calendar
-                  as it happens.
-                </p>
-              </div>
-            </div>
-            <a
-              href={ROUTES.runs}
-              onClick={(e) => go(e, ROUTES.runs)}
-              className={buttonClasses("primary", "md")}
-            >
-              New run
-            </a>
-          </div>
-        </Card>
-      )}
+      ) : null}
 
       <section>
         <h2 className="sr-only">Scores so far</h2>
@@ -165,7 +151,6 @@ export function HomeClient({ initial }: HomeClientProps) {
           <StatCard
             label="Runs this week"
             value={stats.thisWeek}
-            icon={<IconPlay size="sm" />}
             delta={
               stats.weekDelta === 0
                 ? undefined
@@ -186,7 +171,6 @@ export function HomeClient({ initial }: HomeClientProps) {
             // figure and "%" as its unit, which is how the stat strip is drawn.
             value={stats.autonomy === null ? "—" : Math.round(stats.autonomy * 100)}
             unit={stats.autonomy === null ? undefined : "%"}
-            icon={<IconSpark size="md" />}
             // The mean is over the runs that produced a result. Runs that never
             // executed, and runs no model ever touched, are named rather than
             // averaged in — the counts are the honest footnote to the number
@@ -211,7 +195,6 @@ export function HomeClient({ initial }: HomeClientProps) {
                 ? percent(null)
                 : `${Math.round(stats.passRate * stats.scored)} of ${stats.scored}`
             }
-            icon={<IconSearch size="md" />}
             hint={
               stats.scored === 0
                 ? PASS_RATE_HINT
@@ -228,7 +211,6 @@ export function HomeClient({ initial }: HomeClientProps) {
             label="Median horizon"
             value={medianHorizonMin === null ? "—" : medianHorizonMin}
             unit={medianHorizonMin === null ? undefined : "min"}
-            icon={<IconClock size="md" />}
             hint="Simulated time the typical run reaches before it stalls or hands back."
             href={ROUTES.runs}
             actionLabel="Every run"

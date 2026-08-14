@@ -35,28 +35,20 @@ import { ROUTES } from "@/lib/routes";
 // reachable only by typed URL (see routes.ts).
 const NAV_GROUPS = [
   {
-    label: null,
-    items: [{ href: ROUTES.home, label: "Home", icon: <IconSpark size="md" /> }],
-  },
-  {
     label: "Workspace",
     items: [
-      { href: ROUTES.companies, label: "Clones", icon: <IconInbox size="md" /> },
-      { href: ROUTES.scenarios, label: "Scenarios", icon: <IconLayers size="md" /> },
-    ],
-  },
-  {
-    label: "Testing",
-    items: [
-      { href: ROUTES.runs, label: "Runs", icon: <IconPlay size="sm" /> },
+      { href: ROUTES.home, label: "Overview", icon: <IconBolt size="md" /> },
+      { href: ROUTES.runs, label: "Runs", icon: <IconLayers size="md" /> },
+      { href: ROUTES.scenarios, label: "Scenarios", icon: <IconInbox size="md" /> },
+      { href: ROUTES.companies, label: "Clones", icon: <IconSpark size="md" /> },
       { href: ROUTES.sessions, label: "Sessions", icon: <IconClock size="md" /> },
       { href: ROUTES.compare, label: "Results", icon: <IconSearch size="md" /> },
     ],
   },
   {
-    label: "Configure",
+    label: "Account",
     items: [
-      { href: ROUTES.connect, label: "Sources", icon: <IconBolt size="md" /> },
+      { href: ROUTES.connect, label: "Sources", icon: <IconPlay size="sm" /> },
       { href: ROUTES.settings, label: "Settings", icon: <IconGear size="md" /> },
     ],
   },
