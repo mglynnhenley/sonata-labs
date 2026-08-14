@@ -186,8 +186,12 @@ this day will have a different cast and a different verdict.
 | 3200 | `apps/slack` | Slack clone — Slack Web API, `/api/…` |
 | 3400 | `apps/calendar` | Calendar clone — Google Calendar v3, `/calendar/v3/…` |
 | 3901 | `apps/gmail-ui` | the Gmail front end, as a real third-party OAuth client |
+| 3500 | `apps/attio` | Attio clone — Attio API v2, `/v2/objects/…` |
+| 3600 | `apps/google-docs` | Google Docs clone — Docs API v1, `/v1/documents/…` |
+| 3700 | `apps/google-ads` | Google Ads clone — GAQL search and mutate, `/v17/customers/…` |
+| 3800 | `apps/linkedin` | LinkedIn clone — Posts and social actions, `/rest/…` |
 
-`npm run dev` brings up all five at once. Each also runs alone:
+`npm run dev` brings up the first five at once. Each also runs alone:
 
 ```bash
 npm run dev:platform      # dashboard only
@@ -197,6 +201,18 @@ npm run dev:gmail:ui      # just the front end
 npm run dev:slack
 npm run dev:calendar
 ```
+
+### The other four clones
+
+Attio, Google Docs, Google Ads and LinkedIn are API clones with the same
+insides as the three above — the same control plane, the same audit trail, the
+same seed and reset — but they are **not yet episode twins**. An agent can call
+them directly, and `npm run dev:attio`, `dev:google-docs`, `dev:google-ads` and
+`dev:linkedin` each start one; the engine, the judge and the dashboard's twin
+strip do not know about them yet, so their absence there is the current state
+and not a fault. Wiring them in means widening `TwinName`, which is referenced
+in 58 files behind twenty exhaustive maps — worth doing deliberately, and not
+as a side effect of adding a fourth surface.
 
 The dashboard starts the clones itself when a run needs them, and `sonata up`
 goes through the same scripts, so the Gmail front end comes up with its API
