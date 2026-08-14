@@ -53,7 +53,9 @@ export async function getOverview(): Promise<Overview> {
     firstRun: runs === 0,
     counts: { worlds, episodes: countEpisodes(), runs },
     live: listLiveRuns(),
-    recent: listRuns({ limit: 6 }),
+    // Twelve, not six: the dashboard's table is the tallest thing on the
+    // page and six rows left the bottom third of it empty.
+    recent: listRuns({ limit: 12 }),
     stats: runStats(),
     twins,
     simMinutesPerTick: getSettings().simMinutesPerTick,

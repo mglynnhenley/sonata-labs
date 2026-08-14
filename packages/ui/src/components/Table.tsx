@@ -80,7 +80,7 @@ export function Table<T>({
         className,
       )}
     >
-      <table className="w-full border-collapse text-[13px]">
+      <table className="w-full table-fixed border-collapse text-[13px]">
         {caption ? <caption className="sr-only">{caption}</caption> : null}
         <colgroup>
           {columns.map((column) => (

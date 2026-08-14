@@ -101,7 +101,7 @@ export const StatCard = forwardRef<HTMLElement, StatCardProps>(function StatCard
           ) : (
             <span
               data-numeric
-              className="text-[34px] leading-none font-medium tracking-[-0.02em] text-sn-ink"
+              className="text-[40px] leading-none font-bold tracking-[-0.03em] text-sn-ink"
             >
               {value}
             </span>
@@ -138,7 +138,7 @@ export const StatCard = forwardRef<HTMLElement, StatCardProps>(function StatCard
   );
 
   const classes = cn(
-    "group sn-stack-group rounded-sn-2xl border border-sn-line bg-sn-surface p-5 text-left shadow-sn-xs",
+    "group sn-stack-item rounded-sn-2xl border border-sn-line bg-sn-surface px-5 py-[18px] text-left shadow-sn-xs",
     "transition-[box-shadow,border-color,transform] duration-150 ease-sn",
     clickable && "hover:-translate-y-px hover:border-sn-line-strong hover:shadow-sn-md",
     className,
