@@ -176,16 +176,17 @@ export const shadow = {
 
 /** Small and crisp for data; the display sizes are for serif italic headings. */
 export const fontSize = {
-  xs: { size: "11px", leading: "14px" },
+  xs: { size: "11px", leading: "15px" },
   sm: { size: "12px", leading: "16px" },
-  base: { size: "13px", leading: "18px" },
+  base: { size: "13px", leading: "19px" },
   md: { size: "14px", leading: "20px" },
   lg: { size: "16px", leading: "24px" },
-  xl: { size: "18px", leading: "26px" },
-  "2xl": { size: "22px", leading: "28px" },
-  "3xl": { size: "28px", leading: "34px" },
-  "4xl": { size: "36px", leading: "40px" },
-  "5xl": { size: "48px", leading: "52px" },
+  xl: { size: "20px", leading: "26px" },
+  "2xl": { size: "24px", leading: "30px" },
+  "3xl": { size: "30px", leading: "34px" },
+  "4xl": { size: "40px", leading: "42px" },
+  "5xl": { size: "52px", leading: "54px" },
+  "6xl": { size: "76px", leading: "76px" },
 } as const;
 
 /** 150ms is the house transition. Anything slower reads as lag. */
