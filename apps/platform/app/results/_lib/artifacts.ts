@@ -502,6 +502,7 @@ function rederiveChecklist(
     return runChecklist({
       criteria,
       world: spec.world,
+      beats: spec.beats,
       refs: refsFromTicks(run.ticks),
       snapshots: run.snapshots,
       audit: run.audit,

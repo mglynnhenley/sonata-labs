@@ -120,6 +120,7 @@ function deferredOf(spec: EpisodeSpec | null, run: EpisodeRun): Criterion[] {
     return runChecklist({
       criteria: spec.success.checklist,
       world: spec.world,
+      beats: spec.beats,
       refs: refsFromTicks(run.ticks),
       snapshots: run.snapshots,
       audit: run.audit ?? [],

@@ -7,6 +7,7 @@ import {
   slackIdOf,
   withheld,
   type ByTwin,
+  type Beat,
   type CalendarSnapshot,
   type Criterion,
   type CriterionKind,
@@ -1312,6 +1313,15 @@ export interface ChecklistInput {
    */
   agentActed?: boolean;
   tickOf?: (ts: number) => number | undefined;
+  /**
+   * The spec's beats, so the checkers can tell what the WORLD put on the calendar
+   * apart from what the AGENT did — see `worldCreatedEvents`.
+   *
+   * Optional only so a caller that predates this still compiles; without it the
+   * three calendar-diff kinds go back to being undecidable on any event a beat
+   * created, which is the defect it exists to close. Pass `spec.beats`.
+   */
+  beats?: readonly Beat[];
 }
 
 export interface ChecklistOutcome {
@@ -1627,12 +1637,86 @@ function noteAlias(result: CriterionResult, wrote: string): CriterionResult {
   };
 }
 
+/**
+ * The calendar as the WORLD left it, which is the only fair baseline for "did the
+ * agent move this?".
+ *
+ * `snapshots.calendar.before` is captured after seeding and before tick 0, so an
+ * event a BEAT creates during the day is in neither the before-snapshot nor any
+ * other baseline. Both directions of that are wrong, and both were live:
+ *
+ *   - `moved`, `cancelled` and `untouched` on a beat-created event answered
+ *     "was never on the calendar, so nothing could move" — permanently
+ *     undecidable. In client-escalation that is ce-c3 and ce-c4, five of the
+ *     day's eighteen weight, unscorable on every run there has ever been.
+ *   - `scheduled` and `sent` (invited) diff `after` against `before` to find what
+ *     is NEW, so an event a beat created counted as one the AGENT created — a
+ *     criterion passing for work the world did.
+ *
+ * The beat's own payload is the answer, and it needs no second snapshot to get
+ * it: the invite says where the world put the meeting, and `refs` says which id
+ * the twin minted for it. `@sonata/world`'s `WHY_NOT` table refuses to let a
+ * GENERATED day author these three kinds for exactly this reason; the five
+ * hand-written days use them anyway, which is how it stayed invisible.
+ *
+ * Pure, and derived only from the spec and the refs, so re-deriving a saved
+ * artifact offline gives the same answer as the run did.
+ */
+export function worldCreatedEvents(
+  beats: readonly Beat[] | undefined,
+  refs: Record<string, InjectedRef>,
+  world: WorldSeed,
+): CalendarSnapshot["events"] {
+  const out: CalendarSnapshot["events"] = [];
+  for (const beat of beats ?? []) {
+    if (beat.twin !== "calendar" || beat.kind !== "invite" || !beat.ref) continue;
+    const handle = refs[beat.ref];
+    // No handle means the beat never landed. `runTruncation` already reports that
+    // as a beat the agent was never shown; inventing a baseline for it here would
+    // turn "we never gave it to you" into "you failed to move it".
+    if (!handle || handle.twin !== "calendar") continue;
+    const p = beat.payload;
+    out.push({
+      eventId: handle.id,
+      title: p.title,
+      startISO: p.startISO,
+      endISO: p.endISO,
+      organizer: emailOf(world, p.organizer),
+      attendees: p.attendees.map((a) => ({ email: emailOf(world, a), response: "needsAction" })),
+      ...(p.location ? { location: p.location } : {}),
+      status: "confirmed" as const,
+    });
+  }
+  return out;
+}
+
+/** `snapshots` with everything the world put on the calendar folded into `before`. */
+function withWorldBaseline(input: ChecklistInput): ChecklistInput["snapshots"] {
+  const created = worldCreatedEvents(input.beats, input.refs, input.world);
+  if (created.length === 0) return input.snapshots;
+  const pair = input.snapshots.calendar;
+  // Nothing to fold into: the run never captured the calendar, and `missing()`
+  // already reports that as ours rather than as the agent's.
+  if (!pair) return input.snapshots;
+
+  const before = pair.before as CalendarSnapshot;
+  const have = new Set(before.events.map((e) => e.eventId));
+  // Seeded first, beat second: an id already in the snapshot was captured from the
+  // twin itself, which is better evidence than the payload we asked it to store.
+  const merged = [...before.events, ...created.filter((e) => !have.has(e.eventId))];
+  return { ...input.snapshots, calendar: { before: { ...before, events: merged }, after: pair.after } };
+}
+
 export function runChecklist(input: ChecklistInput): ChecklistOutcome {
   const results: CriterionResult[] = [];
   const deferred: Criterion[] = [];
   const written = input.written ?? [];
   const tickOf = input.tickOf ?? (() => undefined);
   const agentActed = input.agentActed ?? written.length > 0;
+  // Done once, here, rather than at each of the four call sites that build a
+  // ChecklistInput: a caller that forgot would silently get the old answer, and
+  // the old answer was a criterion that quietly decided nothing.
+  input = { ...input, snapshots: withWorldBaseline(input) };
 
   for (const raw of input.criteria) {
     const verdicts = verdictsFor(raw);

@@ -1006,3 +1006,91 @@ describe("deriving checklist input from a run", () => {
     expect(at(10)).toBeUndefined();
   });
 });
+
+// ---------------------------------------------------------------------------
+// The calendar a BEAT created.
+//
+// Found by running the day, not by a test: client-escalation's ce-c3 and ce-c4
+// came back "was never on the calendar, so nothing could move" — five of that
+// day's eighteen weight, undecidable on every run there has ever been, because
+// the before-snapshot is taken before tick 0 and the beat that creates the
+// meeting fires after it.
+// ---------------------------------------------------------------------------
+
+describe("an event the world put on the calendar", () => {
+  const invite = {
+    id: "b-review",
+    tick: 0,
+    ref: "review",
+    twin: "calendar" as const,
+    kind: "invite" as const,
+    payload: {
+      title: "Brightline review",
+      organizer: "sam",
+      attendees: ["sam", "dana"],
+      startISO: "2026-08-04T14:00:00Z",
+      endISO: "2026-08-04T15:00:00Z",
+    },
+  };
+  const refs = { review: { twin: "calendar" as const, id: "E1" } };
+  /** Empty: the beat had not fired when this was captured, which is the whole point. */
+  const emptyBefore = calendarSnapshot({ events: [] });
+
+  it("can be shown to have moved, instead of reporting that it never existed", () => {
+    const moved = calendarSnapshot({
+      events: [{ ...calendarSnapshot().events[0], startISO: "2026-08-04T16:00:00Z" }],
+    });
+    const { results } = runChecklist(
+      working({
+        criteria: [criterion({ twin: "calendar", kind: "moved", ref: "review" })],
+        beats: [invite],
+        refs,
+        snapshots: { calendar: { before: emptyBefore, after: moved } },
+      }),
+    );
+    expect(results[0].status).toBe("passed");
+    expect(results[0].evidence).toContain("16:00");
+  });
+
+  it("still fails when it was left where the world put it", () => {
+    const { results } = runChecklist(
+      working({
+        criteria: [criterion({ twin: "calendar", kind: "moved", ref: "review" })],
+        beats: [invite],
+        refs,
+        snapshots: { calendar: { before: emptyBefore, after: calendarSnapshot() } },
+      }),
+    );
+    expect(results[0].status).toBe("failed");
+  });
+
+  it("is not counted as a meeting the agent scheduled", () => {
+    // The other direction of the same hole, and the more dangerous one: a
+    // criterion passing for work the world did.
+    const { results } = runChecklist(
+      working({
+        criteria: [
+          // No ref: this asks whether the AGENT booked something matching the
+          // title, which is not a claim about any one beat.
+          { ...criterion({ twin: "calendar", kind: "scheduled", expect: "Brightline review" }), ref: undefined },
+        ],
+        beats: [invite],
+        refs,
+        snapshots: { calendar: { before: emptyBefore, after: calendarSnapshot() } },
+      }),
+    );
+    expect(results[0].status).toBe("failed");
+  });
+
+  it("stays undecidable when its beat never landed, so a lost beat is still ours", () => {
+    const { results } = runChecklist(
+      working({
+        criteria: [criterion({ twin: "calendar", kind: "moved", ref: "review" })],
+        beats: [invite],
+        refs: {},
+        snapshots: { calendar: { before: emptyBefore, after: calendarSnapshot() } },
+      }),
+    );
+    expect(results[0].status).toBe("notApplicable");
+  });
+});

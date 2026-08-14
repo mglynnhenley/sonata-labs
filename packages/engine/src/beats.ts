@@ -480,6 +480,10 @@ function checkCondition(
   const { results } = runChecklist({
     criteria: [criterion],
     world: deps.spec.world,
+    // The same baseline the end-of-day checklist gets, for the same reason: a
+    // `scheduled` condition must not read a meeting a BEAT put on the calendar as
+    // one the agent booked, or a beat would reword itself for work nobody did.
+    beats: deps.spec.beats,
     refs: refsFromTicks(deps.ticks),
     snapshots,
     audit: deps.audit,
