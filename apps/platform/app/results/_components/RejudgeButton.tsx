@@ -195,7 +195,7 @@ export function RejudgeButton({
           <Landed report={phase.report} spendUsd={phase.spendUsd} />
         ) : (
           <>
-            <label className="block text-[12px] font-medium text-sn-ink" htmlFor="rejudge-model">
+            <label className="block text-sn-sm font-medium text-sn-ink" htmlFor="rejudge-model">
               Model
             </label>
             <input
@@ -205,7 +205,7 @@ export function RejudgeButton({
               spellCheck={false}
               placeholder="provider/model-slug"
               className={cn(
-                "mt-1.5 h-9 w-full rounded-sn-md border border-sn-line bg-sn-surface px-3 font-mono text-[12.5px] text-sn-ink",
+                "mt-1.5 h-9 w-full rounded-sn-md border border-sn-line bg-sn-surface px-3 font-mono text-sn-sm text-sn-ink",
                 "transition-colors duration-150 ease-sn placeholder:text-sn-subtle hover:border-sn-line-strong",
               )}
             />
@@ -223,12 +223,12 @@ export function RejudgeButton({
                 </Chip>
               ))}
             </div>
-            <p className="mt-3 text-[12px] text-sn-muted">
+            <p className="mt-3 text-sn-sm text-sn-muted">
               Any OpenRouter slug works. The key comes from OPENROUTER_API_KEY on this machine.
               Reading a whole day back takes a minute or two.
             </p>
             {error ? (
-              <p className="mt-3 rounded-sn-md border border-sn-failed-line bg-sn-failed-soft p-2.5 text-[12.5px] text-sn-failed-ink">
+              <p className="mt-3 rounded-sn-md border border-sn-failed-line bg-sn-failed-soft p-2.5 text-sn-sm text-sn-failed-ink">
                 {error}
               </p>
             ) : null}
@@ -243,13 +243,13 @@ function Waiting({ model, seconds }: { model: string; seconds: number }) {
   return (
     <div
       aria-live="polite"
-      className="rounded-sn-xl border border-sn-line bg-sn-bg-subtle px-4 py-4 text-[13px] leading-[20px] text-sn-muted"
+      className="rounded-sn-xl border border-sn-line bg-sn-bg-subtle px-4 py-4 text-sn-base text-sn-muted"
     >
       <div className="flex items-center gap-2.5 text-sn-ink">
         <Spinner size="sm" label="" />
-        <span className="font-mono text-[12.5px]">{model}</span>
+        <span className="font-mono text-sn-sm">{model}</span>
         <span className="text-sn-subtle">is reading the day back</span>
-        <span data-numeric className="ml-auto text-[12px] text-sn-subtle">
+        <span data-numeric className="ml-auto text-sn-sm text-sn-subtle">
           {seconds}s
         </span>
       </div>
@@ -273,14 +273,14 @@ function Landed({ report, spendUsd }: { report: EpisodeJudgeReport; spendUsd: nu
         <span className="grid h-[22px] w-[22px] shrink-0 place-items-center rounded-full border border-sn-passed-line bg-sn-surface text-sn-passed-ink">
           <IconCheck size="xs" />
         </span>
-        <span className="text-[13.5px] font-medium text-sn-ink">
-          <span className="font-mono text-[12.5px]">{report.model}</span> judged this run
+        <span className="text-sn-base font-medium text-sn-ink">
+          <span className="font-mono text-sn-sm">{report.model}</span> judged this run
         </span>
       </div>
       {/* What it cost, beside what it found: this reading was paid for on the
           owner's key, and the figure belongs where the decision to press again
           is made. It joins the run's cost breakdown too. */}
-      <dl className="mt-3 grid grid-cols-4 gap-3 text-[12px]">
+      <dl className="mt-3 grid grid-cols-4 gap-3 text-sn-sm">
         <Fact label="Judged" value={formatWhen(report.judgedAt)} />
         <Fact label="Its autonomy read" value={formatPercent(report.autonomyScore)} />
         <Fact
@@ -289,7 +289,7 @@ function Landed({ report, spendUsd }: { report: EpisodeJudgeReport; spendUsd: nu
         />
         <Fact label="This pass cost" value={formatUsd(spendUsd)} />
       </dl>
-      <p className="mt-3 text-[12.5px] leading-[19px] text-sn-muted">
+      <p className="mt-3 text-sn-sm leading-[19px] text-sn-muted">
         {report.summary?.trim()
           ? report.summary
           : "It returned no summary — the findings below are all it had to say."}
@@ -301,10 +301,10 @@ function Landed({ report, spendUsd }: { report: EpisodeJudgeReport; spendUsd: nu
 function Fact({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <dt className="text-[10.5px] font-medium tracking-[0.06em] text-sn-subtle uppercase">
+      <dt className="text-sn-xs font-medium tracking-[0.06em] text-sn-subtle uppercase">
         {label}
       </dt>
-      <dd data-numeric className="mt-0.5 text-[13px] text-sn-ink">
+      <dd data-numeric className="mt-0.5 text-sn-base text-sn-ink">
         {value}
       </dd>
     </div>

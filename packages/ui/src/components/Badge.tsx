@@ -15,8 +15,8 @@ const TONES: Record<BadgeStatus, string> = {
 };
 
 const SIZES: Record<BadgeSize, string> = {
-  sm: "h-5 gap-1.5 px-1.5 text-[11px]",
-  md: "h-6 gap-1.5 px-2 text-[12px]",
+  sm: "h-5 gap-1.5 px-1.5 text-sn-xs",
+  md: "h-6 gap-1.5 px-2 text-sn-sm",
 };
 
 export type BadgeProps = HTMLAttributes<HTMLSpanElement> & {

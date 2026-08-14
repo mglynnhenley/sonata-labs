@@ -54,7 +54,7 @@ export function QueueHealth({ stats, twins, scenarios }: QueueHealthProps) {
         />
 
         <div className="flex flex-col gap-2.5 border-t border-sn-line pt-4">
-          <p className="text-[11px] font-medium tracking-[0.08em] text-sn-subtle uppercase">
+          <p className="text-sn-xs font-medium tracking-[0.08em] text-sn-subtle uppercase">
             Systems cloned
           </p>
           <div className="flex flex-wrap gap-2">

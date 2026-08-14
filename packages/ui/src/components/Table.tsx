@@ -80,7 +80,7 @@ export function Table<T>({
         className,
       )}
     >
-      <table className="w-full table-fixed border-collapse text-[13px]">
+      <table className="w-full table-fixed border-collapse text-sn-base">
         {caption ? <caption className="sr-only">{caption}</caption> : null}
         <colgroup>
           {columns.map((column) => (
@@ -100,7 +100,7 @@ export function Table<T>({
                 scope="col"
                 className={cn(
                   cellPad,
-                  "text-[11px] font-medium tracking-[0.06em] text-sn-subtle uppercase",
+                  "text-sn-xs font-medium tracking-[0.06em] text-sn-subtle uppercase",
                   ALIGN[column.align ?? "left"],
                   column.headerClassName,
                 )}
@@ -172,7 +172,7 @@ export function Table<T>({
             <tr>
               <td
                 colSpan={columns.length}
-                className={cn(cellPad, "py-10 text-center text-[13px] text-sn-subtle")}
+                className={cn(cellPad, "py-10 text-center text-sn-base text-sn-subtle")}
               >
                 Nothing here yet.
               </td>

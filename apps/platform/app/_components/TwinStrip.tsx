@@ -80,8 +80,8 @@ export function TwinStrip({ twins, onChanged }: TwinStripProps) {
               )}
             </div>
 
-            <p className="mt-3 text-[13px] text-sn-muted">{BLURBS[twin.twin]}</p>
-            <p className="mt-1 text-[12px] text-sn-subtle">
+            <p className="mt-3 text-sn-base text-sn-muted">{BLURBS[twin.twin]}</p>
+            <p className="mt-1 text-sn-sm text-sn-subtle">
               <span data-numeric>localhost:{twin.port}</span>
               {twin.ok ? ` · ${twin.detail}` : starting ? " · compiling" : " · not running"}
             </p>
@@ -93,7 +93,7 @@ export function TwinStrip({ twins, onChanged }: TwinStripProps) {
                     href={twin.url}
                     target="_blank"
                     rel="noreferrer"
-                    className="inline-flex h-7 items-center gap-1 rounded-sn-md px-2 text-[12px] font-medium text-sn-primary-ink transition-colors duration-150 ease-sn hover:bg-sn-primary-soft"
+                    className="inline-flex h-7 items-center gap-1 rounded-sn-md px-2 text-sn-sm font-medium text-sn-primary-ink transition-colors duration-150 ease-sn hover:bg-sn-primary-soft"
                   >
                     Open
                     <IconArrowRight size="xs" />
@@ -109,7 +109,7 @@ export function TwinStrip({ twins, onChanged }: TwinStripProps) {
                     </Button>
                   ) : (
                     // Not ours to stop — someone started it from a terminal.
-                    <span className="text-[12px] text-sn-subtle">started outside Sonata</span>
+                    <span className="text-sn-sm text-sn-subtle">started outside Sonata</span>
                   )}
                   {twin.auth && (
                     // The demo switch: flip the clone's API between the static

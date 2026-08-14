@@ -166,7 +166,7 @@ export function LiveEpisode({ initial, twinLinks }: LiveEpisodeProps) {
         <Card padding="md" className="border-sn-failed-line bg-sn-failed-soft">
           <div className="flex items-start gap-2.5">
             <IconAlert size="md" className="mt-0.5 shrink-0 text-sn-danger" />
-            <p className="text-[13px] leading-[20px] text-sn-failed-ink">{run.error}</p>
+            <p className="text-sn-base text-sn-failed-ink">{run.error}</p>
           </div>
         </Card>
       ) : null}
@@ -174,13 +174,13 @@ export function LiveEpisode({ initial, twinLinks }: LiveEpisodeProps) {
       <Card padding="lg">
         <div className="flex flex-wrap items-end gap-x-10 gap-y-6">
           <div>
-            <p className="text-[11px] font-medium tracking-[0.08em] text-sn-subtle uppercase">
+            <p className="text-sn-xs font-medium tracking-[0.08em] text-sn-subtle uppercase">
               Simulated time
             </p>
-            <p data-numeric className="font-display-upright mt-1 text-[52px] leading-none text-sn-ink">
+            <p data-numeric className="font-display-upright mt-1 text-sn-5xl leading-none text-sn-ink">
               {simClock(run.simTimeISO)}
             </p>
-            <p className="mt-1.5 text-[12px] text-sn-subtle">
+            <p className="mt-1.5 text-sn-sm text-sn-subtle">
               {dayRange(initial.clock.startISO, initial.clock.simMinutesPerTick, run.plannedTicks)}
             </p>
           </div>
@@ -195,7 +195,7 @@ export function LiveEpisode({ initial, twinLinks }: LiveEpisodeProps) {
               valueLabel={`Tick ${run.tickCount} of ${run.plannedTicks}`}
               indeterminate={run.status === "queued" || run.status === "judging"}
             />
-            <p className="mt-2 text-[12px] text-sn-subtle">
+            <p className="mt-2 text-sn-sm text-sn-subtle">
               {elapsed(run.startedAt, run.endedAt ?? now)} of real time
               {run.cost ? ` · ${money(run.cost.usd)} spent` : ""}
               {run.score !== null ? ` · ${percent(run.score)} of the checklist` : ""}
@@ -217,7 +217,7 @@ export function LiveEpisode({ initial, twinLinks }: LiveEpisodeProps) {
 
         {twinLinks.length > 0 ? (
           <div className="mt-6 flex flex-wrap items-center gap-2 border-t border-sn-line pt-5">
-            <span className="text-[12px] text-sn-subtle">Watch it happen in the apps:</span>
+            <span className="text-sn-sm text-sn-subtle">Watch it happen in the apps:</span>
             {twinLinks.map((link) => (
               <a key={link.twin} href={link.url} target="_blank" rel="noreferrer">
                 <Chip service={link.twin} size="sm">
@@ -231,17 +231,17 @@ export function LiveEpisode({ initial, twinLinks }: LiveEpisodeProps) {
 
       <Card padding="none" className="overflow-hidden">
         <div className="flex flex-wrap items-center gap-3 border-b border-sn-line px-6 py-4">
-          <h2 className="font-display text-[24px] text-sn-ink">The day, as it happened</h2>
+          <h2 className="font-display text-sn-2xl text-sn-ink">The day, as it happened</h2>
           {/* The count is the live region, not the story below it: a screen
               reader given the list would read every arriving row aloud over
               whatever the listener was already reading. This says how much has
               happened, once, and stays out of the way. */}
-          <span aria-live="polite" className="text-[12px] text-sn-subtle">
+          <span aria-live="polite" className="text-sn-sm text-sn-subtle">
             {rows.length} moment{rows.length === 1 ? "" : "s"}
           </span>
           <div className="ml-auto flex items-center gap-2">
             {error ? (
-              <span className="text-[12px] text-sn-subtle">Reconnecting…</span>
+              <span className="text-sn-sm text-sn-subtle">Reconnecting…</span>
             ) : live ? (
               <Badge status="running" size="sm" dot>
                 Live
@@ -263,7 +263,7 @@ export function LiveEpisode({ initial, twinLinks }: LiveEpisodeProps) {
           className="sn-scroll max-h-[62vh] min-h-[360px] overflow-y-auto overscroll-contain px-6 py-6"
         >
           {rows.length === 0 ? (
-            <p className="py-16 text-center text-[13px] text-sn-subtle">
+            <p className="py-16 text-center text-sn-base text-sn-subtle">
               The day has not started yet. The first thing usually happens around 09:15.
             </p>
           ) : (
@@ -273,14 +273,14 @@ export function LiveEpisode({ initial, twinLinks }: LiveEpisodeProps) {
           {finished ? (
             <div className="mt-2 flex items-center gap-2.5 rounded-sn-lg bg-sn-bg-subtle px-4 py-3">
               <IconCheck size="sm" className="shrink-0 text-sn-success" />
-              <p className="text-[13px] text-sn-muted">
+              <p className="text-sn-base text-sn-muted">
                 The day is over. The verdict has the score, the criteria behind it and the
                 failure modes the judge found.
               </p>
               <a
                 href={resultsHref}
                 onClick={(e) => go(e, resultsHref)}
-                className="ml-auto shrink-0 text-[13px] font-medium text-sn-primary-ink hover:underline"
+                className="ml-auto shrink-0 text-sn-base font-medium text-sn-primary-ink hover:underline"
               >
                 Read the verdict
               </a>
@@ -305,14 +305,14 @@ function Tally({
 }) {
   return (
     <div>
-      <dt className="text-[11px] font-medium tracking-[0.08em] text-sn-subtle uppercase">{label}</dt>
+      <dt className="text-sn-xs font-medium tracking-[0.08em] text-sn-subtle uppercase">{label}</dt>
       <dd
         data-numeric
-        className={`mt-1 text-[26px] leading-none ${alarm ? "text-sn-danger-ink" : "text-sn-ink"}`}
+        className={`mt-1 text-sn-2xl leading-none ${alarm ? "text-sn-danger-ink" : "text-sn-ink"}`}
       >
         {value}
       </dd>
-      <p className="mt-1 text-[12px] text-sn-subtle">{hint}</p>
+      <p className="mt-1 text-sn-sm text-sn-subtle">{hint}</p>
     </div>
   );
 }

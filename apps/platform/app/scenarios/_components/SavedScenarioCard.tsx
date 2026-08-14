@@ -42,7 +42,7 @@ export function SavedScenarioCard({ episode, now, deleting, onDelete }: SavedSce
     <Card padding="lg" radius="2xl" interactive className="flex h-full flex-col">
       <div className="flex min-h-0 flex-1 flex-col">
         <div className="flex items-start gap-3">
-          <h3 className="font-display min-w-0 flex-1 text-[23px] text-sn-ink">{episode.title}</h3>
+          <h3 className="font-display min-w-0 flex-1 text-sn-2xl text-sn-ink">{episode.title}</h3>
           {lastRun ? (
             <Link href={`/runs/${lastRun.runId}`} className="shrink-0">
               <Badge status={RUN_STATUS[lastRun.status] ?? "neutral"} size="sm">
@@ -56,7 +56,7 @@ export function SavedScenarioCard({ episode, now, deleting, onDelete }: SavedSce
           ) : null}
         </div>
 
-        <p className="mt-2 line-clamp-2 text-[13.5px] leading-[21px] text-sn-muted">
+        <p className="mt-2 line-clamp-2 text-sn-base text-sn-muted">
           {episode.story}
         </p>
 
@@ -84,7 +84,7 @@ export function SavedScenarioCard({ episode, now, deleting, onDelete }: SavedSce
           <IconPlay size="xs" />
           Start a run
         </Link>
-        <span className="ml-auto text-[12px] text-sn-subtle">
+        <span className="ml-auto text-sn-sm text-sn-subtle">
           {lastRun ? `Last run ${ago(lastRun.startedAt, now)}` : `Saved ${ago(episode.createdAt, now)}`}
         </span>
         <Button

@@ -59,9 +59,9 @@ export function Toast({ toast, onDismiss, className }: ToastProps) {
     >
       <span className="mt-0.5 shrink-0">{tone.icon}</span>
       <div className="min-w-0 flex-1">
-        <p className="text-[13px] font-medium text-sn-ink">{toast.title}</p>
+        <p className="text-sn-base font-medium text-sn-ink">{toast.title}</p>
         {toast.description ? (
-          <p className="mt-0.5 text-[13px] leading-[19px] text-sn-muted">{toast.description}</p>
+          <p className="mt-0.5 text-sn-base text-sn-muted">{toast.description}</p>
         ) : null}
         {toast.action ? (
           <button
@@ -70,7 +70,7 @@ export function Toast({ toast, onDismiss, className }: ToastProps) {
               toast.action?.onClick();
               onDismiss(toast.id);
             }}
-            className="mt-2 rounded-sn-sm text-[13px] font-medium text-sn-primary-ink underline-offset-2 hover:underline"
+            className="mt-2 rounded-sn-sm text-sn-base font-medium text-sn-primary-ink underline-offset-2 hover:underline"
           >
             {toast.action.label}
           </button>

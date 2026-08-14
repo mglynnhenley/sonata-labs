@@ -105,8 +105,8 @@ function AutonomyChart({ rows, sliceTitle }: { rows: Ranked[]; sliceTitle: strin
               <span
                 className={
                   index === 0
-                    ? "truncate text-right text-[13px] font-bold text-sn-ink"
-                    : "truncate text-right text-[13px] text-sn-muted"
+                    ? "truncate text-right text-sn-base font-bold text-sn-ink"
+                    : "truncate text-right text-sn-base text-sn-muted"
                 }
                 title={modelLabel(row.model)}
               >
@@ -126,7 +126,7 @@ function AutonomyChart({ rows, sliceTitle }: { rows: Ranked[]; sliceTitle: strin
                   style={{ width: `${pct}%` }}
                 />
               </div>
-              <span data-numeric className="text-right text-[13px] font-medium">
+              <span data-numeric className="text-right text-sn-base font-medium">
                 {pct}%
               </span>
             </div>
@@ -138,7 +138,7 @@ function AutonomyChart({ rows, sliceTitle }: { rows: Ranked[]; sliceTitle: strin
           aria-hidden="true"
         >
           <span />
-          <span className="flex justify-between text-[11px] text-sn-subtle">
+          <span className="flex justify-between text-sn-xs text-sn-subtle">
             <span>0</span>
             <span>50%</span>
             <span>100%</span>
@@ -177,7 +177,7 @@ export function Leaderboard({ benchmark }: { benchmark: Benchmark }) {
       header: "",
       width: "34px",
       render: (_, index) => (
-        <span data-numeric className="text-[12px] text-sn-subtle">
+        <span data-numeric className="text-sn-sm text-sn-subtle">
           {index + 1}
         </span>
       ),
@@ -187,8 +187,8 @@ export function Leaderboard({ benchmark }: { benchmark: Benchmark }) {
       header: "Model",
       render: (row) => (
         <div className="min-w-0">
-          <p className="truncate text-[13px] font-medium text-sn-ink">{modelLabel(row.model)}</p>
-          <p className="mt-0.5 truncate font-mono text-[10.5px] text-sn-subtle">
+          <p className="truncate text-sn-base font-medium text-sn-ink">{modelLabel(row.model)}</p>
+          <p className="mt-0.5 truncate font-mono text-sn-xs text-sn-subtle">
             {row.model} · {row.runs} run{row.runs === 1 ? "" : "s"}
           </p>
         </div>
@@ -202,7 +202,7 @@ export function Leaderboard({ benchmark }: { benchmark: Benchmark }) {
       align: "right",
       width: "110px",
       render: (row) => (
-        <span data-numeric className="text-[15px] font-bold text-sn-ink">
+        <span data-numeric className="text-sn-md font-bold text-sn-ink">
           {formatPercent(row.autonomy)}
         </span>
       ),
@@ -225,11 +225,11 @@ export function Leaderboard({ benchmark }: { benchmark: Benchmark }) {
       width: "200px",
       render: (row) =>
         row.topFailure ? (
-          <span className="text-[12px] text-sn-muted">
+          <span className="text-sn-sm text-sn-muted">
             {row.topFailure.label} <span className="text-sn-subtle">×{row.topFailure.count}</span>
           </span>
         ) : (
-          <span className="text-[12px] text-sn-subtle">{slice === ALL ? "none found" : "—"}</span>
+          <span className="text-sn-sm text-sn-subtle">{slice === ALL ? "none found" : "—"}</span>
         ),
     },
     {
@@ -285,7 +285,7 @@ export function Leaderboard({ benchmark }: { benchmark: Benchmark }) {
         />
       </Card>
 
-      <p className="max-w-[70ch] text-[12px] leading-[18px] text-sn-subtle">
+      <p className="max-w-[70ch] text-sn-sm text-sn-subtle">
         Autonomy is the share of the day's work finished without handing it back to a human, averaged
         over the slice's scored runs. {CHECKLIST_HINT} Every row opens the newest run behind its
         numbers.

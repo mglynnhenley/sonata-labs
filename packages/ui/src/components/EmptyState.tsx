@@ -59,18 +59,18 @@ export const EmptyState = forwardRef<HTMLDivElement, EmptyStateProps>(function E
       <h2
         className={cn(
           "font-display text-balance text-sn-ink",
-          size === "md" ? "text-[30px]" : "text-[23px]",
+          size === "md" ? "text-sn-3xl" : "text-sn-2xl",
         )}
       >
         {title}
       </h2>
 
       {description ? (
-        <p className="mt-2.5 max-w-[46ch] text-[14px] leading-[22px] text-sn-muted">{description}</p>
+        <p className="mt-2.5 max-w-[46ch] text-sn-md text-sn-muted">{description}</p>
       ) : null}
 
       {hints?.length ? (
-        <ul className="mt-6 flex flex-col items-start gap-2 text-left text-[13px] text-sn-muted">
+        <ul className="mt-6 flex flex-col items-start gap-2 text-left text-sn-base text-sn-muted">
           {hints.map((hint, i) => (
             <li key={i} className="flex items-start gap-2">
               <IconCheck size="sm" className="mt-0.5 shrink-0 text-sn-gold" />

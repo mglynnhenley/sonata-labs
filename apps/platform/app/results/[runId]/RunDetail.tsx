@@ -186,7 +186,7 @@ export function RunDetail({
         <CostBreakdown cost={cost} />
       </div>
 
-      <p className="flex items-center gap-1.5 text-[12px] text-sn-subtle">
+      <p className="flex items-center gap-1.5 text-sn-sm text-sn-subtle">
         <Link
           href={`/api/results/${encodeURIComponent(run.runId)}`}
           className="inline-flex items-center gap-1 text-sn-primary-ink hover:underline"

@@ -92,10 +92,10 @@ export function FirstRun({ twins, onTwinsChanged }: FirstRunProps) {
       />
 
       <section>
-        <h2 className="font-display text-[28px] text-sn-ink">
+        <h2 className="font-display text-sn-3xl text-sn-ink">
           What happens when you press the button
         </h2>
-        <p className="mt-2 max-w-[62ch] text-[14px] leading-[22px] text-sn-muted">
+        <p className="mt-2 max-w-[62ch] text-sn-md text-sn-muted">
           Three steps, and the demo day does all of them for you the first time.
         </p>
 
@@ -106,16 +106,16 @@ export function FirstRun({ twins, onTwinsChanged }: FirstRunProps) {
                 <span
                   aria-hidden="true"
                   data-numeric
-                  className="font-display-upright grid h-9 min-w-9 place-items-center self-start rounded-full bg-sn-gold-soft px-2.5 text-[15px] text-sn-gold-ink"
+                  className="font-display-upright grid h-9 min-w-9 place-items-center self-start rounded-full bg-sn-gold-soft px-2.5 text-sn-md text-sn-gold-ink"
                 >
                   {step.stamp}
                 </span>
-                <h3 className="mt-4 text-[15px] font-medium text-sn-ink">{step.title}</h3>
-                <p className="mt-2 flex-1 text-[13px] leading-[21px] text-sn-muted">{step.body}</p>
+                <h3 className="mt-4 text-sn-md font-medium text-sn-ink">{step.title}</h3>
+                <p className="mt-2 flex-1 text-sn-base text-sn-muted">{step.body}</p>
                 <a
                   href={step.href}
                   onClick={(e) => go(e, step.href)}
-                  className="group mt-5 inline-flex items-center gap-1.5 rounded-sn-sm text-[13px] font-medium text-sn-primary-ink"
+                  className="group mt-5 inline-flex items-center gap-1.5 rounded-sn-sm text-sn-base font-medium text-sn-primary-ink"
                 >
                   {step.cta}
                   <IconArrowRight
@@ -132,10 +132,10 @@ export function FirstRun({ twins, onTwinsChanged }: FirstRunProps) {
       <section>
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
-            <h2 className="font-display text-[28px] text-sn-ink">
+            <h2 className="font-display text-sn-3xl text-sn-ink">
               The three apps you&apos;ll be watching
             </h2>
-            <p className="mt-2 max-w-[62ch] text-[14px] leading-[22px] text-sn-muted">
+            <p className="mt-2 max-w-[62ch] text-sn-md text-sn-muted">
               Each one speaks its real API closely enough that the official SDKs work against it.
               The demo day starts whichever it needs, or you can start them here.
             </p>
@@ -143,7 +143,7 @@ export function FirstRun({ twins, onTwinsChanged }: FirstRunProps) {
           <a
             href={ROUTES.settings}
             onClick={(e) => go(e, ROUTES.settings)}
-            className="rounded-sn-sm text-[13px] font-medium text-sn-primary-ink"
+            className="rounded-sn-sm text-sn-base font-medium text-sn-primary-ink"
           >
             Ports and models
           </a>

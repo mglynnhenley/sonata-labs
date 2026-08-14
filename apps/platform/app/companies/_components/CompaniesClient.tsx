@@ -140,11 +140,11 @@ export function CompaniesClient({ initial }: { initial: CompaniesData }) {
           <div className="flex items-start gap-2.5">
             <IconAlert size="md" className="mt-0.5 shrink-0 text-sn-danger" />
             <div>
-              <p className="text-[13.5px] font-medium text-sn-ink">
+              <p className="text-sn-base font-medium text-sn-ink">
                 {offline.map((c) => c.label).join(" and ")}{" "}
                 {offline.length === 1 ? "is" : "are"} not running.
               </p>
-              <p className="mt-1 text-[12.5px] leading-[19px] text-sn-muted">
+              <p className="mt-1 text-sn-sm leading-[19px] text-sn-muted">
                 A company is loaded into all three at once, so all three have to be answering.
                 Starting one takes a few seconds the first time.
               </p>
@@ -223,7 +223,7 @@ function CompanyTile({ company, clones, now, busy, busyLine, disabled, onSeed }:
       <div className="sn-stack-group">
         <div className="sn-stack-item">
           <div className="flex items-start justify-between gap-3">
-            <h2 className="font-display min-w-0 text-[23px] text-sn-ink">{company.name}</h2>
+            <h2 className="font-display min-w-0 text-sn-2xl text-sn-ink">{company.name}</h2>
             {stateBadge(company)}
           </div>
           {/* Not clamped. These run from 158 to 653 characters — most of them
@@ -231,7 +231,7 @@ function CompanyTile({ company, clones, now, busy, busyLine, disabled, onSeed }:
               majority of what the page is for. The dead air came from the grid
               stretching every card to its row's tallest, which `items-start`
               fixes without taking a word off the screen. */}
-          <p className="text-[13.5px] leading-[21px] text-sn-muted">{company.description}</p>
+          <p className="text-sn-base text-sn-muted">{company.description}</p>
         </div>
 
         <div className="sn-stack-item">
@@ -247,19 +247,19 @@ function CompanyTile({ company, clones, now, busy, busyLine, disabled, onSeed }:
               the preview promised are not shown here: they describe an inbox that
               does not exist until the backlog is. */}
           {company.counts ? (
-            <p className="text-[12px] leading-[18px] text-sn-subtle">
+            <p className="text-sn-sm text-sn-subtle">
               <span data-numeric>{company.counts.threads}</span> threads ·{" "}
               <span data-numeric>{company.counts.slackMessages}</span> Slack messages ·{" "}
               <span data-numeric>{company.counts.events}</span> events written
             </p>
           ) : (
-            <p className="text-[12px] leading-[18px] text-sn-subtle">
+            <p className="text-sn-sm text-sn-subtle">
               No history written yet — seeding writes it first, which takes about a minute.
             </p>
           )}
 
           {company.state === "superseded" && company.supersededBy ? (
-            <p className="text-[12px] leading-[18px] text-sn-subtle">
+            <p className="text-sn-sm text-sn-subtle">
               Was in the clones {ago(company.seededAt, now)}; {company.supersededBy} replaced it.
             </p>
           ) : null}
@@ -267,21 +267,21 @@ function CompanyTile({ company, clones, now, busy, busyLine, disabled, onSeed }:
 
         {company.state === "seeded" ? (
           <div className="rounded-sn-lg border border-sn-passed-line bg-sn-passed-soft px-3.5 py-3">
-            <p className="flex items-center gap-1.5 text-[12.5px] font-medium text-sn-passed-ink">
+            <p className="flex items-center gap-1.5 text-sn-sm font-medium text-sn-passed-ink">
               <IconCheck size="sm" />
               Loaded {ago(company.seededAt, now)} — this is what the clones are holding
             </p>
             <ul className="mt-2 flex flex-col gap-1">
               {clones.map((clone) => (
                 <li key={clone.twin} className="flex items-center justify-between gap-3">
-                  <span className="text-[12px] text-sn-muted">
+                  <span className="text-sn-sm text-sn-muted">
                     {clone.label} · {clone.ok ? clone.detail : "not running"}
                   </span>
                   <a
                     href={clone.url}
                     target="_blank"
                     rel="noreferrer"
-                    className="inline-flex items-center gap-1 text-[12px] font-medium text-sn-primary-ink hover:underline"
+                    className="inline-flex items-center gap-1 text-sn-sm font-medium text-sn-primary-ink hover:underline"
                   >
                     Open
                     <IconArrowRight size="xs" />
@@ -306,7 +306,7 @@ function CompanyTile({ company, clones, now, busy, busyLine, disabled, onSeed }:
           {company.state === "seeded" ? "Load it again" : "Put this company in the clones"}
         </Button>
         {busy ? (
-          <span className="flex items-center gap-2 text-[12px] text-sn-muted">
+          <span className="flex items-center gap-2 text-sn-sm text-sn-muted">
             <Spinner size="sm" />
             {busyLine}
           </span>
@@ -352,7 +352,7 @@ function ConfirmSeed({ company, replacing, onCancel, onConfirm }: ConfirmProps) 
         </>
       }
     >
-      <ul className="flex flex-col gap-2 text-[13px] leading-[20px] text-sn-muted">
+      <ul className="flex flex-col gap-2 text-sn-base text-sn-muted">
         <li>
           <span className="font-medium text-sn-ink">Everything in the clones now is erased.</span>{" "}
           {displaced
@@ -399,8 +399,8 @@ function Landed({ outcome, onClose }: { outcome: SeedOutcome | null; onClose: ()
             className="flex items-center justify-between gap-3 rounded-sn-lg border border-sn-line px-3.5 py-3"
           >
             <div className="min-w-0">
-              <p className="text-[13px] font-medium text-sn-ink">{twin.label}</p>
-              <p className="mt-0.5 text-[12px] text-sn-muted" data-numeric>
+              <p className="text-sn-base font-medium text-sn-ink">{twin.label}</p>
+              <p className="mt-0.5 text-sn-sm text-sn-muted" data-numeric>
                 {twin.items.length > 0 ? twin.items.map((i) => i.label).join(" · ") : "nothing reported"}
               </p>
             </div>
@@ -408,7 +408,7 @@ function Landed({ outcome, onClose }: { outcome: SeedOutcome | null; onClose: ()
               href={twin.url}
               target="_blank"
               rel="noreferrer"
-              className="inline-flex shrink-0 items-center gap-1 rounded-sn-md px-2 py-1 text-[12px] font-medium text-sn-primary-ink transition-colors duration-150 ease-sn hover:bg-sn-primary-soft"
+              className="inline-flex shrink-0 items-center gap-1 rounded-sn-md px-2 py-1 text-sn-sm font-medium text-sn-primary-ink transition-colors duration-150 ease-sn hover:bg-sn-primary-soft"
             >
               Open {twin.label}
               <IconArrowRight size="xs" />
@@ -416,7 +416,7 @@ function Landed({ outcome, onClose }: { outcome: SeedOutcome | null; onClose: ()
           </li>
         ))}
       </ul>
-      <p className="mt-4 text-[12.5px] leading-[19px] text-sn-muted">
+      <p className="mt-4 text-sn-sm leading-[19px] text-sn-muted">
         Go and look — this is the same company an agent will find when you start the day.
       </p>
     </Modal>

@@ -81,7 +81,7 @@ export const StatCard = forwardRef<HTMLElement, StatCardProps>(function StatCard
             {icon}
           </span>
         ) : null}
-        <span className="min-w-0 flex-1 text-[12px] font-medium tracking-[0.02em] text-sn-muted uppercase">
+        <span className="min-w-0 flex-1 text-sn-sm font-medium tracking-[0.02em] text-sn-muted uppercase">
           {label}
         </span>
         {clickable ? (
@@ -101,16 +101,16 @@ export const StatCard = forwardRef<HTMLElement, StatCardProps>(function StatCard
           ) : (
             <span
               data-numeric
-              className="text-[40px] leading-none font-bold tracking-[-0.03em] text-sn-ink"
+              className="text-sn-4xl leading-none font-bold tracking-[-0.03em] text-sn-ink"
             >
               {value}
             </span>
           )}
-          {unit && !loading ? <span className="text-[14px] text-sn-muted">{unit}</span> : null}
+          {unit && !loading ? <span className="text-sn-md text-sn-muted">{unit}</span> : null}
           {delta && !loading ? (
             <span
               className={cn(
-                "ml-1 inline-flex items-center gap-0.5 text-[12px] font-medium",
+                "ml-1 inline-flex items-center gap-0.5 text-sn-sm font-medium",
                 DELTA_TONES[deltaTone(delta)],
               )}
             >
@@ -128,7 +128,7 @@ export const StatCard = forwardRef<HTMLElement, StatCardProps>(function StatCard
             string stays in the DOM, because these caveats are what make the
             number above them honest. */}
         {footnote ? (
-          <p title={footnoteTitle} className="text-[12px] text-sn-subtle sm:line-clamp-2">
+          <p title={footnoteTitle} className="text-sn-sm text-sn-subtle sm:line-clamp-2">
             {footnote}
           </p>
         ) : null}

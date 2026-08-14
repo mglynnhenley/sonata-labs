@@ -58,12 +58,12 @@ function PreviewFailure({
     <div className="sn-stack-block">
       <div className="flex items-start gap-2.5 rounded-sn-lg border border-sn-failed-line bg-sn-failed-soft px-4 py-3">
         <IconAlert size="md" className="mt-0.5 shrink-0 text-sn-danger" />
-        <p className="text-[13px] leading-[20px] text-sn-failed-ink">{message}</p>
+        <p className="text-sn-base text-sn-failed-ink">{message}</p>
       </div>
 
       <Card padding="lg">
-        <h3 className="font-display text-[21px] text-sn-ink">Run one of the shipped days instead</h3>
-        <p className="mt-1.5 max-w-[70ch] text-[13px] leading-[20px] text-sn-muted">
+        <h3 className="font-display text-sn-xl text-sn-ink">Run one of the shipped days instead</h3>
+        <p className="mt-1.5 max-w-[70ch] text-sn-base text-sn-muted">
           Each is a whole company with its own day. None of them is the business you described, and
           choosing one is choosing to run that company — which is a perfectly good way to see what
           Sonata does, as long as it is your decision and not ours.
@@ -75,8 +75,8 @@ function PreviewFailure({
               className="flex flex-wrap items-start gap-x-4 gap-y-2 py-3.5 first:pt-0 last:pb-0"
             >
               <span className="min-w-[16rem] flex-1">
-                <span className="block text-[13.5px] font-medium text-sn-ink">{template.title}</span>
-                <span className="mt-0.5 block text-[12.5px] leading-[19px] text-sn-subtle">
+                <span className="block text-sn-base font-medium text-sn-ink">{template.title}</span>
+                <span className="mt-0.5 block text-sn-sm leading-[19px] text-sn-subtle">
                   {template.description}
                 </span>
               </span>
@@ -240,7 +240,7 @@ export function NewScenarioComposer({ templates }: NewScenarioComposerProps) {
         <ScenarioPreview draft={draft} />
 
         <div className="flex flex-wrap items-center justify-end gap-3 border-t border-sn-line pt-6">
-          <p className="mr-auto max-w-[52ch] text-[13px] leading-[20px] text-sn-muted">
+          <p className="mr-auto max-w-[52ch] text-sn-base text-sn-muted">
             Creating it saves the company and the day. You can run it straight away, and run it
             again later on a different model to compare.
           </p>
@@ -272,7 +272,7 @@ export function NewScenarioComposer({ templates }: NewScenarioComposerProps) {
       />
 
       <Card padding="lg">
-        <label htmlFor="brief" className="text-[13px] font-medium text-sn-ink">
+        <label htmlFor="brief" className="text-sn-base font-medium text-sn-ink">
           Describe the business and what happens today
         </label>
         <textarea
@@ -286,13 +286,13 @@ export function NewScenarioComposer({ templates }: NewScenarioComposerProps) {
           placeholder="A 12-person fintech, the week before an audit. This morning the biggest client escalates about a missed SLA, and the answer is buried in a Slack thread nobody has read."
           className={cn(
             "mt-2.5 w-full resize-y rounded-sn-lg border border-sn-line bg-sn-surface px-4 py-3.5",
-            "text-[15px] leading-[24px] text-sn-ink shadow-sn-xs placeholder:text-sn-subtle",
+            "text-sn-md leading-[24px] text-sn-ink shadow-sn-xs placeholder:text-sn-subtle",
             "transition-colors duration-150 ease-sn hover:border-sn-line-strong disabled:opacity-60",
           )}
         />
 
         <div className="mt-4">
-          <p className="text-[12px] text-sn-subtle">Or start from one of these:</p>
+          <p className="text-sn-sm text-sn-subtle">Or start from one of these:</p>
           <div className="mt-2 flex flex-wrap gap-2">
             {BRIEF_EXAMPLES.map((example) => (
               <Chip
@@ -308,7 +308,7 @@ export function NewScenarioComposer({ templates }: NewScenarioComposerProps) {
         </div>
 
         <div className="mt-6 border-t border-sn-line pt-5">
-          <p className="text-[13px] font-medium text-sn-ink">How long the day should run</p>
+          <p className="text-sn-base font-medium text-sn-ink">How long the day should run</p>
           <div className="mt-2.5 flex flex-wrap gap-2">
             {DAY_LENGTHS.map((length) => (
               <button
@@ -323,8 +323,8 @@ export function NewScenarioComposer({ templates }: NewScenarioComposerProps) {
                     : "border-sn-line bg-sn-surface text-sn-muted hover:border-sn-line-strong",
                 )}
               >
-                <span className="block text-[13px] font-medium">{length.label}</span>
-                <span className="block text-[11.5px] text-sn-subtle">{length.hint}</span>
+                <span className="block text-sn-base font-medium">{length.label}</span>
+                <span className="block text-sn-xs text-sn-subtle">{length.hint}</span>
               </button>
             ))}
           </div>
@@ -353,12 +353,12 @@ export function NewScenarioComposer({ templates }: NewScenarioComposerProps) {
             Preview what gets built
           </Button>
           {working ? (
-            <span className="flex items-center gap-2.5 text-[13px] text-sn-muted">
+            <span className="flex items-center gap-2.5 text-sn-base text-sn-muted">
               <Spinner size="sm" />
               {WORKING_LINES[line]}
             </span>
           ) : (
-            <p className="text-[12px] leading-[18px] text-sn-subtle">
+            <p className="text-sn-sm text-sn-subtle">
               {tooShort
                 ? "A sentence or two is enough — who the company is, and what goes wrong today."
                 : "Nothing is written until you have seen the preview and pressed Create."}

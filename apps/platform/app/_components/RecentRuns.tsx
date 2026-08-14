@@ -67,8 +67,8 @@ export function RecentRuns({ runs, now, simulated, simMinutesPerTick }: RecentRu
       header: "Scenario",
       render: (run) => (
         <div className="min-w-0">
-          <p className="truncate text-[13px] font-medium text-sn-ink">{run.episodeTitle}</p>
-          <p className="mt-0.5 truncate text-[12px] text-sn-subtle">
+          <p className="truncate text-sn-base font-medium text-sn-ink">{run.episodeTitle}</p>
+          <p className="mt-0.5 truncate text-sn-sm text-sn-subtle">
             {/* The model name is the lie on a fabricated row — it was a hash
                 seed, not a callee — so it is struck through rather than removed.
                 The row still says which model it claimed. */}

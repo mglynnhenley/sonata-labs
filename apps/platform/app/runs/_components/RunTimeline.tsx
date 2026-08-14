@@ -104,14 +104,14 @@ export function RunTimeline({ rows, activeKey, freshFrom }: RunTimelineProps) {
               <div className="flex flex-col gap-3">
                 {row.details.map((detail) => (
                   <div key={detail.label}>
-                    <p className="text-[11px] font-medium tracking-[0.08em] text-sn-subtle uppercase">
+                    <p className="text-sn-xs font-medium tracking-[0.08em] text-sn-subtle uppercase">
                       {detail.label}
                     </p>
                     <p
                       className={
                         detail.code
-                          ? "mt-1 font-mono text-[12px] leading-[18px] whitespace-pre-wrap text-sn-ink"
-                          : "mt-1 text-[13px] leading-[20px] whitespace-pre-wrap text-sn-ink"
+                          ? "mt-1 font-mono text-sn-sm whitespace-pre-wrap text-sn-ink"
+                          : "mt-1 text-sn-base whitespace-pre-wrap text-sn-ink"
                       }
                     >
                       {detail.body}
@@ -119,7 +119,7 @@ export function RunTimeline({ rows, activeKey, freshFrom }: RunTimelineProps) {
                   </div>
                 ))}
 
-                <p className="flex items-center gap-3 text-[12px] text-sn-subtle">
+                <p className="flex items-center gap-3 text-sn-sm text-sn-subtle">
                   <span>{SOURCE_LABEL[row.kind]}</span>
                   {row.seq !== undefined ? <span>Step {row.seq}</span> : null}
                   {row.url ? (

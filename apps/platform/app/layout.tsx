@@ -24,7 +24,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
       </head>
       <body>
         <ToastProvider>
-          <a href="#main" className="sn-skip rounded-sn-md border border-sn-line bg-sn-surface px-3 py-2 text-[13px] font-medium text-sn-ink shadow-sn-md">
+          <a href="#main" className="sn-skip rounded-sn-md border border-sn-line bg-sn-surface px-3 py-2 text-sn-base font-medium text-sn-ink shadow-sn-md">
             Skip to content
           </a>
           <AppShell>{children}</AppShell>

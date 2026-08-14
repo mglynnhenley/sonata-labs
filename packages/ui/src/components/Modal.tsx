@@ -154,16 +154,16 @@ export function Modal({
           </button>
         ) : null}
 
-        <h2 id={titleId} className="font-display pr-8 text-balance text-[26px] text-sn-ink">
+        <h2 id={titleId} className="font-display pr-8 text-balance text-sn-2xl text-sn-ink">
           {title}
         </h2>
         {description ? (
-          <p id={descriptionId} className="mt-2 text-[13px] leading-[20px] text-sn-muted">
+          <p id={descriptionId} className="mt-2 text-sn-base text-sn-muted">
             {description}
           </p>
         ) : null}
 
-        {children ? <div className="mt-5 text-[14px] text-sn-ink">{children}</div> : null}
+        {children ? <div className="mt-5 text-sn-md text-sn-ink">{children}</div> : null}
 
         {footer ? (
           <div className="mt-7 flex items-center justify-end gap-2.5">{footer}</div>

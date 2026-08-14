@@ -98,7 +98,7 @@ export function VerdictHeader({
   return (
     <div className="flex flex-col gap-4">
       {error ? (
-        <div className="flex items-start gap-2.5 rounded-sn-xl border border-sn-failed-line bg-sn-failed-soft px-4 py-3 text-[13px] text-sn-failed-ink">
+        <div className="flex items-start gap-2.5 rounded-sn-xl border border-sn-failed-line bg-sn-failed-soft px-4 py-3 text-sn-base text-sn-failed-ink">
           <IconAlert size="md" className="mt-0.5 shrink-0" />
           <div>
             <span className="font-medium">The run ended badly.</span> {error}
@@ -114,18 +114,18 @@ export function VerdictHeader({
           <Card padding="lg" radius="2xl" className="flex flex-col justify-between">
             <div>
               <div className="flex items-center justify-between gap-3">
-                <span className="text-[11px] font-medium tracking-[0.08em] text-sn-subtle uppercase">
+                <span className="text-sn-xs font-medium tracking-[0.08em] text-sn-subtle uppercase">
                   Autonomy
                 </span>
                 <Badge status="neutral" size="sm">
                   {summary.simulated ? SIMULATED_LABEL : NO_RESULT}
                 </Badge>
               </div>
-              <p className="mt-4 font-display-upright text-[34px] leading-[1.1] text-sn-ink">
+              <p className="mt-4 font-display-upright text-sn-3xl leading-[1.1] text-sn-ink">
                 {summary.simulated ? "Simulated" : "No result"}
               </p>
-              <p className="mt-3 text-[12.5px] leading-[19px] text-sn-muted">{summary.noResult}</p>
-              <p className="mt-3 text-[12.5px] leading-[19px] text-sn-subtle">
+              <p className="mt-3 text-sn-sm leading-[19px] text-sn-muted">{summary.noResult}</p>
+              <p className="mt-3 text-sn-sm leading-[19px] text-sn-subtle">
                 {summary.simulated
                   ? // Kept, not hidden: the replay below is a real record of what the
                     // dashboard once showed the owner as a measurement, and deleting it
@@ -136,7 +136,7 @@ export function VerdictHeader({
                     "every mean and every table, and the day below is all there is to read."}
               </p>
             </div>
-            <p className="mt-5 border-t border-sn-line pt-3.5 text-[12px] text-sn-muted">
+            <p className="mt-5 border-t border-sn-line pt-3.5 text-sn-sm text-sn-muted">
               {stats.ticks} tick{stats.ticks === 1 ? "" : "s"} recorded · {stats.toolCalls} tool
               call{stats.toolCalls === 1 ? "" : "s"}
             </p>
@@ -145,7 +145,7 @@ export function VerdictHeader({
         <Card padding="lg" radius="2xl" className="flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between gap-3">
-              <span className="text-[11px] font-medium tracking-[0.08em] text-sn-subtle uppercase">
+              <span className="text-sn-xs font-medium tracking-[0.08em] text-sn-subtle uppercase">
                 Autonomy
               </span>
               <Badge status={badgeStatus(summary)} size="sm">
@@ -161,12 +161,12 @@ export function VerdictHeader({
             >
               <span
                 data-numeric
-                className="font-display-upright text-[76px] leading-[0.85] text-sn-ink"
+                className="font-display-upright text-sn-6xl leading-[0.85] text-sn-ink"
               >
                 {autonomy === null ? "—" : Math.round(autonomy * 100)}
               </span>
               {autonomy === null ? null : (
-                <span className="pb-2 text-[26px] leading-none text-sn-muted">%</span>
+                <span className="pb-2 text-sn-2xl leading-none text-sn-muted">%</span>
               )}
             </button>
 
@@ -176,7 +176,7 @@ export function VerdictHeader({
               tone={autonomyTone(autonomy)}
               size="md"
             />
-            <p className="mt-3 text-[12.5px] leading-[19px] text-sn-muted">
+            <p className="mt-3 text-sn-sm leading-[19px] text-sn-muted">
               How much of the job got done without a human stepping in, counted off the day
               itself.{" "}
               <button
@@ -194,7 +194,7 @@ export function VerdictHeader({
                 the difference between those two things is the whole point of
                 this notice — without it the reader reads the number as a grade. */}
             {summary.outcome === "inconclusive" ? (
-              <p className="mt-3 rounded-sn-lg border border-sn-line bg-sn-bg-subtle px-3 py-2.5 text-[12px] leading-[18px] text-sn-muted">
+              <p className="mt-3 rounded-sn-lg border border-sn-line bg-sn-bg-subtle px-3 py-2.5 text-sn-sm text-sn-muted">
                 <span className="font-medium text-sn-ink">This run has no verdict.</span>{" "}
                 {coverage && coverage.undecidedMusts > 0
                   ? `${coverage.undecidedMusts} of the day's must-dos could not be checked at all, so nothing here shows whether the job was done. `
@@ -208,12 +208,12 @@ export function VerdictHeader({
           {judgeAutonomy === null ? null : (
             <div className="mt-5 border-t border-sn-line pt-3.5">
               <div className="flex items-baseline justify-between gap-2">
-                <span className="text-[12px] text-sn-muted">The judge&rsquo;s own reading</span>
-                <span data-numeric className="text-[15px] font-medium text-sn-ink">
+                <span className="text-sn-sm text-sn-muted">The judge&rsquo;s own reading</span>
+                <span data-numeric className="text-sn-md font-medium text-sn-ink">
                   {formatPercent(judgeAutonomy)}
                 </span>
               </div>
-              <p className="mt-1 text-[11.5px] leading-[16px] text-sn-subtle">
+              <p className="mt-1 text-sn-xs text-sn-subtle">
                 {gapPoints === null
                   ? null
                   : gapPoints === 0
@@ -289,9 +289,9 @@ export function VerdictHeader({
         </div>
       </div>
 
-      <p className="text-[12px] text-sn-subtle">
+      <p className="text-sn-sm text-sn-subtle">
         Started {formatWhen(summary.startedAt)} · run id{" "}
-        <span className="font-mono text-[11.5px]">{summary.runId}</span>
+        <span className="font-mono text-sn-xs">{summary.runId}</span>
       </p>
     </div>
   );

@@ -154,8 +154,8 @@ export function RunsClient({
           <div className="flex items-center gap-4">
             <Spinner size="md" />
             <div>
-              <p className="text-[14px] font-medium text-sn-ink">Setting up your first day…</p>
-              <p className="mt-1 text-[13px] text-sn-muted">
+              <p className="text-sn-md font-medium text-sn-ink">Setting up your first day…</p>
+              <p className="mt-1 text-sn-base text-sn-muted">
                 Cloning Northbeam Capital, then starting the client-escalation day. This takes a
                 couple of seconds.
               </p>
@@ -186,7 +186,7 @@ export function RunsClient({
         now={data.at}
         simulated={simulated}
         actions={
-          <div className="flex items-center gap-3 text-[12px] text-sn-subtle">
+          <div className="flex items-center gap-3 text-sn-sm text-sn-subtle">
             <button
               type="button"
               onClick={refresh}
@@ -230,18 +230,18 @@ function LiveRunBanner({
             </Badge>
             <Chip>{modelLabel(run.model)}</Chip>
           </div>
-          <h2 className="mt-3 font-display text-[28px] text-sn-ink">{run.specTitle}</h2>
-          <p className="mt-1 text-[13px] text-sn-subtle">
+          <h2 className="mt-3 font-display text-sn-3xl text-sn-ink">{run.specTitle}</h2>
+          <p className="mt-1 text-sn-base text-sn-subtle">
             {elapsed(run.startedAt, run.endedAt ?? now)} of real time so far
           </p>
         </div>
 
         <div className="flex items-center gap-6">
           <div className="text-right">
-            <p className="text-[11px] font-medium tracking-[0.08em] text-sn-subtle uppercase">
+            <p className="text-sn-xs font-medium tracking-[0.08em] text-sn-subtle uppercase">
               Simulated time
             </p>
-            <p data-numeric className="font-display-upright mt-1 text-[40px] leading-none text-sn-ink">
+            <p data-numeric className="font-display-upright mt-1 text-sn-4xl leading-none text-sn-ink">
               {simClock(run.simTimeISO)}
             </p>
           </div>

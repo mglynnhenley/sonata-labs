@@ -235,7 +235,7 @@ export const SidebarGroup = forwardRef<HTMLDivElement, SidebarGroupProps>(functi
   return (
     <div ref={ref} className={cn("mb-5", className)} {...rest}>
       {label ? (
-        <p className="mb-1.5 px-2.5 text-[11px] font-medium tracking-[0.08em] text-sn-subtle uppercase">
+        <p className="mb-1.5 px-2.5 text-sn-xs font-medium tracking-[0.08em] text-sn-subtle uppercase">
           {label}
         </p>
       ) : null}
@@ -284,7 +284,7 @@ export const SidebarItem = forwardRef<HTMLElement, SidebarItemProps>(function Si
   ref,
 ) {
   const classes = cn(
-    "group flex h-9 w-full items-center gap-2.5 rounded-sn-md px-2.5 text-[13px] font-medium",
+    "group flex h-9 w-full items-center gap-2.5 rounded-sn-md px-2.5 text-sn-base font-medium",
     "transition-[background-color,color,box-shadow] duration-150 ease-sn",
     active
       ? "border border-sn-line bg-sn-bg text-sn-ink"
@@ -302,7 +302,7 @@ export const SidebarItem = forwardRef<HTMLElement, SidebarItemProps>(function Si
       ) : null}
       <span className="min-w-0 flex-1 truncate text-left">{children}</span>
       {trailing ?? (count !== undefined && count !== null ? (
-        <span data-numeric className="shrink-0 text-[12px] text-sn-subtle">
+        <span data-numeric className="shrink-0 text-sn-sm text-sn-subtle">
           {count}
         </span>
       ) : null)}
@@ -377,12 +377,12 @@ export const SidebarUser = forwardRef<HTMLElement, SidebarUserProps>(function Si
 
   const inner = (
     <>
-      <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-sn-primary-soft text-[12px] font-medium text-sn-primary-ink">
+      <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-sn-primary-soft text-sn-sm font-medium text-sn-primary-ink">
         {avatar ?? initials(name)}
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-[13px] font-medium text-sn-ink">{name}</span>
-        {detail ? <span className="block truncate text-[12px] text-sn-subtle">{detail}</span> : null}
+        <span className="block truncate text-sn-base font-medium text-sn-ink">{name}</span>
+        {detail ? <span className="block truncate text-sn-sm text-sn-subtle">{detail}</span> : null}
       </span>
       {clickable ? (
         <IconChevronRight

@@ -80,8 +80,8 @@ function Wordmark({ compact = false }: { compact?: boolean }) {
       <span
         className={
           compact
-            ? "text-[14px] font-bold tracking-[-0.01em] text-sn-ink"
-            : "text-[14px] font-bold tracking-[-0.01em] text-sn-ink"
+            ? "text-sn-md font-bold tracking-[-0.01em] text-sn-ink"
+            : "text-sn-md font-bold tracking-[-0.01em] text-sn-ink"
         }
       >
         Sonata
@@ -185,10 +185,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </a>
           }
         />
-        {/* Gutters widen with the viewport; the vertical inset does not keep
-            pace with it. 64px of air above every heading is a marketing page's
-            opening, and this is a dashboard someone reads all day. */}
-        <div className="mx-auto w-full max-w-[1180px] px-5 pt-8 pb-12 sm:px-8 lg:px-10 lg:pt-9 lg:pb-14">
+        {/* 24px gutters at desktop, not 40. A dense tool wants its data near the
+            edge — the frame should be the browser window, not a band of paper
+            around the content. The cap is high enough that a wide monitor gets
+            more table rather than more margin. */}
+        <div className="mx-auto w-full max-w-[1600px] px-4 pt-6 pb-10 sm:px-5 lg:px-6 lg:pt-7 lg:pb-12">
           {children}
         </div>
       </main>

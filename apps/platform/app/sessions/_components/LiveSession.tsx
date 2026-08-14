@@ -161,7 +161,7 @@ export function LiveSession({ initial, twinLinks }: LiveSessionProps) {
         <Card padding="md" className="border-sn-failed-line bg-sn-failed-soft">
           <div className="flex items-start gap-2.5">
             <IconAlert size="md" className="mt-0.5 shrink-0 text-sn-danger" />
-            <p className="text-[13px] leading-[20px] text-sn-failed-ink">{session.error}</p>
+            <p className="text-sn-base text-sn-failed-ink">{session.error}</p>
           </div>
         </Card>
       ) : null}
@@ -178,13 +178,13 @@ export function LiveSession({ initial, twinLinks }: LiveSessionProps) {
       <Card padding="lg">
         <div className="flex flex-wrap items-end gap-x-10 gap-y-6">
           <div>
-            <p className="text-[11px] font-medium tracking-[0.08em] text-sn-subtle uppercase">
+            <p className="text-sn-xs font-medium tracking-[0.08em] text-sn-subtle uppercase">
               Simulated time
             </p>
-            <p data-numeric className="font-display-upright mt-1 text-[52px] leading-none text-sn-ink">
+            <p data-numeric className="font-display-upright mt-1 text-sn-5xl leading-none text-sn-ink">
               {simClock(session.simTimeISO)}
             </p>
-            <p className="mt-1.5 text-[12px] text-sn-subtle">
+            <p className="mt-1.5 text-sn-sm text-sn-subtle">
               {dayRange(startISO, session.simMinutesPerTick, session.plannedTicks)} ·{" "}
               {compressionLabel(session.compression)}
             </p>
@@ -200,7 +200,7 @@ export function LiveSession({ initial, twinLinks }: LiveSessionProps) {
               valueLabel={`Interval ${session.tick} of ${session.plannedTicks}`}
               indeterminate={session.status === "queued" || session.status === "judging"}
             />
-            <p className="mt-2 text-[12px] text-sn-subtle">
+            <p className="mt-2 text-sn-sm text-sn-subtle">
               {elapsed(session.startedAt, session.endedAt ?? now)} of real time
               {live && countdown !== null ? ` · next interval in ${countdown}s` : ""}
               {session.costUsd > 0 ? ` · ${money(session.costUsd)} to run the world` : ""}
@@ -224,17 +224,17 @@ export function LiveSession({ initial, twinLinks }: LiveSessionProps) {
 
       <Card padding="none" className="overflow-hidden">
         <div className="flex flex-wrap items-center gap-3 border-b border-sn-line px-6 py-4">
-          <h2 className="font-display text-[24px] text-sn-ink">The day, as it happened</h2>
+          <h2 className="font-display text-sn-2xl text-sn-ink">The day, as it happened</h2>
           {/* The count is the live region, not the story below it: a screen
               reader given the list would read every arriving row aloud over
               whatever the listener was already reading. This says how much has
               happened, once, and stays out of the way. */}
-          <span aria-live="polite" className="text-[12px] text-sn-subtle">
+          <span aria-live="polite" className="text-sn-sm text-sn-subtle">
             {rows.length} moment{rows.length === 1 ? "" : "s"}
           </span>
           <div className="ml-auto flex items-center gap-2">
             {error ? (
-              <span className="text-[12px] text-sn-subtle">Reconnecting…</span>
+              <span className="text-sn-sm text-sn-subtle">Reconnecting…</span>
             ) : live ? (
               <Badge status="running" size="sm" dot>
                 Live
@@ -269,7 +269,7 @@ export function LiveSession({ initial, twinLinks }: LiveSessionProps) {
           className="sn-scroll max-h-[62vh] min-h-[360px] overflow-y-auto overscroll-contain px-6 py-6"
         >
           {rows.length === 0 ? (
-            <p className="py-16 text-center text-[13px] text-sn-subtle">
+            <p className="py-16 text-center text-sn-base text-sn-subtle">
               The world is being stood up. The first thing usually happens as soon as the day starts.
             </p>
           ) : (
@@ -327,17 +327,17 @@ function AgentPanel({
                     ? "Starting"
                     : "Ended"}
             </Badge>
-            <span className="text-[12px] text-sn-subtle">{session.agentLabel}</span>
+            <span className="text-sn-sm text-sn-subtle">{session.agentLabel}</span>
           </div>
-          <h2 className="mt-3 font-display text-[28px] leading-[1.15] text-sn-ink">{pulse.title}</h2>
-          <p className="mt-1.5 text-[13.5px] leading-[21px] text-sn-muted">{pulse.detail}</p>
+          <h2 className="mt-3 font-display text-sn-3xl leading-[1.15] text-sn-ink">{pulse.title}</h2>
+          <p className="mt-1.5 text-sn-base text-sn-muted">{pulse.detail}</p>
         </div>
 
         <div className="text-right">
-          <p className="text-[11px] font-medium tracking-[0.08em] text-sn-subtle uppercase">
+          <p className="text-sn-xs font-medium tracking-[0.08em] text-sn-subtle uppercase">
             Last change
           </p>
-          <p data-numeric className="font-display-upright mt-1 text-[32px] leading-none text-sn-ink">
+          <p data-numeric className="font-display-upright mt-1 text-sn-3xl leading-none text-sn-ink">
             {sinceLabel(session.lastAgentActionAt, now)}
           </p>
         </div>
@@ -347,7 +347,7 @@ function AgentPanel({
 
       {live && twinLinks.length > 0 ? (
         <div className="mt-6 flex flex-wrap items-center gap-2 border-t border-sn-line pt-5">
-          <span className="text-[12px] text-sn-subtle">
+          <span className="text-sn-sm text-sn-subtle">
             Your agent works here — anything it changes shows up above:
           </span>
           {twinLinks.map((link) => (
@@ -411,7 +411,7 @@ function DayStrip({
           );
         })}
       </div>
-      <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11.5px] text-sn-subtle">
+      <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-sn-xs text-sn-subtle">
         <Key className="bg-sn-primary" label="the agent did something" />
         <Key className="bg-sn-gold" label="the world moved, the agent did not" />
         <Key className="bg-sn-line-strong" label="quiet" />
@@ -447,12 +447,12 @@ function Closing({
     <Card padding="lg">
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
         <IconCheck size="md" className="shrink-0 text-sn-success" />
-        <h2 className="font-display text-[22px] text-sn-ink">
+        <h2 className="font-display text-sn-xl text-sn-ink">
           {session.endedBecause ?? "The day is over."}
         </h2>
       </div>
 
-      <p className="mt-2 max-w-[70ch] text-[13.5px] leading-[21px] text-sn-muted">
+      <p className="mt-2 max-w-[70ch] text-sn-base text-sn-muted">
         {session.noResult
           ? session.noResult
           : "It was scored against the scenario's own checklist and read back by the judge — the same two passes a benchmark run gets, on the same artifact."}
@@ -462,18 +462,18 @@ function Closing({
         <div className="mt-6 rounded-sn-lg bg-sn-bg-subtle px-5 py-4">
           <div className="flex items-center gap-2">
             <IconInfo size="sm" className="shrink-0 text-sn-subtle" />
-            <p className="text-[13px] font-medium text-sn-ink">
+            <p className="text-sn-base font-medium text-sn-ink">
               What this record cannot tell you
             </p>
           </div>
-          <p className="mt-1.5 text-[12.5px] leading-[19px] text-sn-muted">
+          <p className="mt-1.5 text-sn-sm leading-[19px] text-sn-muted">
             The agent ran in its own process, so the day was reconstructed from what the clones
             logged. These gaps are on the artifact too, so nobody reading it later mistakes one for a
             finding about the agent.
           </p>
           <ul className="mt-3 flex flex-col gap-2">
             {session.caveats.map((caveat) => (
-              <li key={caveat} className="flex gap-2.5 text-[12.5px] leading-[19px] text-sn-muted">
+              <li key={caveat} className="flex gap-2.5 text-sn-sm leading-[19px] text-sn-muted">
                 <span aria-hidden="true" className="mt-[7px] h-1 w-1 shrink-0 rounded-full bg-sn-subtle" />
                 {caveat}
               </li>
@@ -491,7 +491,7 @@ function Closing({
           Read the results
           <IconArrowRight size="sm" />
         </a>
-        <p className="text-[12px] text-sn-subtle">
+        <p className="text-sn-sm text-sn-subtle">
           It sits in Results beside the benchmark runs, marked {session.model} so it is never read as
           a model's score.
         </p>
@@ -513,14 +513,14 @@ function Tally({
 }) {
   return (
     <div>
-      <dt className="text-[11px] font-medium tracking-[0.08em] text-sn-subtle uppercase">{label}</dt>
+      <dt className="text-sn-xs font-medium tracking-[0.08em] text-sn-subtle uppercase">{label}</dt>
       <dd
         data-numeric
-        className={cn("mt-1 text-[26px] leading-none", alarm ? "text-sn-danger-ink" : "text-sn-ink")}
+        className={cn("mt-1 text-sn-2xl leading-none", alarm ? "text-sn-danger-ink" : "text-sn-ink")}
       >
         {value}
       </dd>
-      <p className="mt-1 text-[12px] text-sn-subtle">{hint}</p>
+      <p className="mt-1 text-sn-sm text-sn-subtle">{hint}</p>
     </div>
   );
 }

@@ -33,7 +33,7 @@ export default function NotFound() {
       />
 
       <div className="mt-8">
-        <h2 className="text-[13px] font-medium text-sn-ink">Or pick up where you were</h2>
+        <h2 className="text-sn-base font-medium text-sn-ink">Or pick up where you were</h2>
         <ul className="mt-3 grid gap-2 sm:grid-cols-2">
           {ELSEWHERE.map((place) => (
             <li key={place.href}>
@@ -42,8 +42,8 @@ export default function NotFound() {
                 className="group flex items-center gap-3 rounded-sn-lg border border-sn-line bg-sn-surface px-4 py-3 shadow-sn-xs transition-colors duration-150 ease-sn hover:border-sn-line-strong"
               >
                 <span className="min-w-0 flex-1">
-                  <span className="block text-[13px] font-medium text-sn-ink">{place.label}</span>
-                  <span className="block text-[12px] text-sn-muted">{place.hint}</span>
+                  <span className="block text-sn-base font-medium text-sn-ink">{place.label}</span>
+                  <span className="block text-sn-sm text-sn-muted">{place.hint}</span>
                 </span>
                 <IconArrowRight
                   size="sm"

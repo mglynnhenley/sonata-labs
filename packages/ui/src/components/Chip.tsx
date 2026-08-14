@@ -17,8 +17,8 @@ const TONES: Record<ChipTone, string> = {
 };
 
 const SIZES: Record<ChipSize, string> = {
-  sm: "h-6 gap-1 px-2 text-[11px]",
-  md: "h-7 gap-1.5 px-2.5 text-[12px]",
+  sm: "h-6 gap-1 px-2 text-sn-xs",
+  md: "h-7 gap-1.5 px-2.5 text-sn-sm",
 };
 
 const SERVICE_ICONS: Record<ServiceId, (props: IconProps) => ReactNode> = {

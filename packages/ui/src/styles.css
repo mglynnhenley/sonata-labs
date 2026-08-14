@@ -105,6 +105,33 @@
   --sn-icon-md: 16px;
   --sn-icon-lg: 20px;
 
+  /* Type scale. Eleven steps, each with a job: four functional sizes for dense
+     UI (11-14), two for body and sub-heads (16, 20), and the display sizes a
+     dashboard needs for figures. Twenty-five ad-hoc sizes were in use before
+     this — half-pixel variants of each other that no one could keep in tune. */
+  --text-sn-xs: 11px;
+  --text-sn-xs--line-height: 15px;
+  --text-sn-sm: 12px;
+  --text-sn-sm--line-height: 16px;
+  --text-sn-base: 13px;
+  --text-sn-base--line-height: 19px;
+  --text-sn-md: 14px;
+  --text-sn-md--line-height: 20px;
+  --text-sn-lg: 16px;
+  --text-sn-lg--line-height: 24px;
+  --text-sn-xl: 20px;
+  --text-sn-xl--line-height: 26px;
+  --text-sn-2xl: 24px;
+  --text-sn-2xl--line-height: 30px;
+  --text-sn-3xl: 30px;
+  --text-sn-3xl--line-height: 34px;
+  --text-sn-4xl: 40px;
+  --text-sn-4xl--line-height: 42px;
+  --text-sn-5xl: 52px;
+  --text-sn-5xl--line-height: 54px;
+  --text-sn-6xl: 76px;
+  --text-sn-6xl--line-height: 76px;
+
   /* Radii — cards 14, controls 10, buttons are pills. */
   --radius-sn-sm: 6px;
   --radius-sn-md: 10px;

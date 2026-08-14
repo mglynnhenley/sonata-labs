@@ -54,7 +54,7 @@ export default function AppError({
 
       {/* One line, no stack: enough to search the terminal for, and nothing a
           screenshot could leak. */}
-      <p className="mt-5 text-center text-[12px] leading-[18px] text-sn-subtle">
+      <p className="mt-5 text-center text-sn-sm text-sn-subtle">
         {error.message || "No message was reported."}
         {error.digest ? (
           <>

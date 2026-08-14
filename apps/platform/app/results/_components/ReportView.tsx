@@ -72,7 +72,7 @@ function renderMarkdown(md: string): ReactNode[] {
   const flushParagraph = () => {
     if (paragraph.length === 0) return;
     blocks.push(
-      <p key={key++} className="text-[13.5px] leading-relaxed text-sn-muted">
+      <p key={key++} className="text-sn-base leading-relaxed text-sn-muted">
         {renderInline(paragraph.join(" "))}
       </p>,
     );
@@ -91,7 +91,7 @@ function renderMarkdown(md: string): ReactNode[] {
     if (trimmed.startsWith("# ")) {
       flushParagraph();
       blocks.push(
-        <h1 key={key++} className="text-[22px] font-semibold tracking-tight text-sn-ink">
+        <h1 key={key++} className="text-sn-xl font-semibold tracking-tight text-sn-ink">
           {renderInline(trimmed.slice(2))}
         </h1>,
       );
@@ -103,7 +103,7 @@ function renderMarkdown(md: string): ReactNode[] {
       blocks.push(
         <h2
           key={key++}
-          className="mt-2 border-t border-sn-line pt-5 text-[15px] font-semibold text-sn-ink"
+          className="mt-2 border-t border-sn-line pt-5 text-sn-md font-semibold text-sn-ink"
         >
           {renderInline(trimmed.slice(3))}
         </h2>,
@@ -127,7 +127,7 @@ function renderMarkdown(md: string): ReactNode[] {
       // one, so it gets no thead.
       const headed = header.some((c) => c !== "");
       blocks.push(
-        <table key={key++} className="w-full border-collapse text-[13.5px]">
+        <table key={key++} className="w-full border-collapse text-sn-base">
           {headed ? (
             <thead>
               <tr>
@@ -173,7 +173,7 @@ function renderMarkdown(md: string): ReactNode[] {
       blocks.push(
         <ul key={key++} className="flex flex-col gap-1.5">
           {items.map((item, j) => (
-            <li key={j} className="flex gap-2 text-[13.5px] leading-relaxed text-sn-muted">
+            <li key={j} className="flex gap-2 text-sn-base leading-relaxed text-sn-muted">
               <span aria-hidden className="mt-2 h-1 w-1 shrink-0 rounded-full bg-sn-line-strong" />
               <span>{renderInline(item)}</span>
             </li>

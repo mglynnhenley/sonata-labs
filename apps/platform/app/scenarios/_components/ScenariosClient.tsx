@@ -134,7 +134,7 @@ export function ScenariosClient({ initialEpisodes, templates, initialNow }: Scen
         subtitle="Days you have written or kept, each with its own success criteria"
         actions={
           episodes.length > 0 ? (
-            <span className="text-[12px] text-sn-subtle">
+            <span className="text-sn-sm text-sn-subtle">
               {episodes.length} saved on this machine
             </span>
           ) : undefined

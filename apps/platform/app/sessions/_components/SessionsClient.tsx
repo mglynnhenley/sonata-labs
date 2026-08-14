@@ -157,22 +157,22 @@ function LiveBanner({
               {LABEL[session.status]}
             </Badge>
             <Chip>{session.agentLabel}</Chip>
-            <span className="text-[12px] text-sn-subtle">
+            <span className="text-sn-sm text-sn-subtle">
               {compressionLabel(session.compression)}
             </span>
           </div>
-          <h2 className="mt-3 font-display text-[28px] text-sn-ink">{session.title}</h2>
-          <p className="mt-1 text-[13px] text-sn-subtle">
+          <h2 className="mt-3 font-display text-sn-3xl text-sn-ink">{session.title}</h2>
+          <p className="mt-1 text-sn-base text-sn-subtle">
             {pulse.title} · {elapsed(session.startedAt, now)} of real time so far
           </p>
         </div>
 
         <div className="flex items-center gap-6">
           <div className="text-right">
-            <p className="text-[11px] font-medium tracking-[0.08em] text-sn-subtle uppercase">
+            <p className="text-sn-xs font-medium tracking-[0.08em] text-sn-subtle uppercase">
               Simulated time
             </p>
-            <p data-numeric className="font-display-upright mt-1 text-[40px] leading-none text-sn-ink">
+            <p data-numeric className="font-display-upright mt-1 text-sn-4xl leading-none text-sn-ink">
               {simClock(session.simTimeISO)}
             </p>
           </div>
@@ -207,7 +207,7 @@ function PastSessions({ sessions, now }: { sessions: readonly SessionView[]; now
       render: (session) => (
         <div className="min-w-0">
           <p className="truncate font-medium text-sn-ink">{session.title}</p>
-          <p className="mt-0.5 text-[12px] text-sn-subtle">
+          <p className="mt-0.5 text-sn-sm text-sn-subtle">
             {session.agentLabel} · {compressionLabel(session.compression)}
           </p>
         </div>

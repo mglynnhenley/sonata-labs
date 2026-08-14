@@ -48,7 +48,7 @@ export const ProgressBar = forwardRef<HTMLDivElement, ProgressBarProps>(function
   return (
     <div ref={ref} className={cn("w-full", className)} {...rest}>
       {label || showValue ? (
-        <div className="mb-1.5 flex items-baseline justify-between gap-3 text-[12px]">
+        <div className="mb-1.5 flex items-baseline justify-between gap-3 text-sn-sm">
           {label ? <span className="text-sn-muted">{label}</span> : <span />}
           {showValue ? (
             <span data-numeric className="font-medium text-sn-ink">
