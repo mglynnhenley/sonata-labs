@@ -802,6 +802,11 @@ export function countRuns(): number {
 }
 
 export interface RunStats {
+  /** Runs started in the last 7 days, and the movement on the 7 before that.
+   *  Real week-over-week, off `started_at` — the dashboard prints an arrow
+   *  beside the count and an arrow has to mean something. */
+  thisWeek: number;
+  weekDelta: number;
   /** Runs that produced a result. The denominator for everything below. */
   scored: number;
   /** Runs that ended without one — errored, stopped, or the agent never acted. */
@@ -842,8 +847,25 @@ export function runStats(): RunStats {
   const spend = getDb().prepare("SELECT COALESCE(SUM(cost_usd), 0) AS usd FROM runs").get() as {
     usd: number;
   };
+  // Two fixed windows rather than a rolling average: "this week" on a dashboard
+  // means the last seven days, and the arrow beside it means the seven before.
+  const WEEK = 7 * 24 * 60 * 60 * 1000;
+  const now = Date.now();
+  const weeks = getDb()
+    .prepare(
+      `SELECT SUM(CASE WHEN started_at >= ? THEN 1 ELSE 0 END) AS current,
+              SUM(CASE WHEN started_at >= ? AND started_at < ? THEN 1 ELSE 0 END) AS previous
+       FROM runs`,
+    )
+    .get(now - WEEK, now - 2 * WEEK, now - WEEK) as {
+    current: number | null;
+    previous: number | null;
+  };
+  const thisWeek = weeks.current ?? 0;
   const scored = row.scored ?? 0;
   return {
+    thisWeek,
+    weekDelta: thisWeek - (weeks.previous ?? 0),
     scored,
     unscored: row.unscored ?? 0,
     passRate: scored > 0 ? (row.passed ?? 0) / scored : null,

@@ -1,7 +1,18 @@
 "use client";
 
 import { NO_RESULT } from "@sonata/core";
-import { Badge, buttonClasses, Card, EmptyState, IconArrowRight, IconPlay, type BadgeStatus } from "@sonata/ui";
+import { useRouter } from "next/navigation";
+import {
+  Badge,
+  buttonClasses,
+  Card,
+  EmptyState,
+  IconArrowRight,
+  IconPlay,
+  Table,
+  type BadgeStatus,
+  type Column,
+} from "@sonata/ui";
 import { ago, percent } from "@/lib/format";
 import { modelLabel } from "@/lib/models";
 import { ROUTES } from "@/lib/routes";
@@ -47,11 +58,67 @@ export interface RecentRunsProps {
 
 export function RecentRuns({ runs, now, simulated }: RecentRunsProps) {
   const go = useGo();
+  const router = useRouter();
+
+  const columns: readonly Column<RunSummary>[] = [
+    {
+      key: "scenario",
+      header: "Scenario",
+      render: (run) => (
+        <div className="min-w-0">
+          <p className="truncate text-[13px] font-medium text-sn-ink">{run.episodeTitle}</p>
+          <p className="mt-0.5 truncate text-[12px] text-sn-subtle">
+            {/* The model name is the lie on a fabricated row — it was a hash
+                seed, not a callee — so it is struck through rather than removed.
+                The row still says which model it claimed. */}
+            <span className={simulated.has(run.id) ? "line-through" : undefined}>
+              {modelLabel(run.model)}
+            </span>
+            {simulated.has(run.id) ? " · never called" : ""}
+          </p>
+        </div>
+      ),
+    },
+    {
+      // The clone the day played inside. Real: every run records the company it
+      // was seeded from, and it is the second thing you want after the scenario.
+      key: "environment",
+      header: "Environment",
+      width: "170px",
+      render: (run) => <span className="truncate text-sn-muted">{run.worldName}</span>,
+    },
+    {
+      key: "status",
+      header: "Status",
+      width: "132px",
+      render: (run) => {
+        const status = statusOf(run, simulated.has(run.id));
+        return (
+          <Badge status={status.tone} size="sm" dot={run.status === "running"}>
+            {status.label}
+          </Badge>
+        );
+      },
+    },
+    {
+      key: "autonomy",
+      header: "Autonomy",
+      align: "right",
+      width: "110px",
+      render: (run) => (
+        <span
+          data-numeric
+          className={simulated.has(run.id) || run.autonomy === null ? "text-sn-subtle" : "text-sn-ink"}
+        >
+          {percent(simulated.has(run.id) ? null : run.autonomy)}
+        </span>
+      ),
+    },
+  ];
 
   return (
-    // The card owns its own heading now: on the dashboard every panel names
-    // itself, so the page is a grid of titled cards rather than a column of
-    // h2s with cards hanging under them.
+    // The card names itself: the page is a grid of titled panels, not a column
+    // of headings with cards hanging under them.
     <Card
       padding="none"
       title="Recent runs"
@@ -70,86 +137,40 @@ export function RecentRuns({ runs, now, simulated }: RecentRunsProps) {
         </a>
       }
     >
-
-      {runs.length === 0 ? (
-        <div className="px-5 pb-5">
-          <EmptyState
-            size="sm"
-            icon={<IconPlay size="md" />}
-            title="No runs yet"
-            description="A run plays one simulated workday against a scenario, with your agent inside it. Finished runs land here with their score."
-            hints={[
-              "The score is how much of the checklist the agent completed",
-              "Autonomy is how much it did without handing the job back",
-              "Every run keeps a step-by-step replay you can walk with the arrow keys",
-            ]}
-            action={
-              <a
-                href={ROUTES.runs}
-                onClick={(e) => go(e, ROUTES.runs)}
-                className={buttonClasses("primary", "md")}
-              >
-                New run
-              </a>
-            }
-          />
-        </div>
-      ) : (
-        <ul className="border-t border-sn-line">
-          {runs.map((run) => {
-            const isSimulated = simulated.has(run.id);
-            const status = statusOf(run, isSimulated);
-            const href = ROUTES.run(run.id);
-            return (
-              <li key={run.id} className="border-b border-sn-line last:border-b-0">
+      <Table
+        columns={columns}
+        rows={runs}
+        rowKey={(run) => run.id}
+        rowLabel={(run) => `${run.episodeTitle} on ${modelLabel(run.model)}`}
+        rowHref={(run) => ROUTES.run(run.id)}
+        onRowClick={(run) => router.push(ROUTES.run(run.id))}
+        dense
+        caption="The most recent runs, newest first"
+        empty={
+          <div className="px-5 pb-5">
+            <EmptyState
+              size="sm"
+              icon={<IconPlay size="md" />}
+              title="No runs yet"
+              description="A run plays one simulated workday against a scenario, with your agent inside it. Finished runs land here with their score."
+              hints={[
+                "The score is how much of the checklist the agent completed",
+                "Autonomy is how much it did without handing the job back",
+                "Every run keeps a step-by-step replay you can walk with the arrow keys",
+              ]}
+              action={
                 <a
-                  href={href}
-                  onClick={(e) => go(e, href)}
-                  className="group flex items-center gap-4 px-5 py-3.5 transition-colors duration-150 ease-sn hover:bg-sn-surface-hover"
+                  href={ROUTES.runs}
+                  onClick={(e) => go(e, ROUTES.runs)}
+                  className={buttonClasses("primary", "md")}
                 >
-                  <Badge status={status.tone} size="sm" className="w-[86px] justify-center">
-                    {status.label}
-                  </Badge>
-
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[13px] font-medium text-sn-ink">
-                      {run.episodeTitle}
-                    </span>
-                    <span className="block truncate text-[12px] text-sn-subtle">
-                      {/* The model name is the lie on a fabricated row — it was a
-                          hash seed, not a callee — so it is struck through rather
-                          than removed. The row still says which model it claimed. */}
-                      <span className={isSimulated ? "line-through" : undefined}>
-                        {modelLabel(run.model)}
-                      </span>
-                      {isSimulated ? " · never called" : ""}
-                      {run.worldName ? ` · ${run.worldName}` : ""}
-                    </span>
-                  </span>
-
-                  <span className="hidden w-[92px] shrink-0 text-right sm:block">
-                    <span data-numeric className="block text-[15px] font-medium text-sn-ink">
-                      {percent(run.autonomy)}
-                    </span>
-                    <span className="block text-[11px] tracking-[0.04em] text-sn-subtle uppercase">
-                      Autonomy
-                    </span>
-                  </span>
-
-                  <span className="w-[76px] shrink-0 text-right text-[12px] text-sn-subtle">
-                    {ago(run.endedAt ?? run.startedAt, now)}
-                  </span>
-
-                  <IconArrowRight
-                    size="sm"
-                    className="shrink-0 text-sn-subtle transition-transform duration-150 ease-sn group-hover:translate-x-0.5 group-hover:text-sn-ink"
-                  />
+                  New run
                 </a>
-              </li>
-            );
-          })}
-        </ul>
-      )}
+              }
+            />
+          </div>
+        }
+      />
     </Card>
   );
 }

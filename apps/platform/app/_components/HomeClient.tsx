@@ -153,9 +153,32 @@ export function HomeClient({ initial }: HomeClientProps) {
       <section>
         <h2 className="sr-only">Scores so far</h2>
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          {/* Runs this week leads, with a real week-over-week arrow: the
+              dashboard's first number should be the one that moved. */}
+          <StatCard
+            label="Runs this week"
+            value={stats.thisWeek}
+            icon={<IconPlay size="sm" />}
+            delta={
+              stats.weekDelta === 0
+                ? undefined
+                : {
+                    value: Math.abs(stats.weekDelta),
+                    direction: stats.weekDelta > 0 ? "up" : "down",
+                    label: "vs the week before",
+                  }
+            }
+            hint={`${counts.runs} in total · ${counts.worlds} ${counts.worlds === 1 ? "company" : "companies"} · ${counts.episodes} ${counts.episodes === 1 ? "scenario" : "scenarios"}`}
+            href={ROUTES.runs}
+            actionLabel="Every run"
+            onClick={(e) => go(e, ROUTES.runs)}
+          />
           <StatCard
             label="Autonomy"
-            value={percent(stats.autonomy)}
+            // The number and its unit are separate now: "77" reads as the
+            // figure and "%" as its unit, which is how the stat strip is drawn.
+            value={stats.autonomy === null ? "—" : Math.round(stats.autonomy * 100)}
+            unit={stats.autonomy === null ? undefined : "%"}
             icon={<IconSpark size="md" />}
             // The mean is over the runs that produced a result. Runs that never
             // executed, and runs no model ever touched, are named rather than
@@ -190,22 +213,6 @@ export function HomeClient({ initial }: HomeClientProps) {
             href={ROUTES.compare}
             actionLabel="Which criteria failed"
             onClick={(e) => go(e, ROUTES.compare)}
-          />
-          <StatCard
-            label="Runs"
-            value={counts.runs}
-            icon={<IconPlay size="sm" />}
-            // The total counts everything on disk, fabricated days included —
-            // deleting them from the tally is how they got averaged in unnoticed.
-            // It just has to say how many of them there are.
-            hint={
-              `${counts.worlds} ${counts.worlds === 1 ? "company" : "companies"} · ${counts.episodes} ${
-                counts.episodes === 1 ? "scenario" : "scenarios"
-              }` + (simulated.size > 0 ? ` · ${simulated.size} simulated` : "")
-            }
-            href={ROUTES.runs}
-            actionLabel="Every run"
-            onClick={(e) => go(e, ROUTES.runs)}
           />
           <StatCard
             label="Spend"
