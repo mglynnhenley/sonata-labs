@@ -11,9 +11,11 @@ import type { Overview } from "@/lib/overview";
 export type QueueHealthProps = {
   stats: Overview["stats"];
   twins: Overview["twins"];
+  /** Total scenarios saved — the denominator for coverage. */
+  scenarios: number;
 };
 
-export function QueueHealth({ stats, twins }: QueueHealthProps) {
+export function QueueHealth({ stats, twins, scenarios }: QueueHealthProps) {
   const attempted = stats.scored + stats.unscored;
   const up = twins.filter((twin) => twin.ok).length;
 
@@ -33,17 +35,31 @@ export function QueueHealth({ stats, twins }: QueueHealthProps) {
           showValue
           valueLabel={attempted === 0 ? "none yet" : `${stats.scored} of ${attempted}`}
         />
+        {/* How much of the scenario library has ever been scored. A benchmark
+            that only ever runs two of its twenty days is not a benchmark. */}
+        <ProgressBar
+          label="Scenario coverage"
+          value={stats.scenariosCovered}
+          max={Math.max(scenarios, 1)}
+          tone="gold"
+          showValue
+          valueLabel={scenarios === 0 ? "none saved" : `${stats.scenariosCovered} of ${scenarios}`}
+        />
         <ProgressBar
           label="Runs passed"
           value={stats.passRate === null ? 0 : Math.round(stats.passRate * 100)}
           tone="success"
           showValue
-          valueLabel={stats.passRate === null ? "—" : `${Math.round(stats.passRate * 100)}%`}
+          valueLabel={
+            stats.passRate === null
+              ? "—"
+              : `${Math.round(stats.passRate * stats.scored)} of ${stats.scored}`
+          }
         />
         <ProgressBar
           label="Mean autonomy"
           value={stats.autonomy === null ? 0 : Math.round(stats.autonomy * 100)}
-          tone="gold"
+          tone="primary"
           showValue
           valueLabel={stats.autonomy === null ? "—" : `${Math.round(stats.autonomy * 100)}%`}
         />

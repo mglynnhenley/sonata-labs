@@ -33,6 +33,9 @@ export interface Overview {
    * naming it beats a generic "What's happening".
    */
   clone: { name: string; seededAt: number } | null;
+  /** Median simulated minutes reached before a run stopped. Null until a run
+   *  has been scored — the clock's minutes-per-tick applied to `medianTicks`. */
+  medianHorizonMin: number | null;
   models: Record<ModelRole, string>;
   /** Server time when this was built, so the client can age it honestly. */
   at: number;
@@ -51,6 +54,12 @@ export async function getOverview(): Promise<Overview> {
     recent: listRuns({ limit: 6 }),
     stats: runStats(),
     twins,
+    medianHorizonMin: (() => {
+      const stats = runStats();
+      return stats.medianTicks === null
+        ? null
+        : Math.round(stats.medianTicks * getSettings().simMinutesPerTick);
+    })(),
     clone: (() => {
       const seeded = listCompanies().find((company) => company.state === "seeded");
       // `seededAt` is non-null exactly when state is "seeded", but the type does

@@ -807,6 +807,15 @@ export interface RunStats {
    *  beside the count and an arrow has to mean something. */
   thisWeek: number;
   weekDelta: number;
+  /**
+   * Median ticks reached across scored runs. The dashboard multiplies it by the
+   * clock's minutes-per-tick to print a horizon — how far into a simulated day
+   * the agent gets before it stalls or hands back. Median, not mean: one run
+   * that died on tick 1 should not drag the typical day down with it.
+   */
+  medianTicks: number | null;
+  /** Distinct scenarios that have at least one scored run. */
+  scenariosCovered: number;
   /** Runs that produced a result. The denominator for everything below. */
   scored: number;
   /** Runs that ended without one — errored, stopped, or the agent never acted. */
@@ -862,8 +871,26 @@ export function runStats(): RunStats {
     previous: number | null;
   };
   const thisWeek = weeks.current ?? 0;
+
+  // Small result sets, so the median is computed here rather than in SQL —
+  // SQLite has no percentile function and the alternative is an OFFSET dance.
+  const ticks = getDb()
+    .prepare("SELECT tick FROM runs WHERE score IS NOT NULL AND tick > 0 ORDER BY tick")
+    .all() as Array<{ tick: number }>;
+  const medianTicks =
+    ticks.length === 0
+      ? null
+      : ticks.length % 2 === 1
+        ? ticks[(ticks.length - 1) / 2]!.tick
+        : (ticks[ticks.length / 2 - 1]!.tick + ticks[ticks.length / 2]!.tick) / 2;
+
+  const covered = getDb()
+    .prepare("SELECT COUNT(DISTINCT episode_id) AS n FROM runs WHERE score IS NOT NULL")
+    .get() as { n: number | null };
   const scored = row.scored ?? 0;
   return {
+    medianTicks,
+    scenariosCovered: covered.n ?? 0,
     thisWeek,
     weekDelta: thisWeek - (weeks.previous ?? 0),
     scored,

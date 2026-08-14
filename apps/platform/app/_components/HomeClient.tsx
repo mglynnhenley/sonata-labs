@@ -4,14 +4,14 @@ import {
   buttonClasses,
   Card,
   IconArrowRight,
-  IconLayers,
+  IconClock,
   IconPlay,
   IconSearch,
   IconSpark,
   PageHeader,
   StatCard,
 } from "@sonata/ui";
-import { ago, money, percent } from "@/lib/format";
+import { ago, percent } from "@/lib/format";
 import { ROUTES } from "@/lib/routes";
 import type { Overview } from "@/lib/overview";
 // The names live with the projections that produce the numbers, so Home and the
@@ -73,7 +73,7 @@ export function HomeClient({ initial }: HomeClientProps) {
   const go = useGo();
   const poll = usePoll<Overview>("/api/overview", 2500, initial);
   const { data, refresh } = poll;
-  const { counts, stats, live, recent, twins, clone } = data;
+  const { counts, stats, live, recent, twins, clone, medianHorizonMin } = data;
   const simulated = useSimulated();
 
   if (data.firstRun) {
@@ -221,14 +221,18 @@ export function HomeClient({ initial }: HomeClientProps) {
             actionLabel="Which criteria failed"
             onClick={(e) => go(e, ROUTES.compare)}
           />
+          {/* How far into a simulated day the typical run gets before it stops.
+              Median rather than mean: one run that died on tick 1 should not
+              drag the typical day down with it. */}
           <StatCard
-            label="Spend"
-            value={money(stats.spendUsd)}
-            icon={<IconLayers size="md" />}
-            hint="Every model call so far, agent and director"
-            href={ROUTES.compare}
-            actionLabel="Where the money went"
-            onClick={(e) => go(e, ROUTES.compare)}
+            label="Median horizon"
+            value={medianHorizonMin === null ? "—" : medianHorizonMin}
+            unit={medianHorizonMin === null ? undefined : "min"}
+            icon={<IconClock size="md" />}
+            hint="Simulated time the typical run reaches before it stalls or hands back."
+            href={ROUTES.runs}
+            actionLabel="Every run"
+            onClick={(e) => go(e, ROUTES.runs)}
           />
         </div>
       </section>
@@ -237,7 +241,7 @@ export function HomeClient({ initial }: HomeClientProps) {
           itself is doing on the right. */}
       <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
         <RecentRuns runs={recent} now={data.at} simulated={simulated} />
-        <QueueHealth stats={stats} twins={twins} />
+        <QueueHealth stats={stats} twins={twins} scenarios={counts.episodes} />
       </div>
 
     </div>
