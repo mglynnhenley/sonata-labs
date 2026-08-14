@@ -115,7 +115,7 @@ export function ScenariosClient({ initialEpisodes, templates, initialNow }: Scen
       <PageHeader
         eyebrow="Workspace"
         title="Scenarios"
-        subtitle="A scenario is one simulated workday inside a cloned business: who works there, what happens and when, and what counts as having done the job."
+        subtitle="Start a run from a day you have saved, or build one from a template."
         actions={
           // A real anchor, so the page's main exit can be opened in a new tab.
           <a
@@ -182,7 +182,7 @@ export function ScenariosClient({ initialEpisodes, templates, initialNow }: Scen
       <Card
         padding="lg"
         title="Templates"
-        subtitle="The five days the benchmark runs. Each one is written so it cannot be solved by reading a single message — the fact the agent needs is always on a different surface from the place it is asked for, and the day keeps changing after the agent starts working."
+        subtitle="The five days the benchmark runs — each needs a fact from a surface other than the one it is asked on."
       >
         <div className="grid gap-4 pt-1 lg:grid-cols-2">
           {templates.map((template) => (

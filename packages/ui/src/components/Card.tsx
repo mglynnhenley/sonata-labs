@@ -75,7 +75,10 @@ export const Card = forwardRef<HTMLDivElement, CardProps>(function Card(
               <h3 className="text-sn-md font-medium text-sn-ink">{title}</h3>
             ) : null}
             {subtitle !== undefined ? (
-              <p className="mt-0.5 text-sn-base text-sn-muted">{subtitle}</p>
+              // Capped for the same reason PageHeader's is: uncapped, a subtitle
+              // runs the full card, and on a 1180px card that is ~150 characters
+              // a line — double the measure anyone reads comfortably.
+              <p className="mt-0.5 max-w-[68ch] text-sn-base text-sn-muted">{subtitle}</p>
             ) : null}
           </div>
           {actions !== undefined ? (
