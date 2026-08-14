@@ -61,8 +61,14 @@ export function SavedScenarioCard({ episode, now, deleting, onDelete }: SavedSce
         </p>
 
         <div className="mt-4 flex flex-wrap items-center gap-1.5">
+          {/* Neutral, not the service hue: twenty cards times three chips is
+              seventy pieces of red, purple and blue on one screen, and the
+              colour is not the signal — the icon and the word already say which
+              app it is. The hue is kept where a chip reports live state (the
+              dashboard's cloned systems) and on the scenario detail, where
+              there are three of them rather than seventy. */}
           {episode.twins.map((twin) => (
-            <Chip key={twin} service={twin} size="sm">
+            <Chip key={twin} service={twin} tone="neutral" size="sm">
               {SERVICE_LABELS[twin]}
             </Chip>
           ))}
