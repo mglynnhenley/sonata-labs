@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { makeTestDb, CORPUS, PRIMARY_ID, TEAM_ID, at } from "./helpers";
+import { CORPUS, PRIMARY_ID, TEAM_ID, at, makeTestDb, trackDb } from "./helpers";
 import { getEventRow, insertEvent, cancelEvent, listAttendees } from "@/lib/store/events";
 import { listCalendarRows, resolveCalendar } from "@/lib/store/calendars";
 import { logAction, listActions, startNewSession } from "@/lib/audit";
@@ -47,7 +47,7 @@ describe("schema", () => {
   });
 
   it("applies cleanly to a fresh audit-only database", () => {
-    const audit = new Database(":memory:");
+    const audit = trackDb(new Database(":memory:"));
     audit.exec(schema);
     const names = (
       audit.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as Array<{

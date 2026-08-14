@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { makeTestDb, CORPUS, PRIMARY_ID, TEAM_ID, TZ, OWNER, at } from "./helpers";
+import { CORPUS, OWNER, PRIMARY_ID, TEAM_ID, TZ, at, makeTestDb, trackDb } from "./helpers";
 import { listEventRows, cancelEvent } from "@/lib/store/events";
 import { listEventResources } from "@/lib/calendar/list";
 import { getCalendarRow } from "@/lib/store/calendars";
@@ -156,7 +156,7 @@ describe("week view", () => {
 
 describe("seed", () => {
   it("builds a world with a conflict the agent has to resolve", () => {
-    const db = new Database(":memory:");
+    const db = trackDb(new Database(":memory:"));
     db.exec(schema);
     seedDatabase(db);
     const rows = listEventRows(db, {
