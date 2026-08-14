@@ -48,20 +48,12 @@ function autonomyHint(stats: Overview["stats"], simulated: number): string {
   // Rows with no score, less the fabricated ones already named. Clamped because
   // the two counts come from different stores — the rows and the artifacts — and
   // a negative remainder would be a worse sentence than a missing one.
-  const never = Math.max(stats.unscored - simulated, 0);
-  const notes = [
-    ...(simulated > 0
-      ? [
-          `${simulated} ${simulated === 1 ? "was" : "were"} simulated — no model was ever called, so ${simulated === 1 ? "it is" : "they are"} not counted`,
-        ]
-      : []),
-    ...(never > 0 ? [`${never} more never ran, so ${never === 1 ? "it is" : "they are"} not counted`] : []),
-  ];
-
-  return (
-    `Mean across ${stats.scored} scored ${stats.scored === 1 ? "run" : "runs"} — mixes scenarios and models` +
-    notes.map((note) => ` · ${note}`).join("")
-  );
+  // The hint clamps to two lines at 11px. The old version wrote three clauses
+  // into it — the mean, then why the simulated runs are excluded, then why the
+  // unstarted ones are — and the reader saw "mixes scenarios and models • 8
+  // were simulated …", a sentence cut mid-caveat. "Scored" is the caveat: it
+  // is the denominator, and it already says the other rows are not in it.
+  return `How much gets done without a human. Mean of ${stats.scored} scored ${stats.scored === 1 ? "run" : "runs"}.`;
 }
 
 export function HomeClient({ initial }: HomeClientProps) {
@@ -108,13 +100,15 @@ export function HomeClient({ initial }: HomeClientProps) {
         // The dashboard is a view of ONE cloned business, so it says which.
         // Falls back only when nothing is loaded into the clones.
         title={clone ? `${clone.name} clone` : "What's happening"}
-        // Names what is in the clones and how much is ready to throw at it, then
-        // defines the product's central word — the most-read sentence on the
-        // most-visited page, and never a status line.
+        // Status, and only status: what is in the clones and how much is ready
+        // to throw at it. This used to also define autonomy, which put a
+        // glossary entry 200px above the number it explains and made the most-
+        // read line on the product two things at once. The definition now leads
+        // the Autonomy card's own hint, directly under the 77%.
         subtitle={
           clone
-            ? `Seeded ${ago(clone.seededAt, data.at)} from Gmail, Slack and Calendar · ${counts.episodes} ${counts.episodes === 1 ? "scenario" : "scenarios"} ready. Autonomy is the share of the day's work your agent finished without handing it back to a human.`
-            : "Autonomy is the share of the day's work your agent finished without handing it back to a human."
+            ? `Seeded ${ago(clone.seededAt, data.at)} from Gmail, Slack and Calendar · ${counts.episodes} ${counts.episodes === 1 ? "scenario" : "scenarios"} ready`
+            : `${counts.episodes} ${counts.episodes === 1 ? "scenario" : "scenarios"} ready · nothing cloned yet`
         }
         actions={
           <>

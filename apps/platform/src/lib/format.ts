@@ -46,9 +46,12 @@ export function ago(epochMs: number | null, now: number = Date.now()): string {
   const minutes = Math.round(seconds / 60);
   if (minutes < 60) return `${minutes}${NBSP}min ago`;
   const hours = Math.round(minutes / 60);
-  if (hours < 24) return `${hours}${NBSP}h ago`;
+  // Single-letter units close up — "3h ago", not "3 h ago", which reads as a
+  // typo. "min" keeps its space because "45min" does not. The number and its
+  // unit still cannot be split across lines either way.
+  if (hours < 24) return `${hours}h ago`;
   const days = Math.round(hours / 24);
-  if (days < 7) return `${days}${NBSP}d ago`;
+  if (days < 7) return `${days}d ago`;
   // The locale is pinned, never `undefined`: that resolves to Node's ICU default
   // on the server and the browser's locale on the client, so the same row renders
   // "12 Mar" in the HTML and "Mar 12" after hydration. en-GB, as everywhere else
