@@ -25,7 +25,7 @@ export const color = {
   surfaceHover: "#f7f6f2",
   ink: "#16181a",
   muted: "#5a6060",
-  subtle: "#8a908d",
+  subtle: "#6b716e",
   line: "#eceae2",
   lineStrong: "#dddad0",
   primary: "#0e5c55",

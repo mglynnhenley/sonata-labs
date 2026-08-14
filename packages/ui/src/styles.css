@@ -25,7 +25,10 @@
   /* Ink + rules */
   --color-sn-ink: #16181a;
   --color-sn-muted: #5a6060;
-  --color-sn-subtle: #8a908d;
+  /* Measured, not eyeballed: at #8a908d this was 3.01:1 on --color-sn-bg, and
+     it is only ever used at 11-13px, where AA wants 4.5:1. #6b716e keeps the
+     same desaturated green-grey and clears 4.61:1 on the page, 4.99:1 on cards. */
+  --color-sn-subtle: #6b716e;
   --color-sn-line: #eceae2;
   --color-sn-line-strong: #dddad0;
 
