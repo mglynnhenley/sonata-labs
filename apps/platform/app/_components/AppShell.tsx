@@ -62,7 +62,11 @@ const NAV_GROUPS = [
   },
 ] as const;
 
-const EMPTY: Pick<Overview, "live" | "twins"> = { live: [], twins: [] };
+const EMPTY: Pick<Overview, "live" | "twins" | "counts"> = {
+  live: [],
+  twins: [],
+  counts: { worlds: 0, episodes: 0, runs: 0 },
+};
 
 /** Names the apps rather than counting an unexplained noun. */
 function twinLine(twins: Pick<Overview, "twins">["twins"]): string {
@@ -93,7 +97,7 @@ function Wordmark({ compact = false }: { compact?: boolean }) {
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { data } = usePoll<Pick<Overview, "live" | "twins">>("/api/overview", 5000, EMPTY);
+  const { data } = usePoll<Pick<Overview, "live" | "twins" | "counts">>("/api/overview", 5000, EMPTY);
   const [navOpen, setNavOpen] = useState(false);
 
   // Client-side navigation with real links: the href keeps middle-click and
@@ -159,6 +163,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                       {liveCount}
                     </Badge>
                   ) : undefined
+                }
+                // The total sits quietly behind the live badge: a day in flight
+                // is louder than how many have ever been played.
+                count={
+                  item.href === ROUTES.runs && liveCount === 0 && data.counts.runs > 0
+                    ? data.counts.runs
+                    : undefined
                 }
               >
                 {item.label}

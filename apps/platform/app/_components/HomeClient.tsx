@@ -11,7 +11,7 @@ import {
   PageHeader,
   StatCard,
 } from "@sonata/ui";
-import { money, percent } from "@/lib/format";
+import { ago, money, percent } from "@/lib/format";
 import { ROUTES } from "@/lib/routes";
 import type { Overview } from "@/lib/overview";
 // The names live with the projections that produce the numbers, so Home and the
@@ -73,7 +73,7 @@ export function HomeClient({ initial }: HomeClientProps) {
   const go = useGo();
   const poll = usePoll<Overview>("/api/overview", 2500, initial);
   const { data, refresh } = poll;
-  const { counts, stats, live, recent, twins } = data;
+  const { counts, stats, live, recent, twins, clone } = data;
   const simulated = useSimulated();
 
   if (data.firstRun) {
@@ -84,10 +84,17 @@ export function HomeClient({ initial }: HomeClientProps) {
     <div className="sn-stack-section">
       <PageHeader
         eyebrow="Overview"
-        title="What's happening"
-        // Permanent, and never a status line: the most-read sentence on the
-        // most-visited page defines the product's central word on every visit.
-        subtitle="Autonomy is the share of the day's work your agent finished without handing it back to a human."
+        // The dashboard is a view of ONE cloned business, so it says which.
+        // Falls back only when nothing is loaded into the clones.
+        title={clone ? `${clone.name} clone` : "What's happening"}
+        // Names what is in the clones and how much is ready to throw at it, then
+        // defines the product's central word — the most-read sentence on the
+        // most-visited page, and never a status line.
+        subtitle={
+          clone
+            ? `Seeded ${ago(clone.seededAt, data.at)} from Gmail, Slack and Calendar · ${counts.episodes} ${counts.episodes === 1 ? "scenario" : "scenarios"} ready. Autonomy is the share of the day's work your agent finished without handing it back to a human.`
+            : "Autonomy is the share of the day's work your agent finished without handing it back to a human."
+        }
         // Only while a day is playing. With nothing running, the card directly
         // below is itself a "New run" button — the page was offering the same
         // action twice within one glance, which reads as two different actions.

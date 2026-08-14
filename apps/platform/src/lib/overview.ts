@@ -8,6 +8,7 @@ import {
   type RunStats,
   type RunSummary,
 } from "./db";
+import { listCompanies } from "./engine/clone";
 import { getSettings } from "./settings";
 import { allTwinStatuses, type TwinStatus } from "./twins";
 import type { ModelRole } from "./models";
@@ -26,6 +27,12 @@ export interface Overview {
   recent: RunSummary[];
   stats: RunStats;
   twins: TwinStatus[];
+  /**
+   * The company currently loaded into the three clones, if any. Home titles
+   * itself after it — the dashboard is a view of ONE cloned business, and
+   * naming it beats a generic "What's happening".
+   */
+  clone: { name: string; seededAt: number } | null;
   models: Record<ModelRole, string>;
   /** Server time when this was built, so the client can age it honestly. */
   at: number;
@@ -44,6 +51,14 @@ export async function getOverview(): Promise<Overview> {
     recent: listRuns({ limit: 6 }),
     stats: runStats(),
     twins,
+    clone: (() => {
+      const seeded = listCompanies().find((company) => company.state === "seeded");
+      // `seededAt` is non-null exactly when state is "seeded", but the type does
+      // not know that, so the guard is real rather than an assertion.
+      return seeded && seeded.seededAt !== null
+        ? { name: seeded.name, seededAt: seeded.seededAt }
+        : null;
+    })(),
     models: getSettings().models,
     at: Date.now(),
   };

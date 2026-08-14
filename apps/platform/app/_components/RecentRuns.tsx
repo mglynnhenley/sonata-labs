@@ -122,7 +122,7 @@ export function RecentRuns({ runs, now, simulated }: RecentRunsProps) {
     <Card
       padding="none"
       title="Recent runs"
-      subtitle="The latest days played, whatever they scored"
+      subtitle="Latest simulations across every environment"
       actions={
         <a
           href={ROUTES.runs}
