@@ -177,7 +177,7 @@ export async function createWorldFromBrief(
   let backlogReason: string | undefined;
   if (!drafted.draft.offline) {
     try {
-      say("writing the days behind this one, across all three surfaces");
+      say("writing the days behind this one, across every surface");
       clone = await growBacklog(drafted.spec, brief);
     } catch (err) {
       // A day with no history is still a runnable day. Say so rather than let a

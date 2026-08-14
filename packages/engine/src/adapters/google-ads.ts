@@ -44,6 +44,13 @@ import { auditViaActivity, byKey, healthViaApi, resetViaApi } from "./shared";
 const MAX_CAMPAIGNS = 200;
 
 /**
+ * Ad groups read when a spend beat names one. Never captured — the snapshot
+ * deliberately holds campaigns only — so this bounds a resolution query and
+ * nothing that ships inside a run artifact.
+ */
+const MAX_AD_GROUPS = 500;
+
+/**
  * The window `costMicros` covers. LAST_7_DAYS is both what the twin's own digest
  * uses and what an agent asked for "last week's spend" writes, so the judge and
  * the agent end up looking at one number instead of two defensible ones. Google
@@ -79,6 +86,7 @@ const DEFAULT_BUDGET_MICROS = 100_000_000;
 interface AdsRow {
   campaign?: { id?: string; name?: string; status?: string; resourceName?: string };
   campaignBudget?: { id?: string; amountMicros?: string };
+  adGroup?: { id?: string; name?: string };
   metrics?: { costMicros?: string };
 }
 
@@ -86,60 +94,6 @@ interface AdsRow {
 function int64(value: string | undefined): number {
   const n = Number(value);
   return Number.isFinite(n) ? n : 0;
-}
-
-/**
- * The beats this twin takes.
- *
- * Declared here rather than imported because core's `BeatBody` union still names
- * only gmail, slack and calendar — a google-ads beat cannot be typed there yet, so
- * one arrives at `inject` wearing another twin's type and is checked structurally
- * on the way in. When core grows a `GoogleAdsBeatBody` this block and `asAdsBeat`
- * below both delete, and nothing else in the file moves.
- *
- * The three kinds are exactly what the twin's own POST /api/sandbox/inject
- * serves — a campaign flipping status behind the agent's back, a budget moving,
- * and a day's spend landing. None of them is audit-logged, which is what keeps
- * the world's hand out of the record the judge reads to score the agent.
- */
-type GoogleAdsBeat =
-  | {
-      twin: "google-ads";
-      kind: "status";
-      payload: { campaign?: string; campaignRef?: string; status: string };
-    }
-  | {
-      twin: "google-ads";
-      kind: "budget";
-      payload: { campaign?: string; campaignRef?: string; amountMicros: number };
-    }
-  | {
-      twin: "google-ads";
-      kind: "spend";
-      payload: {
-        adGroupId: string;
-        date?: string;
-        impressions: number;
-        clicks: number;
-        costMicros: number;
-        conversions?: number;
-        conversionsValue?: number;
-      };
-    };
-
-const ADS_BEAT_KINDS = ["status", "budget", "spend"];
-
-function asAdsBeat(body: BeatBody): GoogleAdsBeat {
-  const beat = body as unknown as { twin?: string; kind?: string };
-  if (beat.twin !== "google-ads") {
-    throw new Error(`google-ads adapter cannot inject a ${String(beat.twin)} beat`);
-  }
-  if (!ADS_BEAT_KINDS.includes(String(beat.kind))) {
-    throw new Error(
-      `google-ads has no "${String(beat.kind)}" beat — it takes ${ADS_BEAT_KINDS.join(", ")}`,
-    );
-  }
-  return beat as GoogleAdsBeat;
 }
 
 /**
@@ -218,6 +172,41 @@ export function createGoogleAdsAdapter(opts: GoogleAdsAdapterOptions = {}): Twin
       name: r.campaign?.name ?? "",
       budgetId: r.campaignBudget?.id ?? "",
     }));
+  }
+
+  /** Every ad group's identity, for resolving what a spend beat names. */
+  async function adGroupIndex(): Promise<Array<{ id: string; name: string; campaign: string }>> {
+    const rows = await search(
+      "SELECT ad_group.id, ad_group.name, campaign.name FROM ad_group " +
+        `ORDER BY ad_group.id LIMIT ${MAX_AD_GROUPS}`,
+    );
+    return rows.map((r) => ({
+      id: r.adGroup?.id ?? "",
+      name: r.adGroup?.name ?? "",
+      campaign: r.campaign?.name ?? "",
+    }));
+  }
+
+  /**
+   * The ad group a spend beat landed on, by id or by name.
+   *
+   * Named for the same reason a campaign is: an ad group's eleven-digit id is
+   * minted at seed time by @sonata/world and appears in no `WorldSeed`, no world
+   * preview and nowhere on the dashboard, so the name is the only handle a spec
+   * written against a generated world can carry. An unknown one is this adapter's
+   * own error, listing what the account holds, rather than the twin's 500.
+   */
+  async function resolveAdGroup(adGroup: string): Promise<{ id: string; name: string }> {
+    const needle = adGroup.trim().toLowerCase();
+    const index = await adGroupIndex();
+    const found = index.find((g) => g.id === adGroup || g.name.toLowerCase() === needle);
+    if (!found) {
+      throw new Error(
+        `a spend beat names ad group "${adGroup}", which this account does not hold — it has ` +
+          `${index.map((g) => `"${g.name}" (${g.campaign})`).join(", ") || "no ad groups at all"}`,
+      );
+    }
+    return found;
   }
 
   /**
@@ -307,18 +296,21 @@ export function createGoogleAdsAdapter(opts: GoogleAdsAdapterOptions = {}): Twin
     },
 
     async inject(body: BeatBody, ctx: InjectContext): Promise<InjectedRef> {
-      const beat = asAdsBeat(body);
+      if (body.twin !== "google-ads") {
+        throw new Error(`google-ads adapter cannot inject a ${body.twin} beat`);
+      }
 
       // Everything the world does goes through the sandbox route rather than
       // campaigns:mutate. The provider API writes an audit row, and the audit log
       // is how the engine tells what the agent did from what was done to it — a
       // budget the world cut at 11am must not read as a budget the agent cut.
-      if (beat.kind === "spend") {
-        const p = beat.payload;
+      if (body.kind === "spend") {
+        const p = body.payload;
+        const adGroup = await resolveAdGroup(p.adGroup);
         await http.post("/api/sandbox/inject", {
           spend: [
             {
-              adGroupId: p.adGroupId,
+              adGroupId: adGroup.id,
               ...(p.date ? { date: p.date } : {}),
               impressions: p.impressions,
               clicks: p.clicks,
@@ -335,14 +327,14 @@ export function createGoogleAdsAdapter(opts: GoogleAdsAdapterOptions = {}): Twin
           atISO: ctx.atISO,
         });
         // Spend creates no resource, so the handle names where the money landed.
-        return { twin: "google-ads", id: p.adGroupId };
+        return { twin: "google-ads", id: adGroup.id };
       }
 
-      const campaign = await resolveCampaign(beat.payload, ctx, `a ${beat.kind} beat`);
+      const campaign = await resolveCampaign(body.payload, ctx, `a ${body.kind} beat`);
 
-      if (beat.kind === "status") {
+      if (body.kind === "status") {
         await http.post("/api/sandbox/inject", {
-          statusChanges: [{ campaignId: campaign.id, status: beat.payload.status }],
+          statusChanges: [{ campaignId: campaign.id, status: body.payload.status }],
           atISO: ctx.atISO,
         });
         return { twin: "google-ads", id: campaign.id };
@@ -355,7 +347,7 @@ export function createGoogleAdsAdapter(opts: GoogleAdsAdapterOptions = {}): Twin
       }
       await http.post("/api/sandbox/inject", {
         budgetChanges: [
-          { budgetId: campaign.budgetId, amountMicros: beat.payload.amountMicros },
+          { budgetId: campaign.budgetId, amountMicros: body.payload.amountMicros },
         ],
         atISO: ctx.atISO,
       });

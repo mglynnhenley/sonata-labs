@@ -95,6 +95,212 @@ export interface CalendarRsvpPayload {
   comment?: string;
 }
 
+/** What a spec may write into a CRM attribute: the twin normalises all three. */
+export type AttioWriteValue = string | number | Array<string | number>;
+
+/** An account, a contact or a deal appears in the CRM mid-day. */
+export interface AttioRecordPayload {
+  /** "companies", "people" or "deals". */
+  object: string;
+  /** Keyed by attribute slug, e.g. `{name: "Northwind", domains: ["nw.example"]}`. */
+  values: Record<string, AttioWriteValue>;
+}
+
+/**
+ * How a beat says which CRM record it means.
+ *
+ * Three spellings, and the order they are tried in: the `ref` of an earlier beat
+ * that created the record, the name the record carries in the CRM ("Harrowgate —
+ * pricing engagement"), or its raw record id. The middle one is the one an author
+ * can actually write, and it is why this type exists: the records the world was
+ * seeded with have ids derived by a hash inside @sonata/world that appear in no
+ * `WorldSeed`, no preview and nowhere on the dashboard, so a spec that could only
+ * point at ids could only ever touch records its own beats had minted.
+ */
+export type AttioRecordTarget = string;
+
+/** Somebody moves a deal on, renames an account, or hands one to a new owner. */
+export interface AttioUpdatePayload {
+  /** See `AttioRecordTarget`: a beat's `ref`, the record's name, or its id. */
+  recordRef: AttioRecordTarget;
+  object: string;
+  /** A stage move is `{stage: "Won 🎉"}`; any attribute works the same way. */
+  values: Record<string, AttioWriteValue>;
+}
+
+/** A conversation that happened elsewhere is logged against the record it was about. */
+export interface AttioNotePayload {
+  parentObject: string;
+  /** See `AttioRecordTarget`: a beat's `ref`, the record's name, or its id. */
+  parentRecordRef: AttioRecordTarget;
+  title: string;
+  content: string;
+  format?: "plaintext" | "markdown";
+}
+
+/** A follow-up lands on somebody's list — the CRM's way of saying "this is owed". */
+export interface AttioTaskPayload {
+  content: string;
+  deadlineISO?: string;
+  /** Who it lands on. Must be someone in the cast, since the CRM seeds from it. */
+  assignee?: PersonRef;
+  /** Each `recordRef` is an `AttioRecordTarget` — a beat's ref, a name, or an id. */
+  linkedRecords?: Array<{ object: string; recordRef: AttioRecordTarget }>;
+}
+
+/** One authored paragraph. `namedStyleType` is a Docs named style, e.g. "HEADING_1". */
+export interface DocsParagraphPayload {
+  text: string;
+  namedStyleType?: string;
+}
+
+/** A colleague shares a brief the day is about. */
+export interface DocsDocumentPayload {
+  title: string;
+  /** Cast member the document belongs to; the workspace owner when absent. */
+  owner?: PersonRef;
+  paragraphs: DocsParagraphPayload[];
+}
+
+/**
+ * How a beat says which document it means: an earlier beat's `ref`, the
+ * document's TITLE, or its 44-character id.
+ *
+ * The title is what an author writes, for the same reason a CRM record is named
+ * rather than pointed at — a seeded document's id is a hash minted at seed time
+ * and published nowhere — and it is also what the run timeline, the judge prompt
+ * and the results page print, so a beat addressed by title reads as prose
+ * everywhere instead of as 44 characters of base64.
+ */
+export type DocsDocumentTarget = string;
+
+/** A colleague adds a section to a document that already exists. */
+export interface DocsAppendPayload {
+  documentRef: DocsDocumentTarget;
+  paragraphs: DocsParagraphPayload[];
+}
+
+/** A placeholder is filled in, or a sentence is revised, wherever it appears. */
+export interface DocsReplacePayload {
+  documentRef: DocsDocumentTarget;
+  find: string;
+  replaceWith: string;
+  matchCase?: boolean;
+}
+
+/**
+ * A campaign starts or stops behind the agent's back.
+ *
+ * The campaign is named rather than pointed at, because unlike a thread or an
+ * event it already exists before the day starts: `campaign` takes an id, a
+ * resource name or the name a person would say. `campaignRef` is for the second
+ * half of a pair — "pause it at 10, put it back at 4" — where the first beat is
+ * what the second one means.
+ */
+export interface GoogleAdsStatusPayload {
+  campaign?: string;
+  campaignRef?: string;
+  /** ENABLED, PAUSED or REMOVED, as Google spells them. */
+  status: string;
+}
+
+/** Somebody moves what a campaign may spend in a day. */
+export interface GoogleAdsBudgetPayload {
+  campaign?: string;
+  campaignRef?: string;
+  /** The currency unit × 1_000_000. A $250/day budget is 250000000. */
+  amountMicros: number;
+}
+
+/**
+ * A day's traffic lands on the account — the money moving while the agent works,
+ * which is what makes an overspend something it has to notice rather than read.
+ */
+export interface GoogleAdsSpendPayload {
+  /**
+   * Which ad group the money landed on: an eleven-digit id, or the name a person
+   * would say ("Brand teams, UK") — the same two spellings `campaign` above
+   * takes, and for the same reason. An ad group's id is minted at seed time by
+   * @sonata/world and published nowhere an author reads, so the name is the only
+   * handle a spec can actually be written with; it is also what the timeline, the
+   * judge prompt and the results page print, none of which can say anything about
+   * a bare eleven digits.
+   */
+  adGroup: string;
+  /** YYYY-MM-DD in the account's zone. The beat's own simulated day when absent. */
+  date?: string;
+  impressions: number;
+  clicks: number;
+  costMicros: number;
+  conversions?: number;
+  conversionsValue?: number;
+}
+
+/** Reaction vocabulary, as LinkedIn and its twin both spell it. */
+export type LinkedInReactionType =
+  | "LIKE"
+  | "PRAISE"
+  | "EMPATHY"
+  | "INTEREST"
+  | "APPRECIATION"
+  | "ENTERTAINMENT";
+
+/** Something goes out on the feed — the company page's, or the owner's own. */
+export interface LinkedInPostPayload {
+  /**
+   * Who publishes it, and the ONLY two answers are the company page (omit this)
+   * or the mailbox owner. It is an absence rather than a sentinel string because
+   * a `PersonRef` is a string too, and `"organization" | PersonRef` erases to
+   * `string`.
+   *
+   * A colleague cannot publish, and the limit is the surface's rather than a
+   * simplification: LinkedIn has no directory to enumerate an employer's people,
+   * so this clone's reads all start from "who may I act as" — the owner and the
+   * pages they administer. A post on anybody else's feed lands in the twin and is
+   * then invisible to the snapshot, to the diff and to every tool the agent has,
+   * which is a beat whose only trace is a row in SQLite. The adapter refuses one
+   * by name rather than writing it.
+   */
+  from?: PersonRef;
+  commentary: string;
+  visibility?: "PUBLIC" | "CONNECTIONS" | "LOGGED_IN";
+}
+
+/**
+ * How a beat says which post or comment on the feed it means.
+ *
+ * An earlier beat's `ref`, a URN the twin minted (`urn:li:activity:…`), or the
+ * opening words of what was written — "We're hiring a second compliance
+ * engineer". The last is the one an author can write against a world they did
+ * not run: a seeded post's URN is twelve digits of hash that appear in no
+ * `WorldSeed` and no preview, so a spec that could only point at URNs could only
+ * ever engage with posts its own beats had published.
+ */
+export type LinkedInEntityTarget = string;
+
+/** Somebody says something in public that the company now has to answer. */
+export interface LinkedInCommentPayload {
+  /** The post this comments on — see `LinkedInEntityTarget`. */
+  postRef?: LinkedInEntityTarget;
+  /** The comment this answers. Threads are one level deep. */
+  parentRef?: LinkedInEntityTarget;
+  /**
+   * Omitted means the company page answered. Unlike a post, ANY cast member may
+   * comment: a comment hangs on a post the capture already reads, so it is
+   * visible to the snapshot and the diff whoever wrote it.
+   */
+  from?: PersonRef;
+  text: string;
+}
+
+/** The cheap acknowledgement: engagement arriving without a word being written. */
+export interface LinkedInReactionPayload {
+  /** The post or comment being reacted to — see `LinkedInEntityTarget`. */
+  entityRef: LinkedInEntityTarget;
+  from?: PersonRef;
+  reactionType?: LinkedInReactionType;
+}
+
 // ---------------------------------------------------------------------------
 // Beat bodies. Split out from the beat's own metadata because the director
 // emits the exact same (twin, kind, payload) triple at runtime — see
@@ -113,7 +319,42 @@ export type CalendarBeatBody =
   | { twin: "calendar"; kind: "cancel"; payload: CalendarCancelPayload }
   | { twin: "calendar"; kind: "rsvp"; payload: CalendarRsvpPayload };
 
-export type BeatBody = GmailBeatBody | SlackBeatBody | CalendarBeatBody;
+/**
+ * One update kind rather than a `stage` kind and a `rename` kind: in this CRM
+ * every attribute is written the same way — the current row is closed and a new
+ * one opens — so splitting by attribute would be four names for one behaviour,
+ * and the first attribute an episode wanted that nobody had named would be
+ * unreachable.
+ */
+export type AttioBeatBody =
+  | { twin: "attio"; kind: "record"; payload: AttioRecordPayload }
+  | { twin: "attio"; kind: "update"; payload: AttioUpdatePayload }
+  | { twin: "attio"; kind: "note"; payload: AttioNotePayload }
+  | { twin: "attio"; kind: "task"; payload: AttioTaskPayload };
+
+export type GoogleDocsBeatBody =
+  | { twin: "google-docs"; kind: "document"; payload: DocsDocumentPayload }
+  | { twin: "google-docs"; kind: "append"; payload: DocsAppendPayload }
+  | { twin: "google-docs"; kind: "replace"; payload: DocsReplacePayload };
+
+export type GoogleAdsBeatBody =
+  | { twin: "google-ads"; kind: "status"; payload: GoogleAdsStatusPayload }
+  | { twin: "google-ads"; kind: "budget"; payload: GoogleAdsBudgetPayload }
+  | { twin: "google-ads"; kind: "spend"; payload: GoogleAdsSpendPayload };
+
+export type LinkedInBeatBody =
+  | { twin: "linkedin"; kind: "post"; payload: LinkedInPostPayload }
+  | { twin: "linkedin"; kind: "comment"; payload: LinkedInCommentPayload }
+  | { twin: "linkedin"; kind: "reaction"; payload: LinkedInReactionPayload };
+
+export type BeatBody =
+  | GmailBeatBody
+  | SlackBeatBody
+  | CalendarBeatBody
+  | AttioBeatBody
+  | GoogleDocsBeatBody
+  | GoogleAdsBeatBody
+  | LinkedInBeatBody;
 
 /** Every `kind` string in use, across all twins. */
 export type BeatKind = BeatBody["kind"];

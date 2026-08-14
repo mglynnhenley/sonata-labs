@@ -1,16 +1,16 @@
 import {
-  emailOf,
   owner,
+  resolvePerson,
   resolveTwinApiUrl,
   type AgentTrace,
   type BeatBody,
+  type DocsParagraphPayload,
   type EpisodeSpec,
   type GoogleDocsDiff,
   type GoogleDocsSnapshot,
   type InjectContext,
   type InjectedRef,
   type JudgeStep,
-  type PersonRef,
   type TwinAdapter,
   type TwinAuditRow,
   type TwinDiff,
@@ -76,50 +76,6 @@ interface InjectResponse {
   };
 }
 
-// ---------------------------------------------------------------------------
-// Beat bodies.
-//
-// `BeatBody` in @sonata/core still stops at calendar, so a docs beat cannot yet
-// be spelled in that union and there is nothing to import. These are what a
-// `GoogleDocsBeatBody` arm should be — one shape per thing this twin's
-// POST /api/sandbox/inject can actually do — and they are exported so widening
-// core is a move rather than a rewrite.
-// ---------------------------------------------------------------------------
-
-/** One authored paragraph. `namedStyleType` is a Docs named style, e.g. "HEADING_1". */
-export interface DocsParagraphPayload {
-  text: string;
-  namedStyleType?: string;
-}
-
-/** A colleague shares a brief the day is about. */
-export interface DocsDocumentPayload {
-  title: string;
-  /** Cast member the document belongs to; the workspace owner when absent. */
-  owner?: PersonRef;
-  paragraphs: DocsParagraphPayload[];
-}
-
-/** A colleague adds a section to a document that already exists. */
-export interface DocsAppendPayload {
-  /** An earlier beat's `ref`, or a seeded document's id. */
-  documentRef: string;
-  paragraphs: DocsParagraphPayload[];
-}
-
-/** A placeholder is filled in, or a sentence is revised, wherever it appears. */
-export interface DocsReplacePayload {
-  documentRef: string;
-  find: string;
-  replaceWith: string;
-  matchCase?: boolean;
-}
-
-export type GoogleDocsBeatBody =
-  | { twin: "google-docs"; kind: "document"; payload: DocsDocumentPayload }
-  | { twin: "google-docs"; kind: "append"; payload: DocsAppendPayload }
-  | { twin: "google-docs"; kind: "replace"; payload: DocsReplacePayload };
-
 export interface GoogleDocsAdapterOptions extends Omit<TwinHttpOptions, "baseUrl"> {
   /** Defaults to the port the monorepo's `dev:google-docs` script uses. */
   baseUrl?: string;
@@ -148,16 +104,32 @@ export function createGoogleDocsAdapter(opts: GoogleDocsAdapterOptions = {}): Tw
   }
 
   /**
-   * The document a beat is pointing at.
+   * The document a beat is pointing at, in the three spellings
+   * `DocsDocumentTarget` documents: an earlier beat's `ref`, the document's
+   * title, or its raw id.
    *
-   * Either something an earlier beat created, by `ref`, or something the seed
-   * wrote, by id — the registry is tried first, because a ref that happens to
-   * look like an id is still a ref. A ref that resolves to neither falls through
-   * as an id and the twin answers `"…" is not a document in this workspace`,
-   * which names the authoring mistake better than anything this side could.
+   * The registry is tried first, because a ref that happens to look like a title
+   * is still a ref. The title lookup after it is what makes a seeded workspace
+   * scriptable: a document the world laid down has a 44-character id hashed at
+   * seed time and published nowhere an author reads, so without this an episode
+   * could not say "a colleague revised the brief the day is about" — it would
+   * have to create that brief with a document beat first, and the diff would then
+   * read it as written during the day rather than as pre-existing.
+   *
+   * A ref that resolves to neither falls through as an id and the twin answers
+   * `"…" is not a document in this workspace`, which names the authoring mistake
+   * better than anything this side could.
    */
-  function documentFor(ref: string, ctx: InjectContext): string {
-    return ctx.resolve(ref)?.id ?? ref;
+  async function documentFor(ref: string, ctx: InjectContext): Promise<string> {
+    const made = ctx.resolve(ref);
+    if (made) return made.id;
+
+    const needle = ref.trim().toLowerCase();
+    const res = await http.get<{ documents?: DocsSnapshotDocument[] }>("/api/sandbox/snapshot");
+    for (const d of res.documents ?? []) {
+      if (d.documentId && (d.title ?? "").trim().toLowerCase() === needle) return d.documentId;
+    }
+    return ref;
   }
 
   return {
@@ -200,13 +172,8 @@ export function createGoogleDocsAdapter(opts: GoogleDocsAdapterOptions = {}): Tw
     },
 
     async inject(body: BeatBody, ctx: InjectContext): Promise<InjectedRef> {
-      // Widening the annotation rather than casting through `unknown`: core's
-      // union has no docs arm, so `body.twin !== "google-docs"` would not even
-      // compile against it, while the discriminant still narrows cleanly once
-      // the local shapes are part of the union being tested.
-      const beat = body as BeatBody | GoogleDocsBeatBody;
-      if (beat.twin !== "google-docs") {
-        throw new Error(`google-docs adapter cannot inject a ${beat.twin} beat`);
+      if (body.twin !== "google-docs") {
+        throw new Error(`google-docs adapter cannot inject a ${body.twin} beat`);
       }
 
       // Everything the world does goes through the sandbox route, never
@@ -233,13 +200,26 @@ export function createGoogleDocsAdapter(opts: GoogleDocsAdapterOptions = {}): Tw
         }
       };
 
-      if (beat.kind === "document") {
-        const p = beat.payload;
+      if (body.kind === "document") {
+        const p = body.payload;
+        // Resolved through the cast rather than through `emailOf`, which falls
+        // back to the ref itself for an outsider: a mistyped owner would become a
+        // document owned by `mai`, an identity nobody in the world has. The seed
+        // route already refuses an owner outside `world.cast` by name, and this
+        // is the same rule on the beat path — `injectBody` turns it into a
+        // recorded error on this one beat rather than a dead run.
+        const docOwner = p.owner ? resolvePerson(ctx.world, p.owner) : undefined;
+        if (p.owner && !docOwner) {
+          throw new Error(
+            `a document beat gives "${p.title}" the owner "${p.owner}", who is not in the cast ` +
+              "— a twin must never invent an identity",
+          );
+        }
         const res = await post({
           documents: [
             {
               title: p.title,
-              ...(p.owner ? { ownerEmail: emailOf(ctx.world, p.owner) } : {}),
+              ...(docOwner ? { ownerEmail: docOwner.email } : {}),
               paragraphs: wireParagraphs(p.paragraphs),
             },
           ],
@@ -253,11 +233,11 @@ export function createGoogleDocsAdapter(opts: GoogleDocsAdapterOptions = {}): Tw
         return { twin: "google-docs", id: created.documentId };
       }
 
-      const documentId = documentFor(beat.payload.documentRef, ctx);
+      const documentId = await documentFor(body.payload.documentRef, ctx);
 
-      if (beat.kind === "append") {
+      if (body.kind === "append") {
         await post({
-          edits: [{ documentId, appendParagraphs: wireParagraphs(beat.payload.paragraphs) }],
+          edits: [{ documentId, appendParagraphs: wireParagraphs(body.payload.paragraphs) }],
         });
         // The handle is the document itself: an appended paragraph has no
         // identity of its own in the Docs API, so a later beat naming this one
@@ -265,7 +245,7 @@ export function createGoogleDocsAdapter(opts: GoogleDocsAdapterOptions = {}): Tw
         return { twin: "google-docs", id: documentId };
       }
 
-      const p = beat.payload;
+      const p = body.payload;
       const res = await post({
         edits: [
           {

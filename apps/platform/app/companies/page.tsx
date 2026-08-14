@@ -3,8 +3,8 @@ import { allTwinStatuses } from "@/lib/twins";
 import { CompaniesClient } from "./_components/CompaniesClient";
 
 // The product's opening move finally has an address: every fake company you have
-// cloned, a button that puts one into Gmail, Slack and the calendar, and doors
-// into the three apps so you can go and read what these people have been up to.
+// cloned, a button that puts one into every clone, and doors into each app so
+// you can go and read what these people have been up to.
 export const dynamic = "force-dynamic";
 
 export const metadata = {

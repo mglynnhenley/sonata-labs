@@ -1,7 +1,15 @@
 "use client";
 
 import { useEffect, useRef, type ReactNode } from "react";
-import type { BeatBody, TwinName } from "@sonata/core";
+import type {
+  AttioBeatBody,
+  AttioWriteValue,
+  BeatBody,
+  GoogleAdsBeatBody,
+  GoogleDocsBeatBody,
+  LinkedInBeatBody,
+  TwinName,
+} from "@sonata/core";
 import {
   Card,
   Chip,
@@ -315,34 +323,153 @@ function payloadLines(body: BeatBody, people: People): Array<{ label: string; va
       { label: "Reacted", value: `:${p.emoji}: on ${p.messageRef}` },
     ];
   }
-  if (body.kind === "invite") {
+  if (body.twin === "calendar") {
+    if (body.kind === "invite") {
+      const p = body.payload;
+      return [
+        { label: "Meeting", value: p.title },
+        { label: "When", value: `${p.startISO} → ${p.endISO}` },
+        { label: "With", value: p.attendees.map(who).join(", ") },
+      ];
+    }
+    if (body.kind === "move") {
+      const p = body.payload;
+      return [
+        { label: "Moved", value: p.eventRef },
+        { label: "To", value: `${p.startISO} → ${p.endISO}` },
+        ...(p.reason ? [{ label: "Because", value: p.reason }] : []),
+      ];
+    }
+    if (body.kind === "cancel") {
+      const p = body.payload;
+      return [
+        { label: "Cancelled", value: p.eventRef },
+        ...(p.reason ? [{ label: "Because", value: p.reason }] : []),
+      ];
+    }
     const p = body.payload;
     return [
-      { label: "Meeting", value: p.title },
-      { label: "When", value: `${p.startISO} → ${p.endISO}` },
-      { label: "With", value: p.attendees.map(who).join(", ") },
+      { label: "RSVP", value: `${who(p.who)} → ${p.response}` },
+      { label: "Event", value: p.eventRef },
+      ...(p.comment ? [{ label: "Said", value: p.comment }] : []),
     ];
   }
-  if (body.kind === "move") {
-    const p = body.payload;
-    return [
-      { label: "Moved", value: p.eventRef },
-      { label: "To", value: `${p.startISO} → ${p.endISO}` },
-      ...(p.reason ? [{ label: "Because", value: p.reason }] : []),
-    ];
+  if (body.twin === "attio") return crmLines(body, who);
+  if (body.twin === "google-docs") return documentLines(body, who);
+  if (body.twin === "google-ads") return campaignLines(body);
+  return feedLines(body, who);
+}
+
+/** A CRM attribute bag, one row per attribute — the way the record reads it back. */
+function valueRows(
+  values: Record<string, AttioWriteValue>,
+): Array<{ label: string; value: string }> {
+  return Object.entries(values).map(([slug, v]) => ({
+    label: slug,
+    value: Array.isArray(v) ? v.join(", ") : String(v),
+  }));
+}
+
+function crmLines(
+  body: AttioBeatBody,
+  who: (ref: string) => string,
+): Array<{ label: string; value: string }> {
+  if (body.kind === "record") {
+    return [{ label: "Added to", value: body.payload.object }, ...valueRows(body.payload.values)];
   }
-  if (body.kind === "cancel") {
-    const p = body.payload;
+  if (body.kind === "update") {
+    return [{ label: "Record", value: body.payload.recordRef }, ...valueRows(body.payload.values)];
+  }
+  if (body.kind === "note") {
     return [
-      { label: "Cancelled", value: p.eventRef },
-      ...(p.reason ? [{ label: "Because", value: p.reason }] : []),
+      { label: "On", value: body.payload.parentRecordRef },
+      { label: "Note", value: body.payload.title },
+      { label: "Says", value: body.payload.content },
     ];
   }
   const p = body.payload;
   return [
-    { label: "RSVP", value: `${who(p.who)} → ${p.response}` },
-    { label: "Event", value: p.eventRef },
-    ...(p.comment ? [{ label: "Said", value: p.comment }] : []),
+    { label: "Task", value: p.content },
+    // A task nobody holds is a real state and a finding in itself, so the row is
+    // written either way rather than dropped when there is no assignee.
+    { label: "For", value: p.assignee ? who(p.assignee) : "nobody" },
+    ...(p.deadlineISO ? [{ label: "Due", value: p.deadlineISO }] : []),
+  ];
+}
+
+function documentLines(
+  body: GoogleDocsBeatBody,
+  who: (ref: string) => string,
+): Array<{ label: string; value: string }> {
+  if (body.kind === "document") {
+    const p = body.payload;
+    return [
+      { label: "Document", value: p.title },
+      { label: "Owner", value: p.owner ? who(p.owner) : "the workspace owner" },
+      { label: "Text", value: p.paragraphs.map((x) => x.text).join("\n") },
+    ];
+  }
+  if (body.kind === "append") {
+    return [
+      { label: "Document", value: body.payload.documentRef },
+      { label: "Added", value: body.payload.paragraphs.map((x) => x.text).join("\n") },
+    ];
+  }
+  return [
+    { label: "Document", value: body.payload.documentRef },
+    { label: "Found", value: body.payload.find },
+    { label: "Replaced with", value: body.payload.replaceWith },
+  ];
+}
+
+function campaignLines(body: GoogleAdsBeatBody): Array<{ label: string; value: string }> {
+  if (body.kind === "spend") {
+    const p = body.payload;
+    return [
+      { label: "Ad group", value: p.adGroup },
+      ...(p.date ? [{ label: "Day", value: p.date }] : []),
+      { label: "Traffic", value: `${p.impressions} impressions, ${p.clicks} clicks` },
+      { label: "Cost", value: `${(p.costMicros / 1_000_000).toFixed(2)}` },
+    ];
+  }
+  // Either half is legitimate: a name for a campaign the world was seeded with,
+  // a ref for the second half of a pair.
+  const campaign = body.payload.campaign ?? body.payload.campaignRef ?? "unnamed";
+  return body.kind === "status"
+    ? [
+        { label: "Campaign", value: campaign },
+        { label: "Status", value: body.payload.status },
+      ]
+    : [
+        { label: "Campaign", value: campaign },
+        { label: "Daily budget", value: `${(body.payload.amountMicros / 1_000_000).toFixed(2)}` },
+      ];
+}
+
+function feedLines(
+  body: LinkedInBeatBody,
+  who: (ref: string) => string,
+): Array<{ label: string; value: string }> {
+  // No `from` is the company page acting, which is an actor and not a gap.
+  const actor = body.payload.from ? who(body.payload.from) : "the company page";
+  if (body.kind === "post") {
+    return [
+      { label: "Posted by", value: actor },
+      { label: "Post", value: body.payload.commentary },
+      ...(body.payload.visibility ? [{ label: "Visible to", value: body.payload.visibility }] : []),
+    ];
+  }
+  if (body.kind === "comment") {
+    const p = body.payload;
+    return [
+      { label: p.parentRef ? "Replying to" : "On", value: p.parentRef ?? p.postRef ?? "the feed" },
+      { label: "From", value: actor },
+      { label: "Comment", value: p.text },
+    ];
+  }
+  return [
+    { label: "From", value: actor },
+    { label: "Reacted", value: `${body.payload.reactionType ?? "LIKE"} on ${body.payload.entityRef}` },
   ];
 }
 

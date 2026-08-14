@@ -62,12 +62,20 @@ describe("linkedin diff", () => {
     // blank fields because this surface never says who reacted to a post.
     expect(diff.reactionsAdded).toHaveLength(3);
     expect(new Set(diff.reactionsAdded.map((r) => r.actor))).toEqual(new Set([""]));
-    expect(renderLinkedInDiff(diff)).toContain("3 reaction(s) arrived on urn:li:activity:1");
+    // Named by the post's own words: a URN tells a judge nothing about which
+    // post the engagement landed on.
+    expect(renderLinkedInDiff(diff)).toContain(
+      '3 reaction(s) arrived on "We are hiring two dispatchers."',
+    );
   });
 
   it("reports a post that left the finder as deleted", () => {
     const before = snap([post({ postUrn: "urn:li:activity:1" })]);
-    expect(diffLinkedIn(before, snap([])).deleted).toEqual([{ postUrn: "urn:li:activity:1" }]);
+    // The words come off the BEFORE capture: a deleted post is gone from the
+    // later one, and "- deleted urn:li:activity:1" names nothing a reader knows.
+    expect(diffLinkedIn(before, snap([])).deleted).toEqual([
+      { postUrn: "urn:li:activity:1", commentary: "We are hiring two dispatchers." },
+    ]);
   });
 
   it("does not call a post deleted when the capture window was full", () => {
@@ -124,11 +132,14 @@ describe("linkedin diff", () => {
         }),
       ],
     );
+    // Every actor and every post named the way a reader knows them. The URNs are
+    // still in the diff for anything that needs to address a post; they are just
+    // not what a judge is asked to reason about.
     expect(renderLinkedInDiff(diffLinkedIn(before, after))).toBe(
       [
-        `+ published as ${PAGE}: "Update."`,
-        '+ urn:li:person:dana commented on urn:li:activity:1: "Are these remote roles?"',
-        `+ ${PAGE} replied under urn:li:activity:1: "Yes — remote-first."`,
+        '+ published as the company page: "Update."',
+        '+ dana commented on "We are hiring two dispatchers.": "Are these remote roles?"',
+        '+ the company page replied under "We are hiring two dispatchers.": "Yes — remote-first."',
         "0 post(s) untouched",
       ].join("\n"),
     );

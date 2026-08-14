@@ -759,6 +759,7 @@ describe("buildEpisodePrompt on the feed", () => {
                 {
                   commentUrn: "urn:li:comment:9",
                   postUrn: "urn:li:activity:1",
+                  postCommentary: "We are hiring",
                   actor: "urn:li:person:dana",
                   text: "Is this remote?",
                   isReply: false,
@@ -767,9 +768,9 @@ describe("buildEpisodePrompt on the feed", () => {
               // Three rows, because the count is the only fact the capture holds:
               // this API has no reactions finder, so there is no actor to name.
               reactionsAdded: [
-                { entityUrn: "urn:li:activity:1", actor: "", reactionType: "" },
-                { entityUrn: "urn:li:activity:1", actor: "", reactionType: "" },
-                { entityUrn: "urn:li:activity:1", actor: "", reactionType: "" },
+                { entityUrn: "urn:li:activity:1", entityCommentary: "We are hiring", actor: "", reactionType: "" },
+                { entityUrn: "urn:li:activity:1", entityCommentary: "We are hiring", actor: "", reactionType: "" },
+                { entityUrn: "urn:li:activity:1", entityCommentary: "We are hiring", actor: "", reactionType: "" },
               ],
               unchangedCount: 4,
             },
@@ -778,10 +779,12 @@ describe("buildEpisodePrompt on the feed", () => {
       ).prompt,
     );
 
-    expect(section).toContain("~ 3 reaction(s) arrived on urn:li:activity:1");
+    expect(section).toContain('~ 3 reaction(s) arrived on "We are hiring"');
     expect(section).toContain("from nobody this API will name");
-    expect(section).toContain('+ published as urn:li:person:sam: "We are hiring"');
-    expect(section).toContain("+ urn:li:person:dana commented on urn:li:activity:1");
+    // Names, not URNs: a judge cannot tell which post `urn:li:activity:1` is, and
+    // `urn:li:organization:*` is this twin's one company page rather than a number.
+    expect(section).toContain('+ published as sam: "We are hiring"');
+    expect(section).toContain('+ dana commented on "We are hiring"');
   });
 });
 

@@ -724,12 +724,15 @@ export function assembleTemplate(
 /**
  * What each surface's chip counts, and where to read it off an assembly.
  *
- * Null for the four surfaces that landed later, and that is the honest entry
- * rather than a placeholder: `WorldCounts` has no field for a CRM record, a
- * document, a campaign or a post, no template names any of them, and the world
- * generator does not seed them. A zero would render as "Attio · 0 records",
- * which claims the surface was seeded and came up empty — the opposite of what
- * is true. The chip goes out as a bare label until there is a number behind it.
+ * Six of the seven have a unit now that `WorldCounts` reaches every surface, so
+ * a day that opens a CRM record or files a document is a card that says how
+ * many. Google Ads is the one that stays null, and for a reason that is about
+ * the surface rather than about work not done yet: an ads beat changes the
+ * status, the budget or the spend of a campaign that is already running, and no
+ * beat opens one, so `campaigns` on a planned day is structurally zero. "Ads · 0
+ * campaigns" would read as an account that came up empty, when what is true is
+ * that the day changes an account it did not build. The chip goes out as a bare
+ * label, which says the surface is in play and claims nothing about its size.
  *
  * A full Record and not a Partial, so a twin added to `TwinName` has to be
  * answered for here instead of quietly losing its count.
@@ -741,10 +744,10 @@ const UNITS: Record<
   gmail: { unit: "threads", of: (c) => c.threads },
   slack: { unit: "channels", of: (c) => c.channels },
   calendar: { unit: "events", of: (c) => c.events },
-  attio: null,
-  "google-docs": null,
+  attio: { unit: "records", of: (c) => c.records },
+  "google-docs": { unit: "documents", of: (c) => c.documents },
   "google-ads": null,
-  linkedin: null,
+  linkedin: { unit: "posts", of: (c) => c.posts },
 };
 
 /**

@@ -274,13 +274,36 @@ export interface GoogleAdsDiff {
   unchangedCount: number;
 }
 
+/**
+ * Every row here carries the post's own words beside its URN, and that is the
+ * point of the shape rather than decoration. A URN on this surface is twelve
+ * digits nobody typed — an activity id the twin minted — so a judge shown
+ * `urn:li:person:elena commented on urn:li:activity:8096605588688817908` cannot
+ * tell which post that is, whereas every sibling twin's diff names a thread, a
+ * channel, an event or a document. The renderers read `postCommentary` and print
+ * the URN only when the post fell outside the capture.
+ */
 export interface LinkedInDiff {
   twin: "linkedin";
   posted: Array<{ postUrn: string; author: string; commentary: string }>;
   edited: Array<{ postUrn: string; commentary: string }>;
-  deleted: Array<{ postUrn: string }>;
-  commented: Array<{ commentUrn: string; postUrn: string; actor: string; text: string; isReply: boolean }>;
-  reactionsAdded: Array<{ entityUrn: string; actor: string; reactionType: string }>;
+  deleted: Array<{ postUrn: string; commentary: string }>;
+  commented: Array<{
+    commentUrn: string;
+    postUrn: string;
+    /** The post this landed under, as it reads. */
+    postCommentary: string;
+    actor: string;
+    text: string;
+    isReply: boolean;
+  }>;
+  reactionsAdded: Array<{
+    entityUrn: string;
+    /** The post reacted to, as it reads; empty for anything not in the capture. */
+    entityCommentary: string;
+    actor: string;
+    reactionType: string;
+  }>;
   unchangedCount: number;
 }
 

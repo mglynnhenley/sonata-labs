@@ -1,6 +1,7 @@
 import {
   emailOf,
   owner,
+  resolvePerson,
   resolveTwinApiUrl,
   type AgentTrace,
   type BeatBody,
@@ -51,73 +52,6 @@ const COMMENT_PAGE = 100;
 const MAX_TEXT = 240;
 
 const REST = "/rest";
-
-/** Reaction vocabulary, as the twin and the real API both spell it. */
-export type LinkedInReactionType =
-  | "LIKE"
-  | "PRAISE"
-  | "EMPATHY"
-  | "INTEREST"
-  | "APPRECIATION"
-  | "ENTERTAINMENT";
-
-// ---------------------------------------------------------------------------
-// Beats.
-//
-// `BeatBody` in @sonata/core has no LinkedIn arm yet, so these live here and are
-// exported for core to absorb — see the adapter's report. Everything below is
-// structurally what core's other beat bodies look like, and `inject` narrows a
-// `BeatBody` through the union of the two, so the day core grows the arm this
-// file keeps compiling unchanged.
-// ---------------------------------------------------------------------------
-
-export interface LinkedInPostPayload {
-  /**
-   * The member publishing it. Omitted means the COMPANY PAGE publishes — the
-   * actor an agent's own posts carry, and the one a story usually wants. It is
-   * an absence rather than a sentinel string because a `PersonRef` is a string
-   * too, and `"organization" | PersonRef` erases to `string`.
-   */
-  from?: PersonRef;
-  commentary: string;
-  visibility?: "PUBLIC" | "CONNECTIONS" | "LOGGED_IN";
-}
-
-export interface LinkedInCommentPayload {
-  /** The beat whose post this comments on. */
-  postRef?: string;
-  /** The beat whose comment this answers. Threads are one level deep. */
-  parentRef?: string;
-  /** Omitted means the company page answered — see `LinkedInPostPayload.from`. */
-  from?: PersonRef;
-  text: string;
-}
-
-export interface LinkedInReactionPayload {
-  /** The beat whose post or comment is being reacted to. */
-  entityRef: string;
-  from?: PersonRef;
-  reactionType?: LinkedInReactionType;
-}
-
-export type LinkedInBeatBody =
-  | { twin: "linkedin"; kind: "post"; payload: LinkedInPostPayload }
-  | { twin: "linkedin"; kind: "comment"; payload: LinkedInCommentPayload }
-  | { twin: "linkedin"; kind: "reaction"; payload: LinkedInReactionPayload };
-
-/**
- * The one place the two unions meet, and the reason it is a function: a beat
- * arrives typed as core's `BeatBody`, which cannot yet be a LinkedIn beat, so
- * the widening has to happen at a parameter — where the declared type is the
- * union of both and the check below is a real check rather than a cast that
- * would go on compiling after core grows the arm and the shapes drift.
- */
-function linkedInBeat(body: BeatBody | LinkedInBeatBody): LinkedInBeatBody {
-  if (body.twin !== "linkedin") {
-    throw new Error(`linkedin adapter cannot inject a ${body.twin} beat`);
-  }
-  return body;
-}
 
 // ---------------------------------------------------------------------------
 // Wire shapes, as the twin serves them
@@ -390,6 +324,84 @@ export function createLinkedInAdapter(opts: LinkedInAdapterOptions = {}): TwinAd
       : { actorKind: "organization" };
   }
 
+  /** Every post on a feed this adapter can read, for resolving what a beat names. */
+  async function feed(): Promise<PostResource[]> {
+    const authors = [await ownerUrn(), ...(await adminPages())];
+    const out: PostResource[] = [];
+    for (const author of authors) {
+      const res = await http.get<{ elements?: PostResource[] }>(`${REST}/posts`, {
+        q: "author",
+        author,
+        sortBy: "CREATED",
+        viewContext: "AUTHOR",
+        count: MAX_POSTS_PER_AUTHOR,
+      });
+      out.push(...(res.elements ?? []));
+    }
+    return out;
+  }
+
+  /**
+   * The post or comment a beat is pointing at, in the three spellings
+   * `LinkedInEntityTarget` documents: an earlier beat's `ref`, a URN, or the
+   * opening words of what was written.
+   *
+   * The third is the one that makes a seeded feed scriptable. A seeded post's URN
+   * is twelve digits derived by a hash inside @sonata/world and published nowhere
+   * an author reads, so before this the exact thing world generation is asked for
+   * — "a post with a customer's question underneath it that nobody has answered"
+   * — was unreachable to the beat that was supposed to escalate it.
+   *
+   * Comments are searched only when the caller wants one, because finding them
+   * costs a call per post with engagement, and the common case (a comment landing
+   * on a post) is answered by the first pass.
+   */
+  async function entityFor(
+    ctx: InjectContext,
+    ref: string,
+    what: string,
+    opts: { posts: boolean; comments: boolean },
+  ): Promise<string> {
+    const made = ctx.resolve(ref);
+    if (made) return made.id;
+    // A URN goes straight through. The twin refuses a bad one by name
+    // (`comment: no such post …`), which is a better error than a text search
+    // that found nothing could give.
+    if (ref.startsWith("urn:li:")) return ref;
+
+    const needle = ref.trim().toLowerCase();
+    const posts = await feed();
+    if (opts.posts) {
+      const found = posts.find((p) => (p.commentary ?? "").trim().toLowerCase().startsWith(needle));
+      if (found?.id) return activityUrnOf(found.id);
+    }
+    if (opts.comments) {
+      for (const post of posts) {
+        if (!post.id || post.lifecycleState === "DRAFT") continue;
+        const postUrn = activityUrnOf(post.id);
+        for (const c of await commentsUnder(postUrn, COMMENT_PAGE)) {
+          if ((c.message?.text ?? "").trim().toLowerCase().startsWith(needle) && c.commentUrn) {
+            return c.commentUrn;
+          }
+          // One level down, the same depth the capture descends: a reply is the
+          // shape of "the customer answered your answer", and a beat reacting to
+          // one is ordinary.
+          for (const r of await commentsUnder(c.commentUrn ?? "", COMMENT_PAGE)) {
+            if ((r.message?.text ?? "").trim().toLowerCase().startsWith(needle) && r.commentUrn) {
+              return r.commentUrn;
+            }
+          }
+        }
+      }
+    }
+    throw new Error(
+      `${what} names "${ref}", which is neither a beat's ref, a URN, nor the opening of ` +
+        `anything on this feed — it holds ${
+          posts.map((p) => `"${clip(p.commentary ?? "", 60)}"`).join(", ") || "nothing at all"
+        }`,
+    );
+  }
+
   return {
     name: "linkedin",
     baseUrl,
@@ -431,13 +443,31 @@ export function createLinkedInAdapter(opts: LinkedInAdapterOptions = {}): TwinAd
     },
 
     async inject(body: BeatBody, ctx: InjectContext): Promise<InjectedRef> {
-      const beat = linkedInBeat(body);
+      if (body.twin !== "linkedin") {
+        throw new Error(`linkedin adapter cannot inject a ${body.twin} beat`);
+      }
 
       // Everything the world does goes through the sandbox route, never /rest:
       // those endpoints attribute the write to the mailbox owner and log an audit
       // row, and the engine reads that log to decide what the AGENT did.
-      if (beat.kind === "post") {
-        const p = beat.payload;
+      if (body.kind === "post") {
+        const p = body.payload;
+        // The page, or the owner personally, and nobody else — see
+        // `LinkedInPostPayload.from`. A colleague's own feed is not a surface
+        // this clone can read back: LinkedIn has no directory to enumerate an
+        // employer's people, so `snapshot` starts from the owner and the pages
+        // they administer and a post anywhere else would land in the twin and be
+        // invisible to the diff, to the judge and to every tool the agent has.
+        // Refused by name here rather than written and lost.
+        if (p.from) {
+          const author = resolvePerson(ctx.world, p.from);
+          if (!author || author.id !== owner(ctx.world).id) {
+            throw new Error(
+              `a post beat publishes as "${p.from}". Only the company page (omit \`from\`) or ` +
+                `${owner(ctx.world).id} can: nothing downstream can read another member's feed.`,
+            );
+          }
+        }
         const res = await injected({
           posts: [
             {
@@ -455,23 +485,31 @@ export function createLinkedInAdapter(opts: LinkedInAdapterOptions = {}): TwinAd
         return { twin: "linkedin", id: `urn:li:activity:${id}` };
       }
 
-      if (beat.kind === "comment") {
-        const p = beat.payload;
-        const parent = p.parentRef ? ctx.resolve(p.parentRef) : undefined;
-        const post = p.postRef ? ctx.resolve(p.postRef) : undefined;
+      if (body.kind === "comment") {
+        const p = body.payload;
         // A comment must land on something. Unlike a Gmail follow-up, which can
         // post standalone when its ref is missing, an orphan comment has nowhere
-        // to go — so this is loud rather than silently top-level.
-        if (!parent && !post) {
-          throw new Error(
-            `comment targets "${p.parentRef ?? p.postRef ?? "nothing"}", which nothing created`,
-          );
+        // to go — so naming neither is loud rather than silently top-level.
+        if (!p.parentRef && !p.postRef) {
+          throw new Error("a comment beat names neither a post nor a parent comment to land on");
         }
+        const parent = p.parentRef
+          ? await entityFor(ctx, p.parentRef, "a comment beat's parentRef", {
+              posts: false,
+              comments: true,
+            })
+          : undefined;
+        const post = p.postRef
+          ? await entityFor(ctx, p.postRef, "a comment beat's postRef", {
+              posts: true,
+              comments: false,
+            })
+          : undefined;
         const res = await injected({
           comments: [
             {
               ...actorOf(ctx, p.from),
-              ...(parent ? { parentCommentUrn: parent.id } : { postUrn: post?.id }),
+              ...(parent ? { parentCommentUrn: parent } : { postUrn: post }),
               text: p.text,
               atISO: ctx.atISO,
             },
@@ -486,14 +524,18 @@ export function createLinkedInAdapter(opts: LinkedInAdapterOptions = {}): TwinAd
         };
       }
 
-      const p = beat.payload;
-      const target = ctx.resolve(p.entityRef);
-      if (!target) throw new Error(`reaction targets "${p.entityRef}", which nothing created`);
+      const p = body.payload;
+      // Either kind: a reaction is as ordinary on a customer's comment as on the
+      // post it hangs under.
+      const target = await entityFor(ctx, p.entityRef, "a reaction beat", {
+        posts: true,
+        comments: true,
+      });
       const res = await injected({
         reactions: [
           {
             ...actorOf(ctx, p.from),
-            entityUrn: target.id,
+            entityUrn: target,
             reactionType: p.reactionType ?? "LIKE",
             atISO: ctx.atISO,
           },
@@ -501,7 +543,7 @@ export function createLinkedInAdapter(opts: LinkedInAdapterOptions = {}): TwinAd
       });
       // A reaction has no identity of its own here either: it belongs to the post
       // or comment it decorates, so the handle points back at that.
-      return { twin: "linkedin", id: res.reactions[0]?.entityUrn ?? target.id };
+      return { twin: "linkedin", id: res.reactions[0]?.entityUrn ?? target };
     },
 
     /**
@@ -581,6 +623,15 @@ export function diffLinkedIn(before: LinkedInSnapshot, after: LinkedInSnapshot):
   const beforePosts = new Map(before.posts.map((p) => [p.postUrn, p]));
   const afterPosts = new Map(after.posts.map((p) => [p.postUrn, p]));
 
+  /**
+   * What a post says, for the rows that can only name a URN otherwise. Read off
+   * both captures: a deleted post is gone from the later one, and a comment can
+   * land on a post the agent never touched. A post outside either capture leaves
+   * this empty and the renderers fall back to the URN.
+   */
+  const words = (postUrn: string): string =>
+    afterPosts.get(postUrn)?.commentary ?? beforePosts.get(postUrn)?.commentary ?? "";
+
   const posted: LinkedInDiff["posted"] = [];
   const edited: LinkedInDiff["edited"] = [];
   const deleted: LinkedInDiff["deleted"] = [];
@@ -617,7 +668,12 @@ export function diffLinkedIn(before: LinkedInSnapshot, after: LinkedInSnapshot):
       // the judge prompt writes its own renderer over `LinkedInDiff`, and a
       // count smuggled into `actor` would be printed there as somebody's name.
       for (let i = prev.reactionCount; i < p.reactionCount; i++) {
-        reactionsAdded.push({ entityUrn: p.postUrn, actor: "", reactionType: "" });
+        reactionsAdded.push({
+          entityUrn: p.postUrn,
+          entityCommentary: p.commentary,
+          actor: "",
+          reactionType: "",
+        });
       }
       touched.add(p.postUrn);
     }
@@ -635,7 +691,7 @@ export function diffLinkedIn(before: LinkedInSnapshot, after: LinkedInSnapshot):
   );
   for (const p of before.posts) {
     if (!afterPosts.has(p.postUrn) && !atCap.has(p.author)) {
-      deleted.push({ postUrn: p.postUrn });
+      deleted.push({ postUrn: p.postUrn, commentary: p.commentary });
       touched.add(p.postUrn);
     }
   }
@@ -647,6 +703,7 @@ export function diffLinkedIn(before: LinkedInSnapshot, after: LinkedInSnapshot):
     commented.push({
       commentUrn: c.commentUrn,
       postUrn: c.postUrn,
+      postCommentary: words(c.postUrn),
       actor: c.actor,
       text: c.text,
       isReply: c.isReply,
@@ -679,24 +736,51 @@ function countBy<T>(items: T[], key: (item: T) => string): Map<string, number> {
   return out;
 }
 
+/**
+ * An actor URN as a reader knows the person. `urn:li:person:elena` is Elena —
+ * the id half is the cast id this world seeded her with — and the organization
+ * is the one company page this twin serves, so it is said rather than numbered.
+ *
+ * Kept identical to `linkedInActorName` in @sonata/judge's prompt.ts: that file
+ * writes its own copy of this renderer, and a judge shown different prose from
+ * the results page is being asked about a different day.
+ */
+export function linkedInActorName(urn: string): string {
+  if (urn.startsWith("urn:li:organization:")) return "the company page";
+  if (urn.startsWith("urn:li:person:")) return urn.slice("urn:li:person:".length);
+  return urn || "somebody the API will not name";
+}
+
+/** A post as a reader recognises it: its own words, or the URN if it has none. */
+export function linkedInPostName(commentary: string, postUrn: string): string {
+  return commentary ? `"${commentary}"` : postUrn;
+}
+
 export function renderLinkedInDiff(diff: LinkedInDiff): string {
   const lines: string[] = [];
-  for (const p of diff.posted) lines.push(`+ published as ${p.author}: "${p.commentary}"`);
-  for (const p of diff.edited) lines.push(`~ edited ${p.postUrn}: "${p.commentary}"`);
+  for (const p of diff.posted) {
+    lines.push(`+ published as ${linkedInActorName(p.author)}: "${p.commentary}"`);
+  }
+  for (const p of diff.edited) lines.push(`~ edited a post, now: "${p.commentary}"`);
   for (const c of diff.commented) {
+    const where = linkedInPostName(c.postCommentary, c.postUrn);
     lines.push(
       c.isReply
-        ? `+ ${c.actor} replied under ${c.postUrn}: "${c.text}"`
-        : `+ ${c.actor} commented on ${c.postUrn}: "${c.text}"`,
+        ? `+ ${linkedInActorName(c.actor)} replied under ${where}: "${c.text}"`
+        : `+ ${linkedInActorName(c.actor)} commented on ${where}: "${c.text}"`,
     );
   }
   // Grouped back up for the reader: the diff holds one row per reaction because
   // that is the only place the number can live, but "four reactions arrived" is
   // the sentence a person checks, not four identical lines.
+  const reactionNames = new Map(diff.reactionsAdded.map((r) => [r.entityUrn, r.entityCommentary]));
   for (const [entityUrn, n] of countBy(diff.reactionsAdded, (r) => r.entityUrn)) {
-    lines.push(`~ ${n} reaction(s) arrived on ${entityUrn}, from nobody the API will name`);
+    const where = linkedInPostName(reactionNames.get(entityUrn) ?? "", entityUrn);
+    lines.push(`~ ${n} reaction(s) arrived on ${where}, from nobody the API will name`);
   }
-  for (const p of diff.deleted) lines.push(`- deleted ${p.postUrn}`);
+  for (const p of diff.deleted) {
+    lines.push(`- deleted ${linkedInPostName(p.commentary, p.postUrn)}`);
+  }
   lines.push(`${diff.unchangedCount} post(s) untouched`);
   return lines.join("\n");
 }

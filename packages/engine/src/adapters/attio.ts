@@ -11,7 +11,6 @@ import {
   type InjectContext,
   type InjectedRef,
   type JudgeStep,
-  type PersonRef,
   type TwinAdapter,
   type TwinAuditRow,
   type TwinDiff,
@@ -218,75 +217,6 @@ export function describeRecord(
   };
 }
 
-// ---------------------------------------------------------------------------
-// Beats. Declared here because core's `BeatBody` does not carry an Attio arm
-// yet — see this adapter's report. The shapes are the proposal: four kinds that
-// map one-for-one onto what the twin's POST /api/sandbox/inject accepts, so
-// moving them into core is a cut-and-paste and nothing here changes.
-// ---------------------------------------------------------------------------
-
-/** What a spec may write into an attribute: the twin normalises all three. */
-export type AttioWriteValue = string | number | Array<string | number>;
-
-export interface AttioRecordPayload {
-  /** "companies", "people" or "deals". */
-  object: string;
-  /** Keyed by attribute slug, e.g. `{name: "Northwind", domains: ["nw.example"]}`. */
-  values: Record<string, AttioWriteValue>;
-}
-
-export interface AttioUpdatePayload {
-  /**
-   * The beat that created the record, by its `ref` — or the record id the world
-   * was seeded with, for an account no beat minted.
-   */
-  recordRef: string;
-  object: string;
-  /** A stage move is `{stage: "Won 🎉"}`; any attribute works the same way. */
-  values: Record<string, AttioWriteValue>;
-}
-
-export interface AttioNotePayload {
-  parentObject: string;
-  parentRecordRef: string;
-  title: string;
-  content: string;
-  format?: "plaintext" | "markdown";
-}
-
-export interface AttioTaskPayload {
-  content: string;
-  deadlineISO?: string;
-  /** Who it lands on. Must be someone in the cast, since the CRM seeds from it. */
-  assignee?: PersonRef;
-  linkedRecords?: Array<{ object: string; recordRef: string }>;
-}
-
-/**
- * One update kind rather than a `stage` kind and a `rename` kind: on this
- * surface every attribute is written the same way — the current row is closed
- * and a new one opens — so splitting by attribute would be four names for one
- * behaviour, and the first attribute an episode wanted that nobody had named
- * would be unreachable.
- */
-export type AttioBeatBody =
-  | { twin: "attio"; kind: "record"; payload: AttioRecordPayload }
-  | { twin: "attio"; kind: "update"; payload: AttioUpdatePayload }
-  | { twin: "attio"; kind: "note"; payload: AttioNotePayload }
-  | { twin: "attio"; kind: "task"; payload: AttioTaskPayload };
-
-/**
- * The beat this adapter was handed, or a loud refusal.
- *
- * The argument is deliberately wider than `TwinAdapter.inject`'s: core's
- * `BeatBody` has no Attio arm, so inside `inject` the twin discriminant can only
- * be narrowed against a union that admits one.
- */
-function asAttioBeat(body: BeatBody | AttioBeatBody): AttioBeatBody {
-  if (body.twin !== "attio") throw new Error(`attio adapter cannot inject a ${body.twin} beat`);
-  return body;
-}
-
 /** What POST /api/sandbox/inject echoes back, so a later beat can find it. */
 interface InjectResult {
   records?: Array<{ ref: string; id: string; object: string }>;
@@ -418,6 +348,45 @@ export function createAttioAdapter(opts: AttioAdapterOptions = {}): TwinAdapter 
     }
   }
 
+  /**
+   * The record a beat is pointing at, in the three spellings `AttioRecordTarget`
+   * documents: a ref an earlier beat minted, the name the record carries in the
+   * CRM, or a raw record id.
+   *
+   * The name lookup is what makes a seeded CRM scriptable at all. A record the
+   * world laid down has an id derived by a hash inside @sonata/world, and that id
+   * is in no `WorldSeed` and no world preview — so before this, a beat could only
+   * ever address a record one of its own siblings had created, and every attempt
+   * to name the deal the day is about became a per-beat error nobody saw.
+   *
+   * Queried rather than cached: a beat can update a record an earlier beat
+   * created, so the set of records changes under the day, and one query per
+   * addressed beat is nothing next to the model call that wrote it. An unknown
+   * name falls through as an id, whose 400 from the twin names it — louder and
+   * more accurate than anything invented here.
+   */
+  async function recordTarget(
+    ctx: InjectContext,
+    ref: string,
+    object: string,
+  ): Promise<{ recordId: string; object: string }> {
+    const made = ctx.resolve(ref);
+    if (made) return { recordId: made.id, object: made.containerId ?? object };
+
+    const needle = ref.trim().toLowerCase();
+    const res = await http.post<{ data?: AttioRecordResource[] }>(
+      `/v2/objects/${object}/records/query`,
+      { limit: MAX_RECORDS_PER_OBJECT, sorts: [{ attribute: "created_at", direction: "desc" }] },
+    );
+    for (const resource of res.data ?? []) {
+      const recordId = resource.id?.record_id;
+      if (recordId && displayName(resource, recordId).trim().toLowerCase() === needle) {
+        return { recordId, object };
+      }
+    }
+    return { recordId: ref, object };
+  }
+
   return {
     name: "attio",
     baseUrl,
@@ -448,10 +417,10 @@ export function createAttioAdapter(opts: AttioAdapterOptions = {}): TwinAdapter 
     },
 
     async inject(body: BeatBody, ctx: InjectContext): Promise<InjectedRef> {
-      const beat = asAttioBeat(body);
+      if (body.twin !== "attio") throw new Error(`attio adapter cannot inject a ${body.twin} beat`);
 
-      if (beat.kind === "record") {
-        const p = beat.payload;
+      if (body.kind === "record") {
+        const p = body.payload;
         const res = await injectInto(
           { records: [{ object: p.object, values: p.values }] },
           ctx,
@@ -465,9 +434,9 @@ export function createAttioAdapter(opts: AttioAdapterOptions = {}): TwinAdapter 
         return { twin: "attio", id: made.id, containerId: made.object };
       }
 
-      if (beat.kind === "update") {
-        const p = beat.payload;
-        const target = recordTarget(ctx, p.recordRef, p.object);
+      if (body.kind === "update") {
+        const p = body.payload;
+        const target = await recordTarget(ctx, p.recordRef, p.object);
         await injectInto(
           { updates: [{ object: target.object, recordId: target.recordId, values: p.values }] },
           ctx,
@@ -475,9 +444,9 @@ export function createAttioAdapter(opts: AttioAdapterOptions = {}): TwinAdapter 
         return { twin: "attio", id: target.recordId, containerId: target.object };
       }
 
-      if (beat.kind === "note") {
-        const p = beat.payload;
-        const parent = recordTarget(ctx, p.parentRecordRef, p.parentObject);
+      if (body.kind === "note") {
+        const p = body.payload;
+        const parent = await recordTarget(ctx, p.parentRecordRef, p.parentObject);
         const res = await injectInto(
           {
             notes: [
@@ -499,17 +468,19 @@ export function createAttioAdapter(opts: AttioAdapterOptions = {}): TwinAdapter 
         return { twin: "attio", id: made.id, containerId: parent.recordId };
       }
 
-      const p = beat.payload;
+      const p = body.payload;
+      const linkedRecords: Array<{ object: string; recordId: string }> = [];
+      for (const link of p.linkedRecords ?? []) {
+        const target = await recordTarget(ctx, link.recordRef, link.object);
+        linkedRecords.push({ object: target.object, recordId: target.recordId });
+      }
       const res = await injectInto(
         {
           tasks: [
             {
               content: p.content,
               deadlineAt: p.deadlineISO ?? null,
-              linkedRecords: (p.linkedRecords ?? []).map((link) => {
-                const target = recordTarget(ctx, link.recordRef, link.object);
-                return { object: target.object, recordId: target.recordId };
-              }),
+              linkedRecords,
               assigneeEmail: p.assignee ? emailOf(ctx.world, p.assignee) : null,
             },
           ],
@@ -539,24 +510,6 @@ export function createAttioAdapter(opts: AttioAdapterOptions = {}): TwinAdapter 
       return projectTwinTrace(trace, "attio");
     },
   };
-}
-
-/**
- * The record a beat is pointing at.
- *
- * Two things can be named here and both are legitimate: what an earlier beat
- * created, which the engine has a handle for, and an account the world was
- * seeded with, which no beat minted and which a spec therefore names by its
- * record id. An unresolvable ref falls through to the twin, whose 400 names the
- * id it could not find — louder and more accurate than anything invented here.
- */
-function recordTarget(
-  ctx: InjectContext,
-  ref: string,
-  object: string,
-): { recordId: string; object: string } {
-  const made = ctx.resolve(ref);
-  return { recordId: made?.id ?? ref, object: made?.containerId ?? object };
 }
 
 // ---------------------------------------------------------------------------

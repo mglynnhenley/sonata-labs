@@ -426,15 +426,35 @@ function renderGoogleAdsDiff(d: Extract<TwinDiff, { twin: "google-ads" }>): stri
   return lines;
 }
 
+/**
+ * An actor URN as a reader knows the person, and the one company page as the
+ * page. Identical to `linkedInActorName` in @sonata/engine's linkedin adapter,
+ * because this file is a second copy of that renderer and a judge shown
+ * different prose from the results page is being asked about a different day.
+ */
+function linkedInActorName(urn: string): string {
+  if (urn.startsWith("urn:li:organization:")) return "the company page";
+  if (urn.startsWith("urn:li:person:")) return urn.slice("urn:li:person:".length);
+  return urn || "somebody the API will not name";
+}
+
+/** A post as a reader recognises it: its own words, or the URN if it has none. */
+function linkedInPostName(commentary: string, postUrn: string): string {
+  return commentary ? `"${commentary}"` : postUrn;
+}
+
 function renderLinkedInDiff(d: Extract<TwinDiff, { twin: "linkedin" }>): string[] {
   const lines: string[] = [];
-  for (const p of d.posted) lines.push(`+ published as ${p.author}: "${p.commentary}"`);
-  for (const p of d.edited) lines.push(`~ edited ${p.postUrn}: "${p.commentary}"`);
+  for (const p of d.posted) {
+    lines.push(`+ published as ${linkedInActorName(p.author)}: "${p.commentary}"`);
+  }
+  for (const p of d.edited) lines.push(`~ edited a post, now: "${p.commentary}"`);
   for (const c of d.commented) {
+    const where = linkedInPostName(c.postCommentary, c.postUrn);
     lines.push(
       c.isReply
-        ? `+ ${c.actor} replied under ${c.postUrn}: "${c.text}"`
-        : `+ ${c.actor} commented on ${c.postUrn}: "${c.text}"`,
+        ? `+ ${linkedInActorName(c.actor)} replied under ${where}: "${c.text}"`
+        : `+ ${linkedInActorName(c.actor)} commented on ${where}: "${c.text}"`,
     );
   }
   // Counted back up, never printed one line each. The diff holds a row per
@@ -443,11 +463,15 @@ function renderLinkedInDiff(d: Extract<TwinDiff, { twin: "linkedin" }>): string[
   // every row — and four identical anonymous lines would read as four names the
   // renderer failed to print.
   const perEntity = new Map<string, number>();
+  const names = new Map(d.reactionsAdded.map((r) => [r.entityUrn, r.entityCommentary]));
   for (const r of d.reactionsAdded) perEntity.set(r.entityUrn, (perEntity.get(r.entityUrn) ?? 0) + 1);
   for (const [entityUrn, n] of perEntity) {
-    lines.push(`~ ${n} reaction(s) arrived on ${entityUrn}, from nobody this API will name`);
+    const where = linkedInPostName(names.get(entityUrn) ?? "", entityUrn);
+    lines.push(`~ ${n} reaction(s) arrived on ${where}, from nobody this API will name`);
   }
-  for (const p of d.deleted) lines.push(`- deleted ${p.postUrn}`);
+  for (const p of d.deleted) {
+    lines.push(`- deleted ${linkedInPostName(p.commentary, p.postUrn)}`);
+  }
   return lines;
 }
 

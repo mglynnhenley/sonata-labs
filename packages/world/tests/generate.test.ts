@@ -121,6 +121,78 @@ describe("assembleWorld", () => {
     const offsets = built.calendar.events.map((e) => e.startOffsetMin);
     expect(offsets).toEqual([...offsets].sort((a, b) => a - b));
   });
+
+  it("drops a CRM row that points at a company or a person nobody wrote", () => {
+    // Two contacts named the same auditor and one named nobody; only the first
+    // survives, and a deal at a company the seed never created goes with it.
+    expect(built.attio.contacts.map((c) => c.personId)).toEqual(["gerald"]);
+    expect(built.attio.deals.map((d) => d.name)).toEqual(["Vantage renewal"]);
+    expect(built.attio.notes.map((n) => n.title)).toEqual(["Escalation call"]);
+  });
+
+  it("repairs a deal rather than dropping it: the stage and the owner both exist", () => {
+    const [deal] = built.attio.deals;
+    // "Negotiation" is not in this CRM's pipeline, and a deal parked at a stage
+    // the twin has no status row for is a 400.
+    expect(deal.stage).toBe("In Progress");
+    // Owned by nobody becomes owned by the mailbox owner, because a deal has to
+    // be owned by a workspace member.
+    expect(deal.ownerPersonId).toBe("priya");
+    expect(deal.contactPersonIds).toEqual(["gerald"]);
+    expect(built.attio.tasks[0].assigneePersonId).toBe("priya");
+  });
+
+  it("splits a document paragraph at every newline and keeps the style on the first", () => {
+    expect(built.googleDocs.documents.map((d) => d.title)).toEqual(["Evidence tracker"]);
+    expect(built.googleDocs.documents[0].paragraphs).toEqual([
+      { text: "Evidence tracker", namedStyleType: "TITLE" },
+      { text: "Outstanding", namedStyleType: "HEADING_1" },
+      { text: "Restore test — TBC", namedStyleType: "" },
+    ]);
+  });
+
+  it("keeps an ad account inside what the API can express", () => {
+    const [treasury, ghost] = built.googleAds.campaigns;
+    expect(treasury.status).toBe("ENABLED");
+    expect(treasury.channel).toBe("SEARCH");
+    // More clicks than impressions is not a busy day, it is a broken row.
+    expect(treasury.adGroups[0].dailyClicks).toBe(100);
+    // A campaign with nothing to spend is not a state Google Ads has.
+    expect(ghost.dailyBudget).toBe(1);
+    expect(ghost.channel).toBe("SEARCH");
+  });
+
+  it("flattens a LinkedIn thread to the one level LinkedIn has", () => {
+    const [post] = built.linkedin.posts;
+    // Written by nobody, so written by the company page.
+    expect(post.personId).toBe("");
+    const [comment] = post.comments!;
+    expect(comment.replies!.map((r) => r.text)).toEqual([
+      "It is.",
+      "Depth two, which does not exist.",
+    ]);
+    // A reply cannot predate the comment it answers.
+    expect(comment.replies!.map((r) => r.minutesAgo)).toEqual([1000, 900]);
+    // One reaction per person, and only people the page has heard of.
+    expect(post.reactedByPersonIds).toEqual(["marcus"]);
+  });
+
+  it("leaves a draft with no engagement, the only state an unpublished post has", () => {
+    const draft = built.linkedin.posts.find((p) => p.isDraft)!;
+    expect(draft.comments).toEqual([]);
+    expect(draft.reactedByPersonIds).toEqual([]);
+  });
+
+  it("drops a post on a colleague's own feed, which nothing downstream can read", () => {
+    // The page and the mailbox owner are the only two feeds the snapshot, the
+    // diff and the agent's tools can reach — LinkedIn has no directory to
+    // enumerate an employer's people — so a colleague's post would be a row in
+    // SQLite and nothing else. The two that survive are the page's and Priya's.
+    expect(built.linkedin.posts.map((p) => p.personId)).toEqual(["", "priya"]);
+    expect(built.linkedin.posts.map((p) => p.commentary)).not.toContain(
+      "Posted by a colleague, on a feed nobody can read.",
+    );
+  });
 });
 
 describe("generateWorld", () => {
