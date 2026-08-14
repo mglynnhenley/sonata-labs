@@ -324,7 +324,16 @@ export function NewScenarioComposer({ templates }: NewScenarioComposerProps) {
                 )}
               >
                 <span className="block text-sn-base font-medium">{length.label}</span>
-                <span className="block text-sn-xs text-sn-subtle">{length.hint}</span>
+                {/* Follows the button's state: neutral grey on the pale petrol
+                    of a selected chip measures 4.26:1, under AA at 11px. */}
+                <span
+                  className={cn(
+                    "block text-sn-xs",
+                    ticks === length.ticks ? "text-sn-primary-ink/85" : "text-sn-subtle",
+                  )}
+                >
+                  {length.hint}
+                </span>
               </button>
             ))}
           </div>

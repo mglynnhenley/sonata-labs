@@ -154,7 +154,15 @@ export function StartSessionPanel({ scenarios, starting, onStart }: StartSession
                     {realDuration(ms)}
                   </span>
                 </span>
-                <span className="mt-0.5 block text-sn-xs text-sn-subtle">
+                {/* The hint has to follow the button's own state. Hardcoded
+                    neutral grey measures 4.26:1 once the surface turns pale
+                    petrol, which is under AA at 11px. */}
+                <span
+                  className={cn(
+                    "mt-0.5 block text-sn-xs",
+                    on ? "text-sn-primary-ink/85" : "text-sn-subtle",
+                  )}
+                >
                   {option.hint}
                 </span>
               </button>
