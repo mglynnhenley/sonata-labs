@@ -50,13 +50,15 @@ function statusOf(run: RunSummary, simulated: boolean): { tone: BadgeStatus; lab
 }
 
 export interface RecentRunsProps {
+  /** The clock's minutes per tick, so a tick count reads as simulated time. */
+  simMinutesPerTick: number;
   runs: RunSummary[];
   now: number;
   /** Run ids the stand-in fabricated. Empty until /api/results/simulated answers. */
   simulated: ReadonlySet<string>;
 }
 
-export function RecentRuns({ runs, now, simulated }: RecentRunsProps) {
+export function RecentRuns({ runs, now, simulated, simMinutesPerTick }: RecentRunsProps) {
   const go = useGo();
   const router = useRouter();
 
@@ -101,16 +103,31 @@ export function RecentRuns({ runs, now, simulated }: RecentRunsProps) {
       },
     },
     {
-      key: "autonomy",
-      header: "Autonomy",
+      // How far into the simulated day the run got. Ticks × the clock, which is
+      // exactly what the "median horizon" card above averages.
+      key: "horizon",
+      header: "Horizon",
       align: "right",
-      width: "110px",
+      width: "88px",
+      render: (run) => (
+        <span data-numeric className="text-sn-muted">
+          {run.tick > 0 ? `${run.tick * simMinutesPerTick} min` : "—"}
+        </span>
+      ),
+    },
+    {
+      // The checklist score, which is what this product's judge actually
+      // produces — a share, not a mark out of five.
+      key: "judge",
+      header: "Judge",
+      align: "right",
+      width: "84px",
       render: (run) => (
         <span
           data-numeric
-          className={simulated.has(run.id) || run.autonomy === null ? "text-sn-subtle" : "text-sn-ink"}
+          className={simulated.has(run.id) || run.score === null ? "text-sn-subtle" : "text-sn-ink"}
         >
-          {percent(simulated.has(run.id) ? null : run.autonomy)}
+          {percent(simulated.has(run.id) ? null : run.score)}
         </span>
       ),
     },

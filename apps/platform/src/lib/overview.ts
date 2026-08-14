@@ -36,6 +36,8 @@ export interface Overview {
   /** Median simulated minutes reached before a run stopped. Null until a run
    *  has been scored — the clock's minutes-per-tick applied to `medianTicks`. */
   medianHorizonMin: number | null;
+  /** The clock's minutes per tick — turns a run's tick count into a horizon. */
+  simMinutesPerTick: number;
   models: Record<ModelRole, string>;
   /** Server time when this was built, so the client can age it honestly. */
   at: number;
@@ -54,6 +56,7 @@ export async function getOverview(): Promise<Overview> {
     recent: listRuns({ limit: 6 }),
     stats: runStats(),
     twins,
+    simMinutesPerTick: getSettings().simMinutesPerTick,
     medianHorizonMin: (() => {
       const stats = runStats();
       return stats.medianTicks === null

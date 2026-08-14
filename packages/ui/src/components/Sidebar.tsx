@@ -156,7 +156,7 @@ export const Sidebar = forwardRef<HTMLElement, SidebarProps>(function Sidebar(
         // see. Only once the client has measured — see useDesktop.
         inert={desktop === false && !open ? true : undefined}
         className={cn(
-          "fixed inset-y-0 left-0 z-50 flex h-dvh w-[252px] flex-col border-r border-sn-line bg-sn-surface",
+          "fixed inset-y-0 left-0 z-50 flex h-dvh w-[248px] flex-col border-r border-sn-line bg-sn-surface px-3.5 py-5",
           "overscroll-contain transition-transform duration-200 ease-sn-out",
           open ? "translate-x-0 shadow-sn-lg" : "-translate-x-full",
           // Above the breakpoint it is a column in the flex row again, never
@@ -177,14 +177,14 @@ export const Sidebar = forwardRef<HTMLElement, SidebarProps>(function Sidebar(
           </button>
         ) : null}
 
-        {brand ? <div className="px-5 pt-6 pb-5">{brand}</div> : null}
+        {brand ? <div className="px-2 pt-1 pb-[18px]">{brand}</div> : null}
         <nav
           aria-label={label}
-          className="sn-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-4"
+          className="sn-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain px-0 pb-4"
         >
           {children}
         </nav>
-        {footer ? <div className="border-t border-sn-line p-3">{footer}</div> : null}
+        {footer ? <div className="mt-auto border-t border-sn-line pt-2.5">{footer}</div> : null}
       </aside>
     </>
   );

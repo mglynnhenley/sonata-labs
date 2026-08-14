@@ -80,16 +80,20 @@ function twinLine(twins: Pick<Overview, "twins">["twins"]): string {
  *  `compact` drops the tagline for the narrow top bar. */
 function Wordmark({ compact = false }: { compact?: boolean }) {
   return (
-    <span className="block">
-      <span className={compact ? "font-display text-[17px] text-sn-ink" : "font-display text-[19px] text-sn-ink"}>
-        sonata<span className="text-sn-primary">.</span>
+    <span className="flex items-center gap-2.5">
+      <span
+        className="block h-[22px] w-[22px] shrink-0 rounded-[7px] bg-sn-primary"
+        aria-hidden="true"
+      />
+      <span
+        className={
+          compact
+            ? "text-[14px] font-bold tracking-[-0.01em] text-sn-ink"
+            : "text-[14px] font-bold tracking-[-0.01em] text-sn-ink"
+        }
+      >
+        Sonata
       </span>
-      {/* The premise, permanently — immune to every boolean and every state. */}
-      {compact ? null : (
-        <span className="mt-1 block text-[11.5px] leading-[16px] font-normal text-sn-subtle">
-          Clone a company. Test your agent inside it.
-        </span>
-      )}
     </span>
   );
 }
@@ -192,7 +196,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         {/* Gutters widen with the viewport; the vertical inset does not keep
             pace with it. 64px of air above every heading is a marketing page's
             opening, and this is a dashboard someone reads all day. */}
-        <div className="mx-auto w-full max-w-[1180px] px-5 py-8 sm:px-8 sm:py-10 lg:px-14 lg:py-12">
+        <div className="mx-auto w-full max-w-[1180px] px-5 pt-8 pb-12 sm:px-8 lg:px-10 lg:pt-9 lg:pb-14">
           {children}
         </div>
       </main>

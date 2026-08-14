@@ -73,7 +73,7 @@ export function HomeClient({ initial }: HomeClientProps) {
   const go = useGo();
   const poll = usePoll<Overview>("/api/overview", 2500, initial);
   const { data, refresh } = poll;
-  const { counts, stats, live, recent, twins, clone, medianHorizonMin } = data;
+  const { counts, stats, live, recent, twins, clone, medianHorizonMin, simMinutesPerTick } = data;
   const simulated = useSimulated();
 
   if (data.firstRun) {
@@ -238,9 +238,15 @@ export function HomeClient({ initial }: HomeClientProps) {
       </section>
 
       {/* The dashboard shape: what happened on the left, how the benchmark
-          itself is doing on the right. */}
-      <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-        <RecentRuns runs={recent} now={data.at} simulated={simulated} />
+          itself is doing on the right. One block below the stat strip rather
+          than a full section — they are two halves of the same glance. */}
+      <div className="-mt-4 grid grid-cols-[minmax(0,1fr)] items-start gap-5 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+        <RecentRuns
+          runs={recent}
+          now={data.at}
+          simulated={simulated}
+          simMinutesPerTick={simMinutesPerTick}
+        />
         <QueueHealth stats={stats} twins={twins} scenarios={counts.episodes} />
       </div>
 
