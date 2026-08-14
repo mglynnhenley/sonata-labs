@@ -16,6 +16,7 @@ import { FirstRun } from "./FirstRun";
 import { useSimulated } from "./useSimulated";
 import { RecentRuns } from "./RecentRuns";
 import { QueueHealth } from "./QueueHealth";
+import { UnderTest } from "./UnderTest";
 import { RunningCard } from "./RunningCard";
 import { StaleNotice } from "./StaleNotice";
 import { useGo } from "./useGo";
@@ -223,7 +224,13 @@ export function HomeClient({ initial }: HomeClientProps) {
           simulated={simulated}
           simMinutesPerTick={simMinutesPerTick}
         />
-        <QueueHealth stats={stats} twins={twins} scenarios={counts.episodes} />
+        {/* The rail stacks: Queue health alone left 389px of the column empty
+            beside a twelve-row table, which reads as a layout that broke
+            rather than one that ran out of things to say. */}
+        <div className="sn-stack-group">
+          <QueueHealth stats={stats} twins={twins} scenarios={counts.episodes} />
+          <UnderTest models={data.models} />
+        </div>
       </div>
 
     </div>
