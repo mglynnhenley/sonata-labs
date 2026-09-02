@@ -5,6 +5,7 @@ import Link from "next/link";
 import {
   Badge,
   Button,
+  buttonClasses,
   Card,
   Chip,
   EmptyState,
@@ -37,6 +38,10 @@ import { ago } from "@/lib/format";
 export interface CompaniesData {
   companies: CompanyCard[];
   clones: TwinStatus[];
+  /** The server's clock at the moment this payload was built. Every "cloned 3 d
+   *  ago" is measured against it, so the server paint and the hydrated render
+   *  agree — the tiles must never read the clock themselves. */
+  at: number;
 }
 
 /** Shown in order while a company with no history is being written. */
@@ -114,16 +119,17 @@ export function CompaniesClient({ initial }: { initial: CompaniesData }) {
   }
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="sn-stack-section">
       <PageHeader
         eyebrow="Companies"
         title="The companies you've cloned"
         subtitle="Each one is a cast of people with an inbox, Slack channels, a calendar, a CRM, shared documents, an ad account and a company page — the same people on every one. Put one into the clones, then go and read their mail."
         actions={
-          <Link href="/scenarios/new">
-            <Button variant="primary" iconRight={<IconArrowRight size={14} />}>
-              Clone a company
-            </Button>
+          // The Link IS the button. Wrapping one around a `<button>` is invalid
+          // markup and leaves the page's main exit deaf to Cmd-click.
+          <Link href="/scenarios/new" className={buttonClasses("primary", "md")}>
+            Clone a company
+            <IconArrowRight size="sm" />
           </Link>
         }
       />
@@ -133,13 +139,13 @@ export function CompaniesClient({ initial }: { initial: CompaniesData }) {
       {offline.length > 0 ? (
         <Card padding="lg" radius="2xl">
           <div className="flex items-start gap-2.5">
-            <IconAlert size={15} className="mt-0.5 shrink-0 text-sn-danger" />
+            <IconAlert size="md" className="mt-0.5 shrink-0 text-sn-danger" />
             <div>
-              <p className="text-[13.5px] font-medium text-sn-ink">
+              <p className="text-sn-base font-medium text-sn-ink">
                 {offline.map((c) => c.label).join(" and ")}{" "}
                 {offline.length === 1 ? "is" : "are"} not running.
               </p>
-              <p className="mt-1 text-[12.5px] leading-[19px] text-sn-muted">
+              <p className="mt-1 text-sn-sm leading-[19px] text-sn-muted">
                 A company is loaded into every clone at once, so every one of them has to be
                 answering. Starting one takes a few seconds the first time.
               </p>
@@ -153,7 +159,7 @@ export function CompaniesClient({ initial }: { initial: CompaniesData }) {
 
       {companies.length === 0 ? (
         <EmptyState
-          icon={<IconInbox size={20} />}
+          icon={<IconInbox size="lg" />}
           title="Nothing cloned yet"
           description="Describe a company in one line — “a 12-person fintech, the week before an audit” — and Sonata writes the people, their threads, their channels and their meetings."
           hints={[
@@ -161,20 +167,23 @@ export function CompaniesClient({ initial }: { initial: CompaniesData }) {
             "Everything stays on this machine; no real account is ever touched",
           ]}
           action={
-            <Link href="/scenarios/new">
-              <Button variant="primary" iconRight={<IconArrowRight size={14} />}>
-                Clone a company
-              </Button>
+            <Link href="/scenarios/new" className={buttonClasses("primary", "md")}>
+              Clone a company
+              <IconArrowRight size="sm" />
             </Link>
           }
         />
       ) : (
+        // items-start: a card is as tall as its own contents. Stretched to the
+        // row, a three-line company carried two hundred pixels of blank under
+        // its button while the nine-line one beside it set the height.
         <ul className="grid gap-4 md:grid-cols-2">
           {companies.map((company) => (
             <li key={company.id}>
               <CompanyTile
                 company={company}
                 clones={clones}
+                now={data.at}
                 busy={seeding === company.id}
                 busyLine={WRITING_LINES[line] ?? ""}
                 disabled={seeding !== null}
@@ -201,6 +210,8 @@ export function CompaniesClient({ initial }: { initial: CompaniesData }) {
 interface TileProps {
   company: CompanyCard;
   clones: TwinStatus[];
+  /** From the payload, not `Date.now()`: this tile is server-rendered first. */
+  now: number;
   busy: boolean;
   busyLine: string;
   disabled: boolean;
@@ -226,15 +237,16 @@ function Also({ n, label }: { n: number | undefined; label: string }) {
   );
 }
 
-function CompanyTile({ company, clones, busy, busyLine, disabled, onSeed }: TileProps) {
-  const now = Date.now();
+function CompanyTile({ company, clones, now, busy, busyLine, disabled, onSeed }: TileProps) {
   return (
     <Card padding="lg" radius="2xl" className="flex h-full flex-col">
       <div className="flex items-start justify-between gap-3">
-        <h2 className="font-display min-w-0 text-[23px] text-sn-ink">{company.name}</h2>
+        <h2 className="min-w-0 truncate text-sn-md font-bold text-sn-ink">{company.name}</h2>
         {stateBadge(company)}
       </div>
-      <p className="mt-2 text-[13.5px] leading-[21px] text-sn-muted">{company.description}</p>
+      <p title={company.description} className="mt-2 line-clamp-3 text-sn-base text-sn-muted">
+        {company.description}
+      </p>
 
       <div className="mt-4 flex flex-wrap items-center gap-1.5">
         {company.industry ? <Chip size="sm">{company.industry}</Chip> : null}
@@ -347,13 +359,13 @@ function ConfirmSeed({ company, replacing, onCancel, onConfirm }: ConfirmProps) 
           <Button variant="ghost" onClick={onCancel}>
             Cancel
           </Button>
-          <Button variant="primary" icon={<IconSpark size={14} />} onClick={() => onConfirm(company)}>
+          <Button variant="primary" icon={<IconSpark size="sm" />} onClick={() => onConfirm(company)}>
             Seed the clones
           </Button>
         </>
       }
     >
-      <ul className="flex flex-col gap-2 text-[13px] leading-[20px] text-sn-muted">
+      <ul className="flex flex-col gap-2 text-sn-base text-sn-muted">
         <li>
           <span className="font-medium text-sn-ink">Everything in the clones now is erased.</span>{" "}
           {displaced
@@ -401,8 +413,8 @@ function Landed({ outcome, onClose }: { outcome: SeedOutcome | null; onClose: ()
             className="flex items-center justify-between gap-3 rounded-sn-lg border border-sn-line px-3.5 py-3"
           >
             <div className="min-w-0">
-              <p className="text-[13px] font-medium text-sn-ink">{twin.label}</p>
-              <p className="mt-0.5 text-[12px] text-sn-muted" data-numeric>
+              <p className="text-sn-base font-medium text-sn-ink">{twin.label}</p>
+              <p className="mt-0.5 text-sn-sm text-sn-muted" data-numeric>
                 {twin.items.length > 0 ? twin.items.map((i) => i.label).join(" · ") : "nothing reported"}
               </p>
             </div>
@@ -410,15 +422,15 @@ function Landed({ outcome, onClose }: { outcome: SeedOutcome | null; onClose: ()
               href={twin.url}
               target="_blank"
               rel="noreferrer"
-              className="inline-flex shrink-0 items-center gap-1 rounded-sn-md px-2 py-1 text-[12px] font-medium text-sn-primary-ink transition-colors duration-150 ease-sn hover:bg-sn-primary-soft"
+              className="inline-flex shrink-0 items-center gap-1 rounded-sn-md px-2 py-1 text-sn-sm font-medium text-sn-primary-ink transition-colors duration-150 ease-sn hover:bg-sn-primary-soft"
             >
               Open {twin.label}
-              <IconArrowRight size={11} />
+              <IconArrowRight size="xs" />
             </a>
           </li>
         ))}
       </ul>
-      <p className="mt-4 text-[12.5px] leading-[19px] text-sn-muted">
+      <p className="mt-4 text-sn-sm leading-[19px] text-sn-muted">
         Go and look — this is the same company an agent will find when you start the day.
       </p>
     </Modal>

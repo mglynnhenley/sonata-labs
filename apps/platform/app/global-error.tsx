@@ -8,10 +8,10 @@ import { useEffect } from "react";
 // therefore inline, in the product's own palette, so even the worst failure in
 // the dashboard still looks like the dashboard.
 
-const BG = "#f2f1ec";
-const SURFACE = "#fbfaf8";
+const BG = "#f7f6f2";
+const SURFACE = "#ffffff";
 const LINE = "#e3e0d7";
-const INK = "#1b1a17";
+const INK = "#16181a";
 const MUTED = "#5f5b52";
 const PRIMARY = "#5b7089";
 

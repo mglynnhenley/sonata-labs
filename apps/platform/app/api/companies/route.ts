@@ -14,7 +14,9 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   try {
     const clones = await allTwinStatuses();
-    return NextResponse.json({ companies: listCompanies(), clones });
+    // `at` is the server's clock, so "cloned 3 d ago" is measured against the
+    // machine that holds the records rather than whatever the browser thinks.
+    return NextResponse.json({ companies: listCompanies(), clones, at: Date.now() });
   } catch (err) {
     return NextResponse.json({ error: (err as Error).message }, { status: 500 });
   }

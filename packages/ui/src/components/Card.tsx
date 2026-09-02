@@ -72,13 +72,18 @@ export const Card = forwardRef<HTMLDivElement, CardProps>(function Card(
         <div className={cn("flex items-start gap-4", padding === "none" && "p-5 pb-0")}>
           <div className="min-w-0 flex-1">
             {title !== undefined ? (
-              <h3 className="text-[14px] font-medium text-sn-ink">{title}</h3>
+              <h3 className="text-sn-md font-medium text-sn-ink">{title}</h3>
             ) : null}
             {subtitle !== undefined ? (
-              <p className="mt-0.5 text-[13px] text-sn-muted">{subtitle}</p>
+              // Capped for the same reason PageHeader's is: uncapped, a subtitle
+              // runs the full card, and on a 1180px card that is ~150 characters
+              // a line — double the measure anyone reads comfortably.
+              <p className="mt-0.5 max-w-[68ch] text-sn-base text-sn-muted">{subtitle}</p>
             ) : null}
           </div>
-          {actions !== undefined ? <div className="flex shrink-0 items-center gap-2">{actions}</div> : null}
+          {actions !== undefined ? (
+            <div className="flex max-w-full shrink-0 flex-wrap items-center gap-2">{actions}</div>
+          ) : null}
         </div>
       ) : null}
 
@@ -87,7 +92,7 @@ export const Card = forwardRef<HTMLDivElement, CardProps>(function Card(
       {footer !== undefined ? (
         <div
           className={cn(
-            "mt-5 flex items-center gap-3 border-t border-sn-line pt-4 text-[13px] text-sn-muted",
+            "mt-5 flex items-center gap-3 border-t border-sn-line pt-4 text-sn-base text-sn-muted",
             padding === "none" && "px-5 pb-5",
           )}
         >

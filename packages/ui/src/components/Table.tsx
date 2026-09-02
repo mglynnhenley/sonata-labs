@@ -20,6 +20,12 @@ export type TableProps<T> = {
   rowKey: (row: T, index: number) => string;
   /** Makes rows focusable and Enter/Space-activatable. */
   onRowClick?: (row: T, index: number) => void;
+  /**
+   * Where the row goes. Wraps the first cell in a real anchor, so a row that is
+   * navigation survives middle-click, Cmd-click and "copy link address" —
+   * `onRowClick` alone is a handler on a `<tr>` and none of those reach it.
+   */
+  rowHref?: (row: T, index: number) => string;
   /** Screen-reader name for a clickable row: "Run 12, passed". */
   rowLabel?: (row: T, index: number) => string;
   /** Highlights the row the run view is currently parked on. */
@@ -43,6 +49,7 @@ export function Table<T>({
   rows,
   rowKey,
   onRowClick,
+  rowHref,
   rowLabel,
   isRowActive,
   empty,
@@ -67,11 +74,13 @@ export function Table<T>({
   return (
     <div
       className={cn(
-        "sn-scroll overflow-x-auto rounded-sn-2xl border border-sn-line bg-sn-surface",
+        // sn-scroll-x carries the background and shades whichever edge still has
+        // columns behind it, so a table wider than its card says so.
+        "sn-scroll sn-scroll-x rounded-sn-2xl border border-sn-line",
         className,
       )}
     >
-      <table className="w-full border-collapse text-[13px]">
+      <table className="w-full table-fixed border-collapse text-sn-base">
         {caption ? <caption className="sr-only">{caption}</caption> : null}
         <colgroup>
           {columns.map((column) => (
@@ -91,7 +100,7 @@ export function Table<T>({
                 scope="col"
                 className={cn(
                   cellPad,
-                  "text-[11px] font-medium tracking-[0.06em] text-sn-subtle uppercase",
+                  "text-sn-xs font-medium tracking-[0.06em] text-sn-subtle uppercase",
                   ALIGN[column.align ?? "left"],
                   column.headerClassName,
                 )}
@@ -117,19 +126,45 @@ export function Table<T>({
                   active && "bg-sn-primary-soft/60",
                 )}
               >
-                {columns.map((column) => (
-                  <td
-                    key={column.key}
-                    className={cn(
-                      cellPad,
-                      "align-middle text-sn-ink",
-                      ALIGN[column.align ?? "left"],
-                      column.className,
-                    )}
-                  >
-                    {column.render(row, index)}
-                  </td>
-                ))}
+                {columns.map((column, columnIndex) => {
+                  const content = column.render(row, index);
+                  const href = columnIndex === 0 ? rowHref?.(row, index) : undefined;
+                  return (
+                    <td
+                      key={column.key}
+                      className={cn(
+                        cellPad,
+                        "align-middle text-sn-ink",
+                        ALIGN[column.align ?? "left"],
+                        column.className,
+                      )}
+                    >
+                      {href ? (
+                        // The row already owns the click and the focus ring; this
+                        // anchor exists so the browser's own gestures work. A
+                        // modifier click falls through to the native href and
+                        // opens a tab; a plain click defers to onRowClick, which
+                        // routes on the client instead of reloading the page.
+                        <a
+                          href={href}
+                          tabIndex={-1}
+                          className="block focus:outline-none"
+                          onClick={(event) => {
+                            if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+                              event.stopPropagation();
+                              return;
+                            }
+                            event.preventDefault();
+                          }}
+                        >
+                          {content}
+                        </a>
+                      ) : (
+                        content
+                      )}
+                    </td>
+                  );
+                })}
               </tr>
             );
           })}
@@ -137,7 +172,7 @@ export function Table<T>({
             <tr>
               <td
                 colSpan={columns.length}
-                className={cn(cellPad, "py-10 text-center text-[13px] text-sn-subtle")}
+                className={cn(cellPad, "py-10 text-center text-sn-base text-sn-subtle")}
               >
                 Nothing here yet.
               </td>

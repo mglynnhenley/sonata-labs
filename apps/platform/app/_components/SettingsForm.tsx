@@ -24,7 +24,7 @@ import { usePoll } from "./usePoll";
 // write-only, so it needs its own deliberate act.
 
 const CONTROL =
-  "h-9 w-full rounded-sn-md border border-sn-line bg-sn-surface px-2.5 text-[13px] text-sn-ink " +
+  "h-9 w-full rounded-sn-md border border-sn-line bg-sn-surface px-2.5 text-sn-base text-sn-ink " +
   "shadow-sn-xs transition-colors duration-150 ease-sn hover:border-sn-line-strong";
 
 function Row({
@@ -39,8 +39,8 @@ function Row({
   return (
     <div className="grid gap-3 border-t border-sn-line py-5 first:border-t-0 first:pt-0 md:grid-cols-[minmax(0,1fr)_300px] md:gap-8">
       <div className="min-w-0">
-        <p className="text-[13px] font-medium text-sn-ink">{label}</p>
-        <p className="mt-1 max-w-[52ch] text-[13px] leading-[20px] text-sn-muted">{hint}</p>
+        <p className="text-sn-base font-medium text-sn-ink">{label}</p>
+        <p className="mt-1 max-w-[52ch] text-sn-base text-sn-muted">{hint}</p>
       </div>
       <div className="min-w-0">{children}</div>
     </div>
@@ -131,7 +131,7 @@ export function SettingsForm({ initialSettings, initialTwins }: SettingsFormProp
   const clock = settings;
 
   return (
-    <div className="flex flex-col gap-8">
+    <div className="sn-stack-section">
       <PageHeader
         eyebrow="Settings"
         title="How Sonata runs"
@@ -139,7 +139,7 @@ export function SettingsForm({ initialSettings, initialTwins }: SettingsFormProp
         meta={
           <span
             aria-live="polite"
-            className="inline-flex items-center gap-1.5 text-[12px] text-sn-subtle"
+            className="inline-flex items-center gap-1.5 text-sn-sm text-sn-subtle"
           >
             {saving ? (
               <>
@@ -148,7 +148,7 @@ export function SettingsForm({ initialSettings, initialTwins }: SettingsFormProp
               </>
             ) : savedAt ? (
               <>
-                <IconCheck size={13} className="text-sn-success" />
+                <IconCheck size="sm" className="text-sn-success" />
                 All changes saved
               </>
             ) : (
@@ -189,11 +189,11 @@ export function SettingsForm({ initialSettings, initialTwins }: SettingsFormProp
                     </optgroup>
                   ))}
                 </select>
-                <p className="mt-2 text-[12px] leading-[18px] text-sn-subtle">
+                <p className="mt-2 text-sn-sm text-sn-subtle">
                   {priceLine(model, id)}
                 </p>
                 {model ? (
-                  <p className="mt-1 text-[12px] leading-[18px] text-sn-muted">{model.note}</p>
+                  <p className="mt-1 text-sn-sm text-sn-muted">{model.note}</p>
                 ) : null}
               </Row>
             );
@@ -227,7 +227,7 @@ export function SettingsForm({ initialSettings, initialTwins }: SettingsFormProp
             }
           >
             {settings.apiKey.masked ? (
-              <p data-numeric className="mb-2 text-[12px] text-sn-subtle">
+              <p data-numeric className="mb-2 text-sn-sm text-sn-subtle">
                 {settings.apiKey.masked}
               </p>
             ) : null}
@@ -277,7 +277,7 @@ export function SettingsForm({ initialSettings, initialTwins }: SettingsFormProp
         title="The simulated day"
         subtitle="Defaults for a new scenario. A saved scenario keeps the clock it was written with."
         actions={
-          <span data-numeric className="text-[13px] text-sn-muted">
+          <span data-numeric className="text-sn-base text-sn-muted">
             {dayRange(clock.startISO, clock.simMinutesPerTick, clock.ticks)}
           </span>
         }
@@ -345,20 +345,26 @@ export function SettingsForm({ initialSettings, initialTwins }: SettingsFormProp
         </div>
       </Card>
 
-      <section>
-        <h2 className="text-[14px] font-medium text-sn-ink">The clones</h2>
-        <p className="mt-1 max-w-[62ch] text-[13px] leading-[20px] text-sn-muted">
-          Three local services on fixed ports. Starting one here runs the workspace&apos;s own dev
-          script; the first compile takes a few seconds. Boot output goes to{" "}
-          <code className="rounded-sn-sm bg-sn-bg-subtle px-1 py-0.5 text-[12px]">
-            apps/platform/data/logs
-          </code>
-          .
-        </p>
-        <div className="mt-4">
+      {/* The last section on the page that still wore a bare h2. Every panel
+          names itself now, so the page reads as a stack of titled cards. */}
+      <Card
+        padding="lg"
+        title="The clones"
+        subtitle={
+          <>
+            Three local services on fixed ports. Starting one here runs the workspace&apos;s own dev
+            script; the first compile takes a few seconds. Boot output goes to{" "}
+            <code className="rounded-sn-sm bg-sn-bg-subtle px-1 py-0.5 text-sn-sm">
+              apps/platform/data/logs
+            </code>
+            .
+          </>
+        }
+      >
+        <div className="pt-1">
           <TwinStrip twins={twinPoll.data.twins} onChanged={twinPoll.refresh} />
         </div>
-      </section>
+      </Card>
     </div>
   );
 }

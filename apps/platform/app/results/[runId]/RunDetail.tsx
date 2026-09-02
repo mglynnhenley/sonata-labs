@@ -4,6 +4,7 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import type { EpisodeRun, TwinName } from "@sonata/core";
 import { Badge, buttonClasses, Chip, IconArrowRight, PageHeader } from "@sonata/ui";
+import { scrollBehavior } from "../../_components/scrollBehavior";
 import type { RunBrief } from "../_lib/artifacts";
 import { headlineUsd, type CostReport } from "../_lib/cost";
 import { buildMoments, findMomentIndex, replayStats } from "../_lib/moments";
@@ -61,7 +62,7 @@ export function RunDetail({
       replay: replayRef,
       cost: costRef,
     }[section];
-    target.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    target.current?.scrollIntoView({ behavior: scrollBehavior(), block: "start" });
   }, []);
 
   /**
@@ -75,7 +76,7 @@ export function RunDetail({
       if (index < 0) {
         // The judge can name a step this artifact does not contain. Show the
         // replay rather than silently doing nothing.
-        replayRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+        replayRef.current?.scrollIntoView({ behavior: scrollBehavior(), block: "start" });
         return;
       }
       setSelected(index);
@@ -134,7 +135,7 @@ export function RunDetail({
                 className={buttonClasses("secondary", "md")}
               >
                 Report
-                <IconArrowRight size={14} />
+                <IconArrowRight size="sm" />
               </Link>
             ) : null}
             {rejudge("secondary")}
@@ -185,13 +186,13 @@ export function RunDetail({
         <CostBreakdown cost={cost} />
       </div>
 
-      <p className="flex items-center gap-1.5 text-[12px] text-sn-subtle">
+      <p className="flex items-center gap-1.5 text-sn-sm text-sn-subtle">
         <Link
           href={`/api/results/${encodeURIComponent(run.runId)}`}
           className="inline-flex items-center gap-1 text-sn-primary-ink hover:underline"
         >
           The raw artifact
-          <IconArrowRight size={12} />
+          <IconArrowRight size="xs" />
         </Link>
         — everything on this page is derived from that one file.
       </p>

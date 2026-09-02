@@ -39,18 +39,18 @@ export function StaleNotice({ poll, what }: StaleNoticeProps) {
       role="status"
       className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-sn-lg border border-sn-line-strong bg-sn-gold-soft px-4 py-2.5"
     >
-      <IconAlert size={14} className="shrink-0 text-sn-gold-ink" />
-      <p className="text-[13px] leading-[20px] text-sn-ink">
+      <IconAlert size="sm" className="shrink-0 text-sn-gold-ink" />
+      <p className="text-sn-base text-sn-ink">
         This page has stopped updating — {what} was last read {ago(poll.updatedAt, now)}.
       </p>
       <button
         type="button"
         onClick={poll.refresh}
-        className="rounded-sn-sm text-[13px] font-medium text-sn-primary-ink underline-offset-2 transition-colors duration-150 ease-sn hover:underline"
+        className="rounded-sn-sm text-sn-base font-medium text-sn-primary-ink underline-offset-2 transition-colors duration-150 ease-sn hover:underline"
       >
         Try now
       </button>
-      <span className="text-[12px] text-sn-subtle">{poll.error}</span>
+      <span className="text-sn-sm text-sn-subtle">{poll.error}</span>
     </div>
   );
 }

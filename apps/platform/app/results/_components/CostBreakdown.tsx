@@ -43,17 +43,17 @@ export function CostBreakdown({ cost }: { cost: CostReport }) {
       className="scroll-mt-6"
     >
       <div className="flex items-baseline gap-3 px-5 pb-4">
-        <span data-numeric className="font-display-upright text-[38px] leading-none text-sn-ink">
+        <span data-numeric className="font-display-upright text-sn-4xl leading-none text-sn-ink">
           {formatUsd(total)}
         </span>
         {unpriced > 0 && cost.hasPerCall ? (
-          <span className="text-[12px] text-sn-subtle">
+          <span className="text-sn-sm text-sn-subtle">
             {formatUsd(cost.totalUsd)} of it is priced per call — {unpriced} call
             {unpriced === 1 ? "" : "s"} came back without one
           </span>
         ) : cost.complete && cost.declaredUsd !== null &&
           Math.abs((cost.totalUsd ?? 0) - cost.declaredUsd) > 0.0005 ? (
-          <span className="text-[12px] text-sn-subtle">
+          <span className="text-sn-sm text-sn-subtle">
             {/* Almost always the judge: the run's own figure was closed at the end
                 of the day, before anything read it back. Naming the difference is
                 better than two numbers a page apart with no relation stated. */}
@@ -65,7 +65,7 @@ export function CostBreakdown({ cost }: { cost: CostReport }) {
       </div>
 
       {cost.roles.length === 0 ? (
-        <p className="border-t border-sn-line px-5 py-4 text-[13px] text-sn-muted">
+        <p className="border-t border-sn-line px-5 py-4 text-sn-base text-sn-muted">
           No trace was saved beside this run, so the total above is all there is. Traces carry
           every model call verbatim — with one, this opens into per-call spend.
         </p>
@@ -97,12 +97,12 @@ function JudgeSpendNote() {
   if (usd === null) return null;
 
   return (
-    <p className="border-t border-sn-line px-5 py-3 text-[12.5px] leading-[19px] text-sn-muted">
+    <p className="border-t border-sn-line px-5 py-3 text-sn-sm leading-[19px] text-sn-muted">
       Judging this day cost a further <span data-numeric>{formatUsd(usd)}</span>
       {state?.model ? (
         <>
           {" "}
-          on <span className="font-mono text-[11.5px]">{state.model}</span>
+          on <span className="font-mono text-sn-xs">{state.model}</span>
         </>
       ) : null}
       . It is not in the figure above: that one is summed from the trace, and this run has no
@@ -125,10 +125,10 @@ function RoleRow({ role, shareBase }: { role: RoleCost; shareBase: number }) {
       >
         <span className="min-w-0 flex-1">
           <span className="flex items-baseline gap-2">
-            <span className="text-[13.5px] font-medium text-sn-ink">
+            <span className="text-sn-base font-medium text-sn-ink">
               {ROLE_LABELS[role.role] ?? role.role}
             </span>
-            <span className="text-[11.5px] text-sn-subtle">
+            <span className="text-sn-xs text-sn-subtle">
               {role.calls} call{role.calls === 1 ? "" : "s"} · {formatDuration(role.ms)}
               {role.pricedCalls < role.calls
                 ? ` · ${role.calls - role.pricedCalls} unpriced`
@@ -141,16 +141,16 @@ function RoleRow({ role, shareBase }: { role: RoleCost; shareBase: number }) {
               style={{ width: `${Math.max(share, share > 0 ? 2 : 0)}%` }}
             />
           </span>
-          <span className="mt-1 block truncate font-mono text-[11px] text-sn-subtle">
+          <span className="mt-1 block truncate font-mono text-sn-xs text-sn-subtle">
             {role.models.join(", ")}
           </span>
         </span>
 
-        <span data-numeric className="shrink-0 text-[13.5px] font-medium text-sn-ink">
+        <span data-numeric className="shrink-0 text-sn-base font-medium text-sn-ink">
           {formatUsd(role.costUsd)}
         </span>
         <IconChevronDown
-          size={15}
+          size="md"
           className={cn(
             "shrink-0 text-sn-subtle transition-transform duration-150 ease-sn",
             open && "rotate-180",
@@ -164,15 +164,15 @@ function RoleRow({ role, shareBase }: { role: RoleCost; shareBase: number }) {
             {role.lines.map((line) => (
               <li
                 key={line.seq}
-                className="rounded-sn-lg border border-sn-line bg-sn-surface p-3 text-[12.5px]"
+                className="rounded-sn-lg border border-sn-line bg-sn-surface p-3 text-sn-sm"
               >
                 <div className="flex flex-wrap items-baseline gap-2">
-                  <span data-numeric className="font-mono text-[11px] text-sn-subtle">
+                  <span data-numeric className="font-mono text-sn-xs text-sn-subtle">
                     #{line.seq}
                     {line.tick !== null ? ` · tick ${line.tick}` : ""}
                   </span>
-                  <span className="truncate font-mono text-[11px] text-sn-muted">{line.model}</span>
-                  <span className="ml-auto flex items-center gap-2 text-[11px] text-sn-subtle">
+                  <span className="truncate font-mono text-sn-xs text-sn-muted">{line.model}</span>
+                  <span className="ml-auto flex items-center gap-2 text-sn-xs text-sn-subtle">
                     <span data-numeric>
                       {formatTokens(line.promptTokens)} → {formatTokens(line.completionTokens)}
                     </span>
@@ -183,7 +183,7 @@ function RoleRow({ role, shareBase }: { role: RoleCost; shareBase: number }) {
                   </span>
                 </div>
                 {line.error ? (
-                  <p className="mt-1.5 text-[12px] text-sn-failed-ink">{line.error}</p>
+                  <p className="mt-1.5 text-sn-sm text-sn-failed-ink">{line.error}</p>
                 ) : null}
                 {line.ask ? (
                   <p className="mt-1.5 text-sn-muted">

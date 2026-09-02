@@ -802,6 +802,20 @@ export function countRuns(): number {
 }
 
 export interface RunStats {
+  /** Runs started in the last 7 days, and the movement on the 7 before that.
+   *  Real week-over-week, off `started_at` — the dashboard prints an arrow
+   *  beside the count and an arrow has to mean something. */
+  thisWeek: number;
+  weekDelta: number;
+  /**
+   * Median ticks reached across scored runs. The dashboard multiplies it by the
+   * clock's minutes-per-tick to print a horizon — how far into a simulated day
+   * the agent gets before it stalls or hands back. Median, not mean: one run
+   * that died on tick 1 should not drag the typical day down with it.
+   */
+  medianTicks: number | null;
+  /** Distinct scenarios that have at least one scored run. */
+  scenariosCovered: number;
   /** Runs that produced a result. The denominator for everything below. */
   scored: number;
   /** Runs that ended without one — errored, stopped, or the agent never acted. */
@@ -842,8 +856,43 @@ export function runStats(): RunStats {
   const spend = getDb().prepare("SELECT COALESCE(SUM(cost_usd), 0) AS usd FROM runs").get() as {
     usd: number;
   };
+  // Two fixed windows rather than a rolling average: "this week" on a dashboard
+  // means the last seven days, and the arrow beside it means the seven before.
+  const WEEK = 7 * 24 * 60 * 60 * 1000;
+  const now = Date.now();
+  const weeks = getDb()
+    .prepare(
+      `SELECT SUM(CASE WHEN started_at >= ? THEN 1 ELSE 0 END) AS current,
+              SUM(CASE WHEN started_at >= ? AND started_at < ? THEN 1 ELSE 0 END) AS previous
+       FROM runs`,
+    )
+    .get(now - WEEK, now - 2 * WEEK, now - WEEK) as {
+    current: number | null;
+    previous: number | null;
+  };
+  const thisWeek = weeks.current ?? 0;
+
+  // Small result sets, so the median is computed here rather than in SQL —
+  // SQLite has no percentile function and the alternative is an OFFSET dance.
+  const ticks = getDb()
+    .prepare("SELECT tick FROM runs WHERE score IS NOT NULL AND tick > 0 ORDER BY tick")
+    .all() as Array<{ tick: number }>;
+  const medianTicks =
+    ticks.length === 0
+      ? null
+      : ticks.length % 2 === 1
+        ? ticks[(ticks.length - 1) / 2]!.tick
+        : (ticks[ticks.length / 2 - 1]!.tick + ticks[ticks.length / 2]!.tick) / 2;
+
+  const covered = getDb()
+    .prepare("SELECT COUNT(DISTINCT episode_id) AS n FROM runs WHERE score IS NOT NULL")
+    .get() as { n: number | null };
   const scored = row.scored ?? 0;
   return {
+    medianTicks,
+    scenariosCovered: covered.n ?? 0,
+    thisWeek,
+    weekDelta: thisWeek - (weeks.previous ?? 0),
     scored,
     unscored: row.unscored ?? 0,
     passRate: scored > 0 ? (row.passed ?? 0) / scored : null,

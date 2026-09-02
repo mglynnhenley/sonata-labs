@@ -19,7 +19,7 @@ export type StatCardProps = {
   /** Small unit that trails the number: "%", "runs", "s". */
   unit?: ReactNode;
   delta?: StatDelta;
-  /** One line under the number explaining what it counts. */
+  /** Up to two lines under the number explaining what it counts. */
   hint?: ReactNode;
   icon?: ReactNode;
   /** Making it a door: pass href or onClick and the whole card becomes the target. */
@@ -68,6 +68,11 @@ export const StatCard = forwardRef<HTMLElement, StatCardProps>(function StatCard
   const DeltaIcon =
     delta?.direction === "down" ? IconArrowDown : delta?.direction === "flat" ? IconMinus : IconArrowUp;
 
+  const footnote = hint ?? delta?.label;
+  // The clamp below hides the tail of a long footnote, so hand the browser the
+  // whole sentence for the tooltip. Only a plain string has one to hand over.
+  const footnoteTitle = typeof footnote === "string" ? footnote : undefined;
+
   const body = (
     <>
       <div className="flex items-start gap-3">
@@ -76,51 +81,64 @@ export const StatCard = forwardRef<HTMLElement, StatCardProps>(function StatCard
             {icon}
           </span>
         ) : null}
-        <span className="min-w-0 flex-1 text-[12px] font-medium tracking-[0.02em] text-sn-muted uppercase">
+        <span className="min-w-0 flex-1 text-sn-sm font-medium tracking-[0.02em] text-sn-muted uppercase">
           {label}
         </span>
         {clickable ? (
           <IconChevronRight
-            size={16}
+            size="md"
             className="mt-0.5 shrink-0 text-sn-subtle transition-transform duration-150 ease-sn group-hover:translate-x-0.5 group-hover:text-sn-ink"
           />
         ) : null}
       </div>
 
-      <div className="mt-3 flex items-baseline gap-1.5">
-        {loading ? (
-          <span className="sn-skeleton mt-1 block h-8 w-24" aria-hidden="true" />
-        ) : (
-          <span
-            data-numeric
-            className="text-[34px] leading-none font-medium tracking-[-0.02em] text-sn-ink"
-          >
-            {value}
-          </span>
-        )}
-        {unit && !loading ? <span className="text-[14px] text-sn-muted">{unit}</span> : null}
-        {delta && !loading ? (
-          <span
-            className={cn(
-              "ml-1 inline-flex items-center gap-0.5 text-[12px] font-medium",
-              DELTA_TONES[deltaTone(delta)],
-            )}
-          >
-            <DeltaIcon size={12} />
-            {delta.value}
-          </span>
+      {/* The number and its footnote travel together, so the footnote can only
+          grow downwards and never shove the number off the row's baseline. */}
+      <div className="sn-stack-item">
+        <div className="flex items-baseline gap-1.5">
+          {loading ? (
+            <span className="sn-skeleton mt-1 block h-8 w-24" aria-hidden="true" />
+          ) : (
+            <span
+              data-numeric
+              className="text-sn-4xl leading-none font-bold tracking-[-0.03em] text-sn-ink"
+            >
+              {value}
+            </span>
+          )}
+          {unit && !loading ? <span className="text-sn-md text-sn-muted">{unit}</span> : null}
+          {delta && !loading ? (
+            <span
+              className={cn(
+                "ml-1 inline-flex items-center gap-0.5 text-sn-sm font-medium",
+                DELTA_TONES[deltaTone(delta)],
+              )}
+            >
+              <DeltaIcon size="xs" />
+              {delta.value}
+            </span>
+          ) : null}
+        </div>
+
+        {/* Two lines once the cards share a row — Home's Autonomy footnote ran
+            to six, and the other three cards carried the void. Only from `sm`,
+            because below it the grid is one column: nothing is beside the card
+            to be levelled with, and a phone has no hover to recover the rest of
+            the sentence with. The words are never cut, only the paint: the whole
+            string stays in the DOM, because these caveats are what make the
+            number above them honest. */}
+        {footnote ? (
+          <p title={footnoteTitle} className="text-sn-sm text-sn-subtle sm:line-clamp-2">
+            {footnote}
+          </p>
         ) : null}
       </div>
-
-      {hint || delta?.label ? (
-        <p className="mt-2 text-[12px] text-sn-subtle">{hint ?? delta?.label}</p>
-      ) : null}
       {clickable ? <span className="sr-only">{actionLabel}</span> : null}
     </>
   );
 
   const classes = cn(
-    "group block rounded-sn-2xl border border-sn-line bg-sn-surface p-5 text-left shadow-sn-xs",
+    "group sn-stack-item rounded-sn-2xl border border-sn-line bg-sn-surface px-5 py-[18px] text-left shadow-sn-xs",
     "transition-[box-shadow,border-color,transform] duration-150 ease-sn",
     clickable && "hover:-translate-y-px hover:border-sn-line-strong hover:shadow-sn-md",
     className,

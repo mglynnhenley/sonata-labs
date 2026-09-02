@@ -91,7 +91,7 @@ export function Tabs({
             disabled={item.disabled}
             onClick={() => onValueChange(item.id)}
             className={cn(
-              "inline-flex h-8 items-center gap-1.5 px-3 text-[13px] font-medium whitespace-nowrap",
+              "inline-flex h-8 items-center gap-1.5 px-3 text-sn-base font-medium whitespace-nowrap",
               "transition-[color,background-color,border-color] duration-150 ease-sn",
               "disabled:pointer-events-none disabled:opacity-45",
               variant === "underline" &&
@@ -115,7 +115,7 @@ export function Tabs({
               <span
                 data-numeric
                 className={cn(
-                  "rounded-full px-1.5 text-[11px]",
+                  "rounded-full px-1.5 text-sn-xs",
                   selected ? "bg-sn-primary-soft text-sn-primary-ink" : "bg-sn-bg-subtle text-sn-subtle",
                 )}
               >

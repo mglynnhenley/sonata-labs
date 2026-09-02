@@ -33,18 +33,30 @@ export function simClock(iso: string | null): string {
   return hhmm(ms, shiftOf(iso));
 }
 
+// A value and its unit are one word. These sit in narrow table columns, where an
+// ordinary space let "20m 13s" break into "20m" over "13s" and read as two
+// numbers — so every gap inside a single measurement is non-breaking.
+const NBSP = " ";
+
 /** "just now", "4 min ago", "3 h ago", "12 Mar". */
 export function ago(epochMs: number | null, now: number = Date.now()): string {
   if (!epochMs) return "—";
   const seconds = Math.max(0, Math.round((now - epochMs) / 1000));
   if (seconds < 45) return "just now";
   const minutes = Math.round(seconds / 60);
-  if (minutes < 60) return `${minutes} min ago`;
+  if (minutes < 60) return `${minutes}${NBSP}min ago`;
   const hours = Math.round(minutes / 60);
-  if (hours < 24) return `${hours} h ago`;
+  // Single-letter units close up — "3h ago", not "3 h ago", which reads as a
+  // typo. "min" keeps its space because "45min" does not. The number and its
+  // unit still cannot be split across lines either way.
+  if (hours < 24) return `${hours}h ago`;
   const days = Math.round(hours / 24);
-  if (days < 7) return `${days} d ago`;
-  return new Date(epochMs).toLocaleDateString(undefined, { day: "numeric", month: "short" });
+  if (days < 7) return `${days}d ago`;
+  // The locale is pinned, never `undefined`: that resolves to Node's ICU default
+  // on the server and the browser's locale on the client, so the same row renders
+  // "12 Mar" in the HTML and "Mar 12" after hydration. en-GB, as everywhere else
+  // that formats a date here.
+  return new Date(epochMs).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
 }
 
 /** "4m 12s" — how long a run took in real time. */
@@ -52,7 +64,7 @@ export function elapsed(fromMs: number, toMs: number): string {
   const total = Math.max(0, Math.round((toMs - fromMs) / 1000));
   const minutes = Math.floor(total / 60);
   const seconds = total % 60;
-  return minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
+  return minutes > 0 ? `${minutes}m${NBSP}${seconds}s` : `${seconds}s`;
 }
 
 /** 0..1 → "84%". Null stays a dash: an unscored run must not read as zero. */

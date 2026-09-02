@@ -77,16 +77,16 @@ export function CodeBlock({
     >
       {label || copyable ? (
         <div className="flex h-9 items-center justify-between border-b border-sn-line px-3">
-          <span className="font-mono text-[11px] tracking-[0.04em] text-sn-subtle uppercase">
+          <span className="font-mono text-sn-xs tracking-[0.04em] text-sn-subtle uppercase">
             {label}
           </span>
           {copyable ? (
             <button
               type="button"
               onClick={onCopy}
-              className="-mr-1 inline-flex h-6 items-center gap-1.5 rounded-sn-sm px-1.5 text-[12px] text-sn-muted transition-colors duration-150 ease-sn hover:bg-sn-surface hover:text-sn-ink"
+              className="-mr-1 inline-flex h-6 items-center gap-1.5 rounded-sn-sm px-1.5 text-sn-sm text-sn-muted transition-colors duration-150 ease-sn hover:bg-sn-surface hover:text-sn-ink"
             >
-              {copied ? <IconCheck size={13} className="text-sn-success" /> : <IconCopy size={13} />}
+              {copied ? <IconCheck size="sm" className="text-sn-success" /> : <IconCopy size="sm" />}
               {copied ? "Copied" : "Copy"}
             </button>
           ) : null}
@@ -96,7 +96,7 @@ export function CodeBlock({
       <div className="sn-scroll overflow-auto" style={maxHeight ? { maxHeight } : undefined}>
         <pre
           className={cn(
-            "p-3 font-mono text-[12px] leading-[19px] text-sn-ink",
+            "p-3 font-mono text-sn-sm leading-[19px] text-sn-ink",
             wrap ? "whitespace-pre-wrap break-words" : "whitespace-pre",
           )}
         >

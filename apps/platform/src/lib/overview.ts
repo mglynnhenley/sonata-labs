@@ -8,6 +8,7 @@ import {
   type RunStats,
   type RunSummary,
 } from "./db";
+import { listCompanies } from "./engine/clone";
 import { getSettings } from "./settings";
 import { allTwinStatuses, type TwinStatus } from "./twins";
 import type { ModelRole } from "./models";
@@ -26,6 +27,17 @@ export interface Overview {
   recent: RunSummary[];
   stats: RunStats;
   twins: TwinStatus[];
+  /**
+   * The company currently loaded into the three clones, if any. Home titles
+   * itself after it — the dashboard is a view of ONE cloned business, and
+   * naming it beats a generic "What's happening".
+   */
+  clone: { name: string; seededAt: number } | null;
+  /** Median simulated minutes reached before a run stopped. Null until a run
+   *  has been scored — the clock's minutes-per-tick applied to `medianTicks`. */
+  medianHorizonMin: number | null;
+  /** The clock's minutes per tick — turns a run's tick count into a horizon. */
+  simMinutesPerTick: number;
   models: Record<ModelRole, string>;
   /** Server time when this was built, so the client can age it honestly. */
   at: number;
@@ -41,9 +53,26 @@ export async function getOverview(): Promise<Overview> {
     firstRun: runs === 0,
     counts: { worlds, episodes: countEpisodes(), runs },
     live: listLiveRuns(),
-    recent: listRuns({ limit: 6 }),
+    // Twelve, not six: the dashboard's table is the tallest thing on the
+    // page and six rows left the bottom third of it empty.
+    recent: listRuns({ limit: 12 }),
     stats: runStats(),
     twins,
+    simMinutesPerTick: getSettings().simMinutesPerTick,
+    medianHorizonMin: (() => {
+      const stats = runStats();
+      return stats.medianTicks === null
+        ? null
+        : Math.round(stats.medianTicks * getSettings().simMinutesPerTick);
+    })(),
+    clone: (() => {
+      const seeded = listCompanies().find((company) => company.state === "seeded");
+      // `seededAt` is non-null exactly when state is "seeded", but the type does
+      // not know that, so the guard is real rather than an assertion.
+      return seeded && seeded.seededAt !== null
+        ? { name: seeded.name, seededAt: seeded.seededAt }
+        : null;
+    })(),
     models: getSettings().models,
     at: Date.now(),
   };
