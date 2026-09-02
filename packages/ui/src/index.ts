@@ -30,13 +30,14 @@ export {
 } from "./tokens";
 
 export { Badge, type BadgeProps, type BadgeSize, type BadgeStatus } from "./components/Badge";
+export { Button, type ButtonProps } from "./components/Button";
+// Straight from the client-free module: a server component dressing a link as a
+// button must not reach through Button.tsx, which is "use client".
 export {
-  Button,
   buttonClasses,
-  type ButtonProps,
   type ButtonSize,
   type ButtonVariant,
-} from "./components/Button";
+} from "./components/buttonClasses";
 export {
   Card,
   type CardPadding,
@@ -63,10 +64,12 @@ export {
   Sidebar,
   SidebarGroup,
   SidebarItem,
+  SidebarTrigger,
   SidebarUser,
   type SidebarGroupProps,
   type SidebarItemProps,
   type SidebarProps,
+  type SidebarTriggerProps,
   type SidebarUserProps,
 } from "./components/Sidebar";
 export { Spinner, type SpinnerProps, type SpinnerSize } from "./components/Spinner";
@@ -112,6 +115,9 @@ export {
   IconClock,
   IconClose,
   IconCopy,
+  IconDoc,
+  IconFeed,
+  IconGear,
   IconInbox,
   IconInfo,
   IconLayers,
@@ -122,5 +128,7 @@ export {
   IconPlay,
   IconSearch,
   IconSpark,
+  IconTrend,
+  IconUsers,
   type IconProps,
 } from "./components/icons";

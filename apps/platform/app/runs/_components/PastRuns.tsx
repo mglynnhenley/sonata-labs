@@ -1,8 +1,10 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import {
   Badge,
+  Card,
   Chip,
   EmptyState,
   IconClock,
@@ -68,13 +70,15 @@ function statusOf(run: RunSummary, simulated: boolean): { tone: BadgeStatus; lab
 
 export type PastRunsProps = {
   runs: readonly RunSummary[];
+  /** Right-hand side of the card's own heading row. */
+  actions?: ReactNode;
   /** Server time from the last poll, so "4 min ago" never drifts. */
   now: number;
   /** Run ids the stand-in fabricated. Empty until /api/results/simulated answers. */
   simulated: ReadonlySet<string>;
 };
 
-export function PastRuns({ runs, now, simulated }: PastRunsProps) {
+export function PastRuns({ runs, now, simulated, actions }: PastRunsProps) {
   const router = useRouter();
 
   // A fabricated run's numbers are not small or stale, they are invented — the
@@ -191,6 +195,14 @@ export function PastRuns({ runs, now, simulated }: PastRunsProps) {
   ];
 
   return (
+    // The card names itself: the page is a stack of titled panels, not a
+    // column of headings with tables hanging beneath them.
+    <Card
+      padding="none"
+      title="Past runs"
+      subtitle="Every day played from this dashboard, newest first"
+      actions={actions}
+    >
     <Table
       columns={columns}
       rows={runs}
@@ -198,12 +210,16 @@ export function PastRuns({ runs, now, simulated }: PastRunsProps) {
       rowLabel={(run) => `${run.specTitle} on ${modelLabel(run.model)}`}
       // One run, one URL: /runs/{id} serves the day live and its verdict after,
       // so a row needs no guess about which page its run belongs on.
+      // Both, deliberately: the click routes on the client, the href is what
+      // makes Cmd-click and middle-click open the run in a tab. This list is the
+      // only way into a run, so it has to behave like the links it is.
+      rowHref={(run) => `/runs/${run.runId}`}
       onRowClick={(run) => router.push(`/runs/${run.runId}`)}
       caption="Past runs, newest first"
       empty={
         <EmptyState
           size="sm"
-          icon={<IconClock size={18} />}
+          icon={<IconClock size="lg" />}
           title="No runs yet"
           description="Every day you play lands here with its score, how long it took and what it cost. Start one above and this fills in while it runs."
           hints={[
@@ -213,5 +229,6 @@ export function PastRuns({ runs, now, simulated }: PastRunsProps) {
         />
       }
     />
+    </Card>
   );
 }

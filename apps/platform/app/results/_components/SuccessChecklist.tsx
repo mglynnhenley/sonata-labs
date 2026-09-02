@@ -48,7 +48,7 @@ export function SuccessChecklist({
       className="scroll-mt-6"
     >
       {checklist.length === 0 ? (
-        <p className="px-5 pb-5 text-[13px] text-sn-muted">
+        <p className="px-5 pb-5 text-sn-base text-sn-muted">
           Criteria are declared on the scenario and checked in code against the world the agent
           left behind. Nothing has been checked for this run — it is either still going or it
           stopped before scoring.
@@ -66,10 +66,10 @@ export function SuccessChecklist({
           {ours.length > 0 ? (
             <div className="border-t border-sn-line">
               <div className="bg-sn-gold-soft/35 px-5 py-3">
-                <h3 className="text-[12.5px] font-medium text-sn-gold-ink">
+                <h3 className="text-sn-sm font-medium text-sn-gold-ink">
                   Ours, not the agent&rsquo;s — {ours.length} {faultPhrase(ours)}
                 </h3>
-                <p className="mt-0.5 max-w-[76ch] text-[12.5px] leading-[18px] text-sn-muted">
+                <p className="mt-0.5 max-w-[76ch] text-sn-sm text-sn-muted">
                   Never put to the agent, or saved too thinly to check. They score nothing either
                   way — the full account is at the top of the page.
                 </p>
@@ -156,17 +156,17 @@ function CriterionRow({
           )}
         >
           {undecided ? (
-            <IconMinus size={11} />
+            <IconMinus size="xs" />
           ) : passed ? (
-            <IconCheck size={11} />
+            <IconCheck size="xs" />
           ) : (
-            <IconClose size={11} />
+            <IconClose size="xs" />
           )}
         </span>
 
         <span className="min-w-0 flex-1">
-          <span className="block text-[13.5px] text-sn-ink">{criterion.description}</span>
-          <span className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-sn-subtle">
+          <span className="block text-sn-base text-sn-ink">{criterion.description}</span>
+          <span className="mt-1 flex flex-wrap items-center gap-1.5 text-sn-xs text-sn-subtle">
             {/* Three words, not a paragraph: the row says which kind of nothing
                 this is, and the full account is one click away under it. */}
             {fault ? (
@@ -217,7 +217,7 @@ function CriterionRow({
         ) : null}
 
         <IconChevronDown
-          size={15}
+          size="md"
           className={cn(
             "mt-1 shrink-0 text-sn-subtle transition-transform duration-150 ease-sn",
             open && "rotate-180",
@@ -229,18 +229,18 @@ function CriterionRow({
         <div className="animate-sn-slide-in px-5 pb-4 pl-[52px]">
           {fault ? (
             <>
-              <p className="text-[13px] leading-[20px] text-sn-muted">{sentence(fault.why)}</p>
+              <p className="text-sn-base text-sn-muted">{sentence(fault.why)}</p>
               {!fault.fromChecker && criterion.evidence?.trim() ? (
                 <Verbatim text={criterion.evidence} />
               ) : null}
             </>
           ) : criterion.evidence?.trim() ? (
-            <blockquote className="rounded-sn-lg border border-sn-line bg-sn-bg-subtle p-3 text-[13px] leading-[20px] text-sn-muted">
+            <blockquote className="rounded-sn-lg border border-sn-line bg-sn-bg-subtle p-3 text-sn-base text-sn-muted">
               {criterion.evidence}
             </blockquote>
           ) : (
-            <p className="flex items-start gap-2 text-[13px] text-sn-muted">
-              <IconAlert size={14} className="mt-0.5 shrink-0 text-sn-subtle" />
+            <p className="flex items-start gap-2 text-sn-base text-sn-muted">
+              <IconAlert size="sm" className="mt-0.5 shrink-0 text-sn-subtle" />
               {undecided
                 ? "Nothing in the run settles this, so it counts neither way."
                 : passed
@@ -253,10 +253,10 @@ function CriterionRow({
             <button
               type="button"
               onClick={() => onJump({ tick })}
-              className="mt-2.5 inline-flex items-center gap-1.5 text-[12.5px] font-medium text-sn-primary-ink hover:underline"
+              className="mt-2.5 inline-flex items-center gap-1.5 text-sn-sm font-medium text-sn-primary-ink hover:underline"
             >
               Go to tick {tick} in the replay
-              <IconArrowRight size={13} />
+              <IconArrowRight size="sm" />
             </button>
           ) : null}
         </div>
@@ -281,16 +281,16 @@ function Verbatim({ text }: { text: string }) {
         type="button"
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
-        className="inline-flex items-center gap-1.5 text-[12px] text-sn-subtle hover:text-sn-muted"
+        className="inline-flex items-center gap-1.5 text-sn-sm text-sn-subtle hover:text-sn-muted"
       >
         {open ? "Hide the checker's own words" : "The checker's own words"}
         <IconChevronDown
-          size={12}
+          size="xs"
           className={cn("transition-transform duration-150 ease-sn", open && "rotate-180")}
         />
       </button>
       {open ? (
-        <blockquote className="animate-sn-slide-in mt-1.5 rounded-sn-lg border border-sn-line bg-sn-bg-subtle p-3 text-[12.5px] leading-[19px] text-sn-subtle">
+        <blockquote className="animate-sn-slide-in mt-1.5 rounded-sn-lg border border-sn-line bg-sn-bg-subtle p-3 text-sn-sm leading-[19px] text-sn-subtle">
           {text}
         </blockquote>
       ) : null}

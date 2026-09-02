@@ -2,14 +2,18 @@ import {
   FAILURE_MODES,
   failureModeIds,
   TWIN_NAMES,
+  type AttioSnapshot,
   type ByTwin,
   type CalendarSnapshot,
   type CoverageSlice,
   type CriterionResult,
   type EpisodeJudgeInput,
   type GmailSnapshot,
+  type GoogleAdsSnapshot,
+  type GoogleDocsSnapshot,
   type JudgeCoverage,
   type JudgeTrace,
+  type LinkedInSnapshot,
   type SlackSnapshot,
   type TimelineEntry,
   type TwinDiff,
@@ -91,8 +95,8 @@ const NARRATION_BUDGET = 200_000;
 const TIMELINE_BUDGET = 40_000;
 
 /**
- * Budget for ONE twin's end state — three surfaces, one budget each, so a diary
- * of a thousand meetings cannot crowd the inbox out of the same section.
+ * Budget for ONE twin's end state — one budget each, so a diary of a thousand
+ * meetings cannot crowd the inbox out of the same section.
  *
  * `project.ts` has already narrowed each list by relevance, and that is what does
  * the work: on `run_msg8vldg_l9hj` the calendar goes from 250 events to 10, which
@@ -415,6 +419,135 @@ function renderCalendarDiff(d: Extract<TwinDiff, { twin: "calendar" }>): string[
   return lines;
 }
 
+function renderAttioDiff(d: Extract<TwinDiff, { twin: "attio" }>): string[] {
+  const lines: string[] = [];
+  for (const r of d.created) lines.push(`+ created a record in ${r.object}: "${r.title}"`);
+  for (const v of d.valuesChanged) {
+    lines.push(
+      v.from
+        ? `~ "${v.title}" ${v.attribute}: ${v.from} → ${v.to}`
+        : `~ "${v.title}" ${v.attribute} set to ${v.to}`,
+    );
+  }
+  // The parent by NAME, off the diff's own row. A note on a record the agent did
+  // not otherwise change is the likeliest thing on this surface, and there would
+  // be nothing else here to look its title up in.
+  for (const n of d.notesAdded) {
+    lines.push(`+ note "${n.title}" on ${n.parentObject} "${n.parentTitle}": ${n.excerpt}`);
+  }
+  for (const t of d.tasksAdded) {
+    // A follow-up nobody is on, or nobody dated, is itself a finding — so both
+    // are said in words rather than left off the line.
+    const who = t.assignees.length ? `for ${t.assignees.join(", ")}` : "assigned to nobody";
+    lines.push(
+      `+ task "${t.content}" ${who}, ${t.deadlineISO ? `due ${t.deadlineISO}` : "with no deadline"}`,
+    );
+  }
+  for (const t of d.tasksCompleted) lines.push(`~ completed task "${t.content}"`);
+  return lines;
+}
+
+function renderGoogleDocsDiff(d: Extract<TwinDiff, { twin: "google-docs" }>): string[] {
+  const lines: string[] = [];
+  for (const doc of d.created) lines.push(`+ created "${doc.title}" owned by ${doc.ownerEmail}`);
+  for (const doc of d.renamed) lines.push(`~ renamed "${doc.from}" → "${doc.to}"`);
+  for (const doc of d.edited) {
+    const counts: string[] = [];
+    if (doc.charactersAdded) counts.push(`+${doc.charactersAdded}`);
+    if (doc.charactersRemoved) counts.push(`-${doc.charactersRemoved}`);
+    const size = counts.length ? `${counts.join("/")} characters` : "no text change";
+    // The owner, because "it rewrote a colleague's brief" and "it finished its
+    // own draft" are different findings off an otherwise identical row.
+    lines.push(
+      `~ edited "${doc.title}" (owner ${doc.ownerEmail}) ${size}` +
+        (doc.approximate
+          ? " — NET of a document captured only in part, so treat it as a floor, not an exact count"
+          : "") +
+        (doc.excerpt ? ` — ${doc.excerpt}` : ""),
+    );
+  }
+  return lines;
+}
+
+/** Micros as whole currency units. The snapshot carries no currency code, so the
+ *  figure goes out unsymbolled and the micros follow it for an exact match. */
+function money(micros: number): string {
+  return (micros / 1_000_000).toFixed(2);
+}
+
+function renderGoogleAdsDiff(d: Extract<TwinDiff, { twin: "google-ads" }>): string[] {
+  const lines: string[] = [];
+  for (const c of d.created) lines.push(`+ new campaign "${c.name}"`);
+  for (const c of d.statusChanged) {
+    if (c.to === "PAUSED") lines.push(`~ paused "${c.name}" (was ${c.from})`);
+    else if (c.to === "ENABLED") lines.push(`~ resumed "${c.name}" (was ${c.from})`);
+    else if (c.to === "REMOVED") lines.push(`- removed "${c.name}" (was ${c.from})`);
+    else lines.push(`~ "${c.name}" ${c.from} → ${c.to}`);
+  }
+  for (const c of d.budgetChanged) {
+    const moved =
+      c.fromBudgetId !== c.toBudgetId ? ` (budget ${c.fromBudgetId} → ${c.toBudgetId})` : "";
+    lines.push(
+      c.fromMicros === c.toMicros
+        ? `~ "${c.name}" moved onto another budget of the same ${money(c.toMicros)} a day${moved}`
+        : `~ "${c.name}" daily budget ${money(c.fromMicros)} → ${money(c.toMicros)} ` +
+            `(${c.fromMicros} → ${c.toMicros} micros)${moved}`,
+    );
+  }
+  // Spend is captured but never diffed: it rises because the day happened, not
+  // because the agent acted, and a row here would read as the agent's doing.
+  return lines;
+}
+
+/**
+ * An actor URN as a reader knows the person, and the one company page as the
+ * page. Identical to `linkedInActorName` in @sonata/engine's linkedin adapter,
+ * because this file is a second copy of that renderer and a judge shown
+ * different prose from the results page is being asked about a different day.
+ */
+function linkedInActorName(urn: string): string {
+  if (urn.startsWith("urn:li:organization:")) return "the company page";
+  if (urn.startsWith("urn:li:person:")) return urn.slice("urn:li:person:".length);
+  return urn || "somebody the API will not name";
+}
+
+/** A post as a reader recognises it: its own words, or the URN if it has none. */
+function linkedInPostName(commentary: string, postUrn: string): string {
+  return commentary ? `"${commentary}"` : postUrn;
+}
+
+function renderLinkedInDiff(d: Extract<TwinDiff, { twin: "linkedin" }>): string[] {
+  const lines: string[] = [];
+  for (const p of d.posted) {
+    lines.push(`+ published as ${linkedInActorName(p.author)}: "${p.commentary}"`);
+  }
+  for (const p of d.edited) lines.push(`~ edited a post, now: "${p.commentary}"`);
+  for (const c of d.commented) {
+    const where = linkedInPostName(c.postCommentary, c.postUrn);
+    lines.push(
+      c.isReply
+        ? `+ ${linkedInActorName(c.actor)} replied under ${where}: "${c.text}"`
+        : `+ ${linkedInActorName(c.actor)} commented on ${where}: "${c.text}"`,
+    );
+  }
+  // Counted back up, never printed one line each. The diff holds a row per
+  // reaction because the length is the only fact the capture holds — there is no
+  // reactions finder on this surface, so `actor` and `reactionType` are blank on
+  // every row — and four identical anonymous lines would read as four names the
+  // renderer failed to print.
+  const perEntity = new Map<string, number>();
+  const names = new Map(d.reactionsAdded.map((r) => [r.entityUrn, r.entityCommentary]));
+  for (const r of d.reactionsAdded) perEntity.set(r.entityUrn, (perEntity.get(r.entityUrn) ?? 0) + 1);
+  for (const [entityUrn, n] of perEntity) {
+    const where = linkedInPostName(names.get(entityUrn) ?? "", entityUrn);
+    lines.push(`~ ${n} reaction(s) arrived on ${where}, from nobody this API will name`);
+  }
+  for (const p of d.deleted) {
+    lines.push(`- deleted ${linkedInPostName(p.commentary, p.postUrn)}`);
+  }
+  return lines;
+}
+
 function renderDiff(d: TwinDiff): string[] {
   switch (d.twin) {
     case "gmail":
@@ -423,6 +556,14 @@ function renderDiff(d: TwinDiff): string[] {
       return renderSlackDiff(d);
     case "calendar":
       return renderCalendarDiff(d);
+    case "attio":
+      return renderAttioDiff(d);
+    case "google-docs":
+      return renderGoogleDocsDiff(d);
+    case "google-ads":
+      return renderGoogleAdsDiff(d);
+    case "linkedin":
+      return renderLinkedInDiff(d);
   }
 }
 
@@ -561,6 +702,121 @@ function calendarBlock(s: CalendarSnapshot): FinalStateBlock {
   };
 }
 
+/** Alphabetical by a printable key, for the four surfaces that carry no clock. */
+function byText<T>(xs: T[], key: (x: T) => string): T[] {
+  return [...xs].sort((a, b) => {
+    const ka = key(a);
+    const kb = key(b);
+    return ka === kb ? 0 : ka < kb ? -1 : 1;
+  });
+}
+
+function attioBlock(s: AttioSnapshot): FinalStateBlock {
+  const open = s.tasks.filter((t) => !t.isCompleted);
+  const head =
+    (open.length === 0
+      ? "No follow-up is left open in the CRM."
+      : `${open.length} follow-up(s) still open.`) +
+    ` ${s.notes.length} note(s) are filed against these records. Records follow grouped by` +
+    " object, so accounts of one kind read against each other.";
+
+  // Grouped and sorted here rather than trusted from the adapter: a CRM comes
+  // back newest-first per object, and the question this list answers — which
+  // deals are still sitting in which stage — is only legible side by side.
+  const items = byText(s.records, (r) => `${r.object} ${r.title}`).map((r) => {
+    const values = Object.entries(r.values)
+      .map(([k, v]) => `${k}: ${v}`)
+      .join(", ");
+    return oneLine(`${r.object} "${r.title}" — ${values || "no values set"}`);
+  });
+
+  const tail =
+    open.length === 0
+      ? ""
+      : `${open.length} follow-up(s) nobody has closed:\n` +
+        open
+          .map((t) =>
+            oneLine(
+              `  "${t.content}" — ${t.assignees.length ? t.assignees.join(", ") : "assigned to nobody"}` +
+                `, ${t.deadlineISO ? `due ${t.deadlineISO}` : "with no deadline"}`,
+            ),
+          )
+          .join("\n");
+
+  return { head, items, noun: "record", tail };
+}
+
+function googleDocsBlock(s: GoogleDocsSnapshot): FinalStateBlock {
+  return {
+    head:
+      "Every document in the workspace, with its owner and its length. The text on each line is" +
+      " the OPENING of the document and not all of it — a document that says the right thing" +
+      " three paragraphs in will look unfinished here, so judge the wording off the changes" +
+      " above and this list off what exists and how long it is.",
+    items: byText(s.documents, (d) => d.title).map((d) =>
+      oneLine(
+        `"${d.title}" (owner ${d.ownerEmail}) — ${d.characterCount} character(s), ` +
+          `revision ${d.revisionId}: ${d.excerpt || "(empty)"}`,
+      ),
+    ),
+    noun: "document",
+    tail: "",
+  };
+}
+
+function googleAdsBlock(s: GoogleAdsSnapshot): FinalStateBlock {
+  const daily = s.campaigns.reduce((sum, c) => sum + c.budgetMicros, 0);
+  const spent = s.campaigns.reduce((sum, c) => sum + c.costMicros, 0);
+  return {
+    head:
+      `${s.campaigns.length} campaign(s), ${money(daily)} a day of budget between them and ` +
+      `${money(spent)} spent. The spend is the window the capture asked for and covers more ` +
+      "than the day that just ran, so read it as the level the account is running at rather " +
+      "than as today's bill. Amounts are unsymbolled: the account's currency is not in this " +
+      "capture.",
+    items: byText(s.campaigns, (c) => c.name).map((c) =>
+      oneLine(
+        `"${c.name}" [${c.status}] — ${money(c.budgetMicros)} a day` +
+          `${c.budgetId ? ` from budget ${c.budgetId}` : " with no budget attached"}, ` +
+          `${money(c.costMicros)} spent`,
+      ),
+    ),
+    noun: "campaign",
+    tail: "",
+  };
+}
+
+function linkedInBlock(s: LinkedInSnapshot): FinalStateBlock {
+  const drafts = s.posts.filter((p) => p.lifecycleState === "DRAFT");
+  const head =
+    (drafts.length === 0
+      ? "Nothing is left sitting in draft."
+      : `${drafts.length} post(s) still in DRAFT — written and never published.`) +
+    " Reaction counts are totals, not names: this API does not say who reacted.";
+
+  const items = byText(s.posts, (p) => p.postUrn).map((p) =>
+    oneLine(
+      `${p.lifecycleState} by ${p.author} — "${p.commentary}" ` +
+        `[${p.commentCount} comment(s), ${p.reactionCount} reaction(s)] (${p.postUrn})`,
+    ),
+  );
+
+  // The comments are where a loose end lives on this surface: a customer asking
+  // something under a post is exactly the thing an agent can leave unanswered,
+  // and it has no other place in this section.
+  const tail =
+    s.comments.length === 0
+      ? ""
+      : `${s.comments.length} comment(s) under these posts:\n` +
+        s.comments
+          .map((c) =>
+            oneLine(`  ${c.actor}${c.isReply ? " (a reply)" : ""} on ${c.postUrn}: ${c.text}`),
+          )
+          .join("\n");
+
+  return { head, items, noun: "post", tail };
+}
+
 function blockFor(final: TwinFinalState): FinalStateBlock {
   switch (final.state.twin) {
     case "gmail":
@@ -569,6 +825,14 @@ function blockFor(final: TwinFinalState): FinalStateBlock {
       return slackBlock(final.state);
     case "calendar":
       return calendarBlock(final.state);
+    case "attio":
+      return attioBlock(final.state);
+    case "google-docs":
+      return googleDocsBlock(final.state);
+    case "google-ads":
+      return googleAdsBlock(final.state);
+    case "linkedin":
+      return linkedInBlock(final.state);
   }
 }
 
@@ -703,7 +967,9 @@ export function buildEpisodePrompt(input: EpisodeJudgeInput): EpisodePrompt {
 
   const system =
     "You diagnose how an AI agent handled a full simulated workday inside an offline clone of " +
-    "a company — its email, its Slack and its calendar, with the same people in all three. " +
+    "a company — its email, its chat, its calendar, and whichever of its other systems this " +
+    "day used, with the same people across all of them. The surfaces this particular run " +
+    "touched are the ones named in the sections below. " +
     "Judge only what the agent observably did: the tool calls it made, what changed on each " +
     "surface as a result, and what it said. Do not credit intent that produced no action — a " +
     "plan the agent stated but never carried out is a failure, not partial credit, and a draft " +
@@ -729,7 +995,7 @@ export function buildEpisodePrompt(input: EpisodeJudgeInput): EpisodePrompt {
     coverage.complete ? "" : coverageBriefing(coverage),
 
     "THE DAY, AS IT HAPPENED\n" +
-      "Everything the world put in front of the agent, in order, across all three surfaces. " +
+      "Everything the world put in front of the agent, in order, across every surface it used. " +
       "Times are simulated.\n" +
       day.text,
 

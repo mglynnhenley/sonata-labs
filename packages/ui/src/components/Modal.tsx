@@ -118,11 +118,11 @@ export function Modal({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[60] flex items-center justify-center p-4"
+      className="fixed inset-0 z-[60] flex items-center justify-center overscroll-contain p-4"
       onKeyDown={onKeyDown}
     >
       <div
-        className="animate-sn-fade-in absolute inset-0 bg-[#1b1a17]/35 backdrop-blur-[1px]"
+        className="animate-sn-fade-in absolute inset-0 bg-[#16181a]/35 backdrop-blur-[1px]"
         onClick={close}
         aria-hidden="true"
       />
@@ -135,6 +135,10 @@ export function Modal({
         tabIndex={-1}
         className={cn(
           "animate-sn-pop relative w-full rounded-sn-3xl border border-sn-line bg-sn-surface p-6 shadow-sn-lg",
+          // Opening the dialog locks body scroll, so anything taller than the
+          // viewport would be stranded off-screen with nothing left to scroll.
+          // The dialog itself scrolls instead.
+          "sn-scroll max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain",
           SIZES[size],
           className,
         )}
@@ -146,20 +150,20 @@ export function Modal({
             aria-label="Close"
             className="absolute top-4 right-4 rounded-sn-md p-1.5 text-sn-subtle transition-colors duration-150 ease-sn hover:bg-sn-bg-subtle hover:text-sn-ink"
           >
-            <IconClose size={16} />
+            <IconClose size="md" />
           </button>
         ) : null}
 
-        <h2 id={titleId} className="font-display pr-8 text-[26px] text-sn-ink">
+        <h2 id={titleId} className="font-display pr-8 text-balance text-sn-2xl text-sn-ink">
           {title}
         </h2>
         {description ? (
-          <p id={descriptionId} className="mt-2 text-[13px] leading-[20px] text-sn-muted">
+          <p id={descriptionId} className="mt-2 text-sn-base text-sn-muted">
             {description}
           </p>
         ) : null}
 
-        {children ? <div className="mt-5 text-[14px] text-sn-ink">{children}</div> : null}
+        {children ? <div className="mt-5 text-sn-md text-sn-ink">{children}</div> : null}
 
         {footer ? (
           <div className="mt-7 flex items-center justify-end gap-2.5">{footer}</div>

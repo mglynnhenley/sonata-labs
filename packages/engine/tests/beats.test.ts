@@ -583,6 +583,82 @@ describe("summarizeBody", () => {
     ).toContain("Priya Raman invited Dana Reyes");
   });
 
+  it("describes what happened on the four later surfaces, not the kind it happened as", () => {
+    expect(
+      summarizeBody(
+        {
+          twin: "attio",
+          kind: "record",
+          payload: { object: "deals", values: { name: "Acme renewal", stage: "Lead" } },
+        },
+        world,
+      ),
+    ).toBe('"Acme renewal" was added to the CRM as a deal');
+    expect(
+      summarizeBody(
+        {
+          twin: "attio",
+          kind: "task",
+          payload: { content: "Chase the PO", assignee: "priya" },
+        },
+        world,
+      ),
+    ).toBe('a follow-up landed on Priya Raman: "Chase the PO"');
+    expect(
+      summarizeBody(
+        {
+          twin: "google-docs",
+          kind: "document",
+          payload: { title: "SLA review", owner: "priya", paragraphs: [{ text: "Draft." }] },
+        },
+        world,
+      ),
+    ).toBe('Priya Raman shared a document: "SLA review"');
+    expect(
+      summarizeBody(
+        {
+          twin: "google-ads",
+          kind: "status",
+          payload: { campaign: "Brand", status: "PAUSED" },
+        },
+        world,
+      ),
+    ).toBe('campaign "Brand" was paused');
+    expect(
+      summarizeBody(
+        { twin: "google-ads", kind: "budget", payload: { campaign: "Brand", amountMicros: 250_000_000 } },
+        world,
+      ),
+    ).toBe('campaign "Brand" now has 250.00 a day to spend');
+    expect(
+      summarizeBody(
+        {
+          twin: "linkedin",
+          kind: "comment",
+          payload: { postRef: "launch", from: "dana", text: "still waiting" },
+        },
+        world,
+      ),
+    ).toBe('Dana Reyes commented on "launch": "still waiting"');
+  });
+
+  // A Slack emoji and a LinkedIn reaction are both `kind: "reaction"`, so a
+  // summary written off the kind alone reached into the wrong payload.
+  it("tells a Slack reaction from a LinkedIn one", () => {
+    expect(
+      summarizeBody(
+        { twin: "slack", kind: "reaction", payload: { messageRef: "m1", from: "sam", emoji: "eyes" } },
+        world,
+      ),
+    ).toBe("Sam Okafor reacted :eyes:");
+    expect(
+      summarizeBody(
+        { twin: "linkedin", kind: "reaction", payload: { entityRef: "launch", reactionType: "PRAISE" } },
+        world,
+      ),
+    ).toBe('the company page reacted PRAISE to "launch"');
+  });
+
   it("falls back to the raw ref for someone outside the cast", () => {
     expect(
       summarizeBody(

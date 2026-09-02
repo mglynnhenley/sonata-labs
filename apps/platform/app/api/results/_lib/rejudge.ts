@@ -10,7 +10,15 @@ import {
   type TwinSnapshot,
   TWIN_NAMES,
 } from "@sonata/core";
-import { diffCalendar, diffGmail, diffSlack } from "@sonata/engine";
+import {
+  diffAttio,
+  diffCalendar,
+  diffGmail,
+  diffGoogleAds,
+  diffGoogleDocs,
+  diffLinkedIn,
+  diffSlack,
+} from "@sonata/engine";
 import {
   escalationsFromTicks,
   judge,
@@ -77,10 +85,27 @@ function diffOf(pair: { before: TwinSnapshot; after: TwinSnapshot }): TwinDiff |
   // Both snapshots come off one twin's adapter, so a mismatch is a corrupt
   // artifact rather than a case to handle — diffing across surfaces would
   // produce a change-log of the whole world appearing and disappearing.
-  if (before.twin === "gmail" && after.twin === "gmail") return diffGmail(before, after);
-  if (before.twin === "slack" && after.twin === "slack") return diffSlack(before, after);
-  if (before.twin === "calendar" && after.twin === "calendar") return diffCalendar(before, after);
-  return null;
+  //
+  // A surface missing from this list is worse than it looks: it produces no
+  // diff, the judge is then told the surface was never captured, and a run whose
+  // whole point was the CRM gets re-judged as a day nobody photographed. A
+  // switch, so the next twin cannot be forgotten here quietly.
+  switch (before.twin) {
+    case "gmail":
+      return after.twin === "gmail" ? diffGmail(before, after) : null;
+    case "slack":
+      return after.twin === "slack" ? diffSlack(before, after) : null;
+    case "calendar":
+      return after.twin === "calendar" ? diffCalendar(before, after) : null;
+    case "attio":
+      return after.twin === "attio" ? diffAttio(before, after) : null;
+    case "google-docs":
+      return after.twin === "google-docs" ? diffGoogleDocs(before, after) : null;
+    case "google-ads":
+      return after.twin === "google-ads" ? diffGoogleAds(before, after) : null;
+    case "linkedin":
+      return after.twin === "linkedin" ? diffLinkedIn(before, after) : null;
+  }
 }
 
 /**
@@ -99,9 +124,7 @@ function diffsOf(snapshots: EpisodeRun["snapshots"]): ByTwin<TwinDiff> {
     // Filed under the diff's own tag rather than the key it was found at: the two
     // agree on every artifact the engine writes, and where they would not, the
     // diff is the one that knows what it actually compared.
-    if (diff?.twin === "gmail") out.gmail = diff;
-    else if (diff?.twin === "slack") out.slack = diff;
-    else if (diff?.twin === "calendar") out.calendar = diff;
+    if (diff) out[diff.twin] = diff;
   }
   return out;
 }

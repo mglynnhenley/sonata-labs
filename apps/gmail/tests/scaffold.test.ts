@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import Database from "better-sqlite3";
 import { readFileSync } from "node:fs";
 import path from "node:path";
+import { trackDb } from "./helpers";
 
 // Sanity: schema.sql applies cleanly to an in-memory DB and creates the core
 // tables. Guards against SQL syntax regressions in the single source of truth.
@@ -12,7 +13,7 @@ describe("schema", () => {
   );
 
   it("applies to a fresh database", () => {
-    const db = new Database(":memory:");
+    const db = trackDb(new Database(":memory:"));
     expect(() => db.exec(schema)).not.toThrow();
 
     const tables = db
@@ -37,7 +38,7 @@ describe("schema", () => {
   });
 
   it("provides FTS5 search over messages", () => {
-    const db = new Database(":memory:");
+    const db = trackDb(new Database(":memory:"));
     db.exec(schema);
     db.prepare(
       "INSERT INTO messages_fts (message_id, subject, from_addr, to_addrs, body) VALUES (?, ?, ?, ?, ?)",

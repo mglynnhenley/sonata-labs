@@ -1,6 +1,7 @@
 // @sonata/world — one description in ("a 12-person fintech, the week before an
 // audit"), one coherent fake company out: the same cast, with the same
-// identities, appearing in Gmail, Slack and the calendar.
+// identities, appearing in Gmail, Slack, the calendar, the CRM, the shared
+// documents, the ads account and the company's page.
 //
 // Four things live here and nothing else: what the model is allowed to write
 // (schema), what makes a success criterion checkable at all (criteria), how a

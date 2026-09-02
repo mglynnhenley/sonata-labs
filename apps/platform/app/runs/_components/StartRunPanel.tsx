@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   Button,
+  buttonClasses,
   Card,
   Chip,
   EmptyState,
@@ -36,7 +37,7 @@ import {
 // same arithmetic as `bench --dry-run`, fitted against Sonata's own saved runs.
 
 const CONTROL =
-  "h-9 w-full rounded-sn-md border border-sn-line bg-sn-surface px-2.5 text-[13px] text-sn-ink " +
+  "h-9 w-full rounded-sn-md border border-sn-line bg-sn-surface px-2.5 text-sn-base text-sn-ink " +
   "shadow-sn-xs transition-colors duration-150 ease-sn hover:border-sn-line-strong";
 
 export type StartRunPanelProps = {
@@ -123,7 +124,7 @@ export function StartRunPanel({
   if (episodes.length === 0) {
     return (
       <EmptyState
-        icon={<IconLayers size={20} />}
+        icon={<IconLayers size="lg" />}
         title="A run needs a scenario"
         description="A scenario is one simulated workday: who is in the company, what happens and when, and what counts as having done the job. Save one and this panel fills in."
         hints={[
@@ -131,10 +132,9 @@ export function StartRunPanel({
           "Or describe your own business in a sentence and let Sonata write it",
         ]}
         action={
-          <a href="/scenarios">
-            <Button variant="primary" iconRight={<IconArrowRight size={14} />}>
-              See the five scenarios
-            </Button>
+          <a href="/scenarios" className={buttonClasses("primary", "md")}>
+            See the five scenarios
+            <IconArrowRight size="sm" />
           </a>
         }
       />
@@ -155,60 +155,73 @@ export function StartRunPanel({
   const canStart = Boolean(episodeId) && twins.length > 0 && !blocked && !needsConsent;
 
   return (
-    <Card padding="lg">
-      <div className="grid gap-6 lg:grid-cols-2">
-        <div>
-          <label htmlFor="run-scenario" className="text-[13px] font-medium text-sn-ink">
-            Scenario
-          </label>
-          <select
-            id="run-scenario"
-            className={cn(CONTROL, "mt-2")}
-            value={episodeId}
-            onChange={(e) => setEpisodeId(e.target.value)}
-          >
-            {episodes.map((option) => (
-              <option key={option.id} value={option.id}>
-                {option.title}
-                {option.worldName ? ` — ${option.worldName}` : ""}
-              </option>
-            ))}
-          </select>
-          <p className="mt-2 line-clamp-2 text-[12px] leading-[18px] text-sn-muted">
-            {episode?.story ?? "Pick the day you want to test against."}
-          </p>
+    // The panel names itself — the page used to carry an h2 above it, and on a
+    // dashboard every panel is a titled card instead.
+    <Card
+      padding="lg"
+      title="Start a run"
+      subtitle="The scenario decides what happens and what counts as done. The model is the thing being tested — everyone else in the company is played by the harness."
+    >
+      {/* Only the two selects are peers, so only they pair off. Beside the lengths
+          — three priced buttons, a tick box and a truncation notice — the chip row
+          ran out about 150px short and left the start button below a hole. The two
+          button groups take the whole card instead, which is also what lets the
+          lengths sit three across rather than wrapping two-then-one. */}
+      <div className="sn-stack-block">
+        <div className="grid gap-6 lg:grid-cols-2">
+          <div>
+            <label htmlFor="run-scenario" className="text-sn-base font-medium text-sn-ink">
+              Scenario
+            </label>
+            <select
+              id="run-scenario"
+              className={cn(CONTROL, "mt-2")}
+              value={episodeId}
+              onChange={(e) => setEpisodeId(e.target.value)}
+            >
+              {episodes.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.title}
+                  {option.worldName ? ` — ${option.worldName}` : ""}
+                </option>
+              ))}
+            </select>
+            <p className="mt-2 line-clamp-2 text-sn-sm text-sn-muted">
+              {episode?.story ?? "Pick the day you want to test against."}
+            </p>
+          </div>
+
+          <div>
+            <label htmlFor="run-model" className="text-sn-base font-medium text-sn-ink">
+              Model under test
+            </label>
+            <select
+              id="run-model"
+              className={cn(CONTROL, "mt-2")}
+              value={model}
+              onChange={(e) => setModel(e.target.value)}
+            >
+              {chosenModel ? null : <option value={model}>{model}</option>}
+              {byVendor().map(([vendor, models]) => (
+                <optgroup key={vendor} label={vendor}>
+                  {models.map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {option.label}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+            <p className="mt-2 text-sn-sm text-sn-muted">
+              {chosenModel
+                ? `${chosenModel.note} · ${usd(chosenModel.inputUsd)} in / ${usd(chosenModel.outputUsd)} out per million tokens`
+                : "An OpenRouter model id."}
+            </p>
+          </div>
         </div>
 
         <div>
-          <label htmlFor="run-model" className="text-[13px] font-medium text-sn-ink">
-            Model under test
-          </label>
-          <select
-            id="run-model"
-            className={cn(CONTROL, "mt-2")}
-            value={model}
-            onChange={(e) => setModel(e.target.value)}
-          >
-            {chosenModel ? null : <option value={model}>{model}</option>}
-            {byVendor().map(([vendor, models]) => (
-              <optgroup key={vendor} label={vendor}>
-                {models.map((option) => (
-                  <option key={option.id} value={option.id}>
-                    {option.label}
-                  </option>
-                ))}
-              </optgroup>
-            ))}
-          </select>
-          <p className="mt-2 text-[12px] leading-[18px] text-sn-muted">
-            {chosenModel
-              ? `${chosenModel.note} · ${usd(chosenModel.inputUsd)} in / ${usd(chosenModel.outputUsd)} out per million tokens`
-              : "An OpenRouter model id."}
-          </p>
-        </div>
-
-        <div>
-          <p className="text-[13px] font-medium text-sn-ink">Where the agent can work</p>
+          <p className="text-sn-base font-medium text-sn-ink">Where the agent can work</p>
           <div className="mt-2.5 flex flex-wrap gap-2">
             {TWIN_NAMES.map((twin) => {
               const on = twins.includes(twin);
@@ -232,16 +245,21 @@ export function StartRunPanel({
               );
             })}
           </div>
-          <p className="mt-2 text-[12px] leading-[18px] text-sn-muted">
+          {/* Capped because the block is the width of the card now, and a sentence
+              this long across all of it is a line nobody's eye can carry back. */}
+          <p className="mt-2 max-w-[76ch] text-sn-sm text-sn-muted">
             Detach an app to see what the agent does without it — that is the cheapest way to
             find out which surface it was actually relying on.
           </p>
         </div>
 
         <div>
-          <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <p className="text-[13px] font-medium text-sn-ink">How long the day runs</p>
-            <p className="text-[11.5px] text-sn-subtle">
+          {/* The caption sits beside the label, not at the far end of the row: across
+              the full card those two ended up a screen apart and stopped reading as
+              one thought. */}
+          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+            <p className="text-sn-base font-medium text-sn-ink">How long the day runs</p>
+            <p className="text-sn-xs text-sn-subtle">
               This run only — the scenario keeps its clock.
             </p>
           </div>
@@ -256,18 +274,29 @@ export function StartRunPanel({
                   aria-pressed={on}
                   onClick={() => setTicks(length.ticks)}
                   className={cn(
-                    "min-w-[8.5rem] rounded-sn-md border px-3 py-2 text-left transition-colors duration-150 ease-sn",
+                    // Equal shares of the row, whether there are two lengths on offer
+                    // or four. Sized to their own text they came out 194/140/222 wide
+                    // and read as three different kinds of thing. The floor stays:
+                    // a long scenario offers four, and basis-0 alone would let the
+                    // narrowest breakpoint squeeze them past legibility.
+                    "grow basis-full rounded-sn-md border px-3 py-2 text-left transition-colors duration-150 ease-sn sm:basis-0 sm:min-w-[8.5rem]",
                     on
                       ? "border-sn-primary bg-sn-primary-soft text-sn-primary-ink"
                       : "border-sn-line bg-sn-surface text-sn-muted hover:border-sn-line-strong",
                   )}
                 >
-                  <span className="block text-[13px] font-medium">{length.label}</span>
-                  <span className="block text-[11.5px] text-sn-subtle">{length.hint}</span>
+                  <span className="block text-sn-base font-medium">{length.label}</span>
+                  {/* Follows the button's state: neutral grey on the pale petrol
+                      of a selected chip measures 4.26:1, under AA at 11px. */}
+                  <span
+                    className={cn("block text-sn-xs", on ? "text-sn-primary-ink/85" : "text-sn-subtle")}
+                  >
+                    {length.hint}
+                  </span>
                   <span
                     data-numeric
                     className={cn(
-                      "mt-1 block text-[11.5px] tabular-nums",
+                      "mt-1 block text-sn-xs tabular-nums",
                       on ? "text-sn-primary-ink" : "text-sn-muted",
                     )}
                   >
@@ -280,7 +309,7 @@ export function StartRunPanel({
 
           <label
             htmlFor="run-ticks"
-            className="mt-3 flex flex-wrap items-center gap-2 text-[12px] text-sn-muted"
+            className="mt-3 flex flex-wrap items-center gap-2 text-sn-sm text-sn-muted"
           >
             <span>or run exactly</span>
             <input
@@ -293,7 +322,7 @@ export function StartRunPanel({
                 const n = Math.round(Number(e.target.value));
                 if (Number.isFinite(n)) setTicks(Math.max(MIN_TICKS, Math.min(MAX_TICKS, n)));
               }}
-              className="h-8 w-20 rounded-sn-md border border-sn-line bg-sn-surface px-2 text-[13px] tabular-nums text-sn-ink"
+              className="h-8 w-20 rounded-sn-md border border-sn-line bg-sn-surface px-2 text-sn-base tabular-nums text-sn-ink"
             />
             <span>ticks of 15 simulated minutes</span>
           </label>
@@ -303,7 +332,7 @@ export function StartRunPanel({
             // this: `runTruncation` marks anything that never fired as OUR
             // defect, not the agent's, so a smoke test cannot quietly invent a
             // failure. Saying so here is what makes the short day usable.
-            <p className="mt-3 rounded-sn-md border border-sn-line bg-sn-bg-subtle px-3 py-2 text-[12px] leading-[18px] text-sn-muted">
+            <p className="mt-3 rounded-sn-md border border-sn-line bg-sn-bg-subtle px-3 py-2 text-sn-sm text-sn-muted">
               The day stops at tick {ticks} of {scenarioTicks}.
               {missedBeats > 0
                 ? ` ${missedBeats} scripted moment${missedBeats === 1 ? "" : "s"} scheduled after that never reach the agent, and the report marks ${missedBeats === 1 ? "it" : "them"} as a harness defect rather than an agent failure.`
@@ -316,13 +345,13 @@ export function StartRunPanel({
 
       <div className="mt-7 border-t border-sn-line pt-5">
         {pricingError ? (
-          <p className="mb-4 rounded-sn-md border border-sn-failed-line bg-sn-danger-soft px-3 py-2 text-[12px] leading-[18px] text-sn-danger-ink">
+          <p className="mb-4 rounded-sn-md border border-sn-failed-line bg-sn-danger-soft px-3 py-2 text-sn-sm text-sn-danger-ink">
             Could not work out what this run will cost: {pricingError}
           </p>
         ) : null}
 
         {unpriced.length > 0 ? (
-          <label className="mb-4 flex items-start gap-2.5 rounded-sn-md border border-sn-line-strong bg-sn-warning-soft px-3 py-2 text-[12px] leading-[18px] text-sn-warning-ink">
+          <label className="mb-4 flex items-start gap-2.5 rounded-sn-md border border-sn-line-strong bg-sn-warning-soft px-3 py-2 text-sn-sm text-sn-warning-ink">
             <input
               type="checkbox"
               checked={spendAnyway}
@@ -340,7 +369,7 @@ export function StartRunPanel({
           <Button
             size="lg"
             variant="primary"
-            icon={<IconPlay size={13} />}
+            icon={<IconPlay size="sm" />}
             loading={starting}
             disabled={!canStart}
             onClick={() => onStart({ episodeId, model, twins, ticks })}
@@ -361,7 +390,7 @@ export function StartRunPanel({
             </Button>
           )}
 
-          <p className="max-w-[46ch] text-[12px] leading-[18px] text-sn-subtle">
+          <p className="max-w-[46ch] text-sn-sm text-sn-subtle">
             {twins.length === 0
               ? "Give the agent at least one app — it has to have somewhere to work."
               : blocked
@@ -373,7 +402,7 @@ export function StartRunPanel({
         </div>
 
         {chosen ? (
-          <p className="mt-3 text-[11.5px] leading-[17px] text-sn-subtle">
+          <p className="mt-3 text-sn-xs text-sn-subtle">
             Covers the agent, the director ({priced?.harness.director}) and the judge (
             {priced?.harness.judge}).{" "}
             {chosen.cachePriced

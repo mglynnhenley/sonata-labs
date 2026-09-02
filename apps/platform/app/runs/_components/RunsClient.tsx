@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState, type MouseEvent } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Badge,
-  Button,
+  buttonClasses,
   Card,
   Chip,
   IconArrowRight,
@@ -128,19 +128,21 @@ export function RunsClient({
   }, [demo, episodes, defaultModel, router, toast]);
 
   return (
-    <div className="flex flex-col gap-12">
+    <div className="sn-stack-section">
       <PageHeader
         title="Runs"
         subtitle="A run is one simulated workday. Pick a scenario and a model, press start, and watch the day play out — emails arriving, the agent working, people writing back."
         actions={
           active ? (
-            <Button
-              variant="primary"
-              iconRight={<IconArrowRight size={14} />}
+            // A real anchor, so the live run can be opened in its own tab.
+            <a
+              href={`/runs/${active.runId}`}
               onClick={(e) => go(e, `/runs/${active.runId}`)}
+              className={buttonClasses("primary", "md")}
             >
               Watch the day
-            </Button>
+              <IconArrowRight size="sm" />
+            </a>
           ) : undefined
         }
       />
@@ -152,8 +154,8 @@ export function RunsClient({
           <div className="flex items-center gap-4">
             <Spinner size="md" />
             <div>
-              <p className="text-[14px] font-medium text-sn-ink">Setting up your first day…</p>
-              <p className="mt-1 text-[13px] text-sn-muted">
+              <p className="text-sn-md font-medium text-sn-ink">Setting up your first day…</p>
+              <p className="mt-1 text-sn-base text-sn-muted">
                 Cloning Northbeam Capital, then starting the client-escalation day. This takes a
                 couple of seconds.
               </p>
@@ -162,36 +164,29 @@ export function RunsClient({
         </Card>
       ) : null}
 
-      {active ? <LiveRunBanner run={active} now={data.at} onOpen={(e) => go(e, `/runs/${active.runId}`)} /> : null}
+      {active ? <LiveRunBanner run={active} now={data.at} href={`/runs/${active.runId}`} /> : null}
 
-      <section>
-        <h2 className="font-display text-[26px] text-sn-ink">Start a run</h2>
-        <p className="mt-1.5 max-w-[62ch] text-[13.5px] leading-[21px] text-sn-muted">
-          The scenario decides what happens and what counts as done. The model is the thing being
-          tested — everyone else in the company is played by the harness.
-        </p>
-        <div className="mt-5">
-          <StartRunPanel
-            episodes={episodes}
-            defaultModel={defaultModel}
-            beatTicks={beatTicks}
-            initialEpisodeId={initialEpisodeId}
-            starting={starting}
-            onStart={(input) => void start(input)}
-          />
-        </div>
-      </section>
+      <StartRunPanel
+        episodes={episodes}
+        defaultModel={defaultModel}
+        beatTicks={beatTicks}
+        initialEpisodeId={initialEpisodeId}
+        starting={starting}
+        onStart={(input) => void start(input)}
+      />
 
-      <section>
-        <div className="flex flex-wrap items-baseline justify-between gap-3">
-          <h2 className="font-display text-[26px] text-sn-ink">Past runs</h2>
-          {/* NOT "on this machine". This list is `/api/runs`, which reads the
-              dashboard's own document store; runs started by the CLI land in the
-              artifact directory, and only there. Saying "on this machine" over
-              one of two stores is how this page claimed 1 run while the old
-              results page counted 11 of the same days. The benchmark reads the
-              full record, so the outbound link goes there. */}
-          <div className="flex items-center gap-3 text-[12px] text-sn-subtle">
+      {/* The count and the outbound link are the card's own actions now. NOT
+          "on this machine": this list is `/api/runs`, the dashboard's document
+          store, while CLI runs land only in the artifact directory. Saying "on
+          this machine" over one of two stores is how this page claimed 1 run
+          while the results page counted 11 of the same days — so the link goes
+          to the benchmark, which reads the full record. */}
+      <PastRuns
+        runs={data.runs}
+        now={data.at}
+        simulated={simulated}
+        actions={
+          <div className="flex items-center gap-3 text-sn-sm text-sn-subtle">
             <button
               type="button"
               onClick={refresh}
@@ -207,11 +202,8 @@ export function RunsClient({
               Every scored run, compared
             </a>
           </div>
-        </div>
-        <div className="mt-5">
-          <PastRuns runs={data.runs} now={data.at} simulated={simulated} />
-        </div>
-      </section>
+        }
+      />
     </div>
   );
 }
@@ -219,12 +211,15 @@ export function RunsClient({
 function LiveRunBanner({
   run,
   now,
-  onOpen,
+  href,
 }: {
   run: RunSummary;
   now: number;
-  onOpen: (event: MouseEvent<HTMLElement>) => void;
+  /** The live run's own page. Passed as a URL, not a handler, so the banner's
+   *  way in is a real link. */
+  href: string;
 }) {
+  const go = useGo();
   return (
     <Card padding="lg" className="animate-sn-rise">
       <div className="flex flex-wrap items-start justify-between gap-4">
@@ -235,24 +230,25 @@ function LiveRunBanner({
             </Badge>
             <Chip>{modelLabel(run.model)}</Chip>
           </div>
-          <h2 className="mt-3 font-display text-[28px] text-sn-ink">{run.specTitle}</h2>
-          <p className="mt-1 text-[13px] text-sn-subtle">
+          <h2 className="mt-3 font-display text-sn-3xl text-sn-ink">{run.specTitle}</h2>
+          <p className="mt-1 text-sn-base text-sn-subtle">
             {elapsed(run.startedAt, run.endedAt ?? now)} of real time so far
           </p>
         </div>
 
         <div className="flex items-center gap-6">
           <div className="text-right">
-            <p className="text-[11px] font-medium tracking-[0.08em] text-sn-subtle uppercase">
+            <p className="text-sn-xs font-medium tracking-[0.08em] text-sn-subtle uppercase">
               Simulated time
             </p>
-            <p data-numeric className="font-display-upright mt-1 text-[40px] leading-none text-sn-ink">
+            <p data-numeric className="font-display-upright mt-1 text-sn-4xl leading-none text-sn-ink">
               {simClock(run.simTimeISO)}
             </p>
           </div>
-          <Button variant="primary" size="lg" iconRight={<IconArrowRight size={15} />} onClick={onOpen}>
+          <a href={href} onClick={(e) => go(e, href)} className={buttonClasses("primary", "lg")}>
             Watch the day
-          </Button>
+            <IconArrowRight size="md" />
+          </a>
         </div>
       </div>
 

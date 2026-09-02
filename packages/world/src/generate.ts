@@ -2,13 +2,20 @@ import type { ChannelSeed, Person, WorldSeed } from "@sonata/core";
 import { completeJSON, type CompleteJSON, type Effort } from "./llm";
 import {
   asSchema,
+  BUSINESS_SYSTEMS_SCHEMA,
   STORYLINE_SEEDS_SCHEMA,
   WORLD_DRAFT_SCHEMA,
   WORLD_SPINE_SCHEMA,
+  type AttioSeed,
+  type BusinessSeeds,
   type CalendarEventSeed,
   type CalendarSeed,
+  type FeedCommentSeed,
   type GmailSeed,
   type GmailThreadSeed,
+  type GoogleAdsSeed,
+  type GoogleDocsSeed,
+  type LinkedInSeed,
   type SlackChannelSeed,
   type SlackSeed,
   type SpineStoryline,
@@ -20,24 +27,32 @@ import {
 
 // ---------------------------------------------------------------------------
 // "a 12-person fintech, the week before an audit" -> one coherent fake company,
-// projected into Gmail, Slack and a calendar with the SAME cast.
+// projected into every twin with the SAME cast.
 //
 // Four model passes:
 //   1. the company and its people — who exists, what they do, how they write;
 //   2. the SPINE — shape with no prose in it: the storylines, the channel
 //      roster, the calendars, and the exact facts with who knows each one;
-//   3. one writer PER STORYLINE, in parallel, each writing all three surfaces;
-//   4. the ambient noise that belongs to no storyline.
+//   3. one writer PER STORYLINE, in parallel, each writing the three CORE
+//      surfaces (inbox, Slack, calendar) for its own storyline;
+//   4. the ambient noise that belongs to no storyline;
+//   5. the BUSINESS SYSTEMS — CRM, documents, ads, LinkedIn — in one call,
+//      conditioned on the spine and the merged core story, so the deal in the
+//      CRM is the one the threads are about and the brief in the documents is
+//      the one the meeting argues over.
 // Then the merge, in code.
 //
 // The split is by storyline and NOT by surface. Writing the surfaces separately
-// is what makes a clone feel like three unrelated fixtures: the renewal
-// negotiation's emails, its argument in #renewals and the meeting about it are
-// one thing, and the writer who has all three in front of it is the only cheap
-// way to keep them agreeing. Coherence between unrelated storylines is weak in
-// real companies anyway, and what there is of it the spine carries.
+// is what makes a clone feel like unrelated fixtures: the renewal negotiation's
+// emails, its argument in #renewals and the meeting about it are one thing, and
+// the writer who has all three in front of it is the only cheap way to keep
+// them agreeing. Coherence between unrelated storylines is weak in real
+// companies anyway, and what there is of it the spine carries. The four
+// business systems ride BEHIND the story rather than inside each storyline —
+// a day's work reaches one or two CRM accounts and one campaign, and a writer
+// per storyline inventing deals would mint seven pipelines for one company.
 //
-// One call for the whole backlog is what this replaces, and it failed three
+// One call for the whole backlog is what pass 3 replaces, and it failed three
 // ways: it could not reach 12-18 people without exceeding sane output limits, it
 // degraded in the TAIL (the last channels came back with two lines each), and
 // one bad response lost the entire company. Now a failed writer loses one
@@ -51,7 +66,7 @@ import {
 // is another.
 // ---------------------------------------------------------------------------
 
-/** The finished clone: one world, three seeds, ready to preview or inject. */
+/** The finished clone: one world, one seed per twin, ready to preview or inject. */
 export interface GeneratedWorld {
   /** Stable slug, from the company name. Used as the template/world id. */
   id: string;
@@ -82,6 +97,10 @@ export interface GeneratedWorld {
    * its difficulty knob into its answer key.
    */
   ambient?: AmbientInventory;
+  attio: AttioSeed;
+  googleDocs: GoogleDocsSeed;
+  googleAds: GoogleAdsSeed;
+  linkedin: LinkedInSeed;
 }
 
 /**
@@ -123,8 +142,9 @@ export interface GenerateOptions {
 
 const SYSTEM = [
   "You invent realistic fake companies for an offline agent-testing sandbox. Everything you write",
-  "is loaded into local clones of Gmail, Slack and a calendar; none of it is ever sent to anyone",
-  "and none of it describes a real company or a real person.",
+  "is loaded into local clones of Gmail, Slack, a calendar, a CRM, a document workspace, an ads",
+  "account and a company page; none of it is ever sent to anyone, and none of it describes a real",
+  "company or a real person.",
   "",
   "Write the way working people actually write: unfinished sentences, shorthand, mild irritation,",
   "half-remembered context. Never mention that this is a test, a scenario, a simulation or an",
@@ -408,6 +428,284 @@ export function normalizeCalendarSeed(
   return { calendars, events };
 }
 
+/**
+ * The pipeline this CRM ships with. The twin refuses a deal parked anywhere else
+ * — a stage no status row exists for is a world no episode could grade — so an
+ * unrecognised one is mapped rather than passed through.
+ */
+const CRM_STAGES = ["Lead", "In Progress", "Won 🎉", "Lost"];
+
+function crmStage(written: string): string {
+  const found = CRM_STAGES.find((s) => s.toLowerCase() === written.trim().toLowerCase());
+  // A model writing outside the vocabulary writes "Negotiation", "Proposal
+  // sent", "Renewal" — every one of them a deal in flight. "Lead" would say
+  // nobody has started on it, which is a different and wrong story.
+  return found ?? "In Progress";
+}
+
+/** A bare hostname, however the model wrote it: scheme, www and path all go. */
+function hostname(written: string, fallback: string): string {
+  const bare = written
+    .trim()
+    .toLowerCase()
+    .replace(/^[a-z]+:\/\//, "")
+    .replace(/^www\./, "")
+    .split("/")[0];
+  return /^[a-z0-9.-]+\.[a-z]{2,}$/.test(bare) ? bare : fallback;
+}
+
+export function normalizeAttioSeed(seed: AttioSeed, cast: Person[], ownerId: string): AttioSeed {
+  const known = new Set(cast.map((p) => p.id));
+  const names = new Set<string>();
+
+  // Filtered before the names are made unique, or a second nameless company
+  // would come back called " 2".
+  const companies = (seed.companies ?? [])
+    .filter((c) => c.name.trim().length > 0)
+    .map((c) => ({
+      name: unique(c.name.trim(), names, " "),
+      domain: hostname(c.domain ?? "", companyDomain(c.name)),
+      description: (c.description ?? "").trim(),
+    }));
+  const byName = new Map(companies.map((c) => [c.name.toLowerCase(), c.name]));
+
+  // A contact whose company the model never wrote is dropped rather than filed
+  // under the first one: the twin checks the reference, and guessing an employer
+  // for somebody is exactly the invention this package refuses everywhere else.
+  const seen = new Set<string>();
+  const contacts = (seed.contacts ?? [])
+    .map((c) => ({
+      personId: c.personId,
+      companyName: byName.get((c.companyName ?? "").trim().toLowerCase()) ?? "",
+      jobTitle: (c.jobTitle ?? "").trim(),
+    }))
+    .filter((c) => {
+      if (!known.has(c.personId) || !c.companyName || seen.has(c.personId)) return false;
+      seen.add(c.personId);
+      return true;
+    });
+  const contactIds = new Set(contacts.map((c) => c.personId));
+
+  const dealNames = new Set<string>();
+  const deals = (seed.deals ?? [])
+    .filter((d) => d.name.trim().length > 0)
+    .map((d) => ({
+      name: unique(d.name.trim(), dealNames, " "),
+      companyName: byName.get((d.companyName ?? "").trim().toLowerCase()) ?? "",
+      stage: crmStage(d.stage ?? ""),
+      value: Math.max(0, Math.round(d.value) || 0),
+      // The owner is a person in the workspace; an unknown one becomes the
+      // mailbox owner rather than nobody, because a deal with no owner is a row
+      // the twin refuses.
+      ownerPersonId: known.has(d.ownerPersonId) ? d.ownerPersonId : ownerId,
+      contactPersonIds: [...new Set(d.contactPersonIds ?? [])].filter((id) => contactIds.has(id)),
+    }))
+    .filter((d) => d.companyName.length > 0);
+
+  /**
+   * A note or a task points at a deal or a company, and both are addressed by
+   * the name a person would say. A name that is both resolves to the DEAL, which
+   * is what a note logged after a call is nearly always about.
+   */
+  const targets = new Map<string, string>([
+    ...companies.map((c) => [c.name.toLowerCase(), c.name] as const),
+    ...deals.map((d) => [d.name.toLowerCase(), d.name] as const),
+  ]);
+
+  const notes = (seed.notes ?? [])
+    .map((n) => ({
+      about: targets.get((n.about ?? "").trim().toLowerCase()) ?? "",
+      title: n.title.trim(),
+      body: n.body.trim(),
+      minutesAgo: clampMinutesAgo(n.minutesAgo),
+    }))
+    .filter((n) => n.about.length > 0 && n.title.length > 0)
+    .sort((a, b) => b.minutesAgo - a.minutesAgo);
+
+  const tasks = (seed.tasks ?? [])
+    .map((t) => ({
+      content: t.content.trim(),
+      assigneePersonId: known.has(t.assigneePersonId) ? t.assigneePersonId : ownerId,
+      about: targets.get((t.about ?? "").trim().toLowerCase()) ?? "",
+      dueInMinutes: Number.isFinite(t.dueInMinutes) ? Math.round(t.dueInMinutes ?? 0) : 0,
+      isCompleted: t.isCompleted === true,
+      minutesAgo: clampMinutesAgo(t.minutesAgo),
+    }))
+    .filter((t) => t.content.length > 0)
+    .sort((a, b) => b.minutesAgo - a.minutesAgo);
+
+  return { companies, contacts, deals, notes, tasks };
+}
+
+/** The Docs named styles. Anything else is body text, which is what it reads as. */
+const NAMED_STYLES = new Set([
+  "TITLE",
+  "SUBTITLE",
+  "HEADING_1",
+  "HEADING_2",
+  "HEADING_3",
+  "HEADING_4",
+  "HEADING_5",
+  "HEADING_6",
+]);
+
+export function normalizeGoogleDocsSeed(
+  seed: GoogleDocsSeed,
+  cast: Person[],
+  ownerId: string,
+): GoogleDocsSeed {
+  const known = new Set(cast.map((p) => p.id));
+  const documents = (seed.documents ?? [])
+    .map((d) => ({
+      title: d.title.trim(),
+      ownerPersonId: known.has(d.ownerPersonId) ? d.ownerPersonId : ownerId,
+      // A "\n" inside a paragraph is a 400 from the twin: in the Docs index
+      // space a paragraph break IS the next entry in the list, and a run
+      // carrying one would put every later index out of step. Only the first
+      // line of a blob keeps the style, because a three-line HEADING_1 is three
+      // headings and nobody writing a brief means that.
+      paragraphs: (d.paragraphs ?? []).flatMap((p) =>
+        p.text
+          .split("\n")
+          .map((line) => line.trim())
+          .filter(Boolean)
+          .map((text, i) => ({
+            text,
+            namedStyleType:
+              i === 0 && NAMED_STYLES.has((p.namedStyleType ?? "").trim().toUpperCase())
+                ? (p.namedStyleType ?? "").trim().toUpperCase()
+                : "",
+          })),
+      ),
+    }))
+    // A document with no body cannot be expressed: the Docs format gives every
+    // document at least one paragraph, and the twin says so in its refusal.
+    .filter((d) => d.title.length > 0 && d.paragraphs.length > 0);
+  return { documents };
+}
+
+const AD_STATUSES = new Set(["ENABLED", "PAUSED", "REMOVED"]);
+const AD_CHANNELS = new Set(["SEARCH", "DISPLAY", "SHOPPING", "VIDEO", "PERFORMANCE_MAX"]);
+
+function adStatus(written: string | undefined): string {
+  const value = (written ?? "").trim().toUpperCase();
+  return AD_STATUSES.has(value) ? value : "ENABLED";
+}
+
+/** A count as the twin stores one: whole, never negative, never a NaN. */
+function whole(value: number | undefined): number {
+  return Math.max(0, Math.round(value ?? 0) || 0);
+}
+
+export function normalizeGoogleAdsSeed(seed: GoogleAdsSeed): GoogleAdsSeed {
+  const names = new Set<string>();
+  const groupNames = new Set<string>();
+  const campaigns = (seed.campaigns ?? [])
+    .filter((c) => c.name.trim().length > 0)
+    .map((c) => {
+      const channel = (c.channel ?? "").trim().toUpperCase();
+      return {
+        name: unique(c.name.trim(), names, " "),
+        status: adStatus(c.status),
+        // Every campaign needs a budget: the twin refuses a seed without one,
+        // and a campaign that may spend nothing is not a campaign.
+        dailyBudget: Math.max(1, whole(c.dailyBudget)),
+        channel: AD_CHANNELS.has(channel) ? channel : "SEARCH",
+        adGroups: (c.adGroups ?? [])
+          .filter((g) => g.name.trim().length > 0)
+          .map((g) => {
+            const impressions = whole(g.dailyImpressions);
+            return {
+              name: unique(g.name.trim(), groupNames, " "),
+              status: adStatus(g.status),
+              dailyImpressions: impressions,
+              // Clicks cannot exceed impressions. Models write a click-through
+              // rate above 100% often enough that clamping is cheaper than
+              // re-prompting, and an agent reading one would draw the wrong
+              // conclusion about the account rather than spot the mistake.
+              dailyClicks: Math.min(impressions, whole(g.dailyClicks)),
+              dailyCost: whole(g.dailyCost),
+              dailyConversions: whole(g.dailyConversions),
+            };
+          }),
+      };
+    });
+  return { campaigns };
+}
+
+export function normalizeLinkedInSeed(
+  seed: LinkedInSeed,
+  cast: Person[],
+  mailboxOwner: string,
+): LinkedInSeed {
+  const known = new Set(cast.map((p) => p.id));
+  /** "" is the company page, which is an actor and not a missing one. */
+  const actor = (personId: string | undefined) =>
+    personId && known.has(personId) ? personId : "";
+
+  function comments(entries: FeedCommentSeed[], parentMinutesAgo: number): FeedCommentSeed[] {
+    return entries
+      .map((c) => {
+        const minutesAgo = Math.min(parentMinutesAgo, clampMinutesAgo(c.minutesAgo));
+        return {
+          personId: actor(c.personId),
+          text: c.text.trim(),
+          minutesAgo,
+          // One level, because that is all LinkedIn has: the twin refuses a
+          // reply to a reply, and a deeper thread would be written and never
+          // read back. Anything under a reply is flattened up beside it.
+          replies: (c.replies ?? []).flatMap((r) => [
+            {
+              personId: actor(r.personId),
+              text: r.text.trim(),
+              minutesAgo: Math.min(minutesAgo, clampMinutesAgo(r.minutesAgo)),
+            },
+            ...comments(r.replies ?? [], Math.min(minutesAgo, clampMinutesAgo(r.minutesAgo))),
+          ]),
+        };
+      })
+      .filter((c) => c.text.length > 0)
+      .sort((a, b) => b.minutesAgo - a.minutesAgo);
+  }
+
+  const posts = (seed.posts ?? [])
+    // A post belongs to the company page or to the mailbox owner, and nothing
+    // else survives. LinkedIn has no directory to enumerate an employer's
+    // people, so every read this product has starts from "who may I act as" —
+    // the owner and the pages they administer. A colleague's own feed is written
+    // into the twin and then read by nobody: not the snapshot, not the diff, not
+    // one of the agent's tools. Dropped rather than quietly re-attributed to the
+    // page, because putting a person's words in the company's mouth is a claim
+    // the judge would read as true.
+    //
+    // Judged on the RESOLVED author, so a model naming somebody outside the cast
+    // is the page speaking — which is what `actor` already means by it — rather
+    // than a post thrown away for a typo.
+    .filter((p) => {
+      const author = actor(p.personId);
+      return author === "" || author === mailboxOwner;
+    })
+    .map((p) => {
+      const minutesAgo = clampMinutesAgo(p.minutesAgo);
+      const isDraft = p.isDraft === true;
+      return {
+        personId: actor(p.personId),
+        commentary: p.commentary.trim(),
+        minutesAgo,
+        isDraft,
+        // Nobody can comment on or react to something nobody has published, and
+        // the twin refuses a draft that carries either.
+        comments: isDraft ? [] : comments(p.comments ?? [], minutesAgo),
+        reactedByPersonIds: isDraft
+          ? []
+          : [...new Set(p.reactedByPersonIds ?? [])].filter((id) => known.has(id)),
+      };
+    })
+    .filter((p) => p.commentary.length > 0)
+    .sort((a, b) => b.minutesAgo - a.minutesAgo);
+  return { posts };
+}
+
 /** Channels are authored once, in the Slack seed; the world reads them back. */
 function channelsFromSlack(slack: SlackSeed): ChannelSeed[] {
   return slack.channels.map((c, i) => ({
@@ -444,6 +742,12 @@ export function canonicalize(generated: GeneratedWorld): GeneratedWorld {
     gmail: normalizeGmailSeed(generated.gmail, cast, mailboxOwner),
     slack,
     calendar: normalizeCalendarSeed(generated.calendar, cast, mailboxOwner),
+    attio: normalizeAttioSeed(generated.attio, cast, mailboxOwner),
+    googleDocs: normalizeGoogleDocsSeed(generated.googleDocs, cast, mailboxOwner),
+    // No cast in an ad account: Google Ads resources name no people, so nothing
+    // here needs the roster to check itself against.
+    googleAds: normalizeGoogleAdsSeed(generated.googleAds),
+    linkedin: normalizeLinkedInSeed(generated.linkedin, cast, mailboxOwner),
   };
 }
 
@@ -485,6 +789,10 @@ export function assembleWorld(
     gmail: seeds.gmail,
     slack: seeds.slack,
     calendar: seeds.calendar,
+    attio: seeds.attio,
+    googleDocs: seeds.googleDocs,
+    googleAds: seeds.googleAds,
+    linkedin: seeds.linkedin,
   });
 }
 
@@ -666,7 +974,27 @@ function factWarnings(spine: WorldSpine, ordered: StorylineWrite[]): string[] {
  * invented become one; and the double-bookings are capped, because six writers
  * each putting a meeting at 2pm produces a calendar nobody could hold.
  */
-export function mergeStorylines(spine: WorldSpine, writes: StorylineWrite[]): NarratedWorld {
+/**
+ * What "the business-systems pass did not run" looks like: empty, not absent.
+ *
+ * The default for `mergeStorylines`, so its many tests — and any caller that
+ * only cares about the core three surfaces — keep compiling and keep meaning
+ * what they meant. An empty CRM is also the honest degraded state when pass 5
+ * fails: the storyline core still stands, the same way a lost storyline costs
+ * one storyline and not the company.
+ */
+export const EMPTY_BUSINESS: BusinessSeeds = {
+  attio: { companies: [], contacts: [], deals: [], notes: [], tasks: [] },
+  googleDocs: { documents: [] },
+  googleAds: { campaigns: [] },
+  linkedin: { posts: [] },
+};
+
+export function mergeStorylines(
+  spine: WorldSpine,
+  writes: StorylineWrite[],
+  business: BusinessSeeds = EMPTY_BUSINESS,
+): NarratedWorld {
   const warnings: string[] = [];
   const ordered = inSpineOrder(spine, writes);
   const titles = new Map(spine.storylines.map((s) => [s.id, s.title]));
@@ -802,6 +1130,9 @@ export function mergeStorylines(spine: WorldSpine, writes: StorylineWrite[]): Na
       gmail: { threads: [...threads.values()] },
       slack: { channels: [...channels.values()] },
       calendar: { calendars: [...(spine.calendars ?? [])], events },
+      // Pass 5's four, untouched: the merge reconciles writers that could not
+      // see each other, and the business systems had exactly one writer.
+      ...business,
     },
     warnings,
     // Spelled the way the finished world spells them, so a caller can match on
@@ -1115,6 +1446,81 @@ function pinRoster(spine: WorldSpine, pinned: string[] | undefined): WorldSpine 
   return channels.length === spine.channels.length ? spine : { ...spine, channels };
 }
 
+/**
+ * Pass 5 — the business systems: CRM, documents, ads, LinkedIn, in ONE call.
+ *
+ * Conditioned on the spine and on a DIGEST of the core story (subjects, channel
+ * names, event titles, and the canonical facts with their exact tokens), not on
+ * the core prose itself: fifteen threads of quoted email would drown the ask,
+ * and the digest already carries every anchor the four systems must agree with —
+ * the deal is named after the account the threads are about because the thread
+ * subjects are in front of the model, spelled the way the world spells them.
+ *
+ * One call and not four, for the same reason the storyline writers each write
+ * all three of their surfaces: a CRM whose deals were invented apart from the
+ * documents about them is the unrelated-fixtures failure in miniature. The
+ * surface sections below are carried over from the one-pass narrator this
+ * package used to ship, which wrote them well; what it could not do was reach
+ * this size without degrading in the tail, which is pass 3's job now.
+ */
+async function writeBusinessSystems(
+  description: string,
+  draft: WorldDraft,
+  cast: Person[],
+  ownerId: string,
+  spine: WorldSpine,
+  written: StorylineWrite[],
+  opts: GenerateOptions = {},
+): Promise<BusinessSeeds> {
+  const complete = opts.complete ?? completeJSON;
+  const owner = cast.find((p) => p.id === ownerId) ?? cast[0];
+  const subjects = written
+    .flatMap((w) => (w.seeds.threads ?? []).map((t) => t.subject.trim()))
+    .filter(Boolean);
+  const events = written
+    .flatMap((w) => (w.seeds.events ?? []).map((e) => e.summary.trim()))
+    .filter(Boolean);
+
+  return complete<BusinessSeeds>({
+    system: SYSTEM,
+    prompt:
+      companyBlock(description, draft, cast, ownerId) +
+      `${spineBlock(spine)}\n\n` +
+      `THE STORY SO FAR — the inbox, Slack and calendar are already written. These are the email ` +
+      `threads: ${subjects.map((s) => `"${s}"`).join(", ") || "(none)"}. These are the meetings: ` +
+      `${events.map((e) => `"${e}"`).join(", ") || "(none)"}.\n\n` +
+      `You are writing what sits BEHIND that story in the company's business systems: the CRM, ` +
+      `the shared documents, the ads account and the LinkedIn page. This is the same story, not a ` +
+      `new one. The deal in the CRM is the account those threads are about; the brief in the ` +
+      `documents is the one a meeting above is to review. Invent no new crises.\n\n` +
+      `CRM — the accounts and the pipeline behind the story. The outsiders in the roster are its ` +
+      `contacts, at their own companies; the deals are the business those emails are actually ` +
+      `about. Log the notes somebody would have logged after a call, and leave a follow-up or two ` +
+      `on the list, one of them already overdue.\n\n` +
+      `DOCUMENTS — the shared documents the emails and Slack messages point at: the brief, the ` +
+      `post-mortem, the agenda for that meeting. Write them as the named person would have, and ` +
+      `leave at least one unfinished — a section nobody filled in, a figure still marked TBC.\n\n` +
+      `ADS — this company's own advertising, only if it plausibly runs any. Two to four campaigns, ` +
+      `with the day each ad group typically has. One of them is the campaign somebody keeps ` +
+      `bringing up: spending past its budget, or paused weeks ago and never turned back on.\n\n` +
+      `LINKEDIN — what this company has said in public lately, and what came back. Every post is ` +
+      `the company page's or ${owner.name}'s own; everybody else appears in the comments. At ` +
+      `least one post with a customer's question underneath it that nobody has answered, and one ` +
+      `draft sitting unpublished.\n\n` +
+      `TIME: every offset is relative to right now. The CRM and LinkedIn use minutesAgo (bigger = ` +
+      `older, never negative); a CRM task's dueInMinutes is negative when the deadline has ` +
+      `already passed. The ads account has no dates at all — a typical day is enough, and the ` +
+      `month behind it is filled in afterwards.\n\n` +
+      `Do not invent ids, email addresses, handles or timestamps. Use the roster ids exactly as ` +
+      `written above; everything else is attached afterwards.`,
+    schema: asSchema(BUSINESS_SYSTEMS_SCHEMA),
+    schemaName: "business_systems",
+    model: opts.model,
+    effort: opts.effort ?? "high",
+    maxTokens: 24000,
+  });
+}
+
 function reason(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
@@ -1194,7 +1600,29 @@ export async function narrateByStoryline(
     throw new Error(`Every writer failed for "${draft.business.name}". ${lost.join("; ")}`);
   }
 
-  const merged = mergeStorylines(spine, written);
+  // Pass 5, after the writers have settled: the digest it is conditioned on is
+  // built from what was actually written, so a lost storyline's deals are not
+  // invented for threads that never landed.
+  let business = EMPTY_BUSINESS;
+  try {
+    business = await writeBusinessSystems(description, draft, cast, ownerId, spine, written, opts);
+    say(
+      `wrote the business systems: ${business.attio.deals.length} deals, ` +
+        `${business.googleDocs.documents.length} documents, ${business.googleAds.campaigns.length} ` +
+        `campaigns, ${business.linkedin.posts.length} posts`,
+    );
+  } catch (err) {
+    // The same degradation contract as a lost storyline: the core still stands,
+    // the gap is named. An empty CRM a caller can see beats a thrown company.
+    // One string, pushed AND said: the warning a caller stores and the line a
+    // person heard must be the same sentence, or the report and the terminal
+    // describe two different generations.
+    const warning = `the business systems were never written: ${reason(err)}`;
+    lost.push(warning);
+    say(warning);
+  }
+
+  const merged = mergeStorylines(spine, written, business);
   // Said, not merely counted. `say` is the only channel this has to the person
   // who asked for a company, and a contradiction nobody reads is the same as no
   // contradiction. The lost writers are already spoken above.
@@ -1224,7 +1652,9 @@ export async function generateWorld(
   const generated = assembleWorld(description, draft, narrated.seeds, { now: opts.now });
   say(
     `${generated.world.business.name}: ${generated.gmail.threads.length} threads, ` +
-      `${generated.slack.channels.length} channels, ${generated.calendar.events.length} events` +
+      `${generated.slack.channels.length} channels, ${generated.calendar.events.length} events, ` +
+      `${generated.attio.deals.length} deals, ${generated.googleDocs.documents.length} documents, ` +
+      `${generated.googleAds.campaigns.length} campaigns, ${generated.linkedin.posts.length} posts` +
       (narrated.warnings.length
         ? `, ${narrated.warnings.length} warning${narrated.warnings.length === 1 ? "" : "s"}`
         : ""),

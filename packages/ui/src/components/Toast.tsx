@@ -28,12 +28,12 @@ export type ToastOptions = {
 type ToastRecord = ToastOptions & { id: string };
 
 const TONES: Record<ToastTone, { wrap: string; icon: ReactNode }> = {
-  info: { wrap: "border-sn-line", icon: <IconInfo size={15} className="text-sn-info" /> },
+  info: { wrap: "border-sn-line", icon: <IconInfo size="md" className="text-sn-info" /> },
   success: {
     wrap: "border-sn-passed-line",
-    icon: <IconCheck size={15} className="text-sn-success" />,
+    icon: <IconCheck size="md" className="text-sn-success" />,
   },
-  error: { wrap: "border-sn-failed-line", icon: <IconAlert size={15} className="text-sn-danger" /> },
+  error: { wrap: "border-sn-failed-line", icon: <IconAlert size="md" className="text-sn-danger" /> },
 };
 
 export type ToastProps = {
@@ -49,16 +49,19 @@ export function Toast({ toast, onDismiss, className }: ToastProps) {
     <div
       role={toast.tone === "error" ? "alert" : "status"}
       className={cn(
-        "animate-sn-pop pointer-events-auto flex w-[336px] items-start gap-2.5 rounded-sn-xl border bg-sn-surface p-3 shadow-sn-lg",
+        // 336px plus the stack's 20px insets needs 376px of viewport. On a 375px
+        // phone the toast hung off the right edge, so it caps to the space there
+        // actually is.
+        "animate-sn-pop pointer-events-auto flex w-[min(336px,calc(100vw-2.5rem))] items-start gap-2.5 rounded-sn-xl border bg-sn-surface p-3 shadow-sn-lg",
         tone.wrap,
         className,
       )}
     >
       <span className="mt-0.5 shrink-0">{tone.icon}</span>
       <div className="min-w-0 flex-1">
-        <p className="text-[13px] font-medium text-sn-ink">{toast.title}</p>
+        <p className="text-sn-base font-medium text-sn-ink">{toast.title}</p>
         {toast.description ? (
-          <p className="mt-0.5 text-[13px] leading-[19px] text-sn-muted">{toast.description}</p>
+          <p className="mt-0.5 text-sn-base text-sn-muted">{toast.description}</p>
         ) : null}
         {toast.action ? (
           <button
@@ -67,7 +70,7 @@ export function Toast({ toast, onDismiss, className }: ToastProps) {
               toast.action?.onClick();
               onDismiss(toast.id);
             }}
-            className="mt-2 rounded-sn-sm text-[13px] font-medium text-sn-primary-ink underline-offset-2 hover:underline"
+            className="mt-2 rounded-sn-sm text-sn-base font-medium text-sn-primary-ink underline-offset-2 hover:underline"
           >
             {toast.action.label}
           </button>
@@ -79,7 +82,7 @@ export function Toast({ toast, onDismiss, className }: ToastProps) {
         aria-label="Dismiss"
         className="-m-1 shrink-0 rounded-sn-sm p-1 text-sn-subtle transition-colors duration-150 ease-sn hover:bg-sn-bg-subtle hover:text-sn-ink"
       >
-        <IconClose size={14} />
+        <IconClose size="sm" />
       </button>
     </div>
   );
@@ -147,7 +150,9 @@ export function ToastProvider({ children, max = 4, defaultDuration = 5000 }: Toa
         ? createPortal(
             <div
               aria-live="polite"
-              className="pointer-events-none fixed right-5 bottom-5 z-[70] flex flex-col-reverse gap-2.5"
+              // The bottom inset clears the iOS home indicator; without it the
+              // newest toast sits under the gesture bar.
+              className="pointer-events-none fixed right-5 bottom-[calc(1.25rem+env(safe-area-inset-bottom))] z-[70] flex flex-col-reverse gap-2.5"
             >
               {toasts.map((t) => (
                 <Toast key={t.id} toast={t} onDismiss={dismiss} />

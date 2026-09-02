@@ -34,7 +34,7 @@ export function BenchmarkTable({ benchmark }: { benchmark: Benchmark }) {
   if (benchmark.rows.length === 0) {
     return (
       <EmptyState
-        icon={<IconLayers size={20} />}
+        icon={<IconLayers size="lg" />}
         title="The table needs scored runs"
         description="Run the same scenario on two or more models and this becomes the comparison the article prints: autonomy per scenario, mean autonomy, the failure mode each model repeats, and what an episode costs."
         hints={[
@@ -68,25 +68,29 @@ export function BenchmarkTable({ benchmark }: { benchmark: Benchmark }) {
     <Card padding="none" radius="2xl">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-sn-line px-5 py-3.5">
         <div>
-          <h3 className="text-[14px] font-medium text-sn-ink">Autonomy by model and scenario</h3>
-          <p className="mt-0.5 text-[12px] text-sn-muted">
+          <h3 className="text-sn-md font-medium text-sn-ink">Autonomy by model and scenario</h3>
+          <p className="mt-0.5 text-sn-sm text-sn-muted">
             Mean autonomy across every run of that pairing that played its day to the end. Click
             a cell to open the run.
           </p>
         </div>
-        <Button size="sm" icon={<IconCopy size={13} />} onClick={copyMarkdown}>
+        <Button size="sm" icon={<IconCopy size="sm" />} onClick={copyMarkdown}>
           {copied ? "Copied" : "Copy as Markdown"}
         </Button>
       </div>
 
-      <div className="sn-scroll overflow-x-auto">
-        <table className="w-full border-collapse text-[13px]">
+      {/* One column per scenario, so this grid outgrows its card early. The
+          shaded edge is the only thing telling you the failure column is there. */}
+      <div className="sn-scroll sn-scroll-x">
+        <table className="w-full border-collapse text-sn-base">
           <caption className="sr-only">Autonomy by model and scenario</caption>
           <thead className="border-b border-sn-line">
             <tr>
+              {/* Pinned: scrolling right to reach the failure column must not
+                  take the name of the model you are reading it for. */}
               <th
                 scope="col"
-                className="px-4 py-2.5 text-left text-[11px] font-medium tracking-[0.06em] text-sn-subtle uppercase"
+                className="sticky left-0 z-10 bg-sn-surface shadow-[1px_0_0_0_var(--color-sn-line)] px-4 py-2.5 text-left text-sn-xs font-medium tracking-[0.06em] text-sn-subtle uppercase"
               >
                 Model
               </th>
@@ -94,26 +98,26 @@ export function BenchmarkTable({ benchmark }: { benchmark: Benchmark }) {
                 <th
                   key={scenario.specId}
                   scope="col"
-                  className="px-3 py-2.5 text-center text-[11px] font-medium tracking-[0.06em] text-sn-subtle uppercase"
+                  className="px-3 py-2.5 text-center text-sn-xs font-medium tracking-[0.06em] text-sn-subtle uppercase"
                 >
                   {scenario.title}
                 </th>
               ))}
               <th
                 scope="col"
-                className="px-3 py-2.5 text-right text-[11px] font-medium tracking-[0.06em] text-sn-subtle uppercase"
+                className="px-3 py-2.5 text-right text-sn-xs font-medium tracking-[0.06em] text-sn-subtle uppercase"
               >
                 Mean autonomy
               </th>
               <th
                 scope="col"
-                className="px-3 py-2.5 text-left text-[11px] font-medium tracking-[0.06em] text-sn-subtle uppercase"
+                className="px-3 py-2.5 text-left text-sn-xs font-medium tracking-[0.06em] text-sn-subtle uppercase"
               >
                 Most common failure
               </th>
               <th
                 scope="col"
-                className="px-4 py-2.5 text-right text-[11px] font-medium tracking-[0.06em] text-sn-subtle uppercase"
+                className="px-4 py-2.5 text-right text-sn-xs font-medium tracking-[0.06em] text-sn-subtle uppercase"
               >
                 Cost / episode
               </th>
@@ -124,14 +128,17 @@ export function BenchmarkTable({ benchmark }: { benchmark: Benchmark }) {
               <tr key={row.model} className="border-b border-sn-line/70 last:border-b-0">
                 {/* Label above, slug below: the article reads the first and
                     reproduces from the second. */}
-                <th scope="row" className="px-4 py-2.5 text-left align-middle font-normal">
-                  <span className="block text-[13px] font-medium text-sn-ink">
+                <th
+                  scope="row"
+                  className="sticky left-0 z-10 bg-sn-surface shadow-[1px_0_0_0_var(--color-sn-line)] px-4 py-2.5 text-left align-middle font-normal"
+                >
+                  <span className="block text-sn-base font-medium text-sn-ink">
                     {modelLabel(row.model)}
-                    <span className="ml-2 text-[11px] font-normal text-sn-subtle">
+                    <span className="ml-2 text-sn-xs font-normal text-sn-subtle">
                       {row.runs} run{row.runs === 1 ? "" : "s"}
                     </span>
                   </span>
-                  <span className="mt-0.5 block font-mono text-[10.5px] text-sn-subtle">
+                  <span className="mt-0.5 block font-mono text-sn-xs text-sn-subtle">
                     {row.model}
                   </span>
                 </th>
@@ -142,11 +149,11 @@ export function BenchmarkTable({ benchmark }: { benchmark: Benchmark }) {
                 ))}
                 <td
                   data-numeric
-                  className="px-3 py-2.5 text-right align-middle text-[14px] font-medium text-sn-ink"
+                  className="px-3 py-2.5 text-right align-middle text-sn-md font-medium text-sn-ink"
                 >
                   {formatPercent(row.meanAutonomy)}
                 </td>
-                <td className="px-3 py-2.5 text-left align-middle text-[12px] text-sn-muted">
+                <td className="px-3 py-2.5 text-left align-middle text-sn-sm text-sn-muted">
                   {row.topFailure ? (
                     <>
                       {row.topFailure.label}
@@ -158,7 +165,7 @@ export function BenchmarkTable({ benchmark }: { benchmark: Benchmark }) {
                 </td>
                 <td
                   data-numeric
-                  className="px-4 py-2.5 text-right align-middle text-[12px] text-sn-muted"
+                  className="px-4 py-2.5 text-right align-middle text-sn-sm text-sn-muted"
                 >
                   {formatUsd(row.costPerEpisode)}
                 </td>
@@ -171,7 +178,7 @@ export function BenchmarkTable({ benchmark }: { benchmark: Benchmark }) {
       {/* Said out loud, because a mean over a quietly smaller population is the
           same lie as a mean over a padded one. */}
       {benchmark.excluded > benchmark.simulated ? (
-        <p className="border-t border-sn-line px-5 py-2.5 text-[11.5px] text-sn-muted">
+        <p className="border-t border-sn-line px-5 py-2.5 text-sn-xs text-sn-muted">
           {benchmark.excluded - benchmark.simulated} run
           {benchmark.excluded - benchmark.simulated === 1 ? "" : "s"} never finished the day and{" "}
           {benchmark.excluded - benchmark.simulated === 1 ? "is" : "are"} not averaged here — a run
@@ -185,19 +192,19 @@ export function BenchmarkTable({ benchmark }: { benchmark: Benchmark }) {
           who has seen it before is owed that in the product rather than in a
           changelog. */}
       {benchmark.simulated > 0 ? (
-        <p className="border-t border-sn-line px-5 py-2.5 text-[11.5px] text-sn-muted">
+        <p className="border-t border-sn-line px-5 py-2.5 text-sn-xs text-sn-muted">
           <span className="font-medium text-sn-ink">
             {benchmark.simulated} simulated run{benchmark.simulated === 1 ? "" : "s"}{" "}
             {benchmark.simulated === 1 ? "is" : "are"} left out entirely.
           </span>{" "}
           {SIMULATED_HINT} Until this was found they were averaged into this table as if they
           were measurements. They are still in the Runs list, marked;{" "}
-          <code className="font-mono text-[11px]">sonata prune --simulated</code> removes them for
+          <code className="font-mono text-sn-xs">sonata prune --simulated</code> removes them for
           good.
         </p>
       ) : null}
 
-      <div className="flex flex-wrap items-center gap-4 border-t border-sn-line px-5 py-3 text-[11px] text-sn-subtle">
+      <div className="flex flex-wrap items-center gap-4 border-t border-sn-line px-5 py-3 text-sn-xs text-sn-subtle">
         <span>Autonomy — how much of the job got done without a human stepping in.</span>
         <span className="flex items-center gap-1.5">
           <Swatch className="bg-sn-failed-soft" /> under 30%
@@ -222,7 +229,7 @@ function Swatch({ className }: { className?: string }) {
 function Cell({ cell }: { cell: BenchmarkCell | undefined }) {
   if (!cell || !cell.latestRunId) {
     return (
-      <span className="inline-flex h-9 w-full min-w-[74px] items-center justify-center rounded-sn-md border border-dashed border-sn-line text-[12px] text-sn-subtle">
+      <span className="inline-flex h-9 w-full min-w-[74px] items-center justify-center rounded-sn-md border border-dashed border-sn-line text-sn-sm text-sn-subtle">
         {UNKNOWN}
       </span>
     );
@@ -242,11 +249,11 @@ function Cell({ cell }: { cell: BenchmarkCell | undefined }) {
         cellTone(cell.autonomy),
       )}
     >
-      <span data-numeric className="text-[14px] font-medium leading-none">
+      <span data-numeric className="text-sn-md font-medium leading-none">
         {formatPercent(cell.autonomy)}
       </span>
       {cell.runs > 1 ? (
-        <span className="mt-0.5 text-[10px] leading-none opacity-70">n={cell.runs}</span>
+        <span className="mt-0.5 text-sn-xs leading-none opacity-70">n={cell.runs}</span>
       ) : null}
     </Link>
   );

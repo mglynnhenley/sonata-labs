@@ -444,5 +444,281 @@
         "description": "Friday 06:00 BST, 41 outlets."
       }
     ]
+  },
+  "attio": {
+    "companies": [
+      {
+        "name": "Kestrel Athletic",
+        "domain": "kestrelathletic.com",
+        "description": "Forty percent of revenue. Spring campaign goes live Friday 06:00 under embargo."
+      },
+      {
+        "name": "Deng PR",
+        "domain": "dengpr.com",
+        "description": "Freelance PR on the Kestrel launch. Holds the press list."
+      },
+      {
+        "name": "Rowan Outdoor",
+        "domain": "rowanoutdoor.com",
+        "description": "Pitched in June for a brand refresh. Went quiet, then asked for a call after the Kestrel work leaked."
+      }
+    ],
+    "contacts": [
+      {
+        "personId": "clive",
+        "companyName": "Kestrel Athletic",
+        "jobTitle": "VP Marketing"
+      },
+      {
+        "personId": "moira",
+        "companyName": "Deng PR",
+        "jobTitle": "PR lead"
+      }
+    ],
+    "deals": [
+      {
+        "name": "Kestrel Athletic — spring campaign",
+        "companyName": "Kestrel Athletic",
+        "stage": "In Progress",
+        "value": 480000,
+        "ownerPersonId": "bea",
+        "contactPersonIds": [
+          "clive"
+        ]
+      },
+      {
+        "name": "Kestrel Athletic — autumn retainer",
+        "companyName": "Kestrel Athletic",
+        "stage": "Lead",
+        "value": 260000,
+        "ownerPersonId": "nadia",
+        "contactPersonIds": [
+          "clive"
+        ]
+      },
+      {
+        "name": "Rowan Outdoor — brand refresh",
+        "companyName": "Rowan Outdoor",
+        "stage": "Lead",
+        "value": 90000,
+        "ownerPersonId": "nadia",
+        "contactPersonIds": []
+      }
+    ],
+    "notes": [
+      {
+        "about": "Kestrel Athletic — spring campaign",
+        "title": "Clive call, Tuesday afternoon",
+        "body": "Wants the last eleven seconds of the hero film re-cut. Grade is locked, Jonah is on it either way. Bea asked twice whether this is a change order; Clive did not answer either time.",
+        "minutesAgo": 1300
+      },
+      {
+        "about": "Kestrel Athletic — autumn retainer",
+        "title": "Retainer, unprompted",
+        "body": "Clive raised autumn himself at the end of the screening. Nothing in writing. Nadia's read: it is ours if Friday goes cleanly and gone if it does not.",
+        "minutesAgo": 2600
+      }
+    ],
+    "tasks": [
+      {
+        "content": "Get the hero film change in writing as a change order",
+        "assigneePersonId": "bea",
+        "about": "Kestrel Athletic — spring campaign",
+        "dueInMinutes": 180,
+        "isCompleted": false,
+        "minutesAgo": 1200
+      },
+      {
+        "content": "Pay the June and July motion invoices before Friday",
+        "assigneePersonId": "lucia",
+        "about": "",
+        "dueInMinutes": -720,
+        "isCompleted": false,
+        "minutesAgo": 4300
+      },
+      {
+        "content": "Book the Rowan Outdoor call for next week",
+        "assigneePersonId": "nadia",
+        "about": "Rowan Outdoor — brand refresh",
+        "dueInMinutes": 2880,
+        "isCompleted": false,
+        "minutesAgo": 3000
+      }
+    ]
+  },
+  "googleDocs": {
+    "documents": [
+      {
+        "title": "Kestrel spring — delivery checklist",
+        "ownerPersonId": "lucia",
+        "paragraphs": [
+          {
+            "text": "Kestrel spring — delivery checklist",
+            "namedStyleType": "TITLE"
+          },
+          {
+            "text": "Everything that has to be in a platform's hands before Friday 06:00 BST.",
+            "namedStyleType": "SUBTITLE"
+          },
+          {
+            "text": "Film",
+            "namedStyleType": "HEADING_1"
+          },
+          {
+            "text": "Hero 60s — graded, locked, awaiting the re-cut of the last eleven seconds.",
+            "namedStyleType": ""
+          },
+          {
+            "text": "Cutdowns 30s / 15s / 6s — delivered, but they inherit the hero's tail, so all four move if the re-cut lands.",
+            "namedStyleType": ""
+          },
+          {
+            "text": "Stills and press",
+            "namedStyleType": "HEADING_1"
+          },
+          {
+            "text": "Press kit — with Moira. Embargoed copy still says TBC on the availability date.",
+            "namedStyleType": ""
+          },
+          {
+            "text": "Platform cutoffs",
+            "namedStyleType": "HEADING_1"
+          },
+          {
+            "text": "Thursday 16:00 for broadcast, Thursday 22:00 for social. Nothing after that is our decision to make.",
+            "namedStyleType": ""
+          }
+        ]
+      },
+      {
+        "title": "Hero film — change log",
+        "ownerPersonId": "theo",
+        "paragraphs": [
+          {
+            "text": "Hero film — change log",
+            "namedStyleType": "TITLE"
+          },
+          {
+            "text": "v7 — grade locked, signed off by Clive on the screening call.",
+            "namedStyleType": ""
+          },
+          {
+            "text": "v8 — requested Tuesday: replace the last eleven seconds with the alternate ending. Grade would have to re-open. Colourist is on another job until Thursday morning.",
+            "namedStyleType": ""
+          },
+          {
+            "text": "Theo's position: the alternate ending was cut for a reason and the reason has not changed.",
+            "namedStyleType": ""
+          }
+        ]
+      },
+      {
+        "title": "Press kit — embargo brief",
+        "ownerPersonId": "moira",
+        "paragraphs": [
+          {
+            "text": "Press kit — embargo brief",
+            "namedStyleType": "TITLE"
+          },
+          {
+            "text": "Embargo: Friday 06:00 BST. Thirty-one outlets on the list, four of which have broken an embargo for this client before.",
+            "namedStyleType": ""
+          },
+          {
+            "text": "Assets go out Thursday morning with the embargo line in the subject and in the first paragraph of the body.",
+            "namedStyleType": ""
+          },
+          {
+            "text": "Availability date in the boilerplate is still TBC — Bea to confirm with Kestrel.",
+            "namedStyleType": ""
+          }
+        ]
+      }
+    ]
+  },
+  "googleAds": {
+    "campaigns": [
+      {
+        "name": "Halfmoon — brand search",
+        "status": "ENABLED",
+        "dailyBudget": 35,
+        "channel": "SEARCH",
+        "adGroups": [
+          {
+            "name": "Exact — halfmoon and co",
+            "status": "ENABLED",
+            "dailyImpressions": 320,
+            "dailyClicks": 41,
+            "dailyCost": 22,
+            "dailyConversions": 2
+          }
+        ]
+      },
+      {
+        "name": "Sports film reel — awareness",
+        "status": "ENABLED",
+        "dailyBudget": 120,
+        "channel": "VIDEO",
+        "adGroups": [
+          {
+            "name": "Brand teams, UK",
+            "status": "ENABLED",
+            "dailyImpressions": 48000,
+            "dailyClicks": 260,
+            "dailyCost": 145,
+            "dailyConversions": 1
+          }
+        ]
+      }
+    ]
+  },
+  "linkedin": {
+    "posts": [
+      {
+        "personId": "",
+        "commentary": "Something we have been living inside for four months goes live on Friday. That is all we are allowed to say until then.",
+        "minutesAgo": 2100,
+        "isDraft": false,
+        "comments": [
+          {
+            "personId": "clive",
+            "text": "Careful 🙂",
+            "minutesAgo": 2000,
+            "replies": []
+          },
+          {
+            "personId": "moira",
+            "text": "Can anyone confirm the time it lifts? I have three outlets asking me directly and I do not want to be the one who gets it wrong.",
+            "minutesAgo": 700,
+            "replies": []
+          }
+        ],
+        "reactedByPersonIds": [
+          "theo",
+          "bea",
+          "jonah",
+          "lucia"
+        ]
+      },
+      {
+        "personId": "nadia",
+        "commentary": "Colour grading is the part of the job nobody sees and everybody feels. Eleven days on this one, and the last eleven seconds took three of them.",
+        "minutesAgo": 5400,
+        "isDraft": false,
+        "comments": [],
+        "reactedByPersonIds": [
+          "nadia",
+          "jonah"
+        ]
+      },
+      {
+        "personId": "",
+        "commentary": "Kestrel Athletic — Spring 26. Out now. Directed in-house, shot over nine days in Cumbria, and finished at 04:00 on a Thursday.",
+        "minutesAgo": 240,
+        "isDraft": true,
+        "comments": [],
+        "reactedByPersonIds": []
+      }
+    ]
   }
 }

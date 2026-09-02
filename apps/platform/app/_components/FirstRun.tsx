@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, Card, Chip, IconArrowRight, IconSpark, PageHeader } from "@sonata/ui";
+import { buttonClasses, Card, Chip, IconArrowRight, IconSpark, PageHeader } from "@sonata/ui";
 import { ROUTES } from "@/lib/routes";
 import type { TwinStatus } from "@/lib/twins";
 import { TwinStrip } from "./TwinStrip";
@@ -51,7 +51,7 @@ export function FirstRun({ twins, onTwinsChanged }: FirstRunProps) {
   const ready = twins.filter((t) => t.ok).length;
 
   return (
-    <div className="animate-sn-rise flex flex-col gap-14">
+    <div className="animate-sn-rise sn-stack-section">
       <PageHeader
         size="lg"
         eyebrow="Welcome to Sonata Labs"
@@ -59,7 +59,7 @@ export function FirstRun({ twins, onTwinsChanged }: FirstRunProps) {
         subtitle="Sonata builds a fake company — an inbox, Slack channels and a calendar, with the same people in all three — then plays one workday inside it while your agent works. Emails arrive on a clock, coworkers write back in character, meetings move. At 5pm you get one number: how much of the job it handled without you. Everything runs on this machine. Nothing touches a real account."
         meta={
           <>
-            <Chip tone="gold" icon={<IconSpark size={13} />}>
+            <Chip tone="gold" icon={<IconSpark size="sm" />}>
               Five minutes end to end
             </Chip>
             <Chip>Local only</Chip>
@@ -69,31 +69,33 @@ export function FirstRun({ twins, onTwinsChanged }: FirstRunProps) {
           </>
         }
         actions={
+          // Real anchors, not buttons: the first screen anyone sees should let
+          // its two exits be middle-clicked and copied like any other link.
           <>
-            <Button
-              variant="ghost"
-              size="lg"
+            <a
+              href={ROUTES.scenarios}
               onClick={(e) => go(e, ROUTES.scenarios)}
+              className={buttonClasses("ghost", "lg")}
             >
               See the five scenarios
-            </Button>
-            <Button
-              variant="primary"
-              size="lg"
-              iconRight={<IconArrowRight size={15} />}
+            </a>
+            <a
+              href={ROUTES.guidedDemo}
               onClick={(e) => go(e, ROUTES.guidedDemo)}
+              className={buttonClasses("primary", "lg")}
             >
               Run the demo day
-            </Button>
+              <IconArrowRight size="md" />
+            </a>
           </>
         }
       />
 
       <section>
-        <h2 className="font-display text-[28px] text-sn-ink">
+        <h2 className="font-display text-sn-3xl text-sn-ink">
           What happens when you press the button
         </h2>
-        <p className="mt-2 max-w-[62ch] text-[14px] leading-[22px] text-sn-muted">
+        <p className="mt-2 max-w-[62ch] text-sn-md text-sn-muted">
           Three steps, and the demo day does all of them for you the first time.
         </p>
 
@@ -104,20 +106,20 @@ export function FirstRun({ twins, onTwinsChanged }: FirstRunProps) {
                 <span
                   aria-hidden="true"
                   data-numeric
-                  className="font-display-upright grid h-9 min-w-9 place-items-center self-start rounded-full bg-sn-gold-soft px-2.5 text-[15px] text-sn-gold-ink"
+                  className="font-display-upright grid h-9 min-w-9 place-items-center self-start rounded-full bg-sn-gold-soft px-2.5 text-sn-md text-sn-gold-ink"
                 >
                   {step.stamp}
                 </span>
-                <h3 className="mt-4 text-[15px] font-medium text-sn-ink">{step.title}</h3>
-                <p className="mt-2 flex-1 text-[13px] leading-[21px] text-sn-muted">{step.body}</p>
+                <h3 className="mt-4 text-sn-md font-medium text-sn-ink">{step.title}</h3>
+                <p className="mt-2 flex-1 text-sn-base text-sn-muted">{step.body}</p>
                 <a
                   href={step.href}
                   onClick={(e) => go(e, step.href)}
-                  className="group mt-5 inline-flex items-center gap-1.5 rounded-sn-sm text-[13px] font-medium text-sn-primary-ink"
+                  className="group mt-5 inline-flex items-center gap-1.5 rounded-sn-sm text-sn-base font-medium text-sn-primary-ink"
                 >
                   {step.cta}
                   <IconArrowRight
-                    size={13}
+                    size="sm"
                     className="transition-transform duration-150 ease-sn group-hover:translate-x-0.5"
                   />
                 </a>
@@ -130,10 +132,10 @@ export function FirstRun({ twins, onTwinsChanged }: FirstRunProps) {
       <section>
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
-            <h2 className="font-display text-[28px] text-sn-ink">
+            <h2 className="font-display text-sn-3xl text-sn-ink">
               The three apps you&apos;ll be watching
             </h2>
-            <p className="mt-2 max-w-[62ch] text-[14px] leading-[22px] text-sn-muted">
+            <p className="mt-2 max-w-[62ch] text-sn-md text-sn-muted">
               Each one speaks its real API closely enough that the official SDKs work against it.
               The demo day starts whichever it needs, or you can start them here.
             </p>
@@ -141,7 +143,7 @@ export function FirstRun({ twins, onTwinsChanged }: FirstRunProps) {
           <a
             href={ROUTES.settings}
             onClick={(e) => go(e, ROUTES.settings)}
-            className="rounded-sn-sm text-[13px] font-medium text-sn-primary-ink"
+            className="rounded-sn-sm text-sn-base font-medium text-sn-primary-ink"
           >
             Ports and models
           </a>

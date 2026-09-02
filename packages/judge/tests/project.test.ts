@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import type {
+  BeatBody,
   CalendarSnapshot,
   Clock,
   EpisodeRun,
@@ -179,6 +180,42 @@ describe("buildTimeline", () => {
       }),
     ];
     expect(buildTimeline(ticks).every((r) => !("assessment" in r))).toBe(true);
+  });
+
+  // The judge reads these lines as the record of what happened TO the agent, so
+  // a surface described by its kind — "attio note" — is a moment the judge
+  // cannot reason about at all.
+  it("says what happened on the four later surfaces, in words", () => {
+    const bodies: BeatBody[] = [
+      {
+        twin: "attio",
+        kind: "update",
+        payload: { recordRef: "renewal", object: "deals", values: { stage: "Lost" } },
+      },
+      {
+        twin: "google-docs",
+        kind: "append",
+        payload: { documentRef: "brief", paragraphs: [{ text: "Fix date: Thursday." }] },
+      },
+      {
+        twin: "google-ads",
+        kind: "spend",
+        payload: { adGroup: "Brand teams, UK", impressions: 900, clicks: 40, costMicros: 310_000_000 },
+      },
+      { twin: "linkedin", kind: "comment", payload: { postRef: "launch", text: "any update?" } },
+    ];
+    const rows = buildTimeline([
+      tickRecord({
+        tick: 1,
+        directorEvents: bodies.map((body, i) => directorEvent({ ...body, id: `d${i}`, reason: "" })),
+      }),
+    ]);
+    expect(rows.map((r) => r.text)).toEqual([
+      'the CRM record "renewal" changed: stage → Lost',
+      '"brief" gained a section: Fix date: Thursday.',
+      'ad group "Brand teams, UK" took 900 impression(s), 40 click(s) and 310000000 micros of spend',
+      'the company page commented on "launch": any update?',
+    ]);
   });
 });
 

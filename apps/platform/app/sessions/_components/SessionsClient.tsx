@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, type MouseEvent } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Badge,
-  Button,
+  buttonClasses,
   Card,
   Chip,
   EmptyState,
@@ -92,19 +92,21 @@ export function SessionsClient({ initial, scenarios, twins }: SessionsClientProp
   }
 
   return (
-    <div className="flex flex-col gap-12">
+    <div className="sn-stack-section">
       <PageHeader
         title="Sessions"
         subtitle="A session is a simulated workday running at an agent Sonata never calls. Emails land, people answer, the calendar moves — on a wall clock, at whatever speed you choose. Your agent notices by checking its own inbox, and everything it does is scored the same way a benchmark run is."
         actions={
           live[0] ? (
-            <Button
-              variant="primary"
-              iconRight={<IconArrowRight size={14} />}
+            // A real anchor, so the live session can be opened in its own tab.
+            <a
+              href={`/sessions/${live[0].sessionId}`}
               onClick={(e) => go(e, `/sessions/${live[0].sessionId}`)}
+              className={buttonClasses("primary", "md")}
             >
               Watch the day
-            </Button>
+              <IconArrowRight size="sm" />
+            </a>
           ) : undefined
         }
       />
@@ -116,33 +118,19 @@ export function SessionsClient({ initial, scenarios, twins }: SessionsClientProp
           key={session.sessionId}
           session={session}
           now={data.at}
-          onOpen={(e) => go(e, `/sessions/${session.sessionId}`)}
+          href={`/sessions/${session.sessionId}`}
         />
       ))}
 
       <ConnectPanel twins={twins} />
 
-      <section>
-        <h2 className="font-display text-[26px] text-sn-ink">Start a session</h2>
-        <p className="mt-1.5 max-w-[62ch] text-[13.5px] leading-[21px] text-sn-muted">
-          The scenario decides what happens and what counts as done. Nobody plays the agent — that
-          is the seat your own is sitting in.
-        </p>
-        <div className="mt-5">
-          <StartSessionPanel
-            scenarios={scenarios}
-            starting={starting}
-            onStart={(input) => void start(input)}
-          />
-        </div>
-      </section>
+      <StartSessionPanel
+        scenarios={scenarios}
+        starting={starting}
+        onStart={(input) => void start(input)}
+      />
 
-      <section>
-        <h2 className="font-display text-[26px] text-sn-ink">Past sessions</h2>
-        <div className="mt-5">
-          <PastSessions sessions={past} now={data.at} />
-        </div>
-      </section>
+      <PastSessions sessions={past} now={data.at} />
     </div>
   );
 }
@@ -150,12 +138,15 @@ export function SessionsClient({ initial, scenarios, twins }: SessionsClientProp
 function LiveBanner({
   session,
   now,
-  onOpen,
+  href,
 }: {
   session: SessionView;
   now: number;
-  onOpen: (event: MouseEvent<HTMLElement>) => void;
+  /** The session's own page. Passed as a URL, not a handler, so the banner's way
+   *  in is a real link. */
+  href: string;
 }) {
+  const go = useGo();
   const pulse = readPulse(session, now);
   return (
     <Card padding="lg" className="animate-sn-rise">
@@ -166,28 +157,29 @@ function LiveBanner({
               {LABEL[session.status]}
             </Badge>
             <Chip>{session.agentLabel}</Chip>
-            <span className="text-[12px] text-sn-subtle">
+            <span className="text-sn-sm text-sn-subtle">
               {compressionLabel(session.compression)}
             </span>
           </div>
-          <h2 className="mt-3 font-display text-[28px] text-sn-ink">{session.title}</h2>
-          <p className="mt-1 text-[13px] text-sn-subtle">
+          <h2 className="mt-3 font-display text-sn-3xl text-sn-ink">{session.title}</h2>
+          <p className="mt-1 text-sn-base text-sn-subtle">
             {pulse.title} · {elapsed(session.startedAt, now)} of real time so far
           </p>
         </div>
 
         <div className="flex items-center gap-6">
           <div className="text-right">
-            <p className="text-[11px] font-medium tracking-[0.08em] text-sn-subtle uppercase">
+            <p className="text-sn-xs font-medium tracking-[0.08em] text-sn-subtle uppercase">
               Simulated time
             </p>
-            <p data-numeric className="font-display-upright mt-1 text-[40px] leading-none text-sn-ink">
+            <p data-numeric className="font-display-upright mt-1 text-sn-4xl leading-none text-sn-ink">
               {simClock(session.simTimeISO)}
             </p>
           </div>
-          <Button variant="primary" size="lg" iconRight={<IconArrowRight size={15} />} onClick={onOpen}>
+          <a href={href} onClick={(e) => go(e, href)} className={buttonClasses("primary", "lg")}>
             Watch the day
-          </Button>
+            <IconArrowRight size="md" />
+          </a>
         </div>
       </div>
 
@@ -215,7 +207,7 @@ function PastSessions({ sessions, now }: { sessions: readonly SessionView[]; now
       render: (session) => (
         <div className="min-w-0">
           <p className="truncate font-medium text-sn-ink">{session.title}</p>
-          <p className="mt-0.5 text-[12px] text-sn-subtle">
+          <p className="mt-0.5 text-sn-sm text-sn-subtle">
             {session.agentLabel} · {compressionLabel(session.compression)}
           </p>
         </div>
@@ -280,17 +272,25 @@ function PastSessions({ sessions, now }: { sessions: readonly SessionView[]; now
   ];
 
   return (
+    <Card
+      padding="none"
+      title="Past sessions"
+      subtitle="Days your own agent played, newest first"
+    >
     <Table
       columns={columns}
       rows={sessions}
       rowKey={(session) => session.sessionId}
       rowLabel={(session) => `${session.title} with ${session.agentLabel}`}
+      // The href is what Cmd-click and middle-click use; the handler routes on
+      // the client for a plain click. See PastRuns for the same pairing.
+      rowHref={(session) => `/sessions/${session.sessionId}`}
       onRowClick={(session) => router.push(`/sessions/${session.sessionId}`)}
       caption="Past sessions, newest first"
       empty={
         <EmptyState
           size="sm"
-          icon={<IconClock size={18} />}
+          icon={<IconClock size="lg" />}
           title="No sessions yet"
           description="Start the world above, point your agent at the three clones, and the day it works through lands here — with what it changed, what it ignored, and the same score a benchmark run gets."
           hints={[
@@ -300,5 +300,6 @@ function PastSessions({ sessions, now }: { sessions: readonly SessionView[]; now
         />
       }
     />
+    </Card>
   );
 }

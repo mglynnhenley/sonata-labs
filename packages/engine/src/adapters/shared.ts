@@ -124,6 +124,16 @@ export function seedBodyFor(twin: TwinName, spec: EpisodeSpec): Record<string, u
       },
     };
   }
+  // Named rather than left as the fall-through. Every twin that landed after
+  // these three builds its own seed body, and an unguarded `return` here would
+  // post the SLACK wire shape for any of them: a 400 from a twin that checks
+  // `root.twin`, which reads as a broken clone rather than as a missing case.
+  if (twin !== "slack") {
+    throw new Error(
+      `seedBodyFor does not know the ${twin} twin's wire seed — its adapter builds its own, ` +
+        `so call that rather than seedViaApi.`,
+    );
+  }
   return {
     twin,
     seed: {

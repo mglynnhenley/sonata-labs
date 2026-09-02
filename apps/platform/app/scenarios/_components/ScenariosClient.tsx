@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  Button,
+  buttonClasses,
+  Card,
   EmptyState,
   IconLayers,
   IconSpark,
@@ -24,21 +25,28 @@ import { TemplateCard, type TemplateAction } from "./TemplateCard";
 export type ScenariosClientProps = {
   initialEpisodes: EpisodeSummary[];
   templates: TemplateSummary[];
+  /** The server's clock at paint. Every "3 d ago" on a card is measured against
+   *  it, so the server HTML and the hydrated render agree. */
+  initialNow: number;
 };
 
-export function ScenariosClient({ initialEpisodes, templates }: ScenariosClientProps) {
+export function ScenariosClient({ initialEpisodes, templates, initialNow }: ScenariosClientProps) {
   const router = useRouter();
   const go = useGo();
   const { toast } = useToast();
 
   const [episodes, setEpisodes] = useState(initialEpisodes);
+  const [now, setNow] = useState(initialNow);
   const [busy, setBusy] = useState<{ id: string; action: TemplateAction } | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
 
   async function reload() {
     try {
-      const { episodes: next } = await apiGet<{ episodes: EpisodeSummary[] }>("/api/episodes");
+      const { episodes: next, at } = await apiGet<{ episodes: EpisodeSummary[]; at: number }>(
+        "/api/episodes",
+      );
       setEpisodes(next);
+      setNow(at);
     } catch {
       // The list is already on screen and still true; a failed refresh is not
       // worth a dialog. The next navigation re-reads it from the server anyway.
@@ -103,36 +111,40 @@ export function ScenariosClient({ initialEpisodes, templates }: ScenariosClientP
   }
 
   return (
-    <div className="flex flex-col gap-12">
+    <div className="sn-stack-section">
       <PageHeader
+        eyebrow="Workspace"
         title="Scenarios"
-        subtitle="A scenario is one simulated workday inside a cloned business: who works there, what happens and when, and what counts as having done the job."
+        subtitle="Start a run from a day you have saved, or build one from a template."
         actions={
-          <Button
-            variant="primary"
-            size="lg"
-            icon={<IconSpark size={14} />}
+          // A real anchor, so the page's main exit can be opened in a new tab.
+          <a
+            href="/scenarios/new"
             onClick={(e) => go(e, "/scenarios/new")}
+            className={buttonClasses("primary", "lg")}
           >
+            <IconSpark size="sm" />
             New scenario
-          </Button>
+          </a>
         }
       />
 
-      <section>
-        <div className="flex flex-wrap items-baseline justify-between gap-3">
-          <h2 className="font-display text-[26px] text-sn-ink">Saved scenarios</h2>
-          {episodes.length > 0 ? (
-            <span className="text-[12px] text-sn-subtle">
+      <Card
+        padding="lg"
+        title="Saved scenarios"
+        subtitle="Days you have written or kept, each with its own success criteria"
+        actions={
+          episodes.length > 0 ? (
+            <span className="text-sn-sm text-sn-subtle">
               {episodes.length} saved on this machine
             </span>
-          ) : null}
-        </div>
-
-        <div className="mt-5">
+          ) : undefined
+        }
+      >
+        <div className="pt-1">
           {episodes.length === 0 ? (
             <EmptyState
-              icon={<IconLayers size={20} />}
+              icon={<IconLayers size="lg" />}
               title="Nothing saved yet"
               description="Create one from scratch, or save a template below as a starting point. Either way you get a whole fake company — an inbox, Slack channels and a calendar, with the same people in all three."
               hints={[
@@ -141,17 +153,23 @@ export function ScenariosClient({ initialEpisodes, templates }: ScenariosClientP
                 "Nothing leaves this machine and no real account is ever touched",
               ]}
               action={
-                <Button variant="primary" icon={<IconSpark size={14} />} onClick={(e) => go(e, "/scenarios/new")}>
+                <a
+                  href="/scenarios/new"
+                  onClick={(e) => go(e, "/scenarios/new")}
+                  className={buttonClasses("primary", "md")}
+                >
+                  <IconSpark size="sm" />
                   Describe a business
-                </Button>
+                </a>
               }
             />
           ) : (
-            <div className="grid gap-5 lg:grid-cols-2">
+            <div className="grid gap-4 lg:grid-cols-2">
               {episodes.map((episode) => (
                 <SavedScenarioCard
                   key={episode.id}
                   episode={episode}
+                  now={now}
                   deleting={deleting === episode.id}
                   onDelete={(target) => void onDelete(target)}
                 />
@@ -159,17 +177,14 @@ export function ScenariosClient({ initialEpisodes, templates }: ScenariosClientP
             </div>
           )}
         </div>
-      </section>
+      </Card>
 
-      <section>
-        <h2 className="font-display text-[26px] text-sn-ink">Templates</h2>
-        <p className="mt-1.5 max-w-[68ch] text-[13.5px] leading-[21px] text-sn-muted">
-          The five days the benchmark runs. Each one is written so it cannot be solved by reading a
-          single message — the fact the agent needs is always on a different surface from the place
-          it is asked for, and the day keeps changing after the agent starts working.
-        </p>
-
-        <div className="mt-5 grid gap-5 lg:grid-cols-2">
+      <Card
+        padding="lg"
+        title="Templates"
+        subtitle="The five days the benchmark runs — each needs a fact from a surface other than the one it is asked on."
+      >
+        <div className="grid gap-4 pt-1 lg:grid-cols-2">
           {templates.map((template) => (
             <TemplateCard
               key={template.id}
@@ -179,7 +194,7 @@ export function ScenariosClient({ initialEpisodes, templates }: ScenariosClientP
             />
           ))}
         </div>
-      </section>
+      </Card>
     </div>
   );
 }

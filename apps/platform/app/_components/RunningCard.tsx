@@ -1,6 +1,6 @@
 "use client";
 
-import { Badge, Button, Card, Chip, IconArrowRight, IconClock, ProgressBar } from "@sonata/ui";
+import { Badge, buttonClasses, Card, Chip, IconArrowRight, IconClock, ProgressBar } from "@sonata/ui";
 import { ago, elapsed, simClock } from "@/lib/format";
 import { modelLabel } from "@/lib/models";
 import { ROUTES } from "@/lib/routes";
@@ -33,34 +33,30 @@ export function RunningCard({ run, now }: RunningCardProps) {
             <Chip>{modelLabel(run.model)}</Chip>
             {run.worldName ? <Chip>{run.worldName}</Chip> : null}
           </div>
-          <h2 className="mt-3 font-display text-[30px] text-sn-ink">
+          <h2 className="mt-3 font-display text-sn-3xl text-sn-ink">
             <a href={href} onClick={(e) => go(e, href)} className="rounded-sn-sm">
               {run.episodeTitle}
             </a>
           </h2>
-          <p className="mt-1 text-[13px] text-sn-subtle">
+          <p className="mt-1 text-sn-base text-sn-subtle">
             Started {ago(run.startedAt, now)} · {elapsed(run.startedAt, now)} of real time
           </p>
         </div>
 
-        <Button
-          variant="primary"
-          size="lg"
-          iconRight={<IconArrowRight size={15} />}
-          onClick={(e) => go(e, href)}
-        >
+        <a href={href} onClick={(e) => go(e, href)} className={buttonClasses("primary", "lg")}>
           Watch the day
-        </Button>
+          <IconArrowRight size="md" />
+        </a>
       </div>
 
       <div className="mt-7 flex flex-wrap items-end gap-8">
         <div>
-          <p className="text-[11px] font-medium tracking-[0.08em] text-sn-subtle uppercase">
+          <p className="text-sn-xs font-medium tracking-[0.08em] text-sn-subtle uppercase">
             Simulated time
           </p>
           <p
             data-numeric
-            className="font-display-upright mt-1 text-[46px] leading-none text-sn-ink"
+            className="font-display-upright mt-1 text-sn-4xl leading-none text-sn-ink"
           >
             {simClock(run.simTime)}
           </p>
@@ -80,8 +76,8 @@ export function RunningCard({ run, now }: RunningCardProps) {
       </div>
 
       <div className="mt-6 flex items-start gap-2.5 rounded-sn-lg bg-sn-bg-subtle px-4 py-3">
-        <IconClock size={14} className="mt-0.5 shrink-0 text-sn-subtle" />
-        <p className="text-[13px] leading-[20px] text-sn-muted">
+        <IconClock size="sm" className="mt-0.5 shrink-0 text-sn-subtle" />
+        <p className="text-sn-base text-sn-muted">
           {run.lastEvent ?? "Waiting for the first thing to happen."}
         </p>
       </div>

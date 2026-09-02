@@ -3,7 +3,16 @@
 import { forwardRef, type HTMLAttributes, type ReactNode, type Ref } from "react";
 import { cn } from "../cn";
 import { SERVICE_LABELS, type ServiceId } from "../tokens";
-import { IconCalendar, IconMail, IconMessage } from "./icons";
+import {
+  IconCalendar,
+  IconDoc,
+  IconFeed,
+  IconMail,
+  IconMessage,
+  IconTrend,
+  IconUsers,
+  type IconProps,
+} from "./icons";
 
 export type ChipTone = "neutral" | "gold" | ServiceId;
 export type ChipSize = "sm" | "md";
@@ -14,17 +23,25 @@ const TONES: Record<ChipTone, string> = {
   gmail: "border-sn-gmail-line bg-sn-gmail-soft text-sn-gmail-ink",
   slack: "border-sn-slack-line bg-sn-slack-soft text-sn-slack-ink",
   calendar: "border-sn-calendar-line bg-sn-calendar-soft text-sn-calendar-ink",
+  attio: "border-sn-attio-line bg-sn-attio-soft text-sn-attio-ink",
+  "google-docs": "border-sn-google-docs-line bg-sn-google-docs-soft text-sn-google-docs-ink",
+  "google-ads": "border-sn-google-ads-line bg-sn-google-ads-soft text-sn-google-ads-ink",
+  linkedin: "border-sn-linkedin-line bg-sn-linkedin-soft text-sn-linkedin-ink",
 };
 
 const SIZES: Record<ChipSize, string> = {
-  sm: "h-6 gap-1 px-2 text-[11px]",
-  md: "h-7 gap-1.5 px-2.5 text-[12px]",
+  sm: "h-6 gap-1 px-2 text-sn-xs",
+  md: "h-7 gap-1.5 px-2.5 text-sn-sm",
 };
 
-const SERVICE_ICONS: Record<ServiceId, (props: { size?: number }) => ReactNode> = {
+const SERVICE_ICONS: Record<ServiceId, (props: IconProps) => ReactNode> = {
   gmail: IconMail,
   slack: IconMessage,
   calendar: IconCalendar,
+  attio: IconUsers,
+  "google-docs": IconDoc,
+  "google-ads": IconTrend,
+  linkedin: IconFeed,
 };
 
 export type ChipProps = HTMLAttributes<HTMLElement> & {
@@ -54,9 +71,16 @@ export const Chip = forwardRef<HTMLElement, ChipProps>(function Chip(
       : icon !== undefined
         ? icon
         : ServiceIcon
-          ? <ServiceIcon size={size === "sm" ? 11 : 13} />
+          ? <ServiceIcon size={size === "sm" ? "xs" : "sm"} />
           : null;
   const label = children ?? (service ? SERVICE_LABELS[service] : null);
+
+  // A chip whose only content is an icon has no accessible name: every glyph in
+  // the set is aria-hidden, so a screen reader reaches a button and finds
+  // nothing to announce. The service name is the label in all but name, so use
+  // it; anything else has to say what it is via aria-label.
+  const fallbackName = service ? SERVICE_LABELS[service] : undefined;
+  const ariaLabel = (rest as { "aria-label"?: string })["aria-label"] ?? (label ? undefined : fallbackName);
 
   const classes = cn(
     "inline-flex shrink-0 items-center rounded-full border font-medium whitespace-nowrap",
@@ -87,6 +111,7 @@ export const Chip = forwardRef<HTMLElement, ChipProps>(function Chip(
       aria-pressed={selected}
       className={classes}
       {...rest}
+      aria-label={ariaLabel}
     >
       {glyph}
       {label}

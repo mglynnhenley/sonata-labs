@@ -23,6 +23,15 @@ import type { GeneratedWorld } from "@sonata/world";
 /**
  * What a clone contains, per surface. Shown in the preview *before* anything is
  * written, so "what will be generated" and "what exists" are the same numbers.
+ *
+ * Every field names a THING rather than an event, because two functions fill
+ * this and they count different halves of the same word: `plannedCounts` counts
+ * what a day's beats will add, `actualCounts` counts what the generated backlog
+ * already holds. `threads` has always meant both — threads the day opens, and
+ * threads sitting in the inbox — and the four surfaces below follow it.
+ *
+ * A world record saved before a surface existed carries no number for it, so
+ * anything reading one off a stored `WorldCounts` has to treat absent as none.
  */
 export interface WorldCounts {
   people: number;
@@ -31,6 +40,17 @@ export interface WorldCounts {
   channels: number;
   slackMessages: number;
   events: number;
+  /** CRM records across companies, contacts and deals — the pipeline's size. */
+  records: number;
+  documents: number;
+  /**
+   * Ad campaigns. Only ever the backlog's: no beat creates a campaign — the ads
+   * arm of `BeatBody` is status, budget and spend, which all change one that is
+   * already running — so a day's planned count of these is honestly zero.
+   */
+  campaigns: number;
+  /** LinkedIn posts, drafts included: a draft is a post somebody has to decide about. */
+  posts: number;
 }
 
 export interface WorldSummary {
@@ -48,12 +68,17 @@ export interface WorldSummary {
 export interface WorldRecord extends WorldSummary {
   seed: WorldSeed;
   /**
-   * The company's backlog — the days already behind it, written across all three
-   * surfaces at once by @sonata/world. Optional because a world can exist before
+   * The company's backlog — the days already behind it, written across every
+   * surface at once by @sonata/world. Optional because a world can exist before
    * it has one (no model access, or a shipped day whose beats are the whole
    * story); when it is present, a run loads it into the twins before tick 0, and
    * that is the difference between an agent opening a working inbox and an agent
    * opening an empty one.
+   *
+   * Records written before a surface existed carry no seed for it, and
+   * `buildSeedRequest` refuses one by name rather than posting an empty seed
+   * over a twin — so this is `GeneratedWorld` as it was when the record was
+   * saved, not necessarily as the type reads today.
    */
   clone?: GeneratedWorld;
 }
@@ -147,9 +172,14 @@ export interface EpisodeRecord extends EpisodeSummary {
 /** One service chip on a template card: "Gmail · 14 threads". */
 export interface TemplateService {
   twin: TwinName;
-  count: number;
+  /**
+   * Absent when nothing seeds this surface yet, and the chip then shows the
+   * service alone. A zero would read as "seeded, and came up empty", which is a
+   * claim about the world rather than about what we can count.
+   */
+  count?: number;
   /** Plural noun for the count: "threads", "channels", "events". */
-  unit: string;
+  unit?: string;
 }
 
 export interface TemplateSummary {

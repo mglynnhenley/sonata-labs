@@ -36,6 +36,11 @@ function count(v: unknown): number {
   return Array.isArray(v) ? v.length : 0;
 }
 
+/** A count a twin answered with as a number rather than a list. */
+function tally(v: unknown): number {
+  return typeof v === "number" && Number.isFinite(v) ? v : 0;
+}
+
 function strings(v: unknown): string[] {
   return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
 }
@@ -68,13 +73,70 @@ const MUTATION_VERB: Record<string, string> = {
   create_event: "created event",
   update_event: "updated event",
   delete_event: "cancelled event",
+  // attio
+  create_record: "created record",
+  update_record: "updated record",
+  create_note: "logged note on",
+  create_task: "raised task",
+  complete_task: "completed task",
+  // google-docs
+  create_document: "created document",
+  append_paragraph: "appended to document",
+  replace_text: "replaced text in document",
+  // google-ads
+  set_campaign_status: "switched campaign",
+  set_campaign_budget: "re-budgeted campaign",
+  // linkedin — `add_reaction` is Slack's word too, and means the same thing.
+  create_post: "published post",
+  update_post: "edited post",
+  create_comment: "commented on",
   // harness-local
   escalate_to_owner: "escalated to the owner",
 };
 
+/**
+ * Where a twin puts the id of the thing a write just made or moved, most
+ * specific first.
+ *
+ * A list rather than a chain of `||` because there are now seven twins and no
+ * two of them agree: Gmail answers `id`, Slack `ts`, the CRM `recordId` /
+ * `noteId` / `taskId`, Docs `documentId`, Ads `campaignId`, LinkedIn a `urn` or
+ * a `commentUrn`. A verb printed with no id behind it is a line the judge cannot
+ * cite — "created record" names nothing a diff can be checked against — so the
+ * cost of a missing entry here is a finding with no evidence under it.
+ *
+ * `entityUrn` sits before `reactionUrn` deliberately: a reaction's own URN is a
+ * synthetic pair of actor and target, and what a reader wants to know is what
+ * was reacted TO.
+ */
+const RESULT_ID_FIELDS = [
+  "id",
+  "draftId",
+  "ts",
+  "eventId",
+  "messageId",
+  "recordId",
+  "noteId",
+  "taskId",
+  "documentId",
+  "campaignId",
+  "urn",
+  "commentUrn",
+  "entityUrn",
+  "reactionUrn",
+];
+
+function idIn(r: Record<string, unknown>): string {
+  for (const field of RESULT_ID_FIELDS) {
+    const value = text(r[field]);
+    if (value) return value;
+  }
+  return "";
+}
+
 function confirmation(name: string, r: Record<string, unknown>): string {
   const verb = MUTATION_VERB[name] ?? name;
-  const id = text(r.id) || text(r.draftId) || text(r.ts) || text(r.eventId) || text(r.messageId);
+  const id = idIn(r);
   const head = id ? `${verb} ${id}` : verb;
 
   const attrs: string[] = [];
@@ -85,6 +147,28 @@ function confirmation(name: string, r: Record<string, unknown>): string {
   const threadId = text(r.threadId);
   if (threadId && threadId !== id) attrs.push(`thread ${threadId}`);
   if (text(r.start)) attrs.push(`starts ${text(r.start)}`);
+  // What the write actually said, on the surfaces where the id alone is opaque:
+  // "created record cd0f…" is unreadable next to "created record cd0f… —
+  // titled "Northwind Retail"", and the title is what every criterion names.
+  if (text(r.title)) attrs.push(`titled "${text(r.title)}"`);
+  if (typeof r.toMicros === "number") {
+    attrs.push(`daily budget ${(r.toMicros / 1_000_000).toFixed(2)}`);
+  }
+  if (typeof r.occurrencesChanged === "number") {
+    attrs.push(`${r.occurrencesChanged} occurrence(s)`);
+  }
+  const postUrn = text(r.postUrn);
+  if (postUrn && postUrn !== id) attrs.push(`on ${postUrn}`);
+  if (text(r.reactionType)) attrs.push(text(r.reactionType));
+
+  // The last two are read per tool rather than per field, because both field
+  // names mean something else somewhere: every calendar event carries
+  // `status: "confirmed"`, which is not news, and every post carries a
+  // `lifecycleState` that only says something when a draft has just gone live.
+  if (name === "set_campaign_status" && text(r.status)) attrs.push(`now ${text(r.status)}`);
+  if (name === "update_post" && text(r.lifecycleState)) {
+    attrs.push(`now ${text(r.lifecycleState).toLowerCase()}`);
+  }
 
   return attrs.length ? `${head} — ${attrs.join(", ")}` : head;
 }
@@ -137,6 +221,37 @@ export function summarize(call: ToolCall): string {
       return truncate(`"${text(r.summary)}" ${text(r.start)}–${text(r.end)}`, MAX_SUMMARY);
     case "find_free_time":
       return `${count(r.free)} free windows`;
+    case "search_records":
+      return truncate(`${count(r.records)} ${text(r.object) || "records"}`, MAX_SUMMARY);
+    case "get_record":
+      return truncate(`${text(r.object)} "${text(r.title)}"`, MAX_SUMMARY);
+    case "list_notes":
+      return `${count(r.notes)} notes`;
+    case "list_tasks":
+      return `${count(r.tasks)} tasks`;
+    case "read_document":
+      return truncate(
+        `"${text(r.title)}": ${count(r.paragraphs)} paragraphs, ${text(r.revisionId)}`,
+        MAX_SUMMARY,
+      );
+    case "list_campaigns":
+      return `${count(r.campaigns)} campaigns`;
+    case "campaign_performance":
+      return truncate(`${count(r.rows)} rows over ${text(r.dateRange)}`, MAX_SUMMARY);
+    case "list_authors":
+      return `their own profile and ${count(r.pages)} page(s) they may post as`;
+    case "list_posts":
+      return truncate(`${count(r.posts)} posts by ${text(r.author)}`, MAX_SUMMARY);
+    case "get_post_engagement":
+      // Both comment counts, because the difference between them is the whole
+      // signal: a thread deeper than its top level has answers in it.
+      return truncate(
+        `${tally(r.comments)} comments (${tally(r.topLevelComments)} top-level), ` +
+          `${tally(r.reactions)} reactions on ${text(r.entityUrn)}`,
+        MAX_SUMMARY,
+      );
+    case "list_comments":
+      return truncate(`${count(r.comments)} comments on ${text(r.entityUrn)}`, MAX_SUMMARY);
     default:
       if (call.isMutation) return truncate(confirmation(call.name, r), MAX_SUMMARY);
       // A tool this file has never heard of — a custom agent's, or one added

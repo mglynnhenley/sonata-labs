@@ -16,97 +16,160 @@
  */
 
 @theme {
-  /* Surfaces */
-  --color-sn-bg: #f2f1ec;
-  --color-sn-bg-subtle: #e9e7df;
-  --color-sn-surface: #fbfaf8;
-  --color-sn-surface-hover: #f5f3ee;
+  /* Surfaces — warm paper, plain white cards. */
+  --color-sn-bg: #f7f6f2;
+  --color-sn-bg-subtle: #f1efe9;
+  --color-sn-surface: #ffffff;
+  --color-sn-surface-hover: #f7f6f2;
 
   /* Ink + rules */
-  --color-sn-ink: #1b1a17;
-  --color-sn-muted: #5f5b52;
-  --color-sn-subtle: #8c8779;
-  --color-sn-line: #e3e0d7;
-  --color-sn-line-strong: #d2cec1;
+  --color-sn-ink: #16181a;
+  --color-sn-muted: #5a6060;
+  /* Measured, not eyeballed: at #8a908d this was 3.01:1 on --color-sn-bg, and
+     it is only ever used at 11-13px, where AA wants 4.5:1. #6b716e keeps the
+     same desaturated green-grey and clears 4.61:1 on the page, 4.99:1 on cards. */
+  --color-sn-subtle: #6b716e;
+  --color-sn-line: #eceae2;
+  --color-sn-line-strong: #dddad0;
 
-  /* Slate-blue primary */
-  --color-sn-primary: #5b7089;
-  --color-sn-primary-hover: #4d6178;
-  --color-sn-primary-active: #3f5065;
-  --color-sn-primary-soft: #e7ecf2;
-  --color-sn-primary-ink: #3c5170;
-  --color-sn-on-primary: #fbfaf8;
+  /* Petrol — the one accent, and it is rationed. See DESIGN.md. */
+  --color-sn-primary: #0e5c55;
+  --color-sn-primary-hover: #0b4a44;
+  --color-sn-primary-active: #093d38;
+  --color-sn-primary-soft: #e3f0ec;
+  --color-sn-primary-ink: #0b4a44;
+  --color-sn-on-primary: #ffffff;
 
-  /* Gold / tan accent */
-  --color-sn-gold: #c9a227;
-  --color-sn-gold-soft: #f2e8cd;
-  --color-sn-gold-ink: #87681a;
+  /* Ochre — attention that is not danger (syncing, unpriced, stale). */
+  --color-sn-gold: #8a6520;
+  --color-sn-gold-soft: #f5ebd6;
+  --color-sn-gold-ink: #6e4f16;
 
-  /* Semantic */
-  --color-sn-success: #3f7d53;
-  --color-sn-success-soft: #e4eee7;
-  --color-sn-success-ink: #2f6340;
-  --color-sn-danger: #b04236;
-  --color-sn-danger-hover: #98392e;
-  --color-sn-danger-soft: #f7e6e2;
-  --color-sn-danger-ink: #8c3327;
-  --color-sn-warning: #b3801f;
-  --color-sn-warning-soft: #f6ecd6;
-  --color-sn-warning-ink: #7f5c14;
-  --color-sn-info: #4a6fa5;
-  --color-sn-info-soft: #e6ecf5;
-  --color-sn-info-ink: #3a5a8a;
-  --color-sn-neutral: #6f6a5e;
-  --color-sn-neutral-soft: #ece9e1;
-  --color-sn-neutral-ink: #4f4b42;
-  --color-sn-focus: #5b7089;
+  /* Semantic — muted sage and terracotta, never traffic lights. */
+  --color-sn-success: #63936f;
+  --color-sn-success-soft: #e4eee6;
+  --color-sn-success-ink: #3f6b4c;
+  --color-sn-danger: #b26355;
+  --color-sn-danger-hover: #9e5044;
+  --color-sn-danger-soft: #f5e6e1;
+  --color-sn-danger-ink: #8e4335;
+  --color-sn-warning: #8a6520;
+  --color-sn-warning-soft: #f5ebd6;
+  --color-sn-warning-ink: #6e4f16;
+  --color-sn-info: #3d7a7a;
+  --color-sn-info-soft: #e3eeee;
+  --color-sn-info-ink: #2e5f5f;
+  --color-sn-neutral: #6b726e;
+  --color-sn-neutral-soft: #f1efe9;
+  --color-sn-neutral-ink: #4c524e;
+  --color-sn-focus: #0e5c55;
 
   /* Service hues */
-  --color-sn-gmail-ink: #b23f2f;
-  --color-sn-gmail-soft: #f8e7e3;
-  --color-sn-gmail-line: #eed4cd;
+  --color-sn-gmail-ink: #a8453a;
+  --color-sn-gmail-soft: #f7e8e5;
+  --color-sn-gmail-line: #ecd5cf;
   --color-sn-slack-ink: #6b3f77;
   --color-sn-slack-soft: #f1e8f3;
   --color-sn-slack-line: #e3d4e7;
   --color-sn-calendar-ink: #2f6497;
   --color-sn-calendar-soft: #e5edf6;
   --color-sn-calendar-line: #cfdcea;
+  --color-sn-attio-ink: #2f6b5d;
+  --color-sn-attio-soft: #e3f0ec;
+  --color-sn-attio-line: #cadfd8;
+  --color-sn-google-docs-ink: #3a5aa8;
+  --color-sn-google-docs-soft: #e6eaf7;
+  --color-sn-google-docs-line: #d0d8ee;
+  --color-sn-google-ads-ink: #a06a24;
+  --color-sn-google-ads-soft: #f7eede;
+  --color-sn-google-ads-line: #eaddc4;
+  --color-sn-linkedin-ink: #2a5f86;
+  --color-sn-linkedin-soft: #e4eef5;
+  --color-sn-linkedin-line: #ccdfea;
 
-  /* Status hues */
-  --color-sn-running-ink: #4a6fa5;
-  --color-sn-running-soft: #e6ecf5;
-  --color-sn-running-line: #cfdcea;
-  --color-sn-passed-ink: #2f6340;
-  --color-sn-passed-soft: #e4eee7;
-  --color-sn-passed-line: #cfe0d4;
-  --color-sn-failed-ink: #8c3327;
-  --color-sn-failed-soft: #f7e6e2;
-  --color-sn-failed-line: #eed4cd;
-  --color-sn-pending-ink: #4f4b42;
-  --color-sn-pending-soft: #ece9e1;
-  --color-sn-pending-line: #ddd9cd;
+  /* Status hues. Running wears the accent: live is the loudest thing on any
+     page, so nothing else gets to borrow petrol. */
+  --color-sn-running-ink: #0e5c55;
+  --color-sn-running-soft: #e3f0ec;
+  --color-sn-running-line: #cbe2dc;
+  --color-sn-passed-ink: #3f6b4c;
+  --color-sn-passed-soft: #e4eee6;
+  --color-sn-passed-line: #cde0d1;
+  --color-sn-failed-ink: #8e4335;
+  --color-sn-failed-soft: #f5e6e1;
+  --color-sn-failed-line: #ebd2ca;
+  --color-sn-pending-ink: #4c524e;
+  --color-sn-pending-soft: #f1efe9;
+  --color-sn-pending-line: #dddad0;
+  --color-sn-warning-line: #e8d7ae;
+  --color-sn-neutral-line: #dddad0;
 
-  /* Radii */
+  /* Vertical rhythm, named by what the gap separates. Mirrors `rhythm` in
+     tokens.ts. The app was using 32/40/48/56 for the one job of separating
+     page sections; this is that job's single answer, and it has to stay clear
+     of the 24px step inside a section or the hierarchy reads flat. Use the
+     `sn-stack-*` utilities below rather than picking a gap per file. */
+  --sn-rhythm-section: 40px;
+  --sn-rhythm-block: 24px;
+  --sn-rhythm-group: 16px;
+  --sn-rhythm-item: 8px;
+
+  /* Icon steps. Mirrors `iconSize` in tokens.ts. */
+  --sn-icon-xs: 12px;
+  --sn-icon-sm: 14px;
+  --sn-icon-md: 16px;
+  --sn-icon-lg: 20px;
+
+  /* Type scale. Eleven steps, each with a job: four functional sizes for dense
+     UI (11-14), two for body and sub-heads (16, 20), and the display sizes a
+     dashboard needs for figures. Twenty-five ad-hoc sizes were in use before
+     this — half-pixel variants of each other that no one could keep in tune. */
+  --text-sn-xs: 11px;
+  --text-sn-xs--line-height: 15px;
+  --text-sn-sm: 12px;
+  --text-sn-sm--line-height: 16px;
+  --text-sn-base: 13px;
+  --text-sn-base--line-height: 19px;
+  --text-sn-md: 14px;
+  --text-sn-md--line-height: 20px;
+  --text-sn-lg: 16px;
+  --text-sn-lg--line-height: 24px;
+  --text-sn-xl: 20px;
+  --text-sn-xl--line-height: 26px;
+  --text-sn-2xl: 24px;
+  --text-sn-2xl--line-height: 30px;
+  --text-sn-3xl: 30px;
+  --text-sn-3xl--line-height: 34px;
+  --text-sn-4xl: 40px;
+  --text-sn-4xl--line-height: 42px;
+  --text-sn-5xl: 52px;
+  --text-sn-5xl--line-height: 54px;
+  --text-sn-6xl: 76px;
+  --text-sn-6xl--line-height: 76px;
+
+  /* Radii — cards 14, controls 10, buttons are pills. */
   --radius-sn-sm: 6px;
   --radius-sn-md: 10px;
-  --radius-sn-lg: 14px;
-  --radius-sn-xl: 20px;
-  --radius-sn-2xl: 24px;
-  --radius-sn-3xl: 32px;
+  --radius-sn-lg: 12px;
+  --radius-sn-xl: 14px;
+  --radius-sn-2xl: 14px;
+  --radius-sn-3xl: 16px;
 
-  /* Warm-tinted shadows; grey ones go muddy on cream. */
-  --shadow-sn-xs: 0 1px 2px rgba(27, 26, 23, 0.05);
-  --shadow-sn-sm: 0 1px 3px rgba(27, 26, 23, 0.06), 0 1px 2px rgba(27, 26, 23, 0.04);
-  --shadow-sn-md: 0 4px 14px -3px rgba(27, 26, 23, 0.1), 0 2px 5px -3px rgba(27, 26, 23, 0.06);
-  --shadow-sn-lg: 0 18px 44px -14px rgba(27, 26, 23, 0.2), 0 4px 12px -6px rgba(27, 26, 23, 0.1);
+  /* Whisper shadows — elevation you feel rather than see. */
+  --shadow-sn-xs: 0 1px 2px rgba(22, 24, 26, 0.04);
+  --shadow-sn-sm: 0 1px 2px rgba(22, 24, 26, 0.04), 0 2px 6px -4px rgba(22, 24, 26, 0.05);
+  --shadow-sn-md: 0 4px 16px -8px rgba(22, 24, 26, 0.1);
+  --shadow-sn-lg: 0 18px 44px -14px rgba(22, 24, 26, 0.16), 0 4px 12px -6px rgba(22, 24, 26, 0.08);
 
   /* Type. --font-sn-* are set by next/font in src/fonts.ts; the stacks below
-     keep the page legible if a consumer skips it. */
+     keep the page legible if a consumer skips it. One family — Satoshi —
+     carries display and body; weight does the hierarchy work. */
   --font-sans: var(--font-sn-sans), ui-sans-serif, -apple-system, BlinkMacSystemFont,
-    "Segoe UI", Inter, Helvetica, Arial, sans-serif;
-  --font-display: var(--font-sn-display), "Instrument Serif", ui-serif, Georgia,
-    "Times New Roman", serif;
-  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    "Segoe UI", Helvetica, Arial, sans-serif;
+  --font-display: var(--font-sn-sans), ui-sans-serif, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", Helvetica, Arial, sans-serif;
+  --font-mono: var(--font-sn-mono), ui-monospace, SFMono-Regular, "SF Mono", Menlo,
+    Consolas, monospace;
 
   /* Motion. 150ms is the house transition; anything slower reads as lag. */
   --ease-sn: cubic-bezier(0.2, 0, 0, 1);
@@ -193,6 +256,23 @@
   html {
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
+    /* The palette is cream and light-only. Without this the UA still paints
+       scrollbars, <select> menus and date pickers in the OS dark scheme. */
+    color-scheme: light;
+    /* Reserve the scrollbar track so opening a modal — which locks body scroll —
+       does not shift the whole page sideways. */
+    scrollbar-gutter: stable;
+  }
+
+  /* No 300ms double-tap delay, and no blue-grey tap flash fighting the cream. */
+  :where(a, button, [role="button"], summary, [tabindex]) {
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Anchored headings must clear the sticky top bar, not hide under it. */
+  :where(h1, h2, h3, h4)[id] {
+    scroll-margin-top: 5rem;
   }
 
   body {
@@ -207,7 +287,7 @@
   }
 
   ::selection {
-    background-color: var(--color-sn-gold-soft);
+    background-color: var(--color-sn-primary-soft);
     color: var(--color-sn-ink);
   }
 
@@ -234,24 +314,35 @@
       transition-duration: 0.01ms !important;
       scroll-behavior: auto !important;
     }
+
+    /* Exception: a spinner is not decoration, it is the only signal that work is
+       still happening. Collapsing it to one frame leaves a frozen arc that reads
+       as a bug, so it keeps looping — slower, and that is the reduced variant. */
+    [data-loading-motion] {
+      animation-duration: 1.6s !important;
+      animation-iteration-count: infinite !important;
+    }
   }
 }
 
-/* The signature: serif italic, tight, slightly optically reduced tracking. */
+/* The signature: Satoshi black, tight. Weight is the display voice now —
+   the serif italic this replaced was the tell of the machine-made look. */
 .font-display {
   font-family: var(--font-display);
-  font-style: italic;
-  font-weight: 400;
-  letter-spacing: -0.01em;
-  line-height: 1.08;
+  font-style: normal;
+  font-weight: 900;
+  letter-spacing: -0.03em;
+  line-height: 1.05;
 }
 
-/* Same face, upright — for numerals inside a display heading. */
+/* Numerals inside a display setting — clocks, big readouts. Mono, so a
+   ticking value reads as an instrument and never jitters. */
 .font-display-upright {
-  font-family: var(--font-display);
+  font-family: var(--font-mono);
   font-style: normal;
-  font-weight: 400;
-  letter-spacing: -0.01em;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
 }
 
 /* Quiet scrollbars; the default macOS ones fight the cream. */
@@ -272,6 +363,60 @@
 .sn-scroll::-webkit-scrollbar-thumb:hover {
   background: var(--color-sn-subtle);
   background-clip: content-box;
+}
+
+/**
+ * Vertical stacks at the four rhythm tiers.
+ *
+ * `sn-stack-section` is the one every page's outermost column wants; the others
+ * step down inside it. Named tiers rather than a gap utility, so "how far apart
+ * are two sections" has one answer across the whole app instead of one per file.
+ */
+.sn-stack-section,
+.sn-stack-block,
+.sn-stack-group,
+.sn-stack-item {
+  display: flex;
+  flex-direction: column;
+}
+.sn-stack-section {
+  gap: var(--sn-rhythm-section);
+}
+.sn-stack-block {
+  gap: var(--sn-rhythm-block);
+}
+.sn-stack-group {
+  gap: var(--sn-rhythm-group);
+}
+.sn-stack-item {
+  gap: var(--sn-rhythm-item);
+}
+
+/**
+ * Horizontal scroll, with edges that admit there is more.
+ *
+ * A wide table in a narrow card simply clipped mid-word — the Compare grid's
+ * last column read "MO / CON / FAI" and nothing said it could be scrolled to.
+ * Two pairs of gradients fix that without JavaScript: the `local` pair scrolls
+ * with the content and masks the shadow whenever that edge is really the end,
+ * so a shadow appears on exactly the sides that have more to show.
+ *
+ * --sn-scroll-face is the background the cover gradients paint; set it when the
+ * scroller sits on something other than the card surface.
+ */
+.sn-scroll-x {
+  --sn-scroll-face: var(--color-sn-surface);
+  overflow-x: auto;
+  background:
+    linear-gradient(to right, var(--sn-scroll-face) 40%, transparent) left center / 44px 100%
+      no-repeat local,
+    linear-gradient(to left, var(--sn-scroll-face) 40%, transparent) right center / 44px 100%
+      no-repeat local,
+    radial-gradient(farthest-side at 0 50%, rgba(27, 26, 23, 0.13), transparent) left center /
+      16px 100% no-repeat scroll,
+    radial-gradient(farthest-side at 100% 50%, rgba(27, 26, 23, 0.13), transparent) right center /
+      16px 100% no-repeat scroll;
+  background-color: var(--sn-scroll-face);
 }
 
 /* Timeline rail: every item draws the vertical line, the last one must not —

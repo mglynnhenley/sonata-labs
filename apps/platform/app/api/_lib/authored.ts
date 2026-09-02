@@ -3,6 +3,7 @@ import {
   CRITERION_KINDS,
   tickLabel,
   tickToISO,
+  TWIN_NAMES,
   type Beat,
   type BeatBody,
   type Clock,
@@ -742,6 +743,17 @@ export function plannedCounts(seed: WorldSeed, beats: Beat[]): WorldCounts {
     // `move` reschedules an invite an earlier beat already created, so it adds
     // nothing to the calendar.
     events: beats.filter((b) => b.twin === "calendar" && b.kind === "invite").length,
+    // The same rule on the four later surfaces: count what the day CREATES, not
+    // what it touches. An `update` edits a record that is already in the CRM, an
+    // `append` writes into a document somebody else wrote, and a `comment` lands
+    // under a post that was already published — none of them is a new row, and
+    // counting them here would tell a user the day fills a CRM it only edits.
+    records: beats.filter((b) => b.twin === "attio" && b.kind === "record").length,
+    documents: beats.filter((b) => b.twin === "google-docs" && b.kind === "document").length,
+    // Always 0, and correctly: an ads beat changes a campaign's status, its
+    // budget or its spend, and there is no beat that opens one.
+    campaigns: 0,
+    posts: beats.filter((b) => b.twin === "linkedin" && b.kind === "post").length,
   };
 }
 
@@ -1063,7 +1075,12 @@ export function assembleScenario(
       ticks: clock.ticks,
       simMinutesPerTick: clock.simMinutesPerTick,
       startISO: clock.startISO,
-      twins: (["gmail", "slack", "calendar"] as TwinName[]).filter((t) => usedTwins.has(t)),
+      // `TWIN_NAMES` rather than a list written out here: core derives the same
+      // set for the run (`episodeTwins`), and a second hand-maintained list of
+      // surfaces is how a preview comes to say "Gmail and Slack" about a day
+      // that also files a note in the CRM — and how the run starts a twin the
+      // person who pressed Run was never shown.
+      twins: TWIN_NAMES.filter((t) => usedTwins.has(t)),
       beats: previews,
       criteria: checklist.map((c) => ({
         description: c.description,

@@ -6,13 +6,26 @@ import type { ReactNode, SVGProps } from "react";
  * own 1.5px stroke set rather than pulling in an icon dependency.
  */
 
-export type IconProps = Omit<SVGProps<SVGSVGElement>, "children"> & { size?: number };
+/**
+ * Four steps, mirroring `iconSize` in tokens.ts. A raw number is still allowed
+ * for the rare glyph that has to match a specific piece of type, but the named
+ * step is the default — eight ad-hoc sizes across the app was not a scale.
+ */
+export const ICON_SIZE = { xs: 12, sm: 14, md: 16, lg: 20 } as const;
+
+export type IconSize = keyof typeof ICON_SIZE;
+
+export type IconProps = Omit<SVGProps<SVGSVGElement>, "children"> & {
+  size?: IconSize | number;
+};
 
 function makeIcon(name: string, children: ReactNode, filled = false) {
-  const Icon = ({ size = 16, ...rest }: IconProps) => (
+  const Icon = ({ size = "md", ...rest }: IconProps) => {
+    const px = typeof size === "number" ? size : ICON_SIZE[size];
+    return (
     <svg
-      width={size}
-      height={size}
+      width={px}
+      height={px}
       viewBox="0 0 24 24"
       fill={filled ? "currentColor" : "none"}
       stroke={filled ? "none" : "currentColor"}
@@ -25,7 +38,8 @@ function makeIcon(name: string, children: ReactNode, filled = false) {
     >
       {children}
     </svg>
-  );
+    );
+  };
   Icon.displayName = name;
   return Icon;
 }
@@ -33,6 +47,16 @@ function makeIcon(name: string, children: ReactNode, filled = false) {
 export const IconCheck = makeIcon("IconCheck", <path d="M20 6 9 17l-5-5" />);
 
 export const IconClose = makeIcon("IconClose", <path d="M18 6 6 18M6 6l12 12" />);
+
+export const IconMenu = makeIcon("IconMenu", <path d="M4 7h16M4 12h16M4 17h16" />);
+
+export const IconGear = makeIcon(
+  "IconGear",
+  <>
+    <circle cx="12" cy="12" r="3" />
+    <path d="M19.2 12a7.2 7.2 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7.2 7.2 0 0 0-2-1.2L14.2 3h-4l-.5 2.6a7.2 7.2 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6a7.2 7.2 0 0 0 0 2.4l-2 1.6 2 3.4 2.4-1a7.2 7.2 0 0 0 2 1.2l.5 2.6h4l.5-2.6a7.2 7.2 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6c.06-.4.1-.8.1-1.2Z" />
+  </>,
+);
 
 export const IconCopy = makeIcon(
   "IconCopy",
@@ -91,6 +115,44 @@ export const IconCalendar = makeIcon(
   <>
     <rect x="3.5" y="5" width="17" height="15" rx="2.5" />
     <path d="M3.5 10h17M8 3.5V6.5M16 3.5V6.5" />
+  </>,
+);
+
+// The four newer twins. Each says what the surface IS rather than whose logo it
+// is — a CRM is people, Docs is a page of text, Ads is a spend line, LinkedIn is
+// a feed post — because the set has to read at 13px in a timeline marker.
+export const IconUsers = makeIcon(
+  "IconUsers",
+  <>
+    <circle cx="9" cy="8" r="3.5" />
+    <path d="M3 20a6 6 0 0 1 12 0" />
+    <path d="M16 5.2a3.5 3.5 0 0 1 0 5.6M18 20a6 6 0 0 0-2.5-4.9" />
+  </>,
+);
+
+export const IconDoc = makeIcon(
+  "IconDoc",
+  <>
+    <path d="M6 3.5h7L18.5 9v11.5h-12.5Z" />
+    <path d="M13 3.5V9h5.5M9 13h6M9 16.5h6" />
+  </>,
+);
+
+export const IconTrend = makeIcon(
+  "IconTrend",
+  <>
+    <path d="M4 20V4" />
+    <path d="M4 20h16" />
+    <path d="m7.5 15 3.5-4 3 2.5 5-6" />
+    <path d="M19 7.5h-3.5M19 7.5V11" />
+  </>,
+);
+
+export const IconFeed = makeIcon(
+  "IconFeed",
+  <>
+    <rect x="3.5" y="4.5" width="17" height="15" rx="2.5" />
+    <path d="M7.5 9.5h4M7.5 13h9M7.5 16h6" />
   </>,
 );
 

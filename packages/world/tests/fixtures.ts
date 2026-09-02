@@ -1,5 +1,5 @@
 import { AMBIENT_ID, type StorylineWrite } from "../src/generate";
-import type { StorylineSeeds, TwinSeeds, WorldDraft, WorldSpine } from "../src/schema";
+import type { BusinessSeeds, StorylineSeeds, TwinSeeds, WorldDraft, WorldSpine } from "../src/schema";
 
 // A deliberately dirty pair of model outputs: it names a person who is not in the
 // cast ("sasha"), writes messages out of order, puts a thread reply BEFORE its
@@ -115,6 +115,140 @@ export const SEEDS: TwinSeeds = {
         location: "",
         recurrence: "RRULE:FREQ=DAILY",
         description: "",
+      },
+    ],
+  },
+  attio: {
+    companies: [
+      { name: "Vantage Freight", domain: "https://www.vantagefreight.com/about", description: "Largest customer." },
+      { name: "Ledgerlink", domain: "", description: "" },
+    ],
+    contacts: [
+      { personId: "gerald", companyName: "Vantage Freight", jobTitle: "Lead auditor" },
+      // A company nobody wrote, and a person who is nobody.
+      { personId: "gerald", companyName: "Nowhere Ltd", jobTitle: "Ghost" },
+      { personId: "sasha", companyName: "Vantage Freight", jobTitle: "Ghost" },
+    ],
+    deals: [
+      {
+        name: "Vantage renewal",
+        companyName: "Vantage Freight",
+        // A stage this pipeline does not have.
+        stage: "Negotiation",
+        value: 180000,
+        ownerPersonId: "sasha",
+        contactPersonIds: ["gerald", "sasha"],
+      },
+      // No such company, so the deal has nothing to hang on.
+      {
+        name: "Ghost deal",
+        companyName: "Nowhere Ltd",
+        stage: "Lead",
+        value: 10,
+        ownerPersonId: "priya",
+        contactPersonIds: [],
+      },
+    ],
+    notes: [
+      { about: "Vantage renewal", title: "Escalation call", body: "31 hours late again.", minutesAgo: 300 },
+      { about: "Nothing at all", title: "Orphan", body: "Points at nothing.", minutesAgo: 100 },
+    ],
+    tasks: [
+      {
+        content: "Send Sofie the timeline",
+        assigneePersonId: "sasha",
+        about: "Vantage renewal",
+        dueInMinutes: -120,
+        isCompleted: false,
+        minutesAgo: 200,
+      },
+    ],
+  },
+  googleDocs: {
+    documents: [
+      {
+        title: "Evidence tracker",
+        ownerPersonId: "sasha",
+        paragraphs: [
+          { text: "Evidence tracker", namedStyleType: "title" },
+          // A paragraph break inside a run, which the Docs index space forbids.
+          { text: "Outstanding\nRestore test — TBC", namedStyleType: "HEADING_1" },
+          { text: "   ", namedStyleType: "" },
+        ],
+      },
+      // Nothing to write: a document always has at least one paragraph.
+      { title: "Empty", ownerPersonId: "priya", paragraphs: [] },
+    ],
+  },
+  googleAds: {
+    campaigns: [
+      {
+        name: "Embedded treasury",
+        status: "enabled",
+        dailyBudget: 250,
+        channel: "search",
+        adGroups: [
+          {
+            name: "Reconciliation software",
+            status: "ENABLED",
+            dailyImpressions: 100,
+            // More clicks than impressions, which cannot happen.
+            dailyClicks: 900,
+            dailyCost: 290,
+            dailyConversions: 4,
+          },
+        ],
+      },
+      {
+        name: "Ghost budget",
+        status: "PAUSED",
+        // Nothing to spend, which is not a state a campaign can be in.
+        dailyBudget: 0,
+        channel: "TELEPATHY",
+        adGroups: [],
+      },
+    ],
+  },
+  linkedin: {
+    posts: [
+      {
+        personId: "sasha",
+        commentary: "Posted by nobody, so posted by the page.",
+        minutesAgo: 2000,
+        isDraft: false,
+        comments: [
+          {
+            personId: "gerald",
+            text: "Is this the same incident?",
+            minutesAgo: 1000,
+            replies: [
+              // Older than its parent, and one level deeper than LinkedIn goes.
+              { personId: "priya", text: "It is.", minutesAgo: 5000, replies: [
+                { personId: "marcus", text: "Depth two, which does not exist.", minutesAgo: 900 },
+              ] },
+            ],
+          },
+        ],
+        reactedByPersonIds: ["marcus", "marcus", "sasha"],
+      },
+      {
+        personId: "priya",
+        commentary: "A draft nobody has seen.",
+        minutesAgo: 400,
+        isDraft: true,
+        comments: [{ personId: "priya", text: "Engagement on an unpublished post.", minutesAgo: 300 }],
+        reactedByPersonIds: ["priya"],
+      },
+      {
+        // A colleague publishing on their own feed, which is the one authorship
+        // nothing downstream can read back — no snapshot, no diff, no tool. It
+        // is here so the drop is proven rather than assumed.
+        personId: "marcus",
+        commentary: "Posted by a colleague, on a feed nobody can read.",
+        minutesAgo: 300,
+        isDraft: false,
+        comments: [],
+        reactedByPersonIds: [],
       },
     ],
   },
@@ -327,6 +461,75 @@ export const AMBIENT: StorylineSeeds = {
 };
 
 /** What the three writers came back with, in the order the spine names them. */
+/**
+ * Pass 5's answer, in the same spirit as the rest of this file: mostly right,
+ * one contact naming somebody who is not in the cast — which the Attio
+ * normalizer drops the same way the Gmail one drops sasha.
+ */
+export const BUSINESS: BusinessSeeds = {
+  attio: {
+    companies: [
+      { name: "Meridian Freight", domain: "meridianfreight.com", description: "The renewal." },
+    ],
+    contacts: [
+      { personId: "gerald", companyName: "Meridian Freight", jobTitle: "Lead auditor" },
+      { personId: "sasha", companyName: "Meridian Freight", jobTitle: "Nobody, again" },
+    ],
+    deals: [
+      {
+        name: "Meridian renewal",
+        companyName: "Meridian Freight",
+        stage: "In Progress",
+        value: 42000,
+        ownerPersonId: "priya",
+        contactPersonIds: ["gerald"],
+      },
+    ],
+    notes: [
+      {
+        about: "Meridian renewal",
+        title: "Call with Gerald",
+        body: "INV-2291 still disputed; he wants it settled before fieldwork.",
+        minutesAgo: 900,
+      },
+    ],
+    tasks: [
+      {
+        content: "Send Gerald the evidence list",
+        assigneePersonId: "priya",
+        about: "Meridian renewal",
+        dueInMinutes: -120,
+        minutesAgo: 900,
+      },
+    ],
+  },
+  googleDocs: {
+    documents: [
+      {
+        title: "SOC 2 evidence list",
+        ownerPersonId: "priya",
+        paragraphs: [
+          { text: "Outstanding", namedStyleType: "HEADING_1" },
+          { text: "Items 1-3 answered. Item 4: TBC." },
+        ],
+      },
+    ],
+  },
+  googleAds: { campaigns: [] },
+  linkedin: {
+    posts: [
+      {
+        personId: "",
+        commentary: "Fieldwork week. We are ready.",
+        minutesAgo: 2000,
+        isDraft: false,
+        comments: [],
+        reactedByPersonIds: ["marcus"],
+      },
+    ],
+  },
+};
+
 export const WRITES: StorylineWrite[] = [
   { storylineId: "renewal", seeds: RENEWAL },
   { storylineId: "board", seeds: BOARD },

@@ -535,6 +535,10 @@ const TWIN_WORD: Record<TwinName, string> = {
   gmail: "Email",
   slack: "Slack",
   calendar: "Calendar",
+  attio: "CRM",
+  "google-docs": "Docs",
+  "google-ads": "Ads",
+  linkedin: "LinkedIn",
 };
 
 /**

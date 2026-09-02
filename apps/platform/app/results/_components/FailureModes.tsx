@@ -94,8 +94,8 @@ export function FailureModes({
           diagnosis and a current one. */}
       {state?.state === "judged" && state.reason ? (
         <div className="flex items-start gap-2.5 border-t border-sn-gold/30 bg-sn-gold-soft/35 px-5 py-3">
-          <IconAlert size={14} className="mt-0.5 shrink-0 text-sn-gold-ink" />
-          <p className="max-w-[78ch] text-[12.5px] leading-[19px] text-sn-muted">
+          <IconAlert size="sm" className="mt-0.5 shrink-0 text-sn-gold-ink" />
+          <p className="max-w-[78ch] text-sn-sm leading-[19px] text-sn-muted">
             <span className="font-medium text-sn-gold-ink">
               These are the findings from the last judge pass that worked.
             </span>{" "}
@@ -107,9 +107,9 @@ export function FailureModes({
       {sight ? <PartialSightNote sight={sight} empty={rows.length === 0} /> : null}
 
       {rows.length === 0 ? (
-        <div className="flex items-center gap-2.5 px-5 pb-5 text-[13px] text-sn-muted">
+        <div className="flex items-center gap-2.5 px-5 pb-5 text-sn-base text-sn-muted">
           <span className="grid h-6 w-6 place-items-center rounded-full border border-sn-passed-line bg-sn-passed-soft text-sn-passed-ink">
-            <IconCheck size={13} />
+            <IconCheck size="sm" />
           </span>
           Nothing in the catalog fired, and the judge added nothing of its own.
         </div>
@@ -149,7 +149,7 @@ function NoDiagnosis({ state }: { state: JudgeState | null }) {
             <Spinner size="sm" label="" />
           ) : (
             <IconAlert
-              size={15}
+              size="md"
               className={copy.tone === "failed" ? "text-sn-failed-ink" : "text-sn-subtle"}
             />
           )}
@@ -158,15 +158,15 @@ function NoDiagnosis({ state }: { state: JudgeState | null }) {
           <p
             className={
               copy.tone === "failed"
-                ? "text-[13.5px] font-medium text-sn-failed-ink"
-                : "text-[13.5px] font-medium text-sn-ink"
+                ? "text-sn-base font-medium text-sn-failed-ink"
+                : "text-sn-base font-medium text-sn-ink"
             }
           >
             {copy.headline}
           </p>
-          <p className="mt-1 text-[12.5px] leading-[19px] text-sn-muted">{copy.detail}</p>
+          <p className="mt-1 text-sn-sm leading-[19px] text-sn-muted">{copy.detail}</p>
           {copy.footnote ? (
-            <p className="mt-2 text-[12.5px] leading-[19px] text-sn-subtle">{copy.footnote}</p>
+            <p className="mt-2 text-sn-sm leading-[19px] text-sn-subtle">{copy.footnote}</p>
           ) : null}
         </div>
       </div>
@@ -191,8 +191,8 @@ function PartialSightNote({
 }) {
   return (
     <div className="flex items-start gap-2.5 border-t border-sn-gold/30 bg-sn-gold-soft/35 px-5 py-3">
-      <IconAlert size={14} className="mt-0.5 shrink-0 text-sn-gold-ink" />
-      <p className="max-w-[78ch] text-[12.5px] leading-[19px] text-sn-muted">
+      <IconAlert size="sm" className="mt-0.5 shrink-0 text-sn-gold-ink" />
+      <p className="max-w-[78ch] text-sn-sm leading-[19px] text-sn-muted">
         {sight.kind === "partial" ? (
           <>
             <span className="font-medium text-sn-gold-ink">
@@ -236,10 +236,10 @@ function FindingRow({
         <Badge status={SEVERITY_BADGE[row.severity]} size="sm">
           {row.severity}
         </Badge>
-        <span className="text-[14px] font-medium text-sn-ink">{row.label}</span>
+        <span className="text-sn-md font-medium text-sn-ink">{row.label}</span>
         {row.uncatalogued ? (
           <span
-            className="rounded-full border border-dashed border-sn-line-strong px-1.5 py-0.5 text-[10.5px] text-sn-subtle"
+            className="rounded-full border border-dashed border-sn-line-strong px-1.5 py-0.5 text-sn-xs text-sn-subtle"
             title="Not in the failure-mode catalog — the judge named this one itself"
           >
             uncatalogued
@@ -249,16 +249,16 @@ function FindingRow({
           <button
             type="button"
             onClick={() => onJump({ seq: row.seq, ...(row.tick !== undefined ? { tick: row.tick } : {}) })}
-            className="ml-auto inline-flex items-center gap-1.5 text-[12.5px] font-medium text-sn-primary-ink hover:underline"
+            className="ml-auto inline-flex items-center gap-1.5 text-sn-sm font-medium text-sn-primary-ink hover:underline"
           >
             {row.tick !== undefined ? `Go to tick ${row.tick}` : "Go to the moment"}
-            <IconArrowRight size={13} />
+            <IconArrowRight size="sm" />
           </button>
         ) : null}
       </div>
 
       {row.question ? (
-        <p className="mt-1.5 text-[12.5px] leading-[19px] text-sn-subtle">{row.question}</p>
+        <p className="mt-1.5 text-sn-sm leading-[19px] text-sn-subtle">{row.question}</p>
       ) : null}
 
       {row.evidence.length > 0 ? (
@@ -266,14 +266,14 @@ function FindingRow({
           {row.evidence.map((quote, i) => (
             <li
               key={i}
-              className="border-l-2 border-sn-line-strong pl-3 text-[13px] leading-[20px] text-sn-muted"
+              className="border-l-2 border-sn-line-strong pl-3 text-sn-base text-sn-muted"
             >
               {quote}
             </li>
           ))}
         </ul>
       ) : (
-        <p className="mt-2 text-[12.5px] text-sn-subtle">
+        <p className="mt-2 text-sn-sm text-sn-subtle">
           The judge quoted nothing for this one, which is itself worth a second look.
         </p>
       )}

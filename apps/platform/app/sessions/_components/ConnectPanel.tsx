@@ -33,8 +33,8 @@ export function ConnectPanel({ twins }: ConnectPanelProps) {
 
   return (
     <Card padding="lg">
-      <h2 className="font-display text-[24px] text-sn-ink">Connect your agent</h2>
-      <p className="mt-1.5 max-w-[74ch] text-[13.5px] leading-[21px] text-sn-muted">
+      <h2 className="font-display text-sn-2xl text-sn-ink">Connect your agent</h2>
+      <p className="mt-1.5 max-w-[74ch] text-sn-base text-sn-muted">
         Point it at these three, exactly as it would at the real Gmail, Slack and Calendar. Sonata
         never calls your agent: the day plays on its own clock, and what the agent did is read back
         out of each clone&rsquo;s audit log — so anything that can use the tools can be measured,
@@ -58,7 +58,7 @@ export function ConnectPanel({ twins }: ConnectPanelProps) {
                 </Chip>
                 <span
                   className={cn(
-                    "ml-auto text-[11.5px]",
+                    "ml-auto text-sn-xs",
                     twin.ok ? "text-sn-success-ink" : "text-sn-subtle",
                   )}
                   title={twin.detail}
@@ -67,13 +67,13 @@ export function ConnectPanel({ twins }: ConnectPanelProps) {
                 </span>
               </span>
               <span className="mt-2 flex items-center gap-1.5">
-                <span data-numeric className="font-mono text-[12.5px] text-sn-ink">
+                <span data-numeric className="font-mono text-sn-sm text-sn-ink">
                   {twin.url.replace(/^https?:\/\//, "")}
                 </span>
                 {copied === twin.url ? (
-                  <IconCheck size={12} className="text-sn-success" />
+                  <IconCheck size="xs" className="text-sn-success" />
                 ) : (
-                  <IconCopy size={12} className="text-sn-subtle" />
+                  <IconCopy size="xs" className="text-sn-subtle" />
                 )}
               </span>
             </button>
@@ -81,7 +81,7 @@ export function ConnectPanel({ twins }: ConnectPanelProps) {
         ))}
       </ul>
 
-      <p className="mt-4 max-w-[74ch] text-[12px] leading-[18px] text-sn-subtle">
+      <p className="mt-4 max-w-[74ch] text-sn-sm text-sn-subtle">
         A clone that is not running is started for you when the session begins. One thing the logs
         cannot see is your agent giving up and asking a human — if your harness can report that,
         POST it to <span className="font-mono">/api/sessions/&lt;id&gt;/escalate</span>, and the

@@ -1,14 +1,20 @@
 import {
   agentToolCalls,
   resolvePerson,
+  type AttioBeatBody,
+  type AttioWriteValue,
   type Beat,
   type BeatAdaptation,
   type BeatBody,
   type BeatFired,
   type ByTwin,
+  type CalendarBeatBody,
   type Criterion,
   type EpisodeSpec,
+  type GoogleAdsBeatBody,
+  type GoogleDocsBeatBody,
   type InjectedRef,
+  type LinkedInBeatBody,
   type PersonRef,
   type TickRecord,
   type TwinAdapter,
@@ -107,24 +113,88 @@ function nameOf(world: WorldSeed, ref: string): string {
 }
 
 /**
+ * Who acted, on the two surfaces where naming nobody is legitimate — and the two
+ * of them mean different people by it. A LinkedIn beat with no `from` is the
+ * company page speaking; a document with no owner belongs to whoever owns the
+ * workspace, which is the mailbox owner. Neither is a missing value, so each
+ * says which it is.
+ */
+function actorOf(world: WorldSeed, ref: string | undefined, whenAbsent: string): string {
+  return ref ? nameOf(world, ref) : whenAbsent;
+}
+
+/** What a CRM record is called, out of the attribute bag a beat writes. */
+function recordName(values: Record<string, AttioWriteValue>): string {
+  const name = values.name;
+  if (Array.isArray(name)) return name.length ? String(name[0]) : "an unnamed record";
+  return typeof name === "string" && name.trim() ? name : String(name ?? "an unnamed record");
+}
+
+/** What a person calls one of the CRM's three objects, for the line's prose. */
+function singular(object: string): string {
+  return { companies: "company", people: "person", deals: "deal" }[object] ?? `${object} record`;
+}
+
+/** An attribute bag as a person would read it back: `stage → Won 🎉`. */
+function valueList(values: Record<string, AttioWriteValue>): string {
+  return Object.entries(values)
+    .map(([slug, v]) => `${slug} → ${Array.isArray(v) ? v.join(", ") : String(v)}`)
+    .join(", ");
+}
+
+/**
+ * The campaign a beat is about, as the author named it. Either half is
+ * legitimate — a name for a campaign the world was seeded with, a ref for the
+ * other end of a pair — and neither is resolved here, because this line is
+ * written before anything has been sent to the twin.
+ */
+function campaignName(payload: { campaign?: string; campaignRef?: string }): string {
+  return payload.campaign ?? payload.campaignRef ?? "a campaign";
+}
+
+/** Micros as whole currency units — the ads twin counts money in millionths. */
+function money(micros: number): string {
+  return (micros / 1_000_000).toFixed(2);
+}
+
+/**
  * One line for the timeline: "Dana Reyes emailed about the missed SLA". Written
  * from the world's point of view, because this is what the run view shows a
  * human and what the agent's tick digest is built from.
+ *
+ * Split by twin before kind, and by twin into the four functions below, because
+ * `reaction` is no longer one thing: a Slack emoji and a LinkedIn reaction on a
+ * post are different payloads under the same word.
  */
 export function summarizeBody(body: BeatBody, world: WorldSeed): string {
-  switch (body.kind) {
-    case "email": {
+  switch (body.twin) {
+    case "gmail": {
       const to = body.payload.to.map((r) => nameOf(world, r)).join(", ");
       return `${nameOf(world, body.payload.from)} emailed ${to}: "${body.payload.subject}"`;
     }
-    case "message": {
-      const where = body.payload.channel.startsWith("#")
-        ? body.payload.channel
-        : `#${body.payload.channel}`;
-      return `${nameOf(world, body.payload.from)} posted in ${where}: "${body.payload.text}"`;
-    }
-    case "reaction":
+    case "slack":
+      if (body.kind === "message") {
+        const where = body.payload.channel.startsWith("#")
+          ? body.payload.channel
+          : `#${body.payload.channel}`;
+        return `${nameOf(world, body.payload.from)} posted in ${where}: "${body.payload.text}"`;
+      }
       return `${nameOf(world, body.payload.from)} reacted :${body.payload.emoji}:`;
+    case "calendar":
+      return summarizeCalendar(body, world);
+    case "attio":
+      return summarizeAttio(body, world);
+    case "google-docs":
+      return summarizeDocs(body, world);
+    case "google-ads":
+      return summarizeAds(body);
+    case "linkedin":
+      return summarizeLinkedIn(body, world);
+  }
+}
+
+function summarizeCalendar(body: CalendarBeatBody, world: WorldSeed): string {
+  switch (body.kind) {
     case "invite":
       return (
         `${nameOf(world, body.payload.organizer)} invited ` +
@@ -141,6 +211,93 @@ export function summarizeBody(body: BeatBody, world: WorldSeed): string {
       }`;
     case "rsvp":
       return `${nameOf(world, body.payload.who)} ${body.payload.response} "${body.payload.eventRef}"`;
+  }
+}
+
+function summarizeAttio(body: AttioBeatBody, world: WorldSeed): string {
+  switch (body.kind) {
+    case "record":
+      return (
+        `"${recordName(body.payload.values)}" was added to the CRM ` +
+        `as a ${singular(body.payload.object)}`
+      );
+    case "update":
+      return `"${body.payload.recordRef}" changed in the CRM: ${valueList(body.payload.values)}`;
+    case "note":
+      return `a note was logged on "${body.payload.parentRecordRef}": "${body.payload.title}"`;
+    case "task": {
+      // A task nobody holds is a real thing to script and a finding when it
+      // happens, so it is said rather than left as a blank in the line.
+      const who = body.payload.assignee
+        ? nameOf(world, body.payload.assignee)
+        : "nobody in particular";
+      return `a follow-up landed on ${who}: "${body.payload.content}"`;
+    }
+  }
+}
+
+function summarizeDocs(body: GoogleDocsBeatBody, world: WorldSeed): string {
+  switch (body.kind) {
+    case "document":
+      return (
+        `${actorOf(world, body.payload.owner, "the workspace owner")} ` +
+        `shared a document: "${body.payload.title}"`
+      );
+    case "append":
+      return (
+        `a section was added to "${body.payload.documentRef}": ` +
+        `"${body.payload.paragraphs[0]?.text ?? ""}"`
+      );
+    case "replace":
+      return (
+        `"${body.payload.find}" became "${body.payload.replaceWith}" ` +
+        `in "${body.payload.documentRef}"`
+      );
+  }
+}
+
+function summarizeAds(body: GoogleAdsBeatBody): string {
+  switch (body.kind) {
+    case "status": {
+      const which = campaignName(body.payload);
+      if (body.payload.status === "PAUSED") return `campaign "${which}" was paused`;
+      if (body.payload.status === "ENABLED") return `campaign "${which}" was switched back on`;
+      if (body.payload.status === "REMOVED") return `campaign "${which}" was removed`;
+      return `campaign "${which}" is now ${body.payload.status}`;
+    }
+    case "budget":
+      return (
+        `campaign "${campaignName(body.payload)}" now has ` +
+        `${money(body.payload.amountMicros)} a day to spend`
+      );
+    case "spend":
+      // What the day cost, not what it sold: an overspend is the thing an agent
+      // is meant to notice, and it is spend that says so.
+      return (
+        `${body.payload.clicks} click(s) and ${money(body.payload.costMicros)} of spend ` +
+        `landed on "${body.payload.adGroup}"`
+      );
+  }
+}
+
+function summarizeLinkedIn(body: LinkedInBeatBody, world: WorldSeed): string {
+  switch (body.kind) {
+    case "post":
+      return (
+        `${actorOf(world, body.payload.from, "the company page")} ` +
+        `posted on LinkedIn: "${body.payload.commentary}"`
+      );
+    case "comment":
+      return (
+        `${actorOf(world, body.payload.from, "the company page")} ` +
+        `${body.payload.parentRef ? "replied under" : "commented on"} ` +
+        `"${body.payload.parentRef ?? body.payload.postRef ?? "the feed"}": "${body.payload.text}"`
+      );
+    case "reaction":
+      return (
+        `${actorOf(world, body.payload.from, "the company page")} reacted ` +
+        `${body.payload.reactionType ?? "LIKE"} to "${body.payload.entityRef}"`
+      );
   }
 }
 

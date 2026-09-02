@@ -338,5 +338,301 @@
         "description": "Friday 11:00. Elena will bring her log."
       }
     ]
+  },
+  "attio": {
+    "companies": [
+      {
+        "name": "Brightpath Health",
+        "domain": "brightpathhealth.org",
+        "description": "Largest account, twelve hospitals. Renewal review is Friday and their saved reports have been broken since Monday."
+      },
+      {
+        "name": "Meridian Care Group",
+        "domain": "meridiancare.org",
+        "description": "Second largest. Quiet this week, which is not the same as fine."
+      },
+      {
+        "name": "Halden Regional",
+        "domain": "haldenregional.org",
+        "description": "Two-site pilot from the spring. Wants pricing for the whole network."
+      }
+    ],
+    "contacts": [
+      {
+        "personId": "elena",
+        "companyName": "Brightpath Health",
+        "jobTitle": "Director of Clinical Ops"
+      }
+    ],
+    "deals": [
+      {
+        "name": "Brightpath Health — renewal",
+        "companyName": "Brightpath Health",
+        "stage": "In Progress",
+        "value": 620000,
+        "ownerPersonId": "delia",
+        "contactPersonIds": [
+          "elena"
+        ]
+      },
+      {
+        "name": "Halden Regional — network rollout",
+        "companyName": "Halden Regional",
+        "stage": "Lead",
+        "value": 150000,
+        "ownerPersonId": "hugo",
+        "contactPersonIds": []
+      },
+      {
+        "name": "Meridian Care Group — renewal",
+        "companyName": "Meridian Care Group",
+        "stage": "Won 🎉",
+        "value": 410000,
+        "ownerPersonId": "delia",
+        "contactPersonIds": []
+      }
+    ],
+    "notes": [
+      {
+        "about": "Brightpath Health — renewal",
+        "title": "Check-in call, Wednesday",
+        "body": "Elena has a board update on Thursday and nothing to put in it. Asked, twice, for a written cause and a date. Did not raise the renewal. Delia's read: she is being polite, not patient.",
+        "minutesAgo": 1100
+      },
+      {
+        "about": "Halden Regional — network rollout",
+        "title": "Pricing request",
+        "body": "Wants network pricing by the end of the month. Nobody has started it. Parked until the queue is under fifty.",
+        "minutesAgo": 6400
+      }
+    ],
+    "tasks": [
+      {
+        "content": "Send Elena a written cause and a fix date before her board update",
+        "assigneePersonId": "owen",
+        "about": "Brightpath Health — renewal",
+        "dueInMinutes": -180,
+        "isCompleted": false,
+        "minutesAgo": 1080
+      },
+      {
+        "content": "Draft the renewal review deck for Friday",
+        "assigneePersonId": "delia",
+        "about": "Brightpath Health — renewal",
+        "dueInMinutes": 1440,
+        "isCompleted": false,
+        "minutesAgo": 2900
+      },
+      {
+        "content": "Price the Halden Regional network rollout",
+        "assigneePersonId": "hugo",
+        "about": "Halden Regional — network rollout",
+        "dueInMinutes": 5760,
+        "isCompleted": false,
+        "minutesAgo": 6300
+      }
+    ]
+  },
+  "googleDocs": {
+    "documents": [
+      {
+        "title": "INC-204 — saved reports failing after migration",
+        "ownerPersonId": "karl",
+        "paragraphs": [
+          {
+            "text": "INC-204 — saved reports failing after migration",
+            "namedStyleType": "TITLE"
+          },
+          {
+            "text": "Status: open, day four. Severity 2. Roughly a fifth of accounts affected.",
+            "namedStyleType": "SUBTITLE"
+          },
+          {
+            "text": "What we know",
+            "namedStyleType": "HEADING_1"
+          },
+          {
+            "text": "Monday's schema migration renamed two columns that saved reports referenced by name. Reports created before the migration fail on open; new ones are fine.",
+            "namedStyleType": ""
+          },
+          {
+            "text": "Options",
+            "namedStyleType": "HEADING_1"
+          },
+          {
+            "text": "1. Compatibility view that maps the old names. Two days, no data loss, deploy window is Thursday.",
+            "namedStyleType": ""
+          },
+          {
+            "text": "2. Full rollback. Four hours, takes the new dashboards with it, and Brightpath asked for those.",
+            "namedStyleType": ""
+          },
+          {
+            "text": "Customer impact",
+            "namedStyleType": "HEADING_1"
+          },
+          {
+            "text": "TBC — Sam is counting affected accounts by revenue rather than by number, which is the number Hugo will ask for.",
+            "namedStyleType": ""
+          }
+        ]
+      },
+      {
+        "title": "Customer comms — saved reports",
+        "ownerPersonId": "delia",
+        "paragraphs": [
+          {
+            "text": "Customer comms — saved reports",
+            "namedStyleType": "TITLE"
+          },
+          {
+            "text": "One message, sent once, to everyone affected. Not a status page nobody reads.",
+            "namedStyleType": ""
+          },
+          {
+            "text": "Draft",
+            "namedStyleType": "HEADING_1"
+          },
+          {
+            "text": "\"Some saved reports created before Monday are failing to open. The cause is a change we made and it is ours to fix. A compatibility release is going out on TBC. Reports created since Monday are unaffected.\"",
+            "namedStyleType": ""
+          },
+          {
+            "text": "Rina will not sign off on a date until the deploy window is confirmed. Owen thinks a message without a date is worse than no message.",
+            "namedStyleType": ""
+          }
+        ]
+      },
+      {
+        "title": "Brightpath renewal review — running notes",
+        "ownerPersonId": "delia",
+        "paragraphs": [
+          {
+            "text": "Brightpath renewal review — Friday",
+            "namedStyleType": "TITLE"
+          },
+          {
+            "text": "Attendees: Elena, her head of analytics, Hugo, Delia.",
+            "namedStyleType": ""
+          },
+          {
+            "text": "What they will open with: four days of broken reports during their busiest month.",
+            "namedStyleType": ""
+          },
+          {
+            "text": "What we have: the incident report, a fix date if Thursday holds, and 94% uptime for the eleven months before this week.",
+            "namedStyleType": ""
+          }
+        ]
+      }
+    ]
+  },
+  "googleAds": {
+    "campaigns": [
+      {
+        "name": "Brand — Tessera Analytics",
+        "status": "ENABLED",
+        "dailyBudget": 50,
+        "channel": "SEARCH",
+        "adGroups": [
+          {
+            "name": "Exact — tessera analytics",
+            "status": "ENABLED",
+            "dailyImpressions": 640,
+            "dailyClicks": 88,
+            "dailyCost": 31,
+            "dailyConversions": 5
+          }
+        ]
+      },
+      {
+        "name": "Clinical ops dashboards — search",
+        "status": "ENABLED",
+        "dailyBudget": 300,
+        "channel": "SEARCH",
+        "adGroups": [
+          {
+            "name": "Hospital analytics",
+            "status": "ENABLED",
+            "dailyImpressions": 18000,
+            "dailyClicks": 740,
+            "dailyCost": 355,
+            "dailyConversions": 3
+          },
+          {
+            "name": "Saved reporting tools",
+            "status": "ENABLED",
+            "dailyImpressions": 6100,
+            "dailyClicks": 210,
+            "dailyCost": 88,
+            "dailyConversions": 1
+          }
+        ]
+      },
+      {
+        "name": "Competitor terms",
+        "status": "PAUSED",
+        "dailyBudget": 80,
+        "channel": "SEARCH",
+        "adGroups": [
+          {
+            "name": "Competitor — brand",
+            "status": "PAUSED",
+            "dailyImpressions": 3100,
+            "dailyClicks": 120,
+            "dailyCost": 74,
+            "dailyConversions": 0
+          }
+        ]
+      }
+    ]
+  },
+  "linkedin": {
+    "posts": [
+      {
+        "personId": "",
+        "commentary": "New in Tessera this month: cohort views on every clinical dashboard, and a rebuilt query layer underneath them. Faster, and finally consistent across sites.",
+        "minutesAgo": 4200,
+        "isDraft": false,
+        "comments": [
+          {
+            "personId": "elena",
+            "text": "Any update on the saved reports that stopped opening on Monday? Four days now. We have a board update on Thursday and I have nothing to tell them.",
+            "minutesAgo": 1500,
+            "replies": []
+          }
+        ],
+        "reactedByPersonIds": [
+          "hugo",
+          "rina"
+        ]
+      },
+      {
+        "personId": "owen",
+        "commentary": "Shipping a schema migration to a live analytics product is like changing a wheel at speed. This week we found out what happens when one of the bolts was load bearing.",
+        "minutesAgo": 900,
+        "isDraft": false,
+        "comments": [
+          {
+            "personId": "karl",
+            "text": "the bolt was load bearing",
+            "minutesAgo": 800,
+            "replies": []
+          }
+        ],
+        "reactedByPersonIds": [
+          "owen",
+          "sam"
+        ]
+      },
+      {
+        "personId": "",
+        "commentary": "We are hiring two more support engineers, because the honest answer to \"why did that take four days\" is usually a staffing answer.",
+        "minutesAgo": 400,
+        "isDraft": true,
+        "comments": [],
+        "reactedByPersonIds": []
+      }
+    ]
   }
 }

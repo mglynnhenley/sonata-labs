@@ -1,6 +1,6 @@
 import type { TwinName } from "@sonata/core";
 import { assembleScenario, type AssembledScenario, type AuthoredPerson, type AuthoredScenario } from "./authored";
-import type { TemplateService, TemplateSummary } from "./types";
+import type { TemplateService, TemplateSummary, WorldCounts } from "./types";
 
 // The five days that ship with the product — the ones the article runs.
 //
@@ -721,10 +721,33 @@ export function assembleTemplate(
   });
 }
 
-const UNITS: Record<TwinName, { unit: string; of: (counts: { threads: number; channels: number; events: number }) => number }> = {
+/**
+ * What each surface's chip counts, and where to read it off an assembly.
+ *
+ * Six of the seven have a unit now that `WorldCounts` reaches every surface, so
+ * a day that opens a CRM record or files a document is a card that says how
+ * many. Google Ads is the one that stays null, and for a reason that is about
+ * the surface rather than about work not done yet: an ads beat changes the
+ * status, the budget or the spend of a campaign that is already running, and no
+ * beat opens one, so `campaigns` on a planned day is structurally zero. "Ads · 0
+ * campaigns" would read as an account that came up empty, when what is true is
+ * that the day changes an account it did not build. The chip goes out as a bare
+ * label, which says the surface is in play and claims nothing about its size.
+ *
+ * A full Record and not a Partial, so a twin added to `TwinName` has to be
+ * answered for here instead of quietly losing its count.
+ */
+const UNITS: Record<
+  TwinName,
+  { unit: string; of: (counts: WorldCounts) => number } | null
+> = {
   gmail: { unit: "threads", of: (c) => c.threads },
   slack: { unit: "channels", of: (c) => c.channels },
   calendar: { unit: "events", of: (c) => c.events },
+  attio: { unit: "records", of: (c) => c.records },
+  "google-docs": { unit: "documents", of: (c) => c.documents },
+  "google-ads": null,
+  linkedin: { unit: "posts", of: (c) => c.posts },
 };
 
 /**
@@ -735,11 +758,10 @@ const UNITS: Record<TwinName, { unit: string; of: (counts: { threads: number; ch
 export function templateSummaries(): TemplateSummary[] {
   return TEMPLATES.map((template) => {
     const { draft } = assembleTemplate(template);
-    const services: TemplateService[] = draft.episode.twins.map((twin) => ({
-      twin,
-      count: UNITS[twin].of(draft.counts),
-      unit: UNITS[twin].unit,
-    }));
+    const services: TemplateService[] = draft.episode.twins.map((twin) => {
+      const units = UNITS[twin];
+      return units ? { twin, count: units.of(draft.counts), unit: units.unit } : { twin };
+    });
     return {
       id: template.id,
       title: template.title,

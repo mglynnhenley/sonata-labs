@@ -49,12 +49,20 @@ function refsOf(spec: EpisodeSpec): string[] {
   return spec.beats.map((b) => b.ref).filter((r): r is string => !!r);
 }
 
-/** What a beat points backwards at: a thread, a parent message, an event. */
+/**
+ * What a beat points backwards at: a thread, a parent message, an event.
+ *
+ * The five scenarios in this package are a mailbox, a workspace and a diary, so
+ * anything on the four later surfaces is `undefined` here rather than reached
+ * for — a ref this function invented for a twin no scenario uses would be
+ * asserted against a registry that never held it.
+ */
 function backReference(beat: Beat): string | undefined {
   if (beat.twin === "gmail") return beat.payload.inReplyTo;
   if (beat.twin === "slack") {
     return beat.kind === "reaction" ? beat.payload.messageRef : beat.payload.threadRef;
   }
+  if (beat.twin !== "calendar") return undefined;
   return beat.kind === "invite" ? undefined : beat.payload.eventRef;
 }
 

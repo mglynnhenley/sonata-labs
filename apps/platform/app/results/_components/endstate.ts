@@ -1,8 +1,12 @@
 import type {
+  AttioSnapshot,
   CalendarSnapshot,
   EpisodeJudgeReport,
   EpisodeRun,
   GmailSnapshot,
+  GoogleAdsSnapshot,
+  GoogleDocsSnapshot,
+  LinkedInSnapshot,
   Person,
   SlackSnapshot,
   TickRecord,
@@ -49,6 +53,10 @@ export const TWIN_WORD: Record<TwinName, string> = {
   gmail: "Email",
   slack: "Slack",
   calendar: "Calendar",
+  attio: "CRM",
+  "google-docs": "Docs",
+  "google-ads": "Ads",
+  linkedin: "LinkedIn",
 };
 
 /** One number about the state at close. */
@@ -433,6 +441,145 @@ function calendarEnd(after: CalendarSnapshot, ctx: Ctx): TwinEnd {
   };
 }
 
+/**
+ * The CRM at close. The loose end here is a follow-up nobody closed — a task is
+ * the one thing on this surface that is explicitly still open, and the snapshot
+ * carries its state, its owner and its deadline.
+ *
+ * Records are counted and never listed as open: a CRM row is not outstanding
+ * work, it is the file the work is about, and calling one "open" would invent a
+ * finding out of an account simply existing.
+ */
+function attioEnd(after: AttioSnapshot, ctx: Ctx): TwinEnd {
+  const open = after.tasks.filter((t) => !t.isCompleted);
+  // Soonest deadline first, undated last — an undated follow-up sorts to the
+  // bottom rather than to 1970, which is where `Date.parse` would put it.
+  const due = (t: AttioSnapshot["tasks"][number]): number =>
+    t.deadlineISO ? Date.parse(t.deadlineISO) : Number.POSITIVE_INFINITY;
+  const sorted = [...open].sort((a, b) => due(a) - due(b));
+
+  return {
+    twin: "attio",
+    counts: [
+      { label: agree(after.records.length, "record"), value: after.records.length, flag: false },
+      { label: agree(open.length, "follow-up", " still open"), value: open.length, flag: open.length > 0 },
+    ],
+    open: sorted.slice(0, OPEN_CAP).map((t) => ({
+      key: `task-${t.taskId}`,
+      what: excerpt(t.content, 130),
+      who: t.assignees.map((a) => addressName(a, ctx.cast)).join(", "),
+      when: t.deadlineISO ? stamp(Date.parse(t.deadlineISO), ctx) : "",
+      // A follow-up nobody dated is a different kind of loose end from one that
+      // is late, and the two must not print as the same sentence.
+      why: t.deadlineISO ? "follow-up nobody closed" : "follow-up with no deadline on it",
+    })),
+    more: Math.max(0, open.length - OPEN_CAP),
+    settled: "Every follow-up in the CRM is closed.",
+    scope: null,
+  };
+}
+
+/**
+ * The workspace at close. A document that exists and says nothing is the loose
+ * end: `create_document` makes an empty one and the body arrives afterwards, so
+ * an empty document at the end of the day is work that was started and dropped.
+ */
+function googleDocsEnd(after: GoogleDocsSnapshot, ctx: Ctx): TwinEnd {
+  const empty = after.documents.filter((d) => d.characterCount === 0);
+  return {
+    twin: "google-docs",
+    counts: [
+      { label: agree(after.documents.length, "document"), value: after.documents.length, flag: false },
+      { label: agree(empty.length, "document", " left empty"), value: empty.length, flag: empty.length > 0 },
+    ],
+    open: empty.slice(0, OPEN_CAP).map((d) => ({
+      key: `empty-${d.documentId}`,
+      what: d.title || "(untitled)",
+      who: addressName(d.ownerEmail, ctx.cast),
+      when: "",
+      why: "started, never written",
+    })),
+    more: Math.max(0, empty.length - OPEN_CAP),
+    settled: "Every document has something in it.",
+    scope: null,
+  };
+}
+
+/**
+ * The advertiser account at close. A campaign left PAUSED is the thing a reader
+ * stops at — an agent that paused something at 10:00 and never put it back has
+ * left the money switched off — and a campaign with no budget attached cannot
+ * run at all.
+ */
+function googleAdsEnd(after: GoogleAdsSnapshot): TwinEnd {
+  const paused = after.campaigns.filter((c) => c.status === "PAUSED");
+  const unfunded = after.campaigns.filter((c) => c.status !== "REMOVED" && !c.budgetId);
+
+  return {
+    twin: "google-ads",
+    counts: [
+      { label: agree(after.campaigns.length, "campaign"), value: after.campaigns.length, flag: false },
+      { label: "left paused", value: paused.length, flag: paused.length > 0 },
+    ],
+    open: [
+      ...paused.slice(0, OPEN_CAP).map((c) => ({
+        key: `paused-${c.campaignId}`,
+        what: c.name,
+        who: "",
+        when: "",
+        why: "paused when the day ended",
+      })),
+      ...unfunded.slice(0, SECOND_CAP).map((c) => ({
+        key: `unfunded-${c.campaignId}`,
+        what: c.name,
+        who: "",
+        when: "",
+        why: "no budget attached, so it cannot spend",
+      })),
+    ],
+    more: Math.max(0, paused.length - OPEN_CAP) + Math.max(0, unfunded.length - SECOND_CAP),
+    settled: "No campaign was left paused, and every one of them has a budget.",
+    // Spend is in the snapshot and deliberately not counted here: the capture
+    // covers a reporting window several days wide, so a figure printed under a
+    // heading about one day would be the kind of lie a reader cannot catch.
+    scope: "What these campaigns spent is not counted here: the capture covers a window several days wide, not this day.",
+  };
+}
+
+/**
+ * The feed at close. A post still in DRAFT is the loose end — written and never
+ * published is the same shape of failure as a mail draft never sent.
+ *
+ * Comments are counted, never listed as open, and the scope line says why: the
+ * capture names each comment's post but never its parent, so "nobody answered
+ * this customer" is not a claim this snapshot can support.
+ */
+function linkedInEnd(after: LinkedInSnapshot): TwinEnd {
+  const drafts = after.posts.filter((p) => p.lifecycleState === "DRAFT");
+  return {
+    twin: "linkedin",
+    counts: [
+      { label: agree(after.posts.length, "post"), value: after.posts.length, flag: false },
+      { label: agree(after.comments.length, "comment"), value: after.comments.length, flag: false },
+      { label: agree(drafts.length, "post", " left in draft"), value: drafts.length, flag: drafts.length > 0 },
+    ],
+    open: drafts.slice(0, OPEN_CAP).map((p) => ({
+      key: `draft-${p.postUrn}`,
+      what: excerpt(p.commentary, 130) || "(no text)",
+      // The URN is the only name this surface gives an author, and it is not one
+      // the cast can be matched against.
+      who: p.author,
+      when: "",
+      why: "written, never published",
+    })),
+    more: Math.max(0, drafts.length - OPEN_CAP),
+    settled: "Nothing is left sitting in draft.",
+    scope:
+      "Whether anyone answered a comment cannot be read off this: the capture names each " +
+      "comment's post, never the comment it replies to.",
+  };
+}
+
 // ---------------------------------------------------------------------------
 // What the assessor was shown of it
 // ---------------------------------------------------------------------------
@@ -467,12 +614,33 @@ export interface EndStateInput {
   judge: EpisodeJudgeReport | null;
 }
 
-const TWIN_ORDER: readonly TwinName[] = ["gmail", "slack", "calendar"];
+const TWIN_ORDER: readonly TwinName[] = [
+  "gmail",
+  "slack",
+  "calendar",
+  "attio",
+  "google-docs",
+  "google-ads",
+  "linkedin",
+];
 
 function endOf(after: TwinSnapshot, ctx: Ctx): TwinEnd {
-  if (after.twin === "gmail") return gmailEnd(after, ctx);
-  if (after.twin === "slack") return slackEnd(after, ctx);
-  return calendarEnd(after, ctx);
+  switch (after.twin) {
+    case "gmail":
+      return gmailEnd(after, ctx);
+    case "slack":
+      return slackEnd(after, ctx);
+    case "calendar":
+      return calendarEnd(after, ctx);
+    case "attio":
+      return attioEnd(after, ctx);
+    case "google-docs":
+      return googleDocsEnd(after, ctx);
+    case "google-ads":
+      return googleAdsEnd(after);
+    case "linkedin":
+      return linkedInEnd(after);
+  }
 }
 
 /**
