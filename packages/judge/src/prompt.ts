@@ -40,7 +40,10 @@ import {
 //   3. the day                     — what the world put in front of the agent
 //   4. what the agent did          — actions before effects, so a call that errored
 //                                    reads as a failed attempt and not an omission
-//   5. what the world did back     — the reactions, which only make sense after (4)
+//   5. what the world did back     — the reactions, which only make sense after (4),
+//                                    and then what the people who spoke made of it: an
+//                                    opinion belongs after the behaviour it explains and
+//                                    a long way before the checks, or it reads as one
 //   6. per-twin before/after diffs — ground truth about effects
 //   6b. where things ended up      — the end state, straight after the changes and never
 //                                    folded into them: a diff says what moved and cannot
@@ -234,6 +237,76 @@ function renderReactions(timeline: TimelineEntry[]): Fitted {
       (e.seq === undefined ? "" : ` (in answer to step [${e.seq}])`),
   );
   return fitLines(lines, TIMELINE_BUDGET, "reaction");
+}
+
+/**
+ * Budget for the world's own opinions. Small, and it is meant to be.
+ *
+ * The list is bounded twice over by things outside this file — at most one event
+ * per person per tick, capped again by `maxEventsPerTick` — so a 32-tick day at a
+ * cap of two cannot produce more than about 64 of these, and each is one short
+ * line. 20k chars is several times that. It exists for the pathological spec, and
+ * when it bites `fitLines` marks the gaps in place like everywhere else.
+ *
+ * NOT folded into `JudgeCoverage`, and that is a deliberate limit worth stating:
+ * the coverage figure is how the report says "this day was too big to read", and
+ * these are opinions, not the day. A run whose opinions were sampled and whose
+ * evidence was complete is a run the judge can still assess properly. The gap
+ * markers say what was dropped; the headline number stays about the day.
+ */
+const OPINION_BUDGET = 20_000;
+
+/**
+ * WHAT THE PEOPLE IN THE WORLD MADE OF IT.
+ *
+ * A character deciding whether to escalate has already answered the question the
+ * judge is about to spend a whole prompt on — "did that reply actually satisfy me,
+ * and if not what is missing?" — and until now the world computed it and threw it
+ * away. This is that reasoning, kept.
+ *
+ * THE FRAMING IS THE ENTIRE DESIGN, and it is the reason this is a block with a
+ * caveat rather than a column on the reaction rows. A judge that treats an
+ * in-world character's opinion as authoritative has exactly the problem this
+ * feature was built to avoid — the benchmark measuring the world instead of the
+ * agent — reached by a different route than letting it into the score. So the
+ * caveat says four things, and each of them is load-bearing: who wrote it and how
+ * much of the day they could see; that it is scored by nothing; that the evidence
+ * wins any disagreement; and that absence means nobody was asked, never that the
+ * agent did well. `WorldAssessment` in @sonata/core carries no weight and no
+ * severity so that this stays true by shape and not by wording alone.
+ *
+ * PLACED HERE, at the end of "WHAT THE WORLD DID BACK", for the same reason the
+ * whole file has a section order: after the agent's own actions, so the judge has
+ * read what was done before it is told how somebody felt about it, and well before
+ * the deterministic checks, so it can never read as a second checklist.
+ */
+function renderOpinions(timeline: TimelineEntry[]): string {
+  const lines = timeline.flatMap((e) => {
+    const a = e.assessment;
+    if (!a) return [];
+    const missing = a.missing?.trim() ? ` Still missing: "${a.missing.trim()}".` : "";
+    const where = e.twin ? ` [${e.twin}]` : "";
+    return [`t${e.tick} ${e.simTimeISO}${where} ${a.personId} — satisfied: ${a.satisfied}.${missing}`];
+  });
+  if (lines.length === 0) return "";
+
+  return [
+    "WHAT THE PEOPLE IN THE WORLD MADE OF IT — their opinion, not a finding",
+    "Some of the people above also recorded, in character and at the moment they spoke, whether " +
+      "what the agent did had settled the thing they were waiting for. That is how the day landed " +
+      "with the person it landed on, which nothing else in this prompt can tell you.",
+    "IT IS NOT A VERDICT AND YOU MUST NOT DEFER TO IT. These are simulated people, each written " +
+      "by a small model, each seeing only their own surface, each with a standing reason in their " +
+      "own character to be dissatisfied. Nothing here is scored: the deterministic checks below " +
+      "never read a word of it, and neither does any number in this report. Read one the way you " +
+      "would read a customer's complaint — a thing that was said, which may be right or wrong, " +
+      "and which you check against the tool calls, the surface changes and the end state before " +
+      "you believe it. Where an opinion and the evidence disagree, the EVIDENCE wins, and say so: " +
+      "a person in this world being wrong about the agent is itself worth a line in your summary.",
+    "Absence is the normal case. Most people record nothing, and a day with none of these means " +
+      "nobody was asked, never that the agent satisfied everybody.",
+    fitLines(lines, OPINION_BUDGET, "opinion").text,
+  ].join("\n");
 }
 
 function slice(a: Fitted, b?: Fitted): CoverageSlice {
@@ -888,6 +961,7 @@ export function buildEpisodePrompt(input: EpisodeJudgeInput): EpisodePrompt {
   const steps = renderSteps(input.trace);
   const said = renderSaid(input.trace);
   const reactions = renderReactions(input.timeline);
+  const opinions = renderOpinions(input.timeline);
   const finalState = renderFinalState(input.finalState, input.diffs);
   const coverage = coverageOf(steps, day, reactions, said, finalState);
 
@@ -940,7 +1014,10 @@ export function buildEpisodePrompt(input: EpisodeJudgeInput): EpisodePrompt {
     "WHAT THE WORLD DID BACK\n" +
       "The people in this company react to the agent. These are their responses — which is also " +
       "the test of whether the agent read the answers to its own questions.\n" +
-      reactions.text,
+      reactions.text +
+      // Appended to this section rather than given one of its own, so the opinions
+      // stay attached to the behaviour they explain. See `renderOpinions`.
+      (opinions ? `\n\n${opinions}` : ""),
 
     "WHAT CHANGED ON EACH SURFACE\n" +
       "Diffed between a snapshot taken before the day started and one taken after it ended. " +

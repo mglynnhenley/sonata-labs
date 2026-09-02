@@ -219,6 +219,10 @@ export function buildTimeline(ticks: TickRecord[]): TimelineEntry[] {
         source: "world",
         twin: b.twin,
         text: truncate(b.error ? `${b.summary} (FAILED: ${b.error})` : b.summary, MAX_LINE),
+        // Only an ADAPTED beat carries one: the sender was asked to reword it
+        // because the agent had already acted, so they had a view. An authored
+        // beat is a sentence written before the run started and nobody was asked.
+        ...(b.assessment ? { assessment: b.assessment } : {}),
       });
     }
     for (const s of t.agentSteps) {
@@ -240,6 +244,11 @@ export function buildTimeline(ticks: TickRecord[]): TimelineEntry[] {
         twin: e.twin,
         text: truncate(directorLine(e), MAX_LINE),
         ...(e.becauseSeq === undefined ? {} : { seq: e.becauseSeq }),
+        // The speaker's own read of the agent, carried whole rather than folded
+        // into `text`. It is not something anybody in the world said out loud, and
+        // a timeline row is what was said — the prompt gives it its own block, and
+        // its own caveat, precisely so it cannot be mistaken for one.
+        ...(e.assessment ? { assessment: e.assessment } : {}),
       });
     }
     for (const n of t.notes) {

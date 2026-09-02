@@ -82,6 +82,7 @@ export function scoreRun(run: EpisodeRun, spec: EpisodeSpec, input: ScoreInput =
       : runChecklist({
           criteria: spec.success.checklist,
           world: spec.world,
+          beats: spec.beats,
           refs: refsFromTicks(run.ticks),
           snapshots: run.snapshots,
           audit: input.audit ?? [],

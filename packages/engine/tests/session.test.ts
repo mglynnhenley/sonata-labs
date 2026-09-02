@@ -16,7 +16,14 @@ import {
   type SessionTimer,
 } from "../src/session";
 import { createSessionRegistry, realTimer, sessionDurationMs } from "../src/live";
-import type { DirectorContext, Director } from "../src/director";
+import {
+  createDirector,
+  personPrompt,
+  type CastMember,
+  type DirectorContext,
+  type Director,
+} from "../src/director";
+import type { CompleteJSONOptions } from "../src/llm";
 import { auditRow, beat, fakeAdapter, spec, type FakeAdapter } from "./fixtures";
 
 // A SESSION: the same day, with the agent on the outside.
@@ -99,6 +106,17 @@ function stubDirector(): Director & { seen: DirectorContext[]; next(e: DirectorE
       return Promise.resolve(out);
     },
     lastNote: () => undefined,
+  };
+}
+
+/** The client, cast for something the agent just did — what the director builds. */
+function dana(summary: string): CastMember {
+  return {
+    person: spec().world.cast[1],
+    persona: { personId: "dana", responsiveness: 0.8, replyDelayTicks: 0, surfaces: ["gmail"] },
+    because: "the assistant wrote to you",
+    heard: { at: 1, twin: "gmail", summary, ref: "", byAgent: true },
+    answers: true,
   };
 }
 
@@ -230,6 +248,68 @@ describe("the director reacts to an agent it never called", () => {
     await w.session.stop();
   });
 
+  it("says which step wrote each row, and never what it said", async () => {
+    const w = world();
+    await w.session.start();
+    externalAction(w, { id: 10, ts: 5_000, actionType: "send", targetId: "m-10", summary: "replied to Dana" });
+    await step(w.session, w.timer, TICK_MS);
+
+    // `stepsFromAudit` emits one step per row in order, so the link between a row
+    // and the step that wrote it is an index here, not the ordinal inference a
+    // scored episode has to make. It is what gives a session's director events a
+    // `becauseSeq` at all.
+    const seen = w.director.seen[1];
+    expect(seen.deltaDetail?.get("gmail:10")).toEqual({ seq: 0 });
+
+    // The prose half stays absent, because it does not exist: the request bodies
+    // never reached us. So the world here reads a subject line and reacts to that
+    // — the asymmetry `SessionRecord.caveats` puts on the record.
+    expect(seen.deltaDetail?.get("gmail:10")?.prose).toBeUndefined();
+    expect(personPrompt(seen, dana(seen.deltas[0].summary))).not.toContain("it wrote");
+    await w.session.stop();
+  });
+
+  it("tells two twins' rows apart when their ids collide", async () => {
+    // Each twin numbers its own audit log from 1, so an agent that emails and
+    // posts in the same interval produces gmail row 1 and slack row 1. Keyed on
+    // the number alone one overwrites the other, and the reply the world draws its
+    // causal arrow to is not the one it answered.
+    const gmail = fakeAdapter("gmail");
+    const slack = fakeAdapter("slack");
+    const director = stubDirector();
+    const timer = fakeTimer();
+    const session = createSession({
+      spec: spec({
+        beats: [
+          beat({ id: "b0", tick: 0 }),
+          beat({
+            id: "s0",
+            tick: 0,
+            twin: "slack",
+            kind: "message",
+            payload: { channel: "ops", from: "sam", text: "morning" },
+          }),
+        ],
+      }),
+      adapters: [gmail, slack],
+      compression: COMPRESSION,
+      timer,
+      director,
+      sessionId: "sess-collide",
+    });
+    await session.start();
+    gmail.rows.push(auditRow({ id: 1, twin: "gmail", ts: 5_000, summary: "emailed the client" }));
+    slack.rows.push(auditRow({ id: 1, twin: "slack", ts: 5_000, summary: "posted in #ops" }));
+    await step(session, timer, TICK_MS);
+
+    const seen = director.seen[1];
+    expect(seen.deltas).toHaveLength(2);
+    const seqs = [seen.deltaDetail?.get("gmail:1")?.seq, seen.deltaDetail?.get("slack:1")?.seq];
+    expect(new Set(seqs).size).toBe(2);
+    expect(seqs.every((s) => s !== undefined)).toBe(true);
+    await session.stop();
+  });
+
   it("offers the world a ref for what the agent did, so a reply can attach to it", async () => {
     const w = world();
     await w.session.start();
@@ -287,6 +367,160 @@ describe("the director reacts to an agent it never called", () => {
     expect(w.session.status().tick).toBe(1);
     await w.session.stop();
   });
+
+  it("casts and calls one person at a time here too, off the summary alone", async () => {
+    // The real director, in the loop that has no agent in it. A session has no
+    // prose to cast from — the request bodies never reached us — so the audit
+    // summary is all the world gets, and it has to be enough to work out who was
+    // written to. See `SessionRecord.caveats`.
+    const gmail = fakeAdapter("gmail");
+    const timer = fakeTimer();
+    const asked: string[] = [];
+    const complete = async <T>(opts: CompleteJSONOptions): Promise<T> => {
+      asked.push(opts.prompt);
+      return { events: [] } as T;
+    };
+    const s = spec({
+      // The client's own opening email, which is what puts a gmail twin in the
+      // session at all — and which casts nobody, because nobody reacts to
+      // themselves and the only other person on it is the mailbox owner.
+      beats: [beat({ id: "b0", tick: 0 })],
+      director: {
+        ...spec().director,
+        personas: [{ personId: "dana", responsiveness: 0.8, replyDelayTicks: 0, surfaces: ["gmail"] }],
+      },
+    });
+    const session = createSession({
+      spec: s,
+      adapters: [gmail],
+      compression: COMPRESSION,
+      timer,
+      director: createDirector({ spec: s, complete }),
+      sessionId: "sess-real",
+    });
+    await session.start();
+    // Tick 0 has nothing in it at all, so it buys no model call.
+    expect(asked).toEqual([]);
+
+    gmail.rows.push(
+      auditRow({ id: 1, twin: "gmail", ts: 5_000, summary: 'Sent “Re: SLA” to dana@acme.test' }),
+    );
+    await step(session, timer, TICK_MS);
+
+    expect(asked).toHaveLength(1);
+    expect(asked[0]).toContain("You are Dana Reyes");
+    expect(asked[0]).toContain("Re: SLA");
+    // Still metadata only: nothing here invents a body the session never had.
+    expect(asked[0]).not.toContain("it wrote");
+    await session.stop();
+  });
+});
+
+describe("an adaptive beat, with the agent on the outside", () => {
+  const AUTHORED = "I've had nothing since nine o'clock. The £40k credit still stands.";
+
+  /** The escalation at tick 2, adapting to whether the opener was answered. */
+  const escalation = beat({
+    id: "esc",
+    tick: 2,
+    ref: "escalation",
+    payload: { from: "dana", to: ["priya"], subject: "Where is my freight", body: AUTHORED },
+    adapt: {
+      when: {
+        description: "the assistant already answered the opening email",
+        twin: "gmail",
+        kind: "replied",
+        ref: "opener",
+      },
+      facts: ["£40k credit"],
+    },
+  });
+
+  function adaptiveWorld(rewriteAs: string) {
+    const gmail = fakeAdapter("gmail");
+    const timer = fakeTimer();
+    const rewrites: CompleteJSONOptions[] = [];
+    const complete = async <T>(opts: CompleteJSONOptions): Promise<T> => {
+      if (opts.schemaName !== "beat_rewrite") return { events: [] } as T;
+      rewrites.push(opts);
+      return { text: rewriteAs } as T;
+    };
+    const s = spec({
+      beats: [beat({ id: "b0", tick: 0, ref: "opener" }), escalation],
+      director: {
+        ...spec().director,
+        personas: [{ personId: "dana", responsiveness: 0.8, replyDelayTicks: 0, surfaces: ["gmail"] }],
+      },
+    });
+    const ticks: TickRecord[] = [];
+    const session = createSession({
+      spec: s,
+      adapters: [gmail],
+      compression: COMPRESSION,
+      timer,
+      director: createDirector({ spec: s, complete }),
+      sessionId: "sess-adapt",
+      onTick: (t) => ticks.push(t),
+    });
+    return { gmail, timer, session, rewrites, ticks };
+  }
+
+  it("needs no reordering here: the deltas are already read when the beat fires", async () => {
+    // A scored episode has to go and read the audit log early on purpose, because
+    // it fires beats first. A session reads it first by construction — the agent
+    // has been running the whole time — so an external agent's reply, written
+    // between two ticks, is in hand before the beat that would otherwise deny it.
+    const w = adaptiveWorld("Second time of asking — the £40k credit still needs a date.");
+    await w.session.start();
+    w.gmail.rows.push(
+      auditRow({
+        id: 7,
+        twin: "gmail",
+        ts: 5_000,
+        actionType: "send",
+        targetId: "gmail-c",
+        summary: 'Sent "Re: Where is my freight" to dana@acme.test',
+      }),
+    );
+    await step(w.session, w.timer, TICK_MS);
+    await step(w.session, w.timer, TICK_MS);
+
+    expect(w.rewrites).toHaveLength(1);
+    const note = w.ticks[2].notes.find((n) => n.startsWith("beat esc adapt:")) ?? "";
+    expect(note).toContain("Reworded in character as Dana Reyes");
+    // Same tick, same ref: nothing a criterion binds through has moved.
+    expect(w.ticks[2].beatsFired.map((b) => b.beatId)).toEqual(["esc"]);
+    expect(w.ticks[2].beatsFired[0].ref).toBe("escalation");
+    await w.session.stop();
+  });
+
+  it("rewords without the agent's prose, and says so on the record", async () => {
+    // A session never sees a request body, so the person rewording reacts to the
+    // fact of a reply and never to its content. That is a caveat, not a silence.
+    const w = adaptiveWorld("Second time of asking — the £40k credit still needs a date.");
+    await w.session.start();
+    w.gmail.rows.push(
+      auditRow({ id: 7, twin: "gmail", ts: 5_000, actionType: "send", targetId: "gmail-c", summary: "Sent a reply" }),
+    );
+    await step(w.session, w.timer, TICK_MS);
+    await step(w.session, w.timer, TICK_MS);
+
+    expect(w.rewrites[0].prompt).not.toContain("it wrote:");
+    const record = await w.session.stop();
+    expect(record.caveats.join(" ")).toContain("An adaptive beat still adapts here");
+  });
+
+  it("fires the authored words when the agent has done nothing", async () => {
+    const w = adaptiveWorld("should never be used");
+    await w.session.start();
+    await step(w.session, w.timer, TICK_MS);
+    await step(w.session, w.timer, TICK_MS);
+
+    expect(w.rewrites).toHaveLength(0);
+    expect(w.ticks[2].beatsFired.map((b) => b.beatId)).toEqual(["esc"]);
+    expect(w.ticks[2].notes.join(" ")).toContain("the agent has not");
+    await w.session.stop();
+  });
 });
 
 describe("the record the judge already knows how to read", () => {
@@ -341,6 +575,10 @@ describe("the record the judge already knows how to read", () => {
     expect(kinds).not.toContain("thought");
     expect(record.caveats.join(" ")).toMatch(/reasoning/);
     expect(record.caveats.join(" ")).toMatch(/request body/);
+    // And that the world therefore judged the agent on metadata alone. A scored
+    // episode's director reads the reply itself; a session's cannot, and the gap
+    // has to be the harness's on the record rather than the agent's in the score.
+    expect(record.caveats.join(" ")).toMatch(/metadata alone/);
   });
 
   it("counts the world's own audit rows as nobody's work", async () => {
@@ -562,6 +800,30 @@ describe("lifecycle", () => {
     expect(record.run.error).toBe("twin is down");
     expect(record.run.ticks).toEqual([]);
     expect(timer.pending).toBe(0);
+  });
+
+  it("says on the record that a tick failed, whichever tick it was", async () => {
+    // A tick that throws pushes no record of its own, so the day carries on around
+    // a hole. The message used to be parked on a list that only tick 0 ever read,
+    // so a failure at any later tick left no trace at all — a report claiming a
+    // whole day it did not have.
+    const failing = stubDirector();
+    const realReact = failing.react.bind(failing);
+    failing.react = (ctx) => {
+      if (ctx.tick === 1) throw new Error("the world fell over");
+      return realReact(ctx);
+    };
+    const w = world({ director: failing });
+    await w.session.start();
+    await step(w.session, w.timer, TICK_MS);
+    await step(w.session, w.timer, TICK_MS);
+
+    expect(w.ticks.map((t) => t.tick)).toEqual([0, 2]);
+    expect(w.ticks[1].notes[0]).toBe("tick 1 failed: the world fell over");
+    // And it is said once, not re-printed on every tick from then on.
+    await step(w.session, w.timer, TICK_MS);
+    expect(w.ticks[2].notes.filter((n) => n.includes("tick 1 failed"))).toEqual([]);
+    await w.session.stop();
   });
 
   it("ignores a second start", async () => {

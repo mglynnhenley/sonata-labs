@@ -46,6 +46,7 @@ export interface AttendeeRow {
   email: string;
   display_name: string | null;
   response_status: string;
+  comment: string | null;
   optional: number;
 }
 
@@ -67,6 +68,8 @@ export interface EventAttendee extends EventPerson {
   organizer?: boolean;
   optional?: boolean;
   responseStatus: string;
+  /** Google's `attendees[].comment` — the reason attached to an answer. */
+  comment?: string;
 }
 
 export interface CalendarEventResource {
@@ -258,6 +261,7 @@ export function shapeEvent(
         responseStatus: a.response_status,
       };
       if (a.display_name) attendee.displayName = a.display_name;
+      if (a.comment) attendee.comment = a.comment;
       if (a.optional === 1) attendee.optional = true;
       if (a.email.toLowerCase() === organizerEmail.toLowerCase()) attendee.organizer = true;
       if (a.email.toLowerCase() === opts.ownerEmail.toLowerCase()) attendee.self = true;

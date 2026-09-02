@@ -202,16 +202,36 @@ export function createCalendarAdapter(opts: CalendarAdapterOptions = {}): TwinAd
       }
 
       // An RSVP is somebody else answering an invite — world, not agent — so it
-      // would have to go through the same non-audited route as everything else
-      // the world does. That route takes events, moves and cancels and nothing
-      // else, and the public events.patch would write an audit row attributing
-      // the coworker's answer to the agent, which is the one thing grading reads.
-      // So this fails loudly on the beat rather than quietly on the score.
-      throw new Error(
-        `the calendar twin's POST /api/sandbox/inject handles events, moves and cancels but ` +
-          `not rsvps, so ${emailOf(ctx.world, body.payload.who)} could not answer "` +
-          `${body.payload.eventRef}" — drop the rsvp beat or add an rsvps branch to that route`,
-      );
+      // goes through the same non-audited route as everything else the world
+      // does. Never events.patch: that writes an audit row, and an audit row is
+      // how the engine decides an action was the agent's, so a coworker
+      // declining would be scored as work the agent did.
+      //
+      // The route rejects an address that is not already on the event, which is
+      // deliberate — see the rsvps branch there. A beat naming the wrong person
+      // fails here rather than silently adding them as a guest and handing the
+      // agent a `calendar:invited` pass it never earned.
+      //
+      // `comment` is sent, and that is load-bearing rather than a nicety. The
+      // judge's timeline prints an RSVP's note (`describeBody` in @sonata/judge's
+      // project.ts) on a row with no FAILED marker, under a heading that invites it
+      // to test "whether the agent read the answers to its own questions". So a
+      // note the twin dropped would leave the day's record holding a sentence the
+      // agent had no way to read, and the agent marked down for ignoring it. It
+      // lands on `event_attendees.comment` and comes back out of `shapeEvent`, so
+      // "can't do 2pm, the board runs till 3" is on the event the agent can GET.
+      await http.post("/api/sandbox/inject", {
+        rsvps: [
+          {
+            eventId: target.id,
+            calendarId: target.containerId,
+            email: emailOf(ctx.world, body.payload.who),
+            response: body.payload.response,
+            ...(body.payload.comment ? { comment: body.payload.comment } : {}),
+          },
+        ],
+      });
+      return handle;
     },
 
     // Seeds the cast and the owner's primary calendar, no events — the same

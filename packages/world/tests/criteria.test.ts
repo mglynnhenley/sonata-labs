@@ -4,6 +4,7 @@ import {
   bindCriteria,
   checklistShortfall,
   criteriaRules,
+  CRITERION_SCHEMA,
   type BindingContext,
   type DraftCriterion,
 } from "../src/criteria";
@@ -20,9 +21,9 @@ import {
 /** A day with one email beat, one Slack beat, one channel and two people. */
 const ctx: BindingContext = {
   beats: [
-    { ref: "corsair", twin: "gmail", kind: "email" },
-    { ref: "standup", twin: "slack", kind: "message" },
-    { ref: "review", twin: "calendar", kind: "invite" },
+    { ref: "corsair", twin: "gmail", kind: "email", tick: 4 },
+    { ref: "standup", twin: "slack", kind: "message", tick: 1 },
+    { ref: "review", twin: "calendar", kind: "invite", tick: 9 },
   ],
   channels: ["support", "#finance"],
   person: (ref) =>
@@ -200,6 +201,99 @@ describe("kinds nothing can decide", () => {
   });
 });
 
+// A deadline is the one field on a criterion that can be UNSATISFIABLE rather
+// than merely unbindable: "reply to the t4 email before t1" is refused by every
+// model on every run, for a reason nobody reading the report would ever guess.
+// So it is refused here, where the whole day is in hand and the reason is cheap.
+describe("a criterion that says when", () => {
+  it("takes a deadline that is a later beat, or an absolute tick", () => {
+    expect(bound({ kind: "replied", ref: "corsair", before: "review" }).before).toBe("review");
+    expect(bound({ kind: "replied", ref: "corsair", before: "t7" }).before).toBe("t7");
+    // And on a kind with no beat of its own to be later than.
+    expect(bound({ kind: "sent", target: "Chris Mott", before: "t3" }).before).toBe("t3");
+  });
+
+  it("refuses a deadline that names nothing in the day", () => {
+    expect(why({ kind: "replied", ref: "corsair", before: "teatime" })).toContain(
+      "neither a beat in this day",
+    );
+    // "t" and a number is the only absolute spelling; prose is not a deadline.
+    expect(why({ kind: "replied", ref: "corsair", before: "noon" })).toContain("t12");
+  });
+
+  it("refuses a deadline no agent could ever meet", () => {
+    // corsair arrives at t4. Nothing can answer it before t1.
+    const refused = why({ kind: "replied", ref: "corsair", before: "standup" });
+    expect(refused).toContain("does not fire until t4");
+    expect(refused).toContain("no run could ever satisfy this");
+    expect(why({ kind: "replied", ref: "corsair", before: "t4" })).toContain(
+      "no run could ever satisfy this",
+    );
+    // The tick after it arrives is the first one that can hold the answer.
+    expect(bound({ kind: "replied", ref: "corsair", before: "t5" }).before).toBe("t5");
+  });
+
+  it("refuses a deadline on the two kinds that pass by nothing happening", () => {
+    // Both would turn every pass into an undecided row: an absence has no moment.
+    expect(why({ twin: "any", kind: "no-escalation", before: "review" })).toContain(
+      "no moment to be early or late",
+    );
+    expect(why({ twin: "any", kind: "judged", before: "review" })).toContain(
+      "never given a tick to compare",
+    );
+  });
+
+  it("refuses a deadline on a check that is settled without a clock", () => {
+    // The other half of the same rule. `gmail/labelled` reads the labels the thread
+    // ends the day carrying, and a label does not say when it went on — so the
+    // check passes, the ordering half is unmeasurable, and the row leaves the
+    // score. On a `must` that is not one lost row: an undecided decisive criterion
+    // makes `verdictOutcome` return `inconclusive`, so the day would come back
+    // ungraded for every model on every run while looking like it worked.
+    expect(why({ kind: "labelled", ref: "corsair", expect: "Client", before: "review" })).toContain(
+      "settled without a clock",
+    );
+    expect(why({ kind: "archived", ref: "corsair", before: "review" })).toContain(
+      "settled without a clock",
+    );
+    expect(
+      why({ twin: "slack", kind: "replied", ref: "standup", before: "review" }),
+    ).toContain("settled without a clock");
+    expect(
+      why({ twin: "calendar", kind: "scheduled", expect: "Corsair debrief", before: "t7" }),
+    ).toContain("settled without a clock");
+    // The `any` spellings reach exactly one surface, so they inherit its blindness.
+    expect(
+      why({ twin: "any", kind: "archived", ref: "corsair", before: "review" }),
+    ).toContain("settled without a clock");
+
+    // And the same criteria bind perfectly well WITHOUT a deadline — it is the
+    // `before` that is refused here, never the check.
+    expect(bound({ kind: "labelled", ref: "corsair", expect: "Client" }).before).toBeUndefined();
+    expect(bound({ twin: "slack", kind: "replied", ref: "standup" }).before).toBeUndefined();
+  });
+
+  it("refuses a deadline that could be read two ways", () => {
+    // A checker knows only the beats that FIRED, so a beat called "t9" would be a
+    // beat in a run that got that far and a tick in one that did not.
+    const ambiguous: BindingContext = {
+      ...ctx,
+      beats: [...ctx.beats, { ref: "t9", twin: "gmail", kind: "email", tick: 2 }],
+    };
+    const { unbound } = bindCriteria(
+      [{ description: "d", twin: "gmail", kind: "replied", ref: "corsair", before: "t9", severity: "must" }],
+      ambiguous,
+    );
+    expect(unbound[0]!.why).toContain("two different things");
+  });
+
+  it("leaves a criterion with no deadline exactly as it was", () => {
+    const plain = bound({ kind: "replied", ref: "corsair" });
+    expect(plain.before).toBeUndefined();
+    expect(Object.keys(plain).sort()).toEqual(["description", "kind", "ref", "severity", "twin"]);
+  });
+});
+
 describe("a checklist that scores the day", () => {
   const settled: DraftCriterion = {
     description: "d",
@@ -235,7 +329,7 @@ describe("a checklist that scores the day", () => {
 
 describe("the prompt says what the binder enforces", () => {
   const rules = criteriaRules({
-    beats: [{ ref: "corsair", twin: "gmail", kind: "email" }],
+    beats: [{ ref: "corsair", twin: "gmail", kind: "email", tick: 4 }],
     channels: ["support"],
     people: ["Chris Mott"],
   });
@@ -249,5 +343,27 @@ describe("the prompt says what the binder enforces", () => {
   it("warns about the kinds the binder will refuse", () => {
     expect(rules).toContain("untouched, moved, cancelled");
     expect(rules).toContain("max 4 words");
+  });
+
+  it("describes the deadline the binder will now accept, and every way it refuses one", () => {
+    expect(rules).toContain("`before`");
+    // A model asked for a deadline and shown no schedule picks one at random, and
+    // half of those land before the beat they are supposed to follow.
+    expect(rules).toContain("corsair — the gmail email beat, at t4");
+    expect(rules).toContain("must be LATER than the beat");
+    expect(rules).toContain("never put `before` on no-escalation or judged");
+    // The prompt names the pairs the binder refuses a deadline on, off the same
+    // table the binder reads — a prompt that invites a shape the gate throws away
+    // buys nothing but a repair round-trip.
+    expect(rules).toContain("gmail/labelled");
+    expect(rules).toContain("calendar/scheduled");
+    expect(rules).toContain("slack/replied");
+  });
+
+  it("offers the model the field, so the prompt is not describing a rejected shape", () => {
+    // The half that used to be missed: a prompt that asks for a field the wire
+    // schema forbids burns a retry every time the model does as it was told.
+    expect(CRITERION_SCHEMA.required).toContain("before");
+    expect(CRITERION_SCHEMA.properties.before.type).toBe("string");
   });
 });

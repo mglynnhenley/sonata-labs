@@ -7,6 +7,7 @@ import {
   slackIdOf,
   withheld,
   type ByTwin,
+  type Beat,
   type CalendarSnapshot,
   type Criterion,
   type CriterionKind,
@@ -71,6 +72,21 @@ export interface Escalation {
 }
 
 /**
+ * What a beat minted, plus WHEN it minted it.
+ *
+ * The tick rides on the handle rather than in a map of its own so that every
+ * existing caller — three of them, all passing `refsFromTicks(run.ticks)` — gets
+ * ordering for free the moment this file learns to stamp it. A second input
+ * field would have meant three call sites to update in three packages and a
+ * feature that silently returned "cannot tell" until the last one landed.
+ *
+ * Optional because a caller can build `refs` by hand (the tests do). Absent, a
+ * `before` that names this beat is undecidable rather than wrong — which is the
+ * whole rule this file runs on.
+ */
+export type FiredBeat = InjectedRef & { tick?: number };
+
+/**
  * The criterion a fact was minted for. A module-private symbol: no code outside
  * this file can name the key, so a `Fact` cannot be written as an object literal
  * anywhere but here, and every one that exists carries the id of the criterion its
@@ -117,7 +133,7 @@ export interface FactQuery extends FactVerdicts {
   criterion: Criterion;
   world: WorldSeed;
   /** What the beat named by `criterion.ref` actually created, when it named one. */
-  target?: InjectedRef;
+  target?: FiredBeat;
   /** This twin's snapshots. Absent when the run never touched the surface. */
   before?: TwinSnapshot;
   after?: TwinSnapshot;
@@ -1342,7 +1358,7 @@ export interface ChecklistInput {
   criteria: Criterion[];
   world: WorldSeed;
   /** Beat `ref` → the artefact the twin minted for it, from `BeatFired.handle`. */
-  refs: Record<string, InjectedRef>;
+  refs: Record<string, FiredBeat>;
   snapshots: ByTwin<{ before: TwinSnapshot; after: TwinSnapshot }>;
   /** Every twin's audit rows. Split per twin here, so callers need not pre-group. */
   audit: TwinAuditRow[];
@@ -1377,6 +1393,15 @@ export interface ChecklistInput {
    */
   agentActed?: boolean;
   tickOf?: (ts: number) => number | undefined;
+  /**
+   * The spec's beats, so the checkers can tell what the WORLD put on the calendar
+   * apart from what the AGENT did — see `worldCreatedEvents`.
+   *
+   * Optional only so a caller that predates this still compiles; without it the
+   * three calendar-diff kinds go back to being undecidable on any event a beat
+   * created, which is the defect it exists to close. Pass `spec.beats`.
+   */
+  beats?: readonly Beat[];
 }
 
 export interface ChecklistOutcome {
@@ -1474,7 +1499,7 @@ function isBound(c: Criterion): boolean {
 function harnessDefectFor(
   c: Criterion,
   world: WorldSeed,
-  refs: Record<string, InjectedRef>,
+  refs: Record<string, FiredBeat>,
   truncation: RunTruncation | undefined,
 ): string | null {
   if (c.ref && !refs[c.ref]) {
@@ -1536,6 +1561,146 @@ function whyUnfired(ref: string, truncation: RunTruncation | undefined): string 
   return `${scheduled}, that tick ran, and the engine fired nothing`;
 }
 
+// ---------------------------------------------------------------------------
+// Ordering. `Criterion.before` is the one thing on a checklist that compares two
+// moments; every provider above answers "did this happen?" and stops there. The
+// ingredients were already in place and never put together — every `Fact` may
+// carry the tick that settled it, and every beat lands on a tick of its own.
+// ---------------------------------------------------------------------------
+
+/** Where a deadline points, once `Criterion.before` has been read against the run. */
+type Deadline =
+  | { at: number; label: string }
+  /** Nothing here says when the deadline fell. `why` is our voice, not the agent's. */
+  | { at: null; why: string };
+
+/** The absolute spelling of a deadline: "t12" is the thirteenth tick of the day. */
+const ABSOLUTE_TICK = /^t(\d+)$/i;
+
+/**
+ * Which tick a `before` points at.
+ *
+ * A named beat first, an absolute tick second — the same precedence the authoring
+ * gate enforces, which additionally refuses a `before` that could be read both
+ * ways, so the ambiguity cannot reach here.
+ *
+ * A beat that never fired still has a deadline. The beat schedule is FIXED across
+ * runs by design, so the tick a beat was scheduled for is the same number whether
+ * it landed or not, and `truncation` carries it. Without that, a day cut short at
+ * t10 would make "before the t12 escalation" undecidable for an agent that replied
+ * at t2 — undecidable in the one case where the answer is obvious.
+ */
+function resolveDeadline(
+  before: string,
+  refs: Record<string, FiredBeat>,
+  truncation: RunTruncation | undefined,
+): Deadline {
+  const fired = refs[before];
+  if (fired) {
+    return fired.tick === undefined
+      ? {
+          at: null,
+          why:
+            `this criterion had to happen before beat "${before}", and this run recorded what that ` +
+            `beat created but not which tick it fired on`,
+        }
+      : { at: fired.tick, label: `beat "${before}", at t${fired.tick}` };
+  }
+
+  const unfired = truncation?.unfired.find((b) => b.ref === before);
+  if (unfired) {
+    return {
+      at: unfired.tick,
+      label: `beat "${before}", scheduled for t${unfired.tick} (it never fired: ${unfired.summary})`,
+    };
+  }
+
+  const absolute = ABSOLUTE_TICK.exec(before);
+  if (absolute) {
+    const at = Number(absolute[1]);
+    return { at, label: `t${at}` };
+  }
+
+  return {
+    at: null,
+    why:
+      `this criterion had to happen before "${before}", which is neither a beat this run knows ` +
+      `about nor an absolute tick written as "t12" — nothing here locates the deadline`,
+  };
+}
+
+/**
+ * Ordering, applied to a fact that has ALREADY passed.
+ *
+ * Two rules, and the first one is the whole reason this is a separate step rather
+ * than something each provider does for itself.
+ *
+ * 1. A REFINEMENT, never a replacement. "Replied before the escalation" is a
+ *    conjunction, and an agent that never replied fails the first half — for the
+ *    first half's reason, quoting the first half's evidence. Reporting that as a
+ *    timing failure would put "not until t14" on a row where nothing happened at
+ *    all, and this evidence goes to the judge verbatim and onto the results page.
+ *    So anything that did not pass is returned untouched.
+ * 2. A pass with no tick is NOT a pass. The criterion says "and before X"; a fact
+ *    that records what happened but not when settles half of it. It cannot be
+ *    called late and it must not be called on time, so it leaves the score — the
+ *    same answer `cannotTell` gives everywhere else in this file for "nothing here
+ *    decides this".
+ *
+ * That second case is not marked with `harnessDefectEvidence`, deliberately. The
+ * mark means "the moment this criterion is about never reached the agent", and the
+ * results page prints marked rows under a heading that says exactly that. Here the
+ * moment did reach the agent and the agent acted on it; what is missing is our own
+ * clock reading of when. Borrowing the mark would file a true row under a false
+ * heading. A deadline nothing can LOCATE is the other case, and that one is marked,
+ * because a deadline the run never recorded really is a hole in the artifact.
+ */
+function withDeadline(
+  c: Criterion,
+  fact: Fact,
+  verdicts: FactVerdicts,
+  refs: Record<string, FiredBeat>,
+  truncation: RunTruncation | undefined,
+): Fact {
+  const before = c.before?.trim();
+  if (!before || fact.status !== "passed") return fact;
+  // A fact minted for a DIFFERENT criterion is the swap `resultFor` empties the
+  // row over — c5 publishing c3's proof. Refining one would re-mint it under this
+  // criterion's id and the guard would never fire again, so a stranger's fact is
+  // handed straight on for `resultFor` to reject in its own words.
+  if (fact[MINTED_FOR] !== c.id) return fact;
+
+  const deadline = resolveDeadline(before, refs, truncation);
+  if (deadline.at === null) {
+    return verdicts.cannotTell(
+      harnessDefectEvidence(
+        `${deadline.why}. What it asked for did happen — ${fact.evidence} — so nothing here is the ` +
+          `agent's failure; the timing half of this criterion is one this run cannot settle`,
+      ),
+    );
+  }
+
+  if (fact.tick === undefined) {
+    return verdicts.cannotTell(
+      `what this criterion asked for happened — ${fact.evidence} — but the check that settled it ` +
+        `records no tick, so this run does not know whether it landed before ${deadline.label}. ` +
+        `It cannot be called late and it must not be called on time: the ordering half is unmeasured`,
+    );
+  }
+
+  // Strictly earlier, never "on the same tick". Within a tick the engine fires the
+  // beats, then the director, then the agent — see the tick loop in @sonata/engine
+  // — so an agent action recorded on the deadline's own tick happened AFTER it.
+  if (fact.tick < deadline.at) {
+    return verdicts.holds(`${fact.evidence} — at t${fact.tick}, before ${deadline.label}`, fact.tick);
+  }
+  return verdicts.fails(
+    `this happened, and it happened too late: ${fact.evidence} — not until t${fact.tick}, and this ` +
+      `criterion required it before ${deadline.label}`,
+    fact.tick,
+  );
+}
+
 /**
  * A row for a criterion whose kind was written one way and read another.
  *
@@ -1552,12 +1717,86 @@ function noteAlias(result: CriterionResult, wrote: string): CriterionResult {
   };
 }
 
+/**
+ * The calendar as the WORLD left it, which is the only fair baseline for "did the
+ * agent move this?".
+ *
+ * `snapshots.calendar.before` is captured after seeding and before tick 0, so an
+ * event a BEAT creates during the day is in neither the before-snapshot nor any
+ * other baseline. Both directions of that are wrong, and both were live:
+ *
+ *   - `moved`, `cancelled` and `untouched` on a beat-created event answered
+ *     "was never on the calendar, so nothing could move" — permanently
+ *     undecidable. In client-escalation that is ce-c3 and ce-c4, five of the
+ *     day's eighteen weight, unscorable on every run there has ever been.
+ *   - `scheduled` and `sent` (invited) diff `after` against `before` to find what
+ *     is NEW, so an event a beat created counted as one the AGENT created — a
+ *     criterion passing for work the world did.
+ *
+ * The beat's own payload is the answer, and it needs no second snapshot to get
+ * it: the invite says where the world put the meeting, and `refs` says which id
+ * the twin minted for it. `@sonata/world`'s `WHY_NOT` table refuses to let a
+ * GENERATED day author these three kinds for exactly this reason; the five
+ * hand-written days use them anyway, which is how it stayed invisible.
+ *
+ * Pure, and derived only from the spec and the refs, so re-deriving a saved
+ * artifact offline gives the same answer as the run did.
+ */
+export function worldCreatedEvents(
+  beats: readonly Beat[] | undefined,
+  refs: Record<string, InjectedRef>,
+  world: WorldSeed,
+): CalendarSnapshot["events"] {
+  const out: CalendarSnapshot["events"] = [];
+  for (const beat of beats ?? []) {
+    if (beat.twin !== "calendar" || beat.kind !== "invite" || !beat.ref) continue;
+    const handle = refs[beat.ref];
+    // No handle means the beat never landed. `runTruncation` already reports that
+    // as a beat the agent was never shown; inventing a baseline for it here would
+    // turn "we never gave it to you" into "you failed to move it".
+    if (!handle || handle.twin !== "calendar") continue;
+    const p = beat.payload;
+    out.push({
+      eventId: handle.id,
+      title: p.title,
+      startISO: p.startISO,
+      endISO: p.endISO,
+      organizer: emailOf(world, p.organizer),
+      attendees: p.attendees.map((a) => ({ email: emailOf(world, a), response: "needsAction" })),
+      ...(p.location ? { location: p.location } : {}),
+      status: "confirmed" as const,
+    });
+  }
+  return out;
+}
+
+/** `snapshots` with everything the world put on the calendar folded into `before`. */
+function withWorldBaseline(input: ChecklistInput): ChecklistInput["snapshots"] {
+  const created = worldCreatedEvents(input.beats, input.refs, input.world);
+  if (created.length === 0) return input.snapshots;
+  const pair = input.snapshots.calendar;
+  // Nothing to fold into: the run never captured the calendar, and `missing()`
+  // already reports that as ours rather than as the agent's.
+  if (!pair) return input.snapshots;
+
+  const before = pair.before as CalendarSnapshot;
+  const have = new Set(before.events.map((e) => e.eventId));
+  // Seeded first, beat second: an id already in the snapshot was captured from the
+  // twin itself, which is better evidence than the payload we asked it to store.
+  const merged = [...before.events, ...created.filter((e) => !have.has(e.eventId))];
+  return { ...input.snapshots, calendar: { before: { ...before, events: merged }, after: pair.after } };
+}
+
 export function runChecklist(input: ChecklistInput): ChecklistOutcome {
   const results: CriterionResult[] = [];
   const deferred: Criterion[] = [];
   const written = input.written ?? [];
   const tickOf = input.tickOf ?? (() => undefined);
   const agentActed = input.agentActed ?? written.length > 0;
+  // Done once, here, rather than at each of the four call sites that build a
+  // ChecklistInput: a caller that forgot would silently get the old answer, and
+  // the old answer was a criterion that quietly decided nothing.
+  input = { ...input, snapshots: withWorldBaseline(input) };
 
   for (const raw of input.criteria) {
     const verdicts = verdictsFor(raw);
@@ -1660,25 +1899,23 @@ export function runChecklist(input: ChecklistInput): ChecklistOutcome {
     const provider = FACT_PROVIDERS[routing.provider];
     const twin = c.twin === "any" ? undefined : c.twin;
     const pair = twin ? input.snapshots[twin] : undefined;
-    record(
-      resultFor(
-        c,
-        provider({
-          ...verdicts,
-          criterion: c,
-          world: input.world,
-          target: c.ref ? input.refs[c.ref] : undefined,
-          before: pair?.before,
-          after: pair?.after,
-          snapshots: input.snapshots,
-          audit: twin ? input.audit.filter((r) => r.twin === twin) : input.audit,
-          escalations: input.escalations,
-          written,
-          agentActed,
-          tickOf,
-        }),
-      ),
-    );
+    const fact = provider({
+      ...verdicts,
+      criterion: c,
+      world: input.world,
+      target: c.ref ? input.refs[c.ref] : undefined,
+      before: pair?.before,
+      after: pair?.after,
+      snapshots: input.snapshots,
+      audit: twin ? input.audit.filter((r) => r.twin === twin) : input.audit,
+      escalations: input.escalations,
+      written,
+      agentActed,
+      tickOf,
+    });
+    // Last, and only over a fact the provider already passed: `Criterion.before`
+    // narrows a passing check to "and in time", and can never invent one.
+    record(resultFor(c, withDeadline(c, fact, verdicts, input.refs, input.truncation)));
   }
 
   return { results, deferred };
@@ -1689,12 +1926,19 @@ export function runChecklist(input: ChecklistInput): ChecklistOutcome {
 // run can be re-scored offline with no twin attached.
 // ---------------------------------------------------------------------------
 
-/** Beat `ref` → handle, for every beat that fired and returned one. */
-export function refsFromTicks(ticks: TickRecord[]): Record<string, InjectedRef> {
-  const refs: Record<string, InjectedRef> = {};
+/**
+ * Beat `ref` → handle, for every beat that fired and returned one.
+ *
+ * The tick is stamped on alongside it, because it is free here and unobtainable
+ * later: `BeatFired` carries no time of its own, so the only record of when a beat
+ * landed is which `TickRecord` it is sitting in. It is what `Criterion.before`
+ * compares against.
+ */
+export function refsFromTicks(ticks: TickRecord[]): Record<string, FiredBeat> {
+  const refs: Record<string, FiredBeat> = {};
   for (const t of ticks) {
     for (const b of t.beatsFired) {
-      if (b.ref && b.handle) refs[b.ref] = b.handle;
+      if (b.ref && b.handle) refs[b.ref] = { ...b.handle, tick: t.tick };
     }
   }
   return refs;

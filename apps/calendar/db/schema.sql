@@ -59,6 +59,11 @@ CREATE TABLE IF NOT EXISTS event_attendees (
   email           TEXT NOT NULL,
   display_name    TEXT,
   response_status TEXT NOT NULL DEFAULT 'needsAction', -- needsAction|declined|tentative|accepted
+  -- Google's own `attendees[].comment`: the sentence someone attaches to their
+  -- answer ("can't do 2pm, the board runs till 3"). Without it a declined invite
+  -- is a status with no reason, and the world's most useful calendar move — a
+  -- person saying WHY they cannot make it — is unreadable to the agent.
+  comment         TEXT,
   optional        INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (event_id, email),
   FOREIGN KEY (event_id) REFERENCES events (id) ON DELETE CASCADE

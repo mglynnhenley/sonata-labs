@@ -148,6 +148,40 @@ describe("buildTimeline", () => {
     expect(row.text).toContain("[Dana pushes back]");
   });
 
+  // The timeline is the only projection of a run that reaches the judge, so it is
+  // also the only route by which what a character concluded can get there.
+  it("carries a speaker's own view of the agent through to the judge's input", () => {
+    const assessment = { personId: "dana", satisfied: "partly", missing: "the credit" } as const;
+    const ticks = [tickRecord({ tick: 1, directorEvents: [directorEvent({ assessment })] })];
+    expect(buildTimeline(ticks)[0].assessment).toEqual(assessment);
+  });
+
+  it("carries one off a beat the sender reworded, which is the other way to speak", () => {
+    const assessment = { personId: "dana", satisfied: "no" } as const;
+    const ticks = [
+      tickRecord({
+        tick: 1,
+        beatsFired: [
+          { beatId: "b1", twin: "gmail", kind: "email", summary: "Dana emailed", assessment },
+        ],
+      }),
+    ];
+    expect(buildTimeline(ticks)[0].assessment).toEqual(assessment);
+  });
+
+  it("leaves the field off entirely when nobody offered a view", () => {
+    // Absence is the ordinary case, and it must stay absence: a row carrying an
+    // empty opinion is a row the prompt would have to render as one.
+    const ticks = [
+      tickRecord({
+        tick: 1,
+        beatsFired: [{ beatId: "b1", twin: "gmail", kind: "email", summary: "Dana emailed" }],
+        directorEvents: [directorEvent()],
+      }),
+    ];
+    expect(buildTimeline(ticks).every((r) => !("assessment" in r))).toBe(true);
+  });
+
   // The judge reads these lines as the record of what happened TO the agent, so
   // a surface described by its kind — "attio note" — is a moment the judge
   // cannot reason about at all.
