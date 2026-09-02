@@ -1,5 +1,5 @@
 {
-  "name": "slack-sandbox-clone",
+  "name": "@sonata/slack",
   "version": "0.1.0",
   "private": true,
   "type": "module",
