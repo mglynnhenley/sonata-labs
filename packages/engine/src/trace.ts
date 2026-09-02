@@ -1,5 +1,13 @@
 import { AsyncLocalStorage } from "node:async_hooks";
-import type { AgentTrace, LlmCall, ToolCall, TraceRole, TwinAuditRow, TwinName } from "@sonata/core";
+import type {
+  AgentStep,
+  AgentTrace,
+  LlmCall,
+  ToolCall,
+  TraceRole,
+  TwinAuditRow,
+  TwinName,
+} from "@sonata/core";
 
 // Capture of everything the harness asked a model to do, and everything the agent
 // under test did to the three twins.
@@ -127,6 +135,60 @@ export function attributeActions(trace: AgentTrace, twin: TwinName, rows: TwinAu
   for (let i = 0; i < Math.min(mutations.length, ordered.length); i++) {
     mutations[i].actionIds.push(ordered[i].id);
   }
+}
+
+/**
+ * The identity of an audit row across the three twins.
+ *
+ * `TwinAuditRow.id` is NOT it. Each twin keeps its own `action_log` in its own
+ * `audit.db` with its own `INTEGER PRIMARY KEY AUTOINCREMENT`, so all three id
+ * sequences start at 1 and overlap for the whole run: on the tick an agent both
+ * emails the client and posts in #ops, gmail row 1 and slack row 1 are in the
+ * same delta list. Anything keyed on the number alone silently collapses them —
+ * which put a Slack one-liner under the email that carried the credit amount, and
+ * the client then escalated about a figure it had already been given.
+ */
+export function auditKey(row: Pick<TwinAuditRow, "twin" | "id">): string {
+  return `${row.twin}:${row.id}`;
+}
+
+/**
+ * Which agent step wrote which audit row, keyed by `auditKey`.
+ *
+ * The same pairing `attributeActions` does, over the agent's STEPS rather than
+ * the trace's tool calls, and over one tick's worth rather than the whole run.
+ * The invariant is the one documented above: the agent awaits each tool in turn,
+ * so within a single twin's log the Nth successful mutation is the Nth row.
+ * Across twins it does not hold, so this groups by `AgentStep.twin` first — and
+ * the key it returns stays twin-qualified for the same reason.
+ *
+ * Two callers want the answer for opposite reasons — the director wants the prose
+ * the step carried, the artifact wants `DirectorEvent.becauseSeq` — and both are
+ * wrong in the same way if the pairing slips, so there is one of it.
+ *
+ * Aligned from the END of each list rather than the start. In an ordinary tick
+ * the lists are the same length and it makes no difference. When a twin could not
+ * be read for a tick — `readDeltas` swallows that deliberately — its rows turn up
+ * on the NEXT read alongside that tick's own, and it is the TAIL of that longer
+ * row list that belongs to the steps being held. Aligning from the start would
+ * hand the world the previous tick's words as if they were this tick's.
+ */
+export function pairRowsToSteps(
+  steps: readonly AgentStep[],
+  rows: readonly TwinAuditRow[],
+): Map<string, AgentStep> {
+  const out = new Map<string, AgentStep>();
+  for (const twin of new Set(rows.map((r) => r.twin))) {
+    const mine = rows.filter((r) => r.twin === twin).sort((a, b) => a.id - b.id);
+    // Same predicate as `attributeActions`: a read writes no row, and a call the
+    // twin rejected wrote nothing to pair with.
+    const wrote = steps.filter((s) => s.kind === "tool" && s.isMutation && !s.error && s.twin === twin);
+    const n = Math.min(mine.length, wrote.length);
+    for (let i = 0; i < n; i++) {
+      out.set(auditKey(mine[mine.length - n + i]), wrote[wrote.length - n + i]);
+    }
+  }
+  return out;
 }
 
 /** Read calls, oldest first — what the agent looked at, for the judge. */

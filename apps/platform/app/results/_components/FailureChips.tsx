@@ -26,7 +26,7 @@ export function FailureChipList({
   className?: string;
 }) {
   if (failures.length === 0) {
-    return <span className="text-[12px] text-sn-subtle">none found</span>;
+    return <span className="text-sn-sm text-sn-subtle">none found</span>;
   }
 
   const shown = max ? failures.slice(0, max) : failures;
@@ -65,7 +65,7 @@ export function FailureChipList({
         );
       })}
       {hidden > 0 ? (
-        <span className="text-[11px] text-sn-subtle" title={failures.map((f) => f.label).join(", ")}>
+        <span className="text-sn-xs text-sn-subtle" title={failures.map((f) => f.label).join(", ")}>
           +{hidden}
         </span>
       ) : null}

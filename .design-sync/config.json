@@ -1,0 +1,19 @@
+{
+  "projectId": "4f6eb6f1-134f-47cb-bb97-b6a4e85ad72d",
+  "shape": "package",
+  "pkg": "@sonata/ui",
+  "globalName": "SonataUI",
+  "buildCmd": "node .design-sync/build-css.mjs",
+  "cssEntry": "./.ds-css/sonata-ui.css",
+  "extraFonts": [
+    "../../.design-sync/fonts.css"
+  ],
+  "docsDir": "../../.design-sync/docs",
+  "overrides": {
+    "Modal": {
+      "cardMode": "single",
+      "viewport": "760x560"
+    }
+  },
+  "readmeHeader": ".design-sync/conventions.md"
+}

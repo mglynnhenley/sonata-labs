@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Button, EmptyState, IconArrowRight, IconSearch } from "@sonata/ui";
+import { buttonClasses, EmptyState, IconArrowRight, IconSearch } from "@sonata/ui";
 import { ROUTES } from "@/lib/routes";
 
 // Every route that has no page of its own lands here. Without it Next serves its
@@ -21,20 +21,19 @@ export default function NotFound() {
   return (
     <div className="mx-auto w-full max-w-[720px]">
       <EmptyState
-        icon={<IconSearch size={20} />}
+        icon={<IconSearch size="lg" />}
         title="There's nothing at this address"
         description="The link is wrong, or whatever used to be here has been cleared away. Nothing is broken — you are just somewhere the product does not have a page for."
         action={
-          <Link href={ROUTES.home}>
-            <Button variant="primary" iconRight={<IconArrowRight size={14} />}>
-              Back to the overview
-            </Button>
+          <Link href={ROUTES.home} className={buttonClasses("primary", "md")}>
+            Back to the overview
+            <IconArrowRight size="sm" />
           </Link>
         }
       />
 
       <div className="mt-8">
-        <h2 className="text-[13px] font-medium text-sn-ink">Or pick up where you were</h2>
+        <h2 className="text-sn-base font-medium text-sn-ink">Or pick up where you were</h2>
         <ul className="mt-3 grid gap-2 sm:grid-cols-2">
           {ELSEWHERE.map((place) => (
             <li key={place.href}>
@@ -43,11 +42,11 @@ export default function NotFound() {
                 className="group flex items-center gap-3 rounded-sn-lg border border-sn-line bg-sn-surface px-4 py-3 shadow-sn-xs transition-colors duration-150 ease-sn hover:border-sn-line-strong"
               >
                 <span className="min-w-0 flex-1">
-                  <span className="block text-[13px] font-medium text-sn-ink">{place.label}</span>
-                  <span className="block text-[12px] text-sn-muted">{place.hint}</span>
+                  <span className="block text-sn-base font-medium text-sn-ink">{place.label}</span>
+                  <span className="block text-sn-sm text-sn-muted">{place.hint}</span>
                 </span>
                 <IconArrowRight
-                  size={13}
+                  size="sm"
                   className="shrink-0 text-sn-subtle transition-transform duration-150 ease-sn group-hover:translate-x-0.5 group-hover:text-sn-ink"
                 />
               </Link>

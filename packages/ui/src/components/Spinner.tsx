@@ -13,7 +13,7 @@ export type SpinnerProps = HTMLAttributes<HTMLSpanElement> & {
 
 /** Inherits currentColor so it works on any button variant. */
 export const Spinner = forwardRef<HTMLSpanElement, SpinnerProps>(function Spinner(
-  { size = "sm", label = "Loading", className, ...rest },
+  { size = "sm", label = "Loading…", className, ...rest },
   ref,
 ) {
   const px = SIZES[size];
@@ -24,6 +24,9 @@ export const Spinner = forwardRef<HTMLSpanElement, SpinnerProps>(function Spinne
         height={px}
         viewBox="0 0 24 24"
         fill="none"
+        // Keeps turning under prefers-reduced-motion, where the blanket rule
+        // would otherwise freeze it into a static three-quarter arc.
+        data-loading-motion
         className="animate-spin"
         aria-hidden="true"
         focusable="false"

@@ -224,6 +224,84 @@ describe("buildEpisodePrompt", () => {
 });
 
 // ---------------------------------------------------------------------------
+// What the people in the world made of it.
+//
+// A character deciding whether to escalate has already answered the question the
+// judge spends a whole prompt on. Keeping that answer is cheap; letting the judge
+// treat it as authoritative would hand the benchmark to the world, which is the
+// same defect as letting it into the score by a different route. So the framing is
+// tested as carefully as the plumbing.
+// ---------------------------------------------------------------------------
+
+/** The same day, with one of the people saying what they made of the reply. */
+function withOpinion(): EpisodeJudgeInput {
+  const base = input();
+  return {
+    ...base,
+    timeline: base.timeline.map((e) =>
+      e.source === "director"
+        ? {
+            ...e,
+            assessment: {
+              personId: "dana",
+              satisfied: "partly" as const,
+              missing: "a date for the £40k credit",
+            },
+          }
+        : e,
+    ),
+  };
+}
+
+describe("what the world made of the agent", () => {
+  it("puts the opinion in the prompt, with who held it and what was missing", () => {
+    const { prompt } = buildEpisodePrompt(withOpinion());
+    expect(prompt).toContain("WHAT THE PEOPLE IN THE WORLD MADE OF IT");
+    expect(prompt).toContain("dana — satisfied: partly.");
+    expect(prompt).toContain('Still missing: "a date for the £40k credit".');
+  });
+
+  it("labels it as the world's opinion and refuses the judge permission to defer to it", () => {
+    const { prompt } = buildEpisodePrompt(withOpinion());
+    const block = prompt.slice(prompt.indexOf("WHAT THE PEOPLE IN THE WORLD MADE OF IT"));
+    expect(block).toContain("not a finding");
+    expect(block).toContain("IT IS NOT A VERDICT AND YOU MUST NOT DEFER TO IT");
+    expect(block).toContain("Nothing here is scored");
+    expect(block).toContain("the EVIDENCE wins");
+    // Silence must not read as approval — most speakers never offer a view.
+    expect(block).toContain("Absence is the normal case");
+  });
+
+  it("sits after what the agent did, and well before the checks", () => {
+    // After the behaviour it explains, so the judge has formed its own reading
+    // first; long before the deterministic checks, so it cannot read as a second
+    // checklist. Both are the section order this whole file is built on.
+    const { prompt } = buildEpisodePrompt(withOpinion());
+    const at = (needle: string) => prompt.indexOf(needle);
+    expect(at("WHAT THE AGENT DID")).toBeLessThan(at("WHAT THE PEOPLE IN THE WORLD MADE OF IT"));
+    expect(at("WHAT THE PEOPLE IN THE WORLD MADE OF IT")).toBeLessThan(
+      at("DETERMINISTIC CHECKS ALREADY RUN"),
+    );
+  });
+
+  it("is byte-identical to today's prompt on a day where nobody offered one", () => {
+    // The regression bar: absent is the ordinary case, and a run with none must
+    // behave exactly as a run from before any of this existed.
+    const bare = buildEpisodePrompt(input());
+    expect(bare.prompt).not.toContain("WHAT THE PEOPLE IN THE WORLD MADE OF IT");
+    expect(bare.prompt).not.toContain("satisfied:");
+  });
+
+  it("does not spend the day's coverage budget on opinions", () => {
+    // Coverage is how the report says "this day was too big to read". Opinions are
+    // not the day, and a sampled opinion list must not make a fully-read day look
+    // half-read.
+    const withOne = buildEpisodePrompt(withOpinion());
+    expect(withOne.coverage).toEqual(buildEpisodePrompt(input()).coverage);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Coverage. A judge that reads two thirds of a day and reports as if it read all
 // of it is the defect these guard: the report has to carry what it did not see.
 // ---------------------------------------------------------------------------

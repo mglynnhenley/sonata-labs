@@ -50,11 +50,11 @@ export function HarnessFaults({ report }: { report: HarnessReport }) {
     <Card padding="none" radius="2xl" className="border-sn-gold/45 bg-sn-gold-soft/35">
       <div className="flex items-start gap-4 p-5">
         <div className="min-w-0 flex-1">
-          <h2 className="flex items-center gap-2 text-[14px] font-medium text-sn-gold-ink">
-            <IconAlert size={15} />
+          <h2 className="flex items-center gap-2 text-sn-md font-medium text-sn-gold-ink">
+            <IconAlert size="md" />
             Ours, not the agent&rsquo;s
           </h2>
-          <p className="mt-0.5 max-w-[80ch] text-[13px] leading-[20px] text-sn-muted">
+          <p className="mt-0.5 max-w-[80ch] text-sn-base text-sn-muted">
             Defects in this harness, separated from the model&rsquo;s record and counted nowhere in
             it. Everything else on this page is the agent&rsquo;s.
           </p>
@@ -88,8 +88,8 @@ function Section({
 }) {
   return (
     <section className="px-5 py-4">
-      <h3 className="text-[13px] font-medium text-sn-ink">{title}</h3>
-      <p className="mt-1 max-w-[78ch] text-[13px] leading-[20px] text-sn-muted">{lead}</p>
+      <h3 className="text-sn-base font-medium text-sn-ink">{title}</h3>
+      <p className="mt-1 max-w-[78ch] text-sn-base text-sn-muted">{lead}</p>
       {children}
     </section>
   );
@@ -126,22 +126,22 @@ function ShortDay({ day }: { day: NonNullable<HarnessReport["day"]> }) {
     >
       {day.missed.length > 0 ? (
         <>
-          <p className="mt-3 text-[12px] font-medium tracking-[0.04em] text-sn-subtle uppercase">
+          <p className="mt-3 text-sn-sm font-medium tracking-[0.04em] text-sn-subtle uppercase">
             What it was never shown
           </p>
           <ul className="mt-1.5 space-y-1.5">
             {day.missed.map((m) => (
-              <li key={m.id} className="flex flex-wrap items-baseline gap-x-2.5 text-[13px] leading-[20px]">
+              <li key={m.id} className="flex flex-wrap items-baseline gap-x-2.5 text-sn-base leading-[20px]">
                 <span data-numeric className="w-[44px] shrink-0 text-sn-subtle">
                   {m.clock}
                 </span>
                 <span className="w-[62px] shrink-0 text-sn-subtle">{TWIN_LABEL[m.twin]}</span>
                 <span className="min-w-0 flex-1 text-sn-ink">{m.what}</span>
-                <span className="text-[11.5px] text-sn-subtle">{WHY_UNFIRED[m.why]}</span>
+                <span className="text-sn-xs text-sn-subtle">{WHY_UNFIRED[m.why]}</span>
               </li>
             ))}
           </ul>
-          <p className="mt-3 max-w-[78ch] text-[13px] leading-[20px] text-sn-muted">
+          <p className="mt-3 max-w-[78ch] text-sn-base text-sn-muted">
             Nothing that depended on {day.missed.length === 1 ? "that moment" : "those moments"} is
             the agent&rsquo;s failure. It was never shown{" "}
             {day.missed.length === 1 ? "it" : "them"}.
@@ -197,13 +197,13 @@ function PartialSight({ sight }: { sight: Extract<JudgeSight, { kind: "partial" 
         {sight.missing.map((slice) => (
           <li
             key={slice.what}
-            className="flex flex-wrap items-baseline gap-x-2.5 rounded-sn-lg border border-sn-gold/30 bg-sn-surface/70 px-3 py-2 text-[13px] leading-[19px]"
+            className="flex flex-wrap items-baseline gap-x-2.5 rounded-sn-lg border border-sn-gold/30 bg-sn-surface/70 px-3 py-2 text-sn-base leading-[19px]"
           >
             <span className="min-w-0 flex-1 text-sn-ink">{slice.what}</span>
             <span data-numeric className="text-sn-muted">
               {slice.shown} of {slice.total}
             </span>
-            <span className="w-[76px] shrink-0 text-right text-[11.5px] text-sn-gold-ink">
+            <span className="w-[76px] shrink-0 text-right text-sn-xs text-sn-gold-ink">
               {slice.total - slice.shown} unread
             </span>
           </li>
@@ -297,10 +297,10 @@ function Row({
             {badge}
           </Badge>
         ) : null}
-        <span className="min-w-0 flex-1 text-[13px] leading-[19px] text-sn-ink">{title}</span>
-        <span className="shrink-0 text-[11.5px] text-sn-gold-ink">{tag}</span>
+        <span className="min-w-0 flex-1 text-sn-base text-sn-ink">{title}</span>
+        <span className="shrink-0 text-sn-xs text-sn-gold-ink">{tag}</span>
         <IconChevronDown
-          size={14}
+          size="sm"
           className={cn(
             "mt-0.5 shrink-0 text-sn-subtle transition-transform duration-150 ease-sn",
             open && "rotate-180",
@@ -309,13 +309,13 @@ function Row({
       </button>
       {open ? (
         <div className="animate-sn-slide-in border-t border-sn-gold/25 px-3 py-2.5">
-          <p className="text-[12.5px] leading-[19px] text-sn-muted">{sentence(why)}</p>
+          <p className="text-sn-sm leading-[19px] text-sn-muted">{sentence(why)}</p>
           {evidence && evidence.length > 0 ? (
             <ul className="mt-2 space-y-1">
               {evidence.map((quote, i) => (
                 <li
                   key={i}
-                  className="border-l-2 border-sn-line-strong pl-2.5 text-[12.5px] leading-[19px] text-sn-subtle"
+                  className="border-l-2 border-sn-line-strong pl-2.5 text-sn-sm leading-[19px] text-sn-subtle"
                 >
                   {quote}
                 </li>

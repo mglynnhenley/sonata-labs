@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Button,
+  buttonClasses,
   Card,
   Chip,
   IconAlert,
@@ -14,6 +15,7 @@ import {
   cn,
   useToast,
 } from "@sonata/ui";
+import { scrollBehavior } from "../../_components/scrollBehavior";
 import { useGo } from "../../_components/useGo";
 import { apiSend } from "../../api/_lib/client";
 import {
@@ -53,15 +55,15 @@ function PreviewFailure({
   onUse: (template: TemplateSummary) => void;
 }) {
   return (
-    <div className="flex flex-col gap-5">
+    <div className="sn-stack-block">
       <div className="flex items-start gap-2.5 rounded-sn-lg border border-sn-failed-line bg-sn-failed-soft px-4 py-3">
-        <IconAlert size={15} className="mt-0.5 shrink-0 text-sn-danger" />
-        <p className="text-[13px] leading-[20px] text-sn-failed-ink">{message}</p>
+        <IconAlert size="md" className="mt-0.5 shrink-0 text-sn-danger" />
+        <p className="text-sn-base text-sn-failed-ink">{message}</p>
       </div>
 
       <Card padding="lg">
-        <h3 className="font-display text-[21px] text-sn-ink">Run one of the shipped days instead</h3>
-        <p className="mt-1.5 max-w-[70ch] text-[13px] leading-[20px] text-sn-muted">
+        <h3 className="font-display text-sn-xl text-sn-ink">Run one of the shipped days instead</h3>
+        <p className="mt-1.5 max-w-[70ch] text-sn-base text-sn-muted">
           Each is a whole company with its own day. None of them is the business you described, and
           choosing one is choosing to run that company — which is a perfectly good way to see what
           Sonata does, as long as it is your decision and not ours.
@@ -73,8 +75,8 @@ function PreviewFailure({
               className="flex flex-wrap items-start gap-x-4 gap-y-2 py-3.5 first:pt-0 last:pb-0"
             >
               <span className="min-w-[16rem] flex-1">
-                <span className="block text-[13.5px] font-medium text-sn-ink">{template.title}</span>
-                <span className="mt-0.5 block text-[12.5px] leading-[19px] text-sn-subtle">
+                <span className="block text-sn-base font-medium text-sn-ink">{template.title}</span>
+                <span className="mt-0.5 block text-sn-sm leading-[19px] text-sn-subtle">
                   {template.description}
                 </span>
               </span>
@@ -83,7 +85,7 @@ function PreviewFailure({
                 variant="secondary"
                 loading={busyId === template.id}
                 disabled={busyId !== null && busyId !== template.id}
-                iconRight={<IconArrowRight size={13} />}
+                iconRight={<IconArrowRight size="sm" />}
                 onClick={() => onUse(template)}
               >
                 Run this day
@@ -152,7 +154,7 @@ export function NewScenarioComposer({ templates }: NewScenarioComposerProps) {
         { brief: brief.trim(), ticks },
       );
       setDraft(next);
-      window.scrollTo({ top: 0, behavior: "smooth" });
+      window.scrollTo({ top: 0, behavior: scrollBehavior() });
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -197,7 +199,7 @@ export function NewScenarioComposer({ templates }: NewScenarioComposerProps) {
 
   if (draft) {
     return (
-      <div className="flex flex-col gap-8">
+      <div className="sn-stack-section">
         <PageHeader
           eyebrow="Step 2 of 2 · Preview"
           title="Here is what will be built"
@@ -213,7 +215,7 @@ export function NewScenarioComposer({ templates }: NewScenarioComposerProps) {
               <Button
                 variant="primary"
                 size="lg"
-                iconRight={<IconArrowRight size={15} />}
+                iconRight={<IconArrowRight size="md" />}
                 loading={creating}
                 onClick={() => void create()}
               >
@@ -238,14 +240,14 @@ export function NewScenarioComposer({ templates }: NewScenarioComposerProps) {
         <ScenarioPreview draft={draft} />
 
         <div className="flex flex-wrap items-center justify-end gap-3 border-t border-sn-line pt-6">
-          <p className="mr-auto max-w-[52ch] text-[13px] leading-[20px] text-sn-muted">
+          <p className="mr-auto max-w-[52ch] text-sn-base text-sn-muted">
             Creating it saves the company and the day. You can run it straight away, and run it
             again later on a different model to compare.
           </p>
           <Button
             variant="primary"
             size="lg"
-            iconRight={<IconArrowRight size={15} />}
+            iconRight={<IconArrowRight size="md" />}
             loading={creating}
             onClick={() => void create()}
           >
@@ -257,20 +259,20 @@ export function NewScenarioComposer({ templates }: NewScenarioComposerProps) {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-[820px] flex-col gap-8">
+    <div className="sn-stack-section mx-auto w-full max-w-[820px]">
       <PageHeader
         eyebrow="Step 1 of 2 · Describe"
         title="New scenario"
         subtitle="Say what the business is and what happens today, in plain language. Sonata writes the people, their inbox, their channels and their calendar — and the day that unfolds inside them."
         actions={
-          <Button variant="ghost" onClick={(e) => go(e, "/scenarios")}>
+          <a href="/scenarios" onClick={(e) => go(e, "/scenarios")} className={buttonClasses("ghost", "md")}>
             Cancel
-          </Button>
+          </a>
         }
       />
 
       <Card padding="lg">
-        <label htmlFor="brief" className="text-[13px] font-medium text-sn-ink">
+        <label htmlFor="brief" className="text-sn-base font-medium text-sn-ink">
           Describe the business and what happens today
         </label>
         <textarea
@@ -284,19 +286,19 @@ export function NewScenarioComposer({ templates }: NewScenarioComposerProps) {
           placeholder="A 12-person fintech, the week before an audit. This morning the biggest client escalates about a missed SLA, and the answer is buried in a Slack thread nobody has read."
           className={cn(
             "mt-2.5 w-full resize-y rounded-sn-lg border border-sn-line bg-sn-surface px-4 py-3.5",
-            "text-[15px] leading-[24px] text-sn-ink shadow-sn-xs placeholder:text-sn-subtle",
+            "text-sn-md leading-[24px] text-sn-ink shadow-sn-xs placeholder:text-sn-subtle",
             "transition-colors duration-150 ease-sn hover:border-sn-line-strong disabled:opacity-60",
           )}
         />
 
         <div className="mt-4">
-          <p className="text-[12px] text-sn-subtle">Or start from one of these:</p>
+          <p className="text-sn-sm text-sn-subtle">Or start from one of these:</p>
           <div className="mt-2 flex flex-wrap gap-2">
             {BRIEF_EXAMPLES.map((example) => (
               <Chip
                 key={example.label}
                 tone="gold"
-                icon={<IconSpark size={12} />}
+                icon={<IconSpark size="xs" />}
                 onClick={() => useExample(example.text)}
               >
                 {example.label}
@@ -305,8 +307,8 @@ export function NewScenarioComposer({ templates }: NewScenarioComposerProps) {
           </div>
         </div>
 
-        <div className="mt-7 border-t border-sn-line pt-5">
-          <p className="text-[13px] font-medium text-sn-ink">How long the day should run</p>
+        <div className="mt-6 border-t border-sn-line pt-5">
+          <p className="text-sn-base font-medium text-sn-ink">How long the day should run</p>
           <div className="mt-2.5 flex flex-wrap gap-2">
             {DAY_LENGTHS.map((length) => (
               <button
@@ -321,8 +323,17 @@ export function NewScenarioComposer({ templates }: NewScenarioComposerProps) {
                     : "border-sn-line bg-sn-surface text-sn-muted hover:border-sn-line-strong",
                 )}
               >
-                <span className="block text-[13px] font-medium">{length.label}</span>
-                <span className="block text-[11.5px] text-sn-subtle">{length.hint}</span>
+                <span className="block text-sn-base font-medium">{length.label}</span>
+                {/* Follows the button's state: neutral grey on the pale petrol
+                    of a selected chip measures 4.26:1, under AA at 11px. */}
+                <span
+                  className={cn(
+                    "block text-sn-xs",
+                    ticks === length.ticks ? "text-sn-primary-ink/85" : "text-sn-subtle",
+                  )}
+                >
+                  {length.hint}
+                </span>
               </button>
             ))}
           </div>
@@ -339,11 +350,11 @@ export function NewScenarioComposer({ templates }: NewScenarioComposerProps) {
           </div>
         ) : null}
 
-        <div className="mt-7 flex flex-wrap items-center gap-4 border-t border-sn-line pt-5">
+        <div className="mt-6 flex flex-wrap items-center gap-4 border-t border-sn-line pt-5">
           <Button
             size="lg"
             variant="primary"
-            icon={<IconSpark size={14} />}
+            icon={<IconSpark size="sm" />}
             loading={working}
             disabled={tooShort}
             onClick={() => void preview()}
@@ -351,12 +362,12 @@ export function NewScenarioComposer({ templates }: NewScenarioComposerProps) {
             Preview what gets built
           </Button>
           {working ? (
-            <span className="flex items-center gap-2.5 text-[13px] text-sn-muted">
+            <span className="flex items-center gap-2.5 text-sn-base text-sn-muted">
               <Spinner size="sm" />
               {WORKING_LINES[line]}
             </span>
           ) : (
-            <p className="text-[12px] leading-[18px] text-sn-subtle">
+            <p className="text-sn-sm text-sn-subtle">
               {tooShort
                 ? "A sentence or two is enough — who the company is, and what goes wrong today."
                 : "Nothing is written until you have seen the preview and pressed Create."}

@@ -1,0 +1,31 @@
+/* Satoshi, vendored — the app loads these through next/font/local, which the
+   design bundle doesn't have, so the @font-face rules live here and design-sync
+   copies the woff2s into fonts/. Paths resolve relative to this file. */
+@font-face {
+  font-family: "Satoshi";
+  src: url("../packages/ui/src/fonts/Satoshi-400.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Satoshi";
+  src: url("../packages/ui/src/fonts/Satoshi-500.woff2") format("woff2");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Satoshi";
+  src: url("../packages/ui/src/fonts/Satoshi-700.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Satoshi";
+  src: url("../packages/ui/src/fonts/Satoshi-900.woff2") format("woff2");
+  font-weight: 900;
+  font-style: normal;
+  font-display: swap;
+}

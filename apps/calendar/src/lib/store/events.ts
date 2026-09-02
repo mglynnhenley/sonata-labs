@@ -94,6 +94,68 @@ export function replaceAttendees(
   }
 }
 
+/**
+ * One invitee answers their invitation.
+ *
+ * A targeted UPDATE, and it must stay one. `replaceAttendees` above is the only
+ * other way to write a response status, and it DELETEs the whole guest list
+ * before re-inserting it — so a caller that knows only the person answering
+ * would wipe everybody else's row. The judge's `calendar:invited` reads the
+ * final attendee list, so recording Dana's "declined" that way would report the
+ * agent as having uninvited Priya from a meeting it correctly booked, and the
+ * calendar diff would show attendees removed that nobody removed.
+ *
+ * Never inserts. An address that is not already on the event returns false
+ * rather than becoming a guest: an attendee row minted here would read to
+ * `calendar:invited` as an invitation the agent sent, and the world quietly
+ * satisfying the agent's criteria is the failure this whole route exists to
+ * avoid.
+ *
+ * Matched case-insensitively, like `declinedEventIds` below and like Calendar
+ * itself, because the address arrives from the world's cast rather than from
+ * the row: a seed that wrote `Dana@acme.test` must not make her RSVP vanish.
+ */
+export function setAttendeeResponse(
+  db: Database,
+  calendarId: string,
+  eventId: string,
+  email: string,
+  responseStatus: string,
+  /**
+   * The sentence attached to the answer, or undefined to leave whatever is there.
+   *
+   * Undefined and empty are deliberately different: a `declined` with no comment
+   * must not wipe the reason a previous answer gave, but somebody who changes
+   * their mind and clears their note should be able to. Passing `""` clears it.
+   */
+  comment?: string,
+  at?: number,
+): boolean {
+  const { changes } = db
+    .prepare(
+      `UPDATE event_attendees SET response_status = ?, comment = COALESCE(?, comment)
+       WHERE event_id = ? AND email = ? COLLATE NOCASE
+         AND EXISTS (SELECT 1 FROM events
+                     WHERE id = event_attendees.event_id AND calendar_id = ?)`,
+    )
+    .run(responseStatus, comment ?? null, eventId, email, calendarId);
+  if (!changes) return false;
+  // Bumped here rather than by the caller because this column is the only thing
+  // the event resource advertises its own freshness from: `etag` and `updated`
+  // are both derived from it (see `etagFor` and `shapeEvent`), and the events
+  // *list* etag is the max of it across the rows (`list.ts`). Leave it alone and
+  // an agent re-reading the event after Dana answers is told by both fields that
+  // nothing has changed since it last looked, while the guest list has. The twin
+  // sends no 304 today — nothing here parses If-None-Match — so the lie is in the
+  // resource, not in the status code.
+  db.prepare("UPDATE events SET updated_ms = ? WHERE calendar_id = ? AND id = ?").run(
+    at ?? Date.now(),
+    calendarId,
+    eventId,
+  );
+  return true;
+}
+
 export interface EventQuery {
   calendarId: string;
   timeMinMs?: number;

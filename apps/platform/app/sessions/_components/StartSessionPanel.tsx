@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import {
   Button,
+  buttonClasses,
   Card,
   Chip,
   EmptyState,
@@ -27,7 +28,7 @@ import { realDuration } from "../_lib/pulse";
 // decides about it is what to call it on the record.
 
 const CONTROL =
-  "h-9 w-full rounded-sn-md border border-sn-line bg-sn-surface px-2.5 text-[13px] text-sn-ink " +
+  "h-9 w-full rounded-sn-md border border-sn-line bg-sn-surface px-2.5 text-sn-base text-sn-ink " +
   "shadow-sn-xs transition-colors duration-150 ease-sn hover:border-sn-line-strong";
 
 export type StartSessionPanelProps = {
@@ -49,7 +50,7 @@ export function StartSessionPanel({ scenarios, starting, onStart }: StartSession
   if (scenarios.length === 0) {
     return (
       <EmptyState
-        icon={<IconLayers size={20} />}
+        icon={<IconLayers size="lg" />}
         title="A session needs a scenario"
         description="A scenario is the day the world will play at your agent: who is in the company, what lands and when, and what counts as having done the job. Save one and this panel fills in."
         hints={[
@@ -57,10 +58,9 @@ export function StartSessionPanel({ scenarios, starting, onStart }: StartSession
           "Or describe your own business in a sentence and let Sonata write it",
         ]}
         action={
-          <a href="/scenarios">
-            <Button variant="primary" iconRight={<IconArrowRight size={14} />}>
-              Browse scenarios
-            </Button>
+          <a href="/scenarios" className={buttonClasses("primary", "md")}>
+            Browse scenarios
+            <IconArrowRight size="sm" />
           </a>
         }
       />
@@ -71,10 +71,14 @@ export function StartSessionPanel({ scenarios, starting, onStart }: StartSession
   const perTick = scenario ? duration / Math.max(1, scenario.ticks) : 0;
 
   return (
-    <Card padding="lg">
+    <Card
+      padding="lg"
+      title="Start a session"
+      subtitle="The scenario decides what happens and what counts as done. Nobody plays the agent — that is the seat your own is sitting in."
+    >
       <div className="grid gap-6 lg:grid-cols-2">
         <div>
-          <label htmlFor="session-scenario" className="text-[13px] font-medium text-sn-ink">
+          <label htmlFor="session-scenario" className="text-sn-base font-medium text-sn-ink">
             The day to play
           </label>
           <select
@@ -89,7 +93,7 @@ export function StartSessionPanel({ scenarios, starting, onStart }: StartSession
               </option>
             ))}
           </select>
-          <p className="mt-2 line-clamp-2 text-[12px] leading-[18px] text-sn-muted">
+          <p className="mt-2 line-clamp-2 text-sn-sm text-sn-muted">
             {scenario?.story ?? "Pick the day your agent will be dropped into."}
           </p>
           {scenario ? (
@@ -104,7 +108,7 @@ export function StartSessionPanel({ scenarios, starting, onStart }: StartSession
         </div>
 
         <div>
-          <label htmlFor="session-agent" className="text-[13px] font-medium text-sn-ink">
+          <label htmlFor="session-agent" className="text-sn-base font-medium text-sn-ink">
             What to call your agent
           </label>
           <input
@@ -114,7 +118,7 @@ export function StartSessionPanel({ scenarios, starting, onStart }: StartSession
             placeholder="openclaw@laptop"
             onChange={(e) => setAgentLabel(e.target.value)}
           />
-          <p className="mt-2 text-[12px] leading-[18px] text-sn-muted">
+          <p className="mt-2 text-sn-sm text-sn-muted">
             A label, not a model. Sonata never calls your agent and cannot know what it runs on, so
             this is whatever you say it is — and it is what the result is filed under.
           </p>
@@ -122,8 +126,8 @@ export function StartSessionPanel({ scenarios, starting, onStart }: StartSession
       </div>
 
       <div className="mt-6">
-        <p className="text-[13px] font-medium text-sn-ink">How fast the world plays</p>
-        <p className="mt-1 max-w-[70ch] text-[12px] leading-[18px] text-sn-muted">
+        <p className="text-sn-base font-medium text-sn-ink">How fast the world plays</p>
+        <p className="mt-1 max-w-[70ch] text-sn-sm text-sn-muted">
           The day runs on a wall clock at this rate whether or not your agent is looking. Faster is a
           shorter wait and less time between beats for the agent to notice anything.
         </p>
@@ -145,12 +149,20 @@ export function StartSessionPanel({ scenarios, starting, onStart }: StartSession
                 )}
               >
                 <span className="flex items-baseline justify-between gap-2">
-                  <span className="text-[13px] font-medium">{option.label}</span>
-                  <span data-numeric className="text-[12px]">
+                  <span className="text-sn-base font-medium">{option.label}</span>
+                  <span data-numeric className="text-sn-sm">
                     {realDuration(ms)}
                   </span>
                 </span>
-                <span className="mt-0.5 block text-[11.5px] leading-[17px] text-sn-subtle">
+                {/* The hint has to follow the button's own state. Hardcoded
+                    neutral grey measures 4.26:1 once the surface turns pale
+                    petrol, which is under AA at 11px. */}
+                <span
+                  className={cn(
+                    "mt-0.5 block text-sn-xs",
+                    on ? "text-sn-primary-ink/85" : "text-sn-subtle",
+                  )}
+                >
                   {option.hint}
                 </span>
               </button>
@@ -163,7 +175,7 @@ export function StartSessionPanel({ scenarios, starting, onStart }: StartSession
         <Button
           size="lg"
           variant="primary"
-          icon={<IconPlay size={13} />}
+          icon={<IconPlay size="sm" />}
           loading={starting}
           disabled={!episodeId}
           onClick={() =>
@@ -176,7 +188,7 @@ export function StartSessionPanel({ scenarios, starting, onStart }: StartSession
         >
           Start the world
         </Button>
-        <p className="max-w-[54ch] text-[12px] leading-[18px] text-sn-subtle">
+        <p className="max-w-[54ch] text-sn-sm text-sn-subtle">
           {scenario
             ? `${scenario.ticks} intervals of ${scenario.simMinutesPerTick} simulated minutes — about ${realDuration(duration)} of real time, a beat every ${realDuration(perTick)}. The clones are reset and reloaded first, so connect your agent once the day is running.`
             : "Pick a day to see how long it takes."}

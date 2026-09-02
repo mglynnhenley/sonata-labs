@@ -234,10 +234,65 @@ export type BeatBody =
 /** Every `kind` string in use, across all twins. */
 export type BeatKind = BeatBody["kind"];
 
+/**
+ * What the agent may already have done by the time a beat fires — asked in the
+ * SCORER's words, and never in a second vocabulary of the world's own.
+ *
+ * Every field here is picked off `Criterion` below, so the question goes to the
+ * same fact providers in @sonata/judge that grade the run. That is the whole
+ * design and not a convenience: if the world had its own idea of "replied", a day
+ * could escalate about silence that the checklist was about to score as a reply,
+ * and the report would contradict itself in one paragraph. One definition of
+ * "replied", two readers of it.
+ *
+ * It is NOT a `Criterion`, and the two missing fields are why. `weight` and
+ * `severity` are absent because this is a question and never a score: a condition
+ * that could carry a weight is a condition somebody eventually pastes into a
+ * checklist, and the world's reading of the agent must not move the number. See
+ * "Don't let a character's opinion move the score" in the plan.
+ */
+export interface BeatCondition
+  extends Pick<Criterion, "twin" | "kind" | "ref" | "target" | "expect" | "before"> {
+  /** One line naming what is being asked. Goes on the tick record verbatim. */
+  description: string;
+}
+
+/**
+ * How a beat's WORDING adapts to what the agent actually did.
+ *
+ * Never WHETHER it fires. The beat happens on its own tick in every run, whatever
+ * the agent did — that is the property that makes two models comparable, and it is
+ * also just true of people: nobody goes silent because you replied, they chase
+ * with different words. What adapts is the sentence, and only when `when` says in
+ * code that the agent has already acted.
+ *
+ * `facts` is the safety catch. A beat is often the only place a number is ever
+ * said — the £40k credit, the 15:00 machine — and every criterion downstream
+ * depends on the agent having been told it. So the beat declares what it must
+ * still get across whatever words it uses, and a rewrite that loses one is thrown
+ * away in favour of the authored text. An empty list is a real statement — "no
+ * fact here is load-bearing" — and it means a rewrite is accepted on its face.
+ */
+export interface BeatAdaptation {
+  when: BeatCondition;
+  /** Substrings the new wording must still contain, verbatim, or it is discarded. */
+  facts: string[];
+}
+
 export interface BeatMeta {
   id: string;
   /** Which tick this fires on, 0-based. */
   tick: number;
+  /**
+   * Reword this beat when the agent has already done what `when` describes. The
+   * tick, the sender, the surface, the thread and the beat's `ref` are untouched,
+   * so every criterion binds exactly as it does without this field.
+   *
+   * Absent — which is every beat shipped today — is not a code path: the engine
+   * checks for it before it does anything at all, so a beat without it fires the
+   * bytes its author wrote and costs no model call and no extra read.
+   */
+  adapt?: BeatAdaptation;
   /**
    * Name this beat so later beats and criteria can point at what it created —
    * "the escalation email", "the 2pm review". The engine records the real
@@ -387,11 +442,49 @@ export function asCriterionKind(value: string): CriterionKind | null {
 
 export interface Criterion {
   id: string;
-  /** Written as the outcome, not the action: "the client got an answer before noon". */
+  /**
+   * Written as the outcome, not the action: "the client got an answer before noon".
+   * The "before noon" half is `before` below — prose here is never read by a check,
+   * so until that field existed the example in this very comment was a claim only
+   * half of which the system could settle.
+   */
   description: string;
   /** `any` for criteria that span surfaces, e.g. cross-surface consistency. */
   twin: TwinName | "any";
   kind: CriterionKind;
+  /**
+   * Ordering: the thing this criterion checks must ALSO have happened before a
+   * moment in the day. Two spellings, one field:
+   *
+   *   "escalation"  a beat's `ref` — before that scripted moment fired
+   *   "t12"         an absolute tick — "before noon", on a day that starts at 09:00
+   *
+   * ONE field rather than a `beforeRef`/`beforeTick` pair, because a deadline is
+   * one thing and two fields can contradict each other: an author who sets both
+   * has written a criterion whose meaning depends on which one some checker
+   * happens to read first. A single string cannot disagree with itself. It is
+   * also the only shape the generator's wire schema wants — every property
+   * required, the empty string when unused (see `CRITERION_SCHEMA`).
+   *
+   * Read as a beat ref first, and as `t<n>` only when no beat answers to that
+   * name. A `before` that is BOTH — a beat whose ref is literally "t12" — is
+   * refused at authoring, because a checker only knows the beats that FIRED and
+   * would otherwise read the same word two different ways in two runs of one spec.
+   *
+   * A REFINEMENT and never a replacement: a criterion whose underlying check
+   * failed keeps failing for that reason, with that evidence. Ordering can only
+   * turn a pass into a late failure, or into "we cannot tell when" — see
+   * `runChecklist` in @sonata/judge.
+   *
+   * Only on a check that records WHEN: a reply, a send, a phrase the agent wrote.
+   * A check settled from the state at the END of the day — the labels a thread
+   * ends up with, whether it is out of the inbox, a meeting on the calendar —
+   * records no tick, so a deadline on one comes back unmeasured in every run, and
+   * an unmeasured `must` leaves the whole day ungraded. `bindCriteria` refuses
+   * those pairs by name; a hand-written spec has no such gate and must not write
+   * one.
+   */
+  before?: string;
   /**
    * The beat this is about, by `BeatMeta.ref`. Optional because some criteria are
    * about something the agent should have originated ("told the team"), which no

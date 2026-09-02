@@ -13,7 +13,13 @@ export const dynamic = "force-dynamic";
 
 export function GET() {
   try {
-    return NextResponse.json({ episodes: listEpisodes(), templates: templateSummaries() });
+    // `at` is the server's clock. Every "3 d ago" on a scenario card is measured
+    // against it, so the server paint and the client render never disagree.
+    return NextResponse.json({
+      episodes: listEpisodes(),
+      templates: templateSummaries(),
+      at: Date.now(),
+    });
   } catch (err) {
     return NextResponse.json({ error: (err as Error).message }, { status: 500 });
   }

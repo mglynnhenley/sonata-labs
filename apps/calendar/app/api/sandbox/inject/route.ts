@@ -3,17 +3,28 @@ import { getDb } from "@/lib/db";
 import { checkSandboxToken } from "@/lib/calendar/auth";
 import { getOwnerEmail } from "@/lib/store/meta";
 import { getPrimaryCalendar, resolveCalendar } from "@/lib/store/calendars";
-import { cancelEvent, getEventRow, insertEvent, updateEvent } from "@/lib/store/events";
-import { buildInsertInput, type EventBody } from "@/lib/calendar/event-input";
+import {
+  cancelEvent,
+  getEventRow,
+  insertEvent,
+  setAttendeeResponse,
+  updateEvent,
+} from "@/lib/store/events";
+import { buildInsertInput, parseAttendees, type EventBody } from "@/lib/calendar/event-input";
 import { parseEventDateTime } from "@/lib/calendar/shape";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// The director's hand on the calendar: place a meeting, move one, cancel one.
-// Deliberately NOT audit-logged — injection is scenario setup, not agent
-// behaviour, and the judge reads the audit log to score the agent. Injected
-// events carry is_sandbox_created = 0 so they're indistinguishable from seed.
+// The director's hand on the calendar: place a meeting, move one, cancel one,
+// answer one. Deliberately NOT audit-logged — injection is scenario setup, not
+// agent behaviour, and the judge reads the audit log to score the agent.
+// Injected events carry is_sandbox_created = 0 so they're indistinguishable
+// from seed.
+//
+// The lack of an audit row is why RSVPs have to come through here at all: the
+// public events.patch writes one, so a colleague accepting an invite would be
+// filed as something the agent did.
 //
 // Times accept either an RFC3339 `start`/`end` pair (Google's shape) or the
 // friendlier `startMinutesFromNow` + `durationMinutes`, which is what a tick
@@ -34,10 +45,22 @@ interface InjectMove {
   shiftMinutes?: number;
 }
 
+interface InjectRsvp {
+  calendarId?: string;
+  eventId: string;
+  /** Whoever is answering. Must already be on the event — see the branch below. */
+  email: string;
+  /** accepted | declined | tentative | needsAction. */
+  response?: unknown;
+  /** Google's `attendees[].comment` — why. Omitted leaves any existing note alone. */
+  comment?: unknown;
+}
+
 interface InjectBody {
   events?: InjectEvent[];
   moves?: InjectMove[];
   cancels?: Array<{ calendarId?: string; eventId: string }>;
+  rsvps?: InjectRsvp[];
 }
 
 function relativeBounds(
@@ -62,7 +85,8 @@ export async function POST(req: Request) {
     const events = body.events ?? [];
     const moves = body.moves ?? [];
     const cancels = body.cancels ?? [];
-    if (!events.length && !moves.length && !cancels.length) {
+    const rsvps = body.rsvps ?? [];
+    if (!events.length && !moves.length && !cancels.length && !rsvps.length) {
       return NextResponse.json({ error: "nothing to inject" }, { status: 400 });
     }
 
@@ -77,6 +101,7 @@ export async function POST(req: Request) {
     const inserted: Array<{ slotId: string; id: string; calendarId: string }> = [];
     const moved: Array<{ id: string; calendarId: string }> = [];
     const cancelled: Array<{ id: string; calendarId: string }> = [];
+    const answered: Array<{ id: string; calendarId: string; email: string }> = [];
 
     const apply = db.transaction(() => {
       for (const spec of events) {
@@ -127,10 +152,53 @@ export async function POST(req: Request) {
         cancelEvent(db, calendar.id, cancel.eventId, now);
         cancelled.push({ id: cancel.eventId, calendarId: calendar.id });
       }
+
+      for (const rsvp of rsvps) {
+        const calendar = rsvp.calendarId ? resolveCalendar(db, rsvp.calendarId) : primary;
+        if (!calendar) throw new Error(`unknown calendar ${String(rsvp.calendarId)}`);
+        if (!getEventRow(db, calendar.id, rsvp.eventId)) {
+          throw new Error(`unknown event ${rsvp.eventId}`);
+        }
+        // Not redundant with the parser below, which is why it reads that way:
+        // `parseAttendees` DEFAULTS a missing responseStatus to "needsAction" —
+        // a fine value on a guest list, and a silent no-op as an answer. Without
+        // this line a beat that forgot its response would return 200, count as
+        // landed, and put "a change on the calendar" in the agent's digest for a
+        // change nobody made.
+        if (typeof rsvp.response !== "string") {
+          throw new Error(`rsvp for ${rsvp.eventId} needs a response`);
+        }
+        // Validated by the public API's own attendee parser rather than a second
+        // copy of the valid-response list: an injected "maybe" is rejected in
+        // exactly the words events.patch would use, and there is one place that
+        // knows them.
+        const [answer] = parseAttendees([
+          { email: rsvp.email, responseStatus: rsvp.response },
+        ])!;
+        const applied = setAttendeeResponse(
+          db,
+          calendar.id,
+          rsvp.eventId,
+          answer.email,
+          answer.responseStatus ?? "needsAction",
+          typeof rsvp.comment === "string" ? rsvp.comment : undefined,
+          now,
+        );
+        // Not added as a guest instead. The world adding somebody to an event is
+        // indistinguishable, in the final attendee list, from the agent having
+        // invited them — so a typo'd address here would quietly hand the agent a
+        // `calendar:invited` pass. Fail the beat loudly, roll the batch back.
+        if (!applied) {
+          throw new Error(
+            `${answer.email} is not on event ${rsvp.eventId}, so there is no invitation to answer`,
+          );
+        }
+        answered.push({ id: rsvp.eventId, calendarId: calendar.id, email: answer.email });
+      }
     });
 
     apply();
-    return NextResponse.json({ inserted, moved, cancelled });
+    return NextResponse.json({ inserted, moved, cancelled, answered });
   } catch (err) {
     return NextResponse.json({ error: (err as Error).message }, { status: 400 });
   }

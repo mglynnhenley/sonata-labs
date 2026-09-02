@@ -1,18 +1,12 @@
 "use client";
 
 import {
-  Button,
-  Card,
-  IconAlert,
+  buttonClasses,
   IconArrowRight,
-  IconLayers,
-  IconPlay,
-  IconSearch,
-  IconSpark,
   PageHeader,
   StatCard,
 } from "@sonata/ui";
-import { money, percent } from "@/lib/format";
+import { ago, percent } from "@/lib/format";
 import { ROUTES } from "@/lib/routes";
 import type { Overview } from "@/lib/overview";
 // The names live with the projections that produce the numbers, so Home and the
@@ -20,11 +14,11 @@ import type { Overview } from "@/lib/overview";
 import { PASS_RATE_HINT, PASS_RATE_LABEL } from "../results/_lib/summary";
 import { FirstRun } from "./FirstRun";
 import { useSimulated } from "./useSimulated";
-import { QuickStart } from "./QuickStart";
 import { RecentRuns } from "./RecentRuns";
+import { QueueHealth } from "./QueueHealth";
+import { UnderTest } from "./UnderTest";
 import { RunningCard } from "./RunningCard";
 import { StaleNotice } from "./StaleNotice";
-import { TwinStrip } from "./TwinStrip";
 import { useGo } from "./useGo";
 import { usePoll } from "./usePoll";
 
@@ -55,51 +49,82 @@ function autonomyHint(stats: Overview["stats"], simulated: number): string {
   // Rows with no score, less the fabricated ones already named. Clamped because
   // the two counts come from different stores — the rows and the artifacts — and
   // a negative remainder would be a worse sentence than a missing one.
-  const never = Math.max(stats.unscored - simulated, 0);
-  const notes = [
-    ...(simulated > 0
-      ? [
-          `${simulated} ${simulated === 1 ? "was" : "were"} simulated — no model was ever called, so ${simulated === 1 ? "it is" : "they are"} not counted`,
-        ]
-      : []),
-    ...(never > 0 ? [`${never} more never ran, so ${never === 1 ? "it is" : "they are"} not counted`] : []),
-  ];
-
-  return (
-    `Mean across ${stats.scored} scored ${stats.scored === 1 ? "run" : "runs"} — mixes scenarios and models` +
-    notes.map((note) => ` · ${note}`).join("")
-  );
+  // The hint clamps to two lines at 11px. The old version wrote three clauses
+  // into it — the mean, then why the simulated runs are excluded, then why the
+  // unstarted ones are — and the reader saw "mixes scenarios and models • 8
+  // were simulated …", a sentence cut mid-caveat. "Scored" is the caveat: it
+  // is the denominator, and it already says the other rows are not in it.
+  return `How much gets done without a human. Mean of ${stats.scored} scored ${stats.scored === 1 ? "run" : "runs"}.`;
 }
 
 export function HomeClient({ initial }: HomeClientProps) {
   const go = useGo();
   const poll = usePoll<Overview>("/api/overview", 2500, initial);
   const { data, refresh } = poll;
-  const { counts, stats, live, recent, twins } = data;
+  const { counts, stats, live, recent, twins, clone, medianHorizonMin, simMinutesPerTick } = data;
   const simulated = useSimulated();
+
+  // A real export, so the button is not scenery: the runs on screen, as CSV.
+  const exportCsv = () => {
+    const head = "run_id,scenario,environment,model,status,autonomy,checklist,started_at\n";
+    const esc = (v: string) => `"${v.replace(/"/g, '""')}"`;
+    const body = recent
+      .map((run) =>
+        [
+          run.id,
+          esc(run.episodeTitle),
+          esc(run.worldName),
+          esc(run.model),
+          run.status,
+          run.autonomy ?? "",
+          run.score ?? "",
+          new Date(run.startedAt).toISOString(),
+        ].join(","),
+      )
+      .join("\n");
+    const url = URL.createObjectURL(new Blob([head + body], { type: "text/csv" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `sonata-runs-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   if (data.firstRun) {
     return <FirstRun twins={twins} onTwinsChanged={refresh} />;
   }
 
-  const twinsDown = twins.filter((t) => !t.ok);
-
   return (
-    <div className="flex flex-col gap-10">
+    <div className="sn-stack-section">
       <PageHeader
         eyebrow="Overview"
-        title="What's happening"
-        // Permanent, and never a status line: the most-read sentence on the
-        // most-visited page defines the product's central word on every visit.
-        subtitle="Autonomy is the share of the day's work your agent finished without handing it back to a human."
+        // The dashboard is a view of ONE cloned business, so it says which.
+        // Falls back only when nothing is loaded into the clones.
+        title={clone ? `${clone.name} clone` : "What's happening"}
+        // Status, and only status: what is in the clones and how much is ready
+        // to throw at it. This used to also define autonomy, which put a
+        // glossary entry 200px above the number it explains and made the most-
+        // read line on the product two things at once. The definition now leads
+        // the Autonomy card's own hint, directly under the 77%.
+        subtitle={
+          clone
+            ? `Seeded ${ago(clone.seededAt, data.at)} from Gmail, Slack and Calendar · ${counts.episodes} ${counts.episodes === 1 ? "scenario" : "scenarios"} ready`
+            : `${counts.episodes} ${counts.episodes === 1 ? "scenario" : "scenarios"} ready · nothing cloned yet`
+        }
         actions={
-          <Button
-            variant="primary"
-            iconRight={<IconArrowRight size={14} />}
-            onClick={(e) => go(e, ROUTES.runs)}
-          >
-            New run
-          </Button>
+          <>
+            <button type="button" onClick={exportCsv} className={buttonClasses("secondary", "md")}>
+              Export
+            </button>
+            <a
+              href={ROUTES.runs}
+              onClick={(e) => go(e, ROUTES.runs)}
+              className={buttonClasses("primary", "md")}
+            >
+              New run
+              <IconArrowRight size="sm" />
+            </a>
+          </>
         }
       />
 
@@ -111,43 +136,36 @@ export function HomeClient({ initial }: HomeClientProps) {
             <RunningCard key={run.id} run={run} now={data.at} />
           ))}
         </div>
-      ) : (
-        <Card padding="lg" tone="outline" className="border-dashed">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div className="flex items-start gap-3">
-              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-sn-gold-soft text-sn-gold-ink">
-                <IconSpark size={16} />
-              </span>
-              <div>
-                <p className="text-[14px] font-medium text-sn-ink">Nothing is running</p>
-                {/* No clock here on purpose. This said "starts at 9am and runs
-                    24 fifteen-minute ticks" while the start time came from
-                    Settings, the length came from the scenario, and the run
-                    panel offered four lengths — three numbers, none of them
-                    this one. The panel states the day it is about to buy, in
-                    ticks and in dollars; a card with no run in front of it has
-                    nothing to be specific about. */}
-                <p className="mt-1 max-w-[54ch] text-[13px] leading-[20px] text-sn-muted">
-                  Pick a company, a scenario and a model. The run panel prices every length
-                  before you start one. Watch the day here, or inside Gmail, Slack and Calendar
-                  as it happens.
-                </p>
-              </div>
-            </div>
-            <Button variant="primary" onClick={(e) => go(e, ROUTES.runs)}>
-              New run
-            </Button>
-          </div>
-        </Card>
-      )}
+      ) : null}
 
       <section>
         <h2 className="sr-only">Scores so far</h2>
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          {/* Runs this week leads, with a real week-over-week arrow: the
+              dashboard's first number should be the one that moved. */}
+          <StatCard
+            label="Runs this week"
+            value={stats.thisWeek}
+            delta={
+              stats.weekDelta === 0
+                ? undefined
+                : {
+                    value: Math.abs(stats.weekDelta),
+                    direction: stats.weekDelta > 0 ? "up" : "down",
+                    label: "vs the week before",
+                  }
+            }
+            hint={`${counts.runs} in total · ${counts.worlds} ${counts.worlds === 1 ? "company" : "companies"} · ${counts.episodes} ${counts.episodes === 1 ? "scenario" : "scenarios"}`}
+            href={ROUTES.runs}
+            actionLabel="Every run"
+            onClick={(e) => go(e, ROUTES.runs)}
+          />
           <StatCard
             label="Autonomy"
-            value={percent(stats.autonomy)}
-            icon={<IconSpark size={15} />}
+            // The number and its unit are separate now: "77" reads as the
+            // figure and "%" as its unit, which is how the stat strip is drawn.
+            value={stats.autonomy === null ? "—" : Math.round(stats.autonomy * 100)}
+            unit={stats.autonomy === null ? undefined : "%"}
             // The mean is over the runs that produced a result. Runs that never
             // executed, and runs no model ever touched, are named rather than
             // averaged in — the counts are the honest footnote to the number
@@ -172,7 +190,6 @@ export function HomeClient({ initial }: HomeClientProps) {
                 ? percent(null)
                 : `${Math.round(stats.passRate * stats.scored)} of ${stats.scored}`
             }
-            icon={<IconSearch size={15} />}
             hint={
               stats.scored === 0
                 ? PASS_RATE_HINT
@@ -182,56 +199,40 @@ export function HomeClient({ initial }: HomeClientProps) {
             actionLabel="Which criteria failed"
             onClick={(e) => go(e, ROUTES.compare)}
           />
+          {/* How far into a simulated day the typical run gets before it stops.
+              Median rather than mean: one run that died on tick 1 should not
+              drag the typical day down with it. */}
           <StatCard
-            label="Runs"
-            value={counts.runs}
-            icon={<IconPlay size={13} />}
-            // The total counts everything on disk, fabricated days included —
-            // deleting them from the tally is how they got averaged in unnoticed.
-            // It just has to say how many of them there are.
-            hint={
-              `${counts.worlds} ${counts.worlds === 1 ? "company" : "companies"} · ${counts.episodes} ${
-                counts.episodes === 1 ? "scenario" : "scenarios"
-              }` + (simulated.size > 0 ? ` · ${simulated.size} simulated` : "")
-            }
+            label="Median horizon"
+            value={medianHorizonMin === null ? "—" : medianHorizonMin}
+            unit={medianHorizonMin === null ? undefined : "min"}
+            hint="Simulated time the typical run reaches before it stalls or hands back."
             href={ROUTES.runs}
             actionLabel="Every run"
             onClick={(e) => go(e, ROUTES.runs)}
           />
-          <StatCard
-            label="Spend"
-            value={money(stats.spendUsd)}
-            icon={<IconLayers size={15} />}
-            hint="Every model call so far, agent and director"
-            href={ROUTES.compare}
-            actionLabel="Where the money went"
-            onClick={(e) => go(e, ROUTES.compare)}
-          />
         </div>
       </section>
 
-      <RecentRuns runs={recent} now={data.at} simulated={simulated} />
+      {/* The dashboard shape: what happened on the left, how the benchmark
+          itself is doing on the right. One block below the stat strip rather
+          than a full section — they are two halves of the same glance. */}
+      <div className="-mt-4 grid grid-cols-[minmax(0,1fr)] items-start gap-5 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+        <RecentRuns
+          runs={recent}
+          now={data.at}
+          simulated={simulated}
+          simMinutesPerTick={simMinutesPerTick}
+        />
+        {/* The rail stacks: Queue health alone left 389px of the column empty
+            beside a twelve-row table, which reads as a layout that broke
+            rather than one that ran out of things to say. */}
+        <div className="sn-stack-group">
+          <QueueHealth stats={stats} twins={twins} scenarios={counts.episodes} />
+          <UnderTest models={data.models} />
+        </div>
+      </div>
 
-      {twinsDown.length > 0 ? (
-        <section>
-          <div className="flex items-center gap-2">
-            <IconAlert size={15} className="text-sn-warning" />
-            <h2 className="text-[14px] font-medium text-sn-ink">
-              {twinsDown.length === 1
-                ? `${twinsDown[0].label} is not running`
-                : `${twinsDown.map((t) => t.label).join(" and ")} are not running`}
-            </h2>
-          </div>
-          <p className="mt-1.5 text-[13px] text-sn-muted">
-            A scenario can only use an app that is up. Start them here.
-          </p>
-          <div className="mt-4">
-            <TwinStrip twins={twins} onChanged={refresh} />
-          </div>
-        </section>
-      ) : null}
-
-      <QuickStart />
     </div>
   );
 }

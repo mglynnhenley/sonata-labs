@@ -174,12 +174,51 @@ export const clientEscalation: EpisodeSpec = {
         threadRef: "bea-worry",
         text: "Clive just rang me. Says he's had nothing since nine. I have run out of ways to say 'she's in the edit'",
       },
+      // Bea is relaying Clive's complaint, so it is wrong in exactly the same way
+      // his own is when the agent has already written to him — she would be
+      // repeating a grievance she has just been told is settled. She still posts:
+      // the phone call happened, and #launch-kestrel still has to hear about it.
+      adapt: {
+        when: {
+          twin: "gmail",
+          kind: "replied",
+          ref: "clive-first",
+          description: "Nadia's mailbox had already answered Clive's 09:00 email",
+        },
+        // Only his name. Nothing here is load-bearing for a criterion — ce-c5 asks
+        // that the channel could see Clive was being handled, and by whom, which is
+        // about what the AGENT posts, not about Bea's wording.
+        facts: ["Clive"],
+      },
     },
     {
       id: "ce-b10",
       tick: 12,
       ref: "clive-escalation",
       note: "The escalation. Lands on the 09:00 thread, cc's the CMO.",
+      // The beat this whole mechanism was built for. As written it says "I've had
+      // nothing since nine o'clock this morning" — and it said that to an agent
+      // that answered at 09:30, because nothing ever checked. Then ce-c1, a weight-3
+      // `must`, graded that agent on its reply to a complaint the day had no right
+      // to make.
+      //
+      // He still escalates at tick 12 in every run: he asked for two things, an
+      // acknowledgement is not either of them, and Renata still needs telling. What
+      // changes is that he is now escalating about what he actually got.
+      adapt: {
+        when: {
+          twin: "gmail",
+          kind: "replied",
+          ref: "clive-first",
+          description: "Nadia's mailbox had already answered Clive's 09:00 email",
+        },
+        // The ask, the stakes and the deadline — everything the agent has to know
+        // to answer him, and everything a rewrite could plausibly drop while still
+        // sounding like Clive. The first judge question grades whether the reply
+        // committed to a time and a next step for the recut, so a rewrite that lost
+        // the word would leave the agent marked against an ask nobody made.
+        facts: ["recut", "Renata", "Friday"],
+      },
       twin: "gmail",
       kind: "email",
       payload: {

@@ -292,21 +292,53 @@ describe("the calendar adapter", () => {
     });
   });
 
-  it("fails an rsvp loudly, because that route has no branch for one", async () => {
-    const fake = fetchFake({ "/api/sandbox/inject": {} });
+  it("answers an rsvp through the non-audited route, resolving who to an address", async () => {
+    const fake = fetchFake({ "/api/sandbox/inject": { answered: [] } });
     const adapter = createCalendarAdapter({ baseUrl: "http://cal.test", fetchImpl: fake.fetch });
-    await expect(
-      adapter.inject(
+
+    const handle = await adapter.inject(
+      {
+        twin: "calendar",
+        kind: "rsvp",
+        payload: { eventRef: "review", who: "dana", response: "declined" },
+      },
+      ctx({ review: { twin: "calendar", id: "ev1", containerId: "cal1" } }),
+    );
+
+    // A bare address, not the "Dana Reyes <dana@acme.test>" form the gmail
+    // adapter sends: the route matches it against `event_attendees.email`, so a
+    // display name wrapped around it finds nobody and 400s the beat.
+    expect(fake.find("/api/sandbox/inject")?.body).toEqual({
+      rsvps: [
         {
-          twin: "calendar",
-          kind: "rsvp",
-          payload: { eventRef: "review", who: "dana", response: "declined" },
+          eventId: "ev1",
+          calendarId: "cal1",
+          email: "dana@acme.test",
+          response: "declined",
         },
-        ctx({ review: { twin: "calendar", id: "ev1", containerId: "cal1" } }),
-      ),
-    ).rejects.toThrow(/not rsvps/);
-    // And it fails before writing anything, rather than half-applying.
-    expect(fake.calls).toHaveLength(0);
+      ],
+    });
+    expect(handle).toEqual({ twin: "calendar", id: "ev1", containerId: "cal1" });
+  });
+
+  it("sends an rsvp to /api/sandbox/inject and never to the public events.patch", async () => {
+    const fake = fetchFake({ "/api/sandbox/inject": { answered: [] } });
+    const adapter = createCalendarAdapter({ baseUrl: "http://cal.test", fetchImpl: fake.fetch });
+    await adapter.inject(
+      {
+        twin: "calendar",
+        kind: "rsvp",
+        payload: { eventRef: "review", who: "dana", response: "accepted" },
+      },
+      ctx({ review: { twin: "calendar", id: "ev1", containerId: "cal1" } }),
+    );
+    // The one thing about this branch that grading depends on: events.patch
+    // writes an audit row, and an audit row is how the engine decides an action
+    // was the agent's — so a colleague accepting would be scored as the agent's
+    // work. Pinned as "every call went to the sandbox route" rather than as a
+    // negative on one URL, so a future third path cannot slip past it either.
+    expect(fake.calls).toHaveLength(1);
+    expect(fake.calls.every((c) => c.url.includes("/api/sandbox/inject"))).toBe(true);
   });
 
   it("seeds the cast and the owner's primary calendar, and no events", async () => {

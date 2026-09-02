@@ -47,6 +47,38 @@ type Db = Database.Database;
 
 const g = globalThis as unknown as { __calendarSandboxWorking?: Db };
 
+/**
+ * Columns added to `event_attendees` after the first release, applied on open.
+ *
+ * `db:init` cannot do this: every statement in schema.sql is
+ * `CREATE TABLE IF NOT EXISTS`, which is a no-op against a table that already
+ * exists, so a column added to the file never reaches a database somebody
+ * already has. And `data/*.db` is gitignored, so pulling this change gives you
+ * the new schema.sql and an old working.db — exactly the failure AGENTS.md
+ * records from the OAuth work, where every call 500'd on a missing table.
+ *
+ * Additive only, and each entry must stay valid as `ALTER TABLE ... ADD COLUMN`:
+ * SQLite cannot add a NOT NULL column without a default.
+ */
+const ADDED_ATTENDEE_COLUMNS: Record<string, string> = {
+  comment: "comment TEXT",
+};
+
+function migrate(db: Db): void {
+  const present = new Set(
+    (db.prepare("PRAGMA table_info(event_attendees)").all() as { name: string }[]).map(
+      (c) => c.name,
+    ),
+  );
+  // An empty set means the table is not there yet — a brand-new file that
+  // `applySchema` has not run against. Adding columns to a table that does not
+  // exist would throw and take the whole connection with it.
+  if (present.size === 0) return;
+  for (const [name, ddl] of Object.entries(ADDED_ATTENDEE_COLUMNS)) {
+    if (!present.has(name)) db.exec(`ALTER TABLE event_attendees ADD COLUMN ${ddl}`);
+  }
+}
+
 function openWorking(): Db {
   ensureDataDir();
   const db = new Database(WORKING_PATH);
@@ -57,6 +89,7 @@ function openWorking(): Db {
   db.prepare("ATTACH DATABASE ? AS audit").run(AUDIT_PATH);
   db.pragma("audit.journal_mode = WAL");
   db.exec(AUDIT_DDL);
+  migrate(db);
   return db;
 }
 

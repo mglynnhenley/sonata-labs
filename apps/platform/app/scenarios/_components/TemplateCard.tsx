@@ -24,19 +24,19 @@ export function TemplateCard({ template, busy, onAction }: TemplateCardProps) {
   return (
     <Card padding="lg" radius="2xl" interactive className="flex h-full flex-col">
       <div className="flex min-h-0 flex-1 flex-col">
-        <h3 className="font-display text-[23px] text-sn-ink">{template.title}</h3>
-        <p className="mt-2 line-clamp-2 text-[13.5px] leading-[21px] text-sn-muted">
+        <h3 className="text-sn-md font-bold text-sn-ink">{template.title}</h3>
+        <p className="mt-2 line-clamp-2 text-sn-base text-sn-muted">
           {template.description}
         </p>
 
         <div className="mt-4 flex flex-wrap items-center gap-1.5">
           {template.services.map((service) => (
-            <Chip key={service.twin} service={service.twin} size="sm">
+            <Chip key={service.twin} service={service.twin} tone="neutral" size="sm">
               {SERVICE_LABELS[service.twin]}
               {` · ${service.count} ${service.unit}`}
             </Chip>
           ))}
-          <Chip size="sm" icon={<IconLayers size={11} />}>
+          <Chip size="sm" icon={<IconLayers size="xs" />}>
             {hours}h day
           </Chip>
         </div>
@@ -45,10 +45,10 @@ export function TemplateCard({ template, busy, onAction }: TemplateCardProps) {
       <div className="mt-6 flex flex-wrap items-center gap-2">
         <Button
           size="sm"
-          variant="primary"
+          variant="secondary"
           loading={busy === "use"}
           disabled={busy !== null && busy !== "use"}
-          iconRight={<IconArrowRight size={13} />}
+          iconRight={<IconArrowRight size="sm" />}
           onClick={() => onAction(template, "use")}
         >
           Run this day
@@ -67,7 +67,7 @@ export function TemplateCard({ template, busy, onAction }: TemplateCardProps) {
           variant="ghost"
           loading={busy === "environment"}
           disabled={busy !== null && busy !== "environment"}
-          icon={<IconPlay size={12} />}
+          icon={<IconPlay size="xs" />}
           onClick={() => onAction(template, "environment")}
         >
           Build the company

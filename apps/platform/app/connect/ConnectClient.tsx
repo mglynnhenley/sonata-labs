@@ -134,7 +134,7 @@ export function ConnectClient({ connection, initialTwins }: ConnectClientProps) 
   }
 
   return (
-    <div className="flex flex-col gap-12">
+    <div className="sn-stack-section">
       <PageHeader
         eyebrow="Step 1 of 3"
         title="Connect your agent"
@@ -147,30 +147,30 @@ export function ConnectClient({ connection, initialTwins }: ConnectClientProps) 
                 ? "Checking the clones"
                 : `${ready} of ${twins.length} clones ready`}
             </Badge>
-            <span className="text-[12px] text-sn-subtle">{inventoryLine(live)}</span>
+            <span className="text-sn-sm text-sn-subtle">{inventoryLine(live)}</span>
           </>
         }
       />
 
       {/* What happens next, before anything is asked of the user. */}
       <section aria-labelledby="how-it-works">
-        <h2 id="how-it-works" className="text-[14px] font-medium text-sn-ink">
+        <h2 id="how-it-works" className="text-sn-md font-medium text-sn-ink">
           How this works
         </h2>
-        <ol className="mt-3 grid gap-4 md:grid-cols-3">
+        <ol className="mt-6 grid gap-4 md:grid-cols-3">
           {HOW_IT_WORKS.map((step, i) => (
             <li key={step.title}>
               <Card padding="md" tone="sunken" className="h-full">
                 <div className="flex items-center gap-2.5">
                   <span
                     data-numeric
-                    className="grid h-6 w-6 place-items-center rounded-full bg-sn-primary-soft text-[12px] font-medium text-sn-primary-ink"
+                    className="grid h-6 w-6 place-items-center rounded-full bg-sn-primary-soft text-sn-sm font-medium text-sn-primary-ink"
                   >
                     {i + 1}
                   </span>
-                  <h3 className="text-[14px] font-medium text-sn-ink">{step.title}</h3>
+                  <h3 className="text-sn-md font-medium text-sn-ink">{step.title}</h3>
                 </div>
-                <p className="mt-2.5 text-[13px] leading-[20px] text-sn-muted">{step.body}</p>
+                <p className="mt-2.5 text-sn-base text-sn-muted">{step.body}</p>
               </Card>
             </li>
           ))}
@@ -178,46 +178,46 @@ export function ConnectClient({ connection, initialTwins }: ConnectClientProps) 
       </section>
 
       <section aria-labelledby="clones">
-        <h2 id="clones" className="text-[14px] font-medium text-sn-ink">
+        <h2 id="clones" className="text-sn-md font-medium text-sn-ink">
           The three clones
         </h2>
-        <p className="mt-1.5 max-w-[62ch] text-[13px] leading-[20px] text-sn-muted">
+        <p className="mt-1.5 max-w-[62ch] text-sn-base text-sn-muted">
           Each one is a local server your agent talks to over its normal API. They have to be
           running before anything can connect — start any that are off, right here.
         </p>
-        <div className="mt-4">
+        <div className="mt-6">
           <TwinStrip twins={twins} onChanged={poll.refresh} />
         </div>
         {poll.error ? (
-          <p className="mt-3 text-[12px] text-sn-subtle">
+          <p className="mt-3 text-sn-sm text-sn-subtle">
             The dashboard stopped hearing back a moment ago; the state above may be behind.
           </p>
         ) : null}
       </section>
 
       <section aria-labelledby="snippet">
-        <h2 id="snippet" className="text-[14px] font-medium text-sn-ink">
+        <h2 id="snippet" className="text-sn-md font-medium text-sn-ink">
           Point your agent at them
         </h2>
-        <p className="mt-1.5 max-w-[62ch] text-[13px] leading-[20px] text-sn-muted">
+        <p className="mt-1.5 max-w-[62ch] text-sn-base text-sn-muted">
           One connection, all three clones. Nothing is required of your agent beyond using the
           tools — no callbacks, no SDK, no changes to how it runs.
         </p>
 
         {!live.binInstalled ? (
-          <Card padding="sm" tone="sunken" className="mt-4 flex items-start gap-2.5">
-            <IconAlert size={15} className="mt-0.5 shrink-0 text-sn-warning" />
-            <p className="text-[13px] leading-[20px] text-sn-muted">
+          <Card padding="sm" tone="sunken" className="mt-6 flex items-start gap-2.5">
+            <IconAlert size="md" className="mt-0.5 shrink-0 text-sn-warning" />
+            <p className="text-sn-base text-sn-muted">
               <span className="font-medium text-sn-ink">The launcher is not installed yet.</span>{" "}
               The command below is right, but{" "}
-              <code className="font-mono text-[12px] text-sn-ink">{live.command}</code> does not
-              exist until you run <code className="font-mono text-[12px] text-sn-ink">npm install</code>{" "}
-              in <code className="font-mono text-[12px] text-sn-ink">{live.repoRoot}</code>.
+              <code className="font-mono text-sn-sm text-sn-ink">{live.command}</code> does not
+              exist until you run <code className="font-mono text-sn-sm text-sn-ink">npm install</code>{" "}
+              in <code className="font-mono text-sn-sm text-sn-ink">{live.repoRoot}</code>.
             </p>
           </Card>
         ) : null}
 
-        <div className="mt-4">
+        <div className="mt-6">
           <Tabs
             items={TABS}
             value={tab}
@@ -232,7 +232,7 @@ export function ConnectClient({ connection, initialTwins }: ConnectClientProps) 
             if (!isTabId(id)) return null;
             return (
               <TabPanel key={id} id={id} active={tab === id} idPrefix="connect" className="pt-4">
-                <p className="max-w-[70ch] text-[13px] leading-[20px] text-sn-muted">
+                <p className="max-w-[70ch] text-sn-base text-sn-muted">
                   {TAB_HINTS[id]}
                 </p>
                 <CodeBlock
@@ -247,39 +247,39 @@ export function ConnectClient({ connection, initialTwins }: ConnectClientProps) 
           })}
         </div>
 
-        <p className="mt-3 text-[12px] leading-[19px] text-sn-subtle">
+        <p className="mt-3 text-sn-sm leading-[19px] text-sn-subtle">
           The clones answer to the token in the snippet (
-          <code className="font-mono text-[11px]">{live.token}</code>), and they answer to nothing
+          <code className="font-mono text-sn-xs">{live.token}</code>), and they answer to nothing
           outside this machine. Your agent will see the server as{" "}
-          <code className="font-mono text-[11px]">{live.serverName}</code>.
+          <code className="font-mono text-sn-xs">{live.serverName}</code>.
         </p>
       </section>
 
       <section aria-labelledby="test">
-        <h2 id="test" className="text-[14px] font-medium text-sn-ink">
+        <h2 id="test" className="text-sn-md font-medium text-sn-ink">
           Check it worked
         </h2>
-        <p className="mt-1.5 max-w-[62ch] text-[13px] leading-[20px] text-sn-muted">
+        <p className="mt-1.5 max-w-[62ch] text-sn-base text-sn-muted">
           This connects the way your agent will and reports what came back — so you know the wiring
           is good before you touch your own setup.
         </p>
 
-        <Card padding="md" className="mt-4">
+        <Card padding="md" className="mt-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="min-w-0">
               {test ? (
                 <div className="flex items-start gap-2.5">
                   {test.ok ? (
-                    <IconCheck size={16} className="mt-0.5 shrink-0 text-sn-success" />
+                    <IconCheck size="md" className="mt-0.5 shrink-0 text-sn-success" />
                   ) : (
-                    <IconAlert size={16} className="mt-0.5 shrink-0 text-sn-warning" />
+                    <IconAlert size="md" className="mt-0.5 shrink-0 text-sn-warning" />
                   )}
-                  <p className="text-[14px] leading-[21px] text-sn-ink">{test.headline}</p>
+                  <p className="text-sn-md text-sn-ink">{test.headline}</p>
                 </div>
               ) : (
                 <div className="flex items-start gap-2.5">
-                  <IconSpark size={16} className="mt-0.5 shrink-0 text-sn-subtle" />
-                  <p className="text-[14px] leading-[21px] text-sn-muted">
+                  <IconSpark size="md" className="mt-0.5 shrink-0 text-sn-subtle" />
+                  <p className="text-sn-md text-sn-muted">
                     Not tested yet. One call per clone, through the same tools your agent gets —
                     it changes nothing.
                   </p>
@@ -290,7 +290,7 @@ export function ConnectClient({ connection, initialTwins }: ConnectClientProps) 
               variant="primary"
               loading={testing}
               onClick={() => void testConnection()}
-              icon={<IconBolt size={14} />}
+              icon={<IconBolt size="sm" />}
             >
               {test ? "Test again" : "Test the connection"}
             </Button>
@@ -307,16 +307,16 @@ export function ConnectClient({ connection, initialTwins }: ConnectClientProps) 
                   className="grid grid-cols-[14px_84px_minmax(0,1fr)] items-start gap-x-3 gap-y-1 sm:grid-cols-[14px_84px_minmax(0,1fr)_auto]"
                 >
                   {check.ok ? (
-                    <IconCheck size={14} className="mt-1 text-sn-success" />
+                    <IconCheck size="sm" className="mt-1 text-sn-success" />
                   ) : (
-                    <IconClose size={14} className="mt-1 text-sn-danger" />
+                    <IconClose size="sm" className="mt-1 text-sn-danger" />
                   )}
                   <Chip service={check.twin} size="sm" className="justify-self-start" />
-                  <span className="min-w-0 text-[13px] leading-[22px] text-sn-ink">
+                  <span className="min-w-0 text-sn-base leading-[22px] text-sn-ink">
                     {check.detail}
                   </span>
-                  <span className="col-start-3 text-[12px] leading-[22px] text-sn-subtle sm:col-start-4 sm:text-right">
-                    <code className="font-mono text-[11px]">{check.tool}</code>
+                  <span className="col-start-3 text-sn-sm leading-[22px] text-sn-subtle sm:col-start-4 sm:text-right">
+                    <code className="font-mono text-sn-xs">{check.tool}</code>
                     <span data-numeric className="ml-2">
                       {check.ms}ms
                     </span>
@@ -329,14 +329,14 @@ export function ConnectClient({ connection, initialTwins }: ConnectClientProps) 
       </section>
 
       <section aria-labelledby="next">
-        <h2 id="next" className="text-[14px] font-medium text-sn-ink">
+        <h2 id="next" className="text-sn-md font-medium text-sn-ink">
           Then start a day
         </h2>
-        <p className="mt-1.5 max-w-[62ch] text-[13px] leading-[20px] text-sn-muted">
+        <p className="mt-1.5 max-w-[62ch] text-sn-base text-sn-muted">
           With the agent connected, the rest is the other two steps: choose what the day throws at
           it, then read what it did.
         </p>
-        <div className="mt-4 flex flex-wrap gap-2.5">
+        <div className="mt-6 flex flex-wrap gap-2.5">
           {/* Real anchors wearing the button's clothes, so middle-click and
               "copy link address" keep working on the page's main exits. */}
           <a
@@ -345,7 +345,7 @@ export function ConnectClient({ connection, initialTwins }: ConnectClientProps) 
             className={buttonClasses("primary", "md")}
           >
             Choose a scenario
-            <IconArrowRight size={13} />
+            <IconArrowRight size="sm" />
           </a>
           <a
             href={ROUTES.compare}
@@ -353,7 +353,7 @@ export function ConnectClient({ connection, initialTwins }: ConnectClientProps) 
             className={buttonClasses("secondary", "md")}
           >
             See what finished days scored
-            <IconArrowRight size={13} />
+            <IconArrowRight size="sm" />
           </a>
         </div>
       </section>

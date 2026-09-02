@@ -29,7 +29,7 @@ const COLUMNS: Record<number, string> = {
 
 export function PageSkeleton({ label, rows }: PageSkeletonProps) {
   return (
-    <div role="status" aria-busy="true" className="flex flex-col gap-8">
+    <div role="status" aria-busy="true" className="sn-stack-section">
       <span className="sr-only">{label}</span>
 
       <div aria-hidden="true" className="flex flex-col gap-3">

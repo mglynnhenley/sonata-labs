@@ -1,6 +1,8 @@
 import { isCriterionKind, type CriterionKind, type EpisodeSpec, type WorldSeed } from "@sonata/core";
 import {
+  adaptationRules,
   AUTHORABLE_KINDS,
+  CONDITION_KINDS,
   CRITERIA_SCHEMA,
   CRITERION_SCHEMA,
   checklistShortfall,
@@ -10,6 +12,8 @@ import {
 } from "@sonata/world";
 import {
   assembleScenario,
+  bindableBeats,
+  RELATIONSHIPS,
   type AssembledScenario,
   type AuthoredScenario,
   type RejectedCriterion,
@@ -32,13 +36,59 @@ import type { ScenarioDraft } from "./types";
 // beats this day actually assembled, and `repairCriteria` below spends one more
 // small model call rather than shipping the hole.
 
-const SYSTEM = `You write simulation scenarios for testing AI agents inside a cloned business.
+// ---------------------------------------------------------------------------
+// Characters.
+//
+// `voice` says how someone types; `brief` says how they behave. Only the second
+// makes two people different people — and until it was asked for, a generated
+// persona WAS three if-statements on `relationship` with no brief at all, so six
+// people out of the same company were interchangeable on the page.
+//
+// The four examples are quoted verbatim from packages/scenarios'
+// client-escalation, which is the hand-written bar, and they are here in full on
+// purpose: a model matches an example far more reliably than it matches an
+// adjective, and "write a specific brief" comes back as the same beige paragraph
+// every time. Whatever else is edited here, the examples earn their tokens.
+// ---------------------------------------------------------------------------
+
+const CHARACTER_RULES = `CHARACTERS. Two fields, and they are not the same job:
+- "voice" is how someone TYPES: length, register, punctuation, sign-off.
+- "brief" is how someone BEHAVES: what they want, what they will accept, and what they will never do.
+
+A cast with voices and no briefs is one person wearing six hats. Write each brief in the third person, one to three sentences, about THIS day. Make it decidable: someone holding a reply should be able to say whether this person would have sent it.
+
+This is the bar — four real briefs from a hand-written day (the agent runs Nadia's accounts; Clive is the client):
+- Clive: "Wants a time and a decision, in that order. Accepts a specific plan immediately and warmly; will not accept 'we're looking at it'. Never proposes a slot himself and never says which of Nadia's meetings should move."
+- Bea: "Relieved by anything concrete. Will confirm to the client only what she has been told in writing, and will not move the board forecast for anyone."
+- Theo: "Defends the locked grade for a while, then agrees. Restates the 15:00 machine deadline rather than solving the timing."
+- Moira: "Answers only about the embargo clock. Confirms receipt in one line and holds the 16:00 send regardless."
+
+Every one of them has a thing they want, a thing they will accept, and a thing they will never do. The last is load-bearing: it is what stops the world solving the day on the agent's behalf. Those four work somewhere else: match how specific they are, and use none of their names.
+
+- "responsiveness": 0 to 1 — how likely they are to answer at all when addressed. 0.9 is someone waiting on you; 0.5 is someone who often just does not reply.
+- "replyDelayTicks": 0 to 4 — ticks between being addressed and answering. 0 is straight back, 2 is half an hour. Vary these across the cast; a company where everyone answers instantly has no pressure in it.`;
+
+const WORLD_RULES = `OFF LIMITS AND STYLE, for the company as a whole:
+- "offLimits": 3 to 6 lines. Facts nobody in this world may volunteer, and moves nobody may make. Each line should name something that, if a person here said or did it, would hand the agent the answer or do the job for it — the clash it has to find for itself, the reply it has to write, the summary of what is still outstanding. Write them about THIS day, in the manner of: "Nobody mentions that the grade review and the Q3 forecast are both at 14:00 — the clash exists on the calendar and has to be found there." / "Nobody offers to move a meeting, and nobody proposes a new time for the client call." / "Nobody summarises the day, lists what is outstanding, or points out that the first email was never answered."
+- "style": one or two sentences on the register everyone writes in, naming the surfaces where it differs, in the manner of: "Agency register. Slack is lower case, fragmentary, no sign-offs, two lines at most. Email is friendly, complimentary and completely immovable. Nobody writes a status report; nobody is ever more than four sentences long."`;
+
+/**
+ * Everything the model is told before it writes a day.
+ *
+ * Exported for the same reason `SCENARIO_SCHEMA` is: the two have to agree, and
+ * nothing else can see that they do. A rule enforced in code and absent from here
+ * costs a retry every time the model breaks a rule it was never given — which is
+ * the note above `criteriaRules` in @sonata/world, and `adaptationRules` is now
+ * the second thing rendered on that promise.
+ */
+export const SYSTEM = `You write simulation scenarios for testing AI agents inside a cloned business.
 
 You are given a one-line description of a business and a day. You return ONE JSON object describing:
 - the business (name, industry, headcount, one paragraph of what state it is in this week)
-- a cast of 5-7 named people, including the person whose accounts the agent operates ("owner")
+- a cast of 5-7 named people, including the person whose accounts the agent operates ("owner"), each with a real character
 - 3 Slack channels the company actually uses
-- an episode: the day as a story, the agent's standing brief, 5-8 scheduled beats, and 4-5 success criteria
+- how this world behaves: what nobody in it may say or do, and the register everyone writes in
+- an episode: the day as a story, the agent's standing brief, 5-8 scheduled beats — two or three of which reword themselves if the agent has already dealt with them — and 4-5 success criteria
 
 Hard rules:
 - Refer to people ONLY by their full name as written in the cast. Never write an email address, a Slack id, a user handle or an ISO timestamp — those are generated for you.
@@ -48,6 +98,12 @@ Hard rules:
 - The day must NOT be solvable by reading one message. Put a fact the agent needs on a different surface from where it is asked for, and make something change after the agent starts working.
 - At least one beat must land in the second half of the day.
 - Write like a real workplace: short, specific, slightly impatient. No lorem ipsum, no placeholder names like "John Doe".
+
+${adaptationRules()}
+
+${CHARACTER_RULES}
+
+${WORLD_RULES}
 
 ${criteriaRules({ beats: [], channels: [], people: [] })}`;
 
@@ -78,6 +134,19 @@ if (UNROUTABLE_KINDS.length > 0) {
   );
 }
 
+/**
+ * The same intersection for a BEAT's condition, which is a criterion with the
+ * score taken off and so must be held to the same closed vocabulary.
+ *
+ * @sonata/world has already dropped `judged` from this list — the judge does not
+ * run mid-day, so a condition it would have to answer is a beat that never adapts
+ * — and `bindAdaptation` refuses it again in code. This is the third and cheapest
+ * of the three: the enum on the wire, so the model is never offered the word.
+ */
+const ROUTABLE_CONDITION_KINDS: CriterionKind[] = CONDITION_KINDS.filter((k): k is CriterionKind =>
+  isCriterionKind(k),
+);
+
 /** `CRITERION_SCHEMA` with `kind` pinned to the kinds the judge can actually route. */
 const CRITERION_ITEM: Record<string, unknown> = {
   ...CRITERION_SCHEMA,
@@ -95,7 +164,16 @@ const CRITERIA_ONLY_SCHEMA: Record<string, unknown> = {
   },
 };
 
-const SCHEMA: Record<string, unknown> = {
+/**
+ * The whole scenario as the model must return it.
+ *
+ * Exported so a test can hold its convention to account: every field required,
+ * unused ones sent as "". `ref`, `expect` and `target` were optional once and the
+ * model simply left them out, which is how a checklist of criteria that named
+ * nothing got authored — and `brief` is that same field in a different coat, the
+ * one whose absence turns a cast back into a list of names.
+ */
+export const SCENARIO_SCHEMA: Record<string, unknown> = {
   type: "object",
   properties: {
     business: {
@@ -116,13 +194,33 @@ const SCHEMA: Record<string, unknown> = {
         properties: {
           name: { type: "string" },
           role: { type: "string" },
+          // An enum, from the assembler's own vocabulary, because this field is
+          // not a label: `surfacesFor` reads it to decide who may appear in
+          // Slack at all. As a description with six suggested values it was a
+          // hint, and a model that answered "Client" or "external client" got a
+          // person outside the company handed the company's Slack.
           relationship: {
             type: "string",
-            description: "self, manager, peer, client, vendor, candidate",
+            enum: [...RELATIONSHIPS],
+            description:
+              "How they stand to the mailbox owner. client, vendor and candidate are OUTSIDE the company and are only ever reachable by email.",
           },
-          voice: { type: "string", description: "How they write: length, register, quirks" },
+          voice: { type: "string", description: "How they TYPE: length, register, quirks" },
+          brief: {
+            type: "string",
+            description:
+              "How they BEHAVE, and not a restatement of voice: what they want, what they will accept, and what they will never do. One to three sentences, third person.",
+          },
+          responsiveness: {
+            type: "number",
+            description: "0 to 1 — how likely they are to answer at all when addressed.",
+          },
+          replyDelayTicks: {
+            type: "integer",
+            description: "0 to 4 — ticks between being addressed and answering. 0 is straight back.",
+          },
         },
-        required: ["name", "role", "relationship", "voice"],
+        required: ["name", "role", "relationship", "voice", "brief", "responsiveness", "replyDelayTicks"],
       },
     },
     channels: {
@@ -136,6 +234,16 @@ const SCHEMA: Record<string, unknown> = {
         },
         required: ["name", "purpose", "members"],
       },
+    },
+    offLimits: {
+      type: "array",
+      items: { type: "string" },
+      description:
+        "3 to 6 lines. Facts nobody in this world may volunteer and moves nobody may make — the things that would hand the agent the answer.",
+    },
+    style: {
+      type: "string",
+      description: "The register everyone here writes in, per surface where it differs.",
     },
     episode: {
       type: "object",
@@ -166,8 +274,67 @@ const SCHEMA: Record<string, unknown> = {
               durationMinutes: { type: "integer" },
               eventRef: { type: "string" },
               reason: { type: "string" },
+              // The adaptation, flat and required-and-empty — the house pattern,
+              // and here for the sharpest version of the reason behind it. Most
+              // beats do not adapt, so an OPTIONAL adapt field is one a model
+              // never has to think about and therefore never writes: the feature
+              // would ship, be prompted for, and come back absent from every
+              // generated day, looking exactly like a model that declined to use
+              // it. Required, the model answers "" on the beats that do not adapt
+              // and has to decide about the ones that do. `authoredAdaptation`
+              // reads "" back as absent.
+              adaptWhenTwin: {
+                type: "string",
+                enum: ["", "gmail", "slack", "calendar", "any"],
+                description:
+                  "Which surface the condition asks about. Empty string on every beat that does not adapt.",
+              },
+              adaptWhenKind: {
+                type: "string",
+                enum: ["", ...ROUTABLE_CONDITION_KINDS],
+                description:
+                  "What the agent must already have done for this beat to reword itself — the same vocabulary as a success criterion. Empty string on every beat that does not adapt.",
+              },
+              adaptWhenRef: {
+                type: "string",
+                description:
+                  "REQUIRED for a `replied` condition: the ref of the beat the agent must already have answered. That beat MUST fire on an earlier tick than this one. Empty string otherwise.",
+              },
+              adaptWhenExpect: {
+                type: "string",
+                description:
+                  "The channel, label or short phrase the condition looks for, for posted/labelled/mentions. Empty string otherwise.",
+              },
+              adaptWhenTarget: {
+                type: "string",
+                description:
+                  "REQUIRED for a `sent` condition: the full name of the person the agent must already have written to. Empty string otherwise.",
+              },
+              adaptWhenDescription: {
+                type: "string",
+                description:
+                  "One line naming what is being asked, written as a fact about the agent. Goes into the run record verbatim. Empty string on every beat that does not adapt.",
+              },
+              adaptFacts: {
+                type: "array",
+                items: { type: "string" },
+                description:
+                  "Short literals this beat must still say however it is reworded — an amount, a name, a time. EVERY ONE must already appear word for word in this beat's own body or text. Empty list on every beat that does not adapt.",
+              },
             },
-            required: ["tick", "twin", "kind", "from"],
+            required: [
+              "tick",
+              "twin",
+              "kind",
+              "from",
+              "adaptWhenTwin",
+              "adaptWhenKind",
+              "adaptWhenRef",
+              "adaptWhenExpect",
+              "adaptWhenTarget",
+              "adaptWhenDescription",
+              "adaptFacts",
+            ],
           },
         },
         // Every field required, unused ones sent as "" — the house pattern for
@@ -179,7 +346,7 @@ const SCHEMA: Record<string, unknown> = {
       required: ["title", "story", "task", "beats", "criteria"],
     },
   },
-  required: ["business", "owner", "cast", "channels", "episode"],
+  required: ["business", "owner", "cast", "channels", "offLimits", "style", "episode"],
 };
 
 // ---------------------------------------------------------------------------
@@ -366,11 +533,13 @@ function dayFacts(assembled: AssembledScenario): {
   channels: string[];
   people: string[];
 } {
-  const beats: BindableBeat[] = assembled.spec.beats
-    .filter((b): b is typeof b & { ref: string } => Boolean(b.ref))
-    .map((b) => ({ ref: b.ref, twin: b.twin, kind: b.kind }));
   return {
-    beats,
+    // The same function the binding gate uses, not a second copy of the map: this
+    // list tells the model which refs and ticks it may name, and `bindCriteria`
+    // throws away anything it names that is not on that list. Two copies drift
+    // silently — one field short here and the model is asked for deadlines with
+    // no schedule to pick from.
+    beats: bindableBeats(assembled.spec.beats),
     channels: assembled.seed.channels.map((c) => c.name),
     people: assembled.seed.cast.map((p) => p.name),
   };
@@ -499,7 +668,46 @@ async function assembleWithBoundCriteria(
   }
   const shortfall = shortfallOf(best);
   if (shortfall) console.warn(`[sonata] "${best.spec.title}": ${shortfall}`);
+  // A different loss from the one above, and quieter: the day's shape and its
+  // score are untouched, because a refused adaptation costs the adaptation and
+  // never the beat. What it costs is that this beat will chase an agent that
+  // already answered, in the words it was written with, in every run — which is
+  // the original defect, and it would otherwise look exactly like a model that
+  // chose not to use the feature. Not worth a repair round-trip; worth a line.
+  if (best.droppedAdaptations.length > 0) {
+    console.warn(
+      `[sonata] "${best.spec.title}": ${best.droppedAdaptations.length} beat(s) will not adapt to ` +
+        `what the agent did, and will send their authored wording in every run:\n` +
+        best.droppedAdaptations.map((d) => `  - "${d.beat}" (t${d.tick}) — ${d.why}`).join("\n"),
+    );
+  }
   return best;
+}
+
+/**
+ * Say so when a generated cast reached the director with no characters in it.
+ *
+ * A missing brief is not worth falling back to a template over: the day still
+ * runs, and `personaFor` derives a workable persona from the relationship. But
+ * that derivation is exactly the flat world this schema exists to end, and its
+ * only symptom is six people who sound the same, three screens and one model
+ * spend later. The preview cannot show it — briefs are not on it — so this is
+ * the one place the gap can be named at the moment it happens.
+ *
+ * Counted off the assembled personas rather than the raw JSON, because those are
+ * what the director will actually be handed: a brief that arrived as a number or
+ * a list is absent by the time it matters, and counting it as present here would
+ * make this warning lie in exactly the case it exists for. `personaFor` is the
+ * only thing that decides what a brief is.
+ */
+function warnIfCharacterless(assembled: AssembledScenario): void {
+  const personas = assembled.spec.director.personas;
+  if (personas.some((p) => p.brief)) return;
+  console.warn(
+    `[sonata] "${assembled.seed.business.name}": the model returned no usable character briefs, ` +
+      `so every persona falls back to the relationship derivation and the cast will read as one ` +
+      `person in ${personas.length} fonts.`,
+  );
 }
 
 /**
@@ -519,7 +727,7 @@ async function authorFromModel(brief: string, ticks: number): Promise<Authored> 
     const authored = await completeJson<AuthoredScenario>({
       system: SYSTEM,
       user: `Business and day to simulate:\n\n${brief}\n\nThe day runs for ${ticks} ticks, so ticks 0 to ${ticks - 1}.`,
-      schema: SCHEMA,
+      schema: SCENARIO_SCHEMA,
       schemaName: "sonata_scenario",
       maxTokens: 16000,
     });
@@ -533,6 +741,11 @@ async function authorFromModel(brief: string, ticks: number): Promise<Authored> 
     }
 
     const day = await assembleWithBoundCriteria(authored, brief, ticks);
+    // Before the shortfall check below can hand this day back as a `why` and let
+    // `templateStandIn` replace it: this is a statement about what the MODEL
+    // wrote, and a template has no briefs either, so warning after the swap would
+    // blame the model for the fallback's flatness.
+    warnIfCharacterless(day);
     // The day cannot be scored: its criteria were dropped, or what survived is
     // prose for the judge. That is the same failure as a business too thin to
     // run — a day that will report 100% of nothing is not a day.

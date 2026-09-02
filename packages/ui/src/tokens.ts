@@ -9,46 +9,52 @@
  * inject it at runtime and override the compiled theme without a rebuild.
  */
 
-/** Cream page, near-white cards, warm ink, slate-blue primary, gold accent. */
+/**
+ * Warm paper, white cards, near-black ink, one petrol accent, muted
+ * sage/terracotta states. See DESIGN.md — colour is rationed: buttons are ink,
+ * petrol or outlined, and the state hues appear only on badges, pills and
+ * chart marks.
+ */
 export const color = {
-  /** Page background — parchment. */
-  bg: "#f2f1ec",
+  /** Page background — warm paper. */
+  bg: "#f7f6f2",
   /** Inset/sunken areas: table zebra, code wells, hover troughs. */
-  bgSubtle: "#e9e7df",
-  /** Cards sit *above* the page, so they are lighter than it, not darker. */
-  surface: "#fbfaf8",
-  surfaceHover: "#f5f3ee",
-  ink: "#1b1a17",
-  muted: "#5f5b52",
-  subtle: "#8c8779",
-  line: "#e3e0d7",
-  lineStrong: "#d2cec1",
-  primary: "#5b7089",
-  primaryHover: "#4d6178",
-  primaryActive: "#3f5065",
-  primarySoft: "#e7ecf2",
-  primaryInk: "#3c5170",
-  onPrimary: "#fbfaf8",
-  gold: "#c9a227",
-  goldSoft: "#f2e8cd",
-  goldInk: "#87681a",
-  success: "#3f7d53",
-  successSoft: "#e4eee7",
-  successInk: "#2f6340",
-  danger: "#b04236",
-  dangerHover: "#98392e",
-  dangerSoft: "#f7e6e2",
-  dangerInk: "#8c3327",
-  warning: "#b3801f",
-  warningSoft: "#f6ecd6",
-  warningInk: "#7f5c14",
-  info: "#4a6fa5",
-  infoSoft: "#e6ecf5",
-  infoInk: "#3a5a8a",
-  neutral: "#6f6a5e",
-  neutralSoft: "#ece9e1",
-  neutralInk: "#4f4b42",
-  focus: "#5b7089",
+  bgSubtle: "#f1efe9",
+  /** Cards are plain white above the paper. */
+  surface: "#ffffff",
+  surfaceHover: "#f7f6f2",
+  ink: "#16181a",
+  muted: "#5a6060",
+  subtle: "#6b716e",
+  line: "#eceae2",
+  lineStrong: "#dddad0",
+  primary: "#0e5c55",
+  primaryHover: "#0b4a44",
+  primaryActive: "#093d38",
+  primarySoft: "#e3f0ec",
+  primaryInk: "#0b4a44",
+  onPrimary: "#ffffff",
+  /** Ochre — the "attention, not danger" family (syncing, unpriced, stale). */
+  gold: "#8a6520",
+  goldSoft: "#f5ebd6",
+  goldInk: "#6e4f16",
+  success: "#63936f",
+  successSoft: "#e4eee6",
+  successInk: "#3f6b4c",
+  danger: "#b26355",
+  dangerHover: "#9e5044",
+  dangerSoft: "#f5e6e1",
+  dangerInk: "#8e4335",
+  warning: "#8a6520",
+  warningSoft: "#f5ebd6",
+  warningInk: "#6e4f16",
+  info: "#3d7a7a",
+  infoSoft: "#e3eeee",
+  infoInk: "#2e5f5f",
+  neutral: "#6b726e",
+  neutralSoft: "#f1efe9",
+  neutralInk: "#4c524e",
+  focus: "#0e5c55",
 } as const;
 
 /** Every twin. Brand hues pulled toward the cream palette so chips sit inside
@@ -83,14 +89,15 @@ export const SERVICE_LABELS: Record<ServiceId, string> = {
   "google-docs": "Google Docs",
 };
 
-/** Run lifecycle. `running` is the only one that animates. */
+/** Run lifecycle. `running` wears the accent — live is the loudest thing on
+ *  any page — and the rest are the muted sage/terracotta family. */
 export const statusColor = {
-  running: { ink: color.info, soft: color.infoSoft, line: "#cfdcea" },
-  passed: { ink: color.successInk, soft: color.successSoft, line: "#cfe0d4" },
-  failed: { ink: color.dangerInk, soft: color.dangerSoft, line: "#eed4cd" },
-  pending: { ink: color.neutralInk, soft: color.neutralSoft, line: "#ddd9cd" },
+  running: { ink: color.primary, soft: color.primarySoft, line: "#cbe2dc" },
+  passed: { ink: color.successInk, soft: color.successSoft, line: "#cde0d1" },
+  failed: { ink: color.dangerInk, soft: color.dangerSoft, line: "#ebd2ca" },
+  pending: { ink: color.neutralInk, soft: color.neutralSoft, line: "#dddad0" },
   warning: { ink: color.warningInk, soft: color.warningSoft, line: "#e8d7ae" },
-  neutral: { ink: color.neutralInk, soft: color.neutralSoft, line: "#ddd9cd" },
+  neutral: { ink: color.neutralInk, soft: color.neutralSoft, line: "#dddad0" },
 } as const;
 
 export type StatusId = keyof typeof statusColor;
@@ -121,38 +128,79 @@ export const space = {
   "16": "64px",
 } as const;
 
-/** Generous. Cards are 2xl/3xl; controls are md/lg. */
+/**
+ * Vertical rhythm, named by what the gap separates rather than by size.
+ *
+ * Four page components stacked their sections at 32px, 40px, 48px and 56px —
+ * one hierarchy level wearing four different spacings, which is why the app read
+ * as slightly different software on every route. This is a dense dashboard, so
+ * the scale tops out at 32px: the tier tells you which gap to reach for, and the
+ * number stops being a per-file opinion.
+ */
+export const rhythm = {
+  /**
+   * Between top-level sections of a page.
+   *
+   * 40 and not 32: a section step has to beat the 24px one inside it by enough
+   * to read as a different kind of boundary. At 32 the two were close enough
+   * that a heading with no subtitle sat almost equidistant between the block
+   * above it and the content below, and the hierarchy went flat.
+   */
+  section: "40px",
+  /** Between blocks inside one section. */
+  block: "24px",
+  /** Between related items — cards in a grid, chips in a row. */
+  group: "16px",
+  /** A label and its value; an icon and its text. */
+  item: "8px",
+} as const;
+
+/**
+ * Icon sizes. Four steps, because eight was not a scale.
+ *
+ * 11, 12, 13, 14, 15, 16, 18 and 20 were all in use across 158 call sites, which
+ * is the difference between a rhythm and a rounding error.
+ */
+export const iconSize = {
+  xs: 12,
+  sm: 14,
+  md: 16,
+  lg: 20,
+} as const;
+
+/** Calm. Cards are 2xl (14px); controls are md; buttons are full pills. */
 export const radius = {
   sm: "6px",
   md: "10px",
-  lg: "14px",
-  xl: "20px",
-  "2xl": "24px",
-  "3xl": "32px",
+  lg: "12px",
+  xl: "14px",
+  "2xl": "14px",
+  "3xl": "16px",
   full: "9999px",
 } as const;
 
-/** Warm-tinted shadows — grey shadows go muddy on cream. */
+/** Whisper shadows — elevation you feel rather than see. */
 export const shadow = {
-  xs: "0 1px 2px rgba(27, 26, 23, 0.05)",
-  sm: "0 1px 3px rgba(27, 26, 23, 0.06), 0 1px 2px rgba(27, 26, 23, 0.04)",
-  md: "0 4px 14px -3px rgba(27, 26, 23, 0.10), 0 2px 5px -3px rgba(27, 26, 23, 0.06)",
-  lg: "0 18px 44px -14px rgba(27, 26, 23, 0.20), 0 4px 12px -6px rgba(27, 26, 23, 0.10)",
-  focus: `0 0 0 3px rgba(91, 112, 137, 0.28)`,
+  xs: "0 1px 2px rgba(22, 24, 26, 0.04)",
+  sm: "0 1px 2px rgba(22, 24, 26, 0.04), 0 2px 6px -4px rgba(22, 24, 26, 0.05)",
+  md: "0 4px 16px -8px rgba(22, 24, 26, 0.10)",
+  lg: "0 18px 44px -14px rgba(22, 24, 26, 0.16), 0 4px 12px -6px rgba(22, 24, 26, 0.08)",
+  focus: `0 0 0 3px rgba(14, 92, 85, 0.25)`,
 } as const;
 
 /** Small and crisp for data; the display sizes are for serif italic headings. */
 export const fontSize = {
-  xs: { size: "11px", leading: "14px" },
+  xs: { size: "11px", leading: "15px" },
   sm: { size: "12px", leading: "16px" },
-  base: { size: "13px", leading: "18px" },
+  base: { size: "13px", leading: "19px" },
   md: { size: "14px", leading: "20px" },
   lg: { size: "16px", leading: "24px" },
-  xl: { size: "18px", leading: "26px" },
-  "2xl": { size: "22px", leading: "28px" },
-  "3xl": { size: "28px", leading: "34px" },
-  "4xl": { size: "36px", leading: "40px" },
-  "5xl": { size: "48px", leading: "52px" },
+  xl: { size: "20px", leading: "26px" },
+  "2xl": { size: "24px", leading: "30px" },
+  "3xl": { size: "30px", leading: "34px" },
+  "4xl": { size: "40px", leading: "42px" },
+  "5xl": { size: "52px", leading: "54px" },
+  "6xl": { size: "76px", leading: "76px" },
 } as const;
 
 /** 150ms is the house transition. Anything slower reads as lag. */
@@ -196,6 +244,8 @@ export function buildCssVariables(): string {
   for (const [key, value] of Object.entries(radius)) push(`--radius-sn-${key}`, value);
   for (const [key, value] of Object.entries(shadow)) push(`--shadow-sn-${key}`, value);
   for (const [key, value] of Object.entries(space)) push(`--sn-space-${key.replace(".", "_")}`, value);
+  for (const [key, value] of Object.entries(rhythm)) push(`--sn-rhythm-${key}`, value);
+  for (const [key, value] of Object.entries(iconSize)) push(`--sn-icon-${key}`, `${value}px`);
   for (const [key, value] of Object.entries(fontSize)) {
     push(`--sn-text-${key}`, value.size);
     push(`--sn-leading-${key}`, value.leading);
@@ -215,6 +265,8 @@ export const tokens = {
   serviceColor,
   statusColor,
   space,
+  rhythm,
+  iconSize,
   radius,
   shadow,
   fontSize,

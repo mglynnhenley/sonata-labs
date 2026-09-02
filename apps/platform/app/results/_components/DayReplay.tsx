@@ -28,6 +28,7 @@ import {
   Timeline,
   cn,
 } from "@sonata/ui";
+import { scrollBehavior } from "../../_components/scrollBehavior";
 import type { Moment } from "../_lib/moments";
 import { formatSimTime } from "../_lib/summary";
 
@@ -81,16 +82,16 @@ function markerClass(moment: Moment): string {
 }
 
 function MarkerIcon({ moment }: { moment: Moment }) {
-  if (moment.error || moment.step?.kind === "escalation") return <IconAlert size={12} />;
+  if (moment.error || moment.step?.kind === "escalation") return <IconAlert size="xs" />;
   if (moment.source === "agent") {
-    return moment.isMutation ? <IconBolt size={12} /> : <IconSearch size={12} />;
+    return moment.isMutation ? <IconBolt size="xs" /> : <IconSearch size="xs" />;
   }
   if (moment.twin) {
     const Icon = TWIN_ICON[moment.twin];
-    return <Icon size={12} />;
+    return <Icon size="xs" />;
   }
-  if (moment.source === "director") return <IconSpark size={12} />;
-  return <IconInfo size={12} />;
+  if (moment.source === "director") return <IconSpark size="xs" />;
+  return <IconInfo size="xs" />;
 }
 
 export function DayReplay({
@@ -124,7 +125,7 @@ export function DayReplay({
     );
     if (!row) return;
     row.focus({ preventScroll: true });
-    row.scrollIntoView({ block: "center", behavior: "smooth" });
+    row.scrollIntoView({ block: "center", behavior: scrollBehavior() });
   }, [focusToken, selected]);
 
   const current = moments[selected];
@@ -133,13 +134,13 @@ export function DayReplay({
     <Card padding="none" radius="2xl" className="scroll-mt-6 overflow-hidden">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-sn-line px-5 py-3.5">
         <div>
-          <h3 className="text-[14px] font-medium text-sn-ink">The day, replayed</h3>
-          <p className="mt-0.5 text-[12px] text-sn-muted">
+          <h3 className="text-sn-md font-medium text-sn-ink">The day, replayed</h3>
+          <p className="mt-0.5 text-sn-sm text-sn-muted">
             Everything that happened, in order. Arrow keys step through it.
           </p>
         </div>
         {moments.length > 0 ? (
-          <div className="flex items-center gap-1 text-[12px] text-sn-muted">
+          <div className="flex items-center gap-1 text-sn-sm text-sn-muted">
             <button
               type="button"
               onClick={() => onSelect(Math.max(0, selected - 1))}
@@ -147,7 +148,7 @@ export function DayReplay({
               aria-label="Previous moment"
               className="grid h-7 w-7 place-items-center rounded-sn-md text-sn-muted transition-colors duration-150 ease-sn hover:bg-sn-bg-subtle hover:text-sn-ink disabled:opacity-40"
             >
-              <IconArrowUp size={14} />
+              <IconArrowUp size="sm" />
             </button>
             <span data-numeric className="tabular-nums">
               {selected + 1} / {moments.length}
@@ -159,14 +160,14 @@ export function DayReplay({
               aria-label="Next moment"
               className="grid h-7 w-7 place-items-center rounded-sn-md text-sn-muted transition-colors duration-150 ease-sn hover:bg-sn-bg-subtle hover:text-sn-ink disabled:opacity-40"
             >
-              <IconArrowDown size={14} />
+              <IconArrowDown size="sm" />
             </button>
           </div>
         ) : null}
       </div>
 
       {moments.length === 0 ? (
-        <p className="px-5 py-8 text-center text-[13px] text-sn-muted">
+        <p className="px-5 py-8 text-center text-sn-base text-sn-muted">
           No ticks were recorded. The run stopped before the day started.
         </p>
       ) : (
@@ -223,10 +224,10 @@ function MomentRow({
       <div className="w-12 shrink-0 pt-[3px] text-right">
         {showTime ? (
           <>
-            <span data-numeric className="block text-[12px] font-medium text-sn-muted">
+            <span data-numeric className="block text-sn-sm font-medium text-sn-muted">
               {formatSimTime(moment.simTimeISO, offsetMinutes)}
             </span>
-            <span className="block text-[11px] text-sn-subtle">t{moment.tick}</span>
+            <span className="block text-sn-xs text-sn-subtle">t{moment.tick}</span>
           </>
         ) : null}
       </div>
@@ -260,20 +261,20 @@ function MomentRow({
             <span className="flex items-baseline gap-2">
               <span
                 className={cn(
-                  "truncate text-[13.5px] font-medium text-sn-ink",
-                  moment.source === "agent" && moment.step?.kind === "tool" && "font-mono text-[12.5px]",
+                  "truncate text-sn-base font-medium text-sn-ink",
+                  moment.source === "agent" && moment.step?.kind === "tool" && "font-mono text-sn-sm",
                 )}
               >
                 {moment.title}
               </span>
               {moment.isMutation ? (
-                <span className="shrink-0 text-[10.5px] tracking-[0.06em] text-sn-primary-ink uppercase">
+                <span className="shrink-0 text-sn-xs tracking-[0.06em] text-sn-primary-ink uppercase">
                   write
                 </span>
               ) : null}
             </span>
             {moment.detail ? (
-              <span className="mt-0.5 line-clamp-2 block text-[12.5px] leading-[18px] text-sn-muted">
+              <span className="mt-0.5 line-clamp-2 block text-sn-sm text-sn-muted">
                 {moment.detail}
               </span>
             ) : null}
@@ -436,18 +437,18 @@ function MomentDetail({
           {SOURCE_LABEL[moment.source]}
         </Chip>
         {moment.twin ? <Chip size="sm" service={moment.twin} /> : null}
-        <span data-numeric className="text-[11.5px] text-sn-subtle">
+        <span data-numeric className="text-sn-xs text-sn-subtle">
           {formatSimTime(moment.simTimeISO, offsetMinutes)} · tick {moment.tick}
           {moment.seq !== undefined ? ` · step ${moment.seq}` : ""}
         </span>
       </div>
 
-      <h4 className="text-[15px] leading-[21px] font-medium break-words text-sn-ink">
+      <h4 className="text-sn-md font-medium break-words text-sn-ink">
         {moment.title}
       </h4>
 
       {moment.error ? (
-        <p className="rounded-sn-lg border border-sn-failed-line bg-sn-failed-soft p-2.5 text-[12.5px] text-sn-failed-ink">
+        <p className="rounded-sn-lg border border-sn-failed-line bg-sn-failed-soft p-2.5 text-sn-sm text-sn-failed-ink">
           {moment.error}
           {step?.kind === "tool" ? " — the call failed, so nothing changed." : ""}
         </p>
@@ -478,7 +479,7 @@ function MomentDetail({
       {step?.kind === "escalation" ? (
         <Detail label="What it handed back">
           {step.text}
-          <span className="mt-2 block text-[12px] text-sn-subtle">
+          <span className="mt-2 block text-sn-sm text-sn-subtle">
             Every escalation is counted against autonomy — this is a moment a human had to step
             in.
           </span>
@@ -487,7 +488,7 @@ function MomentDetail({
 
       {beat ? (
         <Detail label="Scripted beat">
-          <span className="font-mono text-[12px]">{beat.beatId}</span>
+          <span className="font-mono text-sn-sm">{beat.beatId}</span>
           {beat.ref ? <span className="text-sn-subtle"> · ref {beat.ref}</span> : null}
           <span className="text-sn-subtle"> · {beat.kind}</span>
         </Detail>
@@ -500,10 +501,10 @@ function MomentDetail({
             <dl className="space-y-2">
               {payloadLines(event, people).map((line) => (
                 <div key={line.label}>
-                  <dt className="text-[11px] font-medium tracking-[0.06em] text-sn-subtle uppercase">
+                  <dt className="text-sn-xs font-medium tracking-[0.06em] text-sn-subtle uppercase">
                     {line.label}
                   </dt>
-                  <dd className="mt-0.5 text-[13px] leading-[19px] whitespace-pre-wrap text-sn-ink">
+                  <dd className="mt-0.5 text-sn-base whitespace-pre-wrap text-sn-ink">
                     {line.value}
                   </dd>
                 </div>
@@ -514,7 +515,7 @@ function MomentDetail({
             <button
               type="button"
               onClick={() => onJumpSeq(becauseSeq)}
-              className="self-start text-[12.5px] font-medium text-sn-primary-ink hover:underline"
+              className="self-start text-sn-sm font-medium text-sn-primary-ink hover:underline"
             >
               This answers step {becauseSeq} →
             </button>
@@ -529,7 +530,7 @@ function MomentDetail({
           href={moment.url}
           target="_blank"
           rel="noreferrer"
-          className="self-start text-[12.5px] font-medium text-sn-primary-ink hover:underline"
+          className="self-start text-sn-sm font-medium text-sn-primary-ink hover:underline"
         >
           {moment.twin ? `Open it in ${SERVICE_LABELS[moment.twin]}` : "Open it in the twin"} →
         </a>
@@ -596,18 +597,18 @@ function ComposedMessage({
       {headers.length > 0 ? (
         <div className="border-b border-sn-line bg-sn-raised px-3 py-2">
           {headers.map(([label, value]) => (
-            <div key={label} className="flex gap-2 text-[12px] leading-[19px]">
+            <div key={label} className="flex gap-2 text-sn-sm leading-[19px]">
               <span className="w-[52px] shrink-0 text-sn-subtle">{label}</span>
               <span className="min-w-0 break-words text-sn-ink">{value}</span>
             </div>
           ))}
         </div>
       ) : null}
-      <div className="max-h-[320px] overflow-auto px-3 py-2.5 text-[13px] leading-[20px] whitespace-pre-wrap text-sn-ink">
+      <div className="max-h-[320px] overflow-auto px-3 py-2.5 text-sn-base whitespace-pre-wrap text-sn-ink">
         {message.body}
       </div>
       <details className="border-t border-sn-line">
-        <summary className="cursor-pointer px-3 py-1.5 text-[11.5px] text-sn-subtle select-none hover:text-sn-ink">
+        <summary className="cursor-pointer px-3 py-1.5 text-sn-xs text-sn-subtle select-none hover:text-sn-ink">
           Raw arguments
         </summary>
         <CodeBlock
@@ -625,10 +626,10 @@ function ComposedMessage({
 function Detail({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div>
-      <div className="text-[11px] font-medium tracking-[0.06em] text-sn-subtle uppercase">
+      <div className="text-sn-xs font-medium tracking-[0.06em] text-sn-subtle uppercase">
         {label}
       </div>
-      <div className="mt-1 text-[13px] leading-[20px] whitespace-pre-wrap text-sn-ink">
+      <div className="mt-1 text-sn-base whitespace-pre-wrap text-sn-ink">
         {children}
       </div>
     </div>
