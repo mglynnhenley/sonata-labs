@@ -280,7 +280,14 @@ describe("post ids", () => {
   it("stays a string, because the value overflows a JS number", () => {
     const id = newPostId(at(0, 9));
     expect(Number(id)).toBeGreaterThan(Number.MAX_SAFE_INTEGER);
-    expect(String(Number(id))).not.toBe(id);
+    // Forced odd before the lossiness check. Doubles this size (~2^63) sit 1024
+    // apart, so every odd value is unrepresentable — whereas the minted id's
+    // random low bits occasionally land ON a double, and this assertion over a
+    // raw mint failed CI on exactly that dice roll ("…199000" round-tripped
+    // clean). The property the code relies on is about the id's MAGNITUDE, and
+    // magnitude is what makes odd a guarantee.
+    const odd = (BigInt(id) | 1n).toString();
+    expect(String(Number(odd))).not.toBe(odd);
   });
 });
 
