@@ -128,6 +128,16 @@ export function NewScenarioComposer({ templates }: NewScenarioComposerProps) {
 
   const box = useRef<HTMLTextAreaElement | null>(null);
 
+  // Focus the brief on desktop only. `autoFocus` did it everywhere, and on a
+  // phone that opens the keyboard the instant the page loads: half the viewport
+  // goes, the page scrolls itself, and the five starter chips below the box —
+  // the thing someone unsure what to type actually needs — are pushed off
+  // screen. A fine pointer means a real keyboard is already there.
+  useEffect(() => {
+    if (!window.matchMedia("(pointer: fine)").matches) return;
+    box.current?.focus();
+  }, []);
+
   useEffect(() => {
     if (!working) {
       setLine(0);
@@ -281,7 +291,6 @@ export function NewScenarioComposer({ templates }: NewScenarioComposerProps) {
           value={brief}
           onChange={(e) => setBrief(e.target.value)}
           rows={6}
-          autoFocus
           disabled={working}
           placeholder="A 12-person fintech, the week before an audit. This morning the biggest client escalates about a missed SLA, and the answer is buried in a Slack thread nobody has read."
           className={cn(
