@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import Database from "better-sqlite3";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { makeEmptyDb, makeSeededDb, NOW } from "./helpers";
+import { NOW, makeEmptyDb, makeSeededDb, trackDb } from "./helpers";
 import { listActions, logAction, startNewSession } from "@/lib/audit";
 import { resolveObject, resolveStatus } from "@/lib/store/objects";
 import { getMemberByEmail } from "@/lib/store/members";
@@ -73,7 +73,7 @@ describe("schema", () => {
   });
 
   it("applies cleanly to a fresh audit-only database", () => {
-    const audit = new Database(":memory:");
+    const audit = trackDb(new Database(":memory:"));
     audit.exec(schema);
     const names = (
       audit.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as Array<{

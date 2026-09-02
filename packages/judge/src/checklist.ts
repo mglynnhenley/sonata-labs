@@ -1136,7 +1136,17 @@ export const TO_JUDGE: unique symbol = Symbol("sonata.criterion.toJudge");
  */
 export const NOT_ON_THIS_SURFACE: unique symbol = Symbol("sonata.criterion.notOnThisSurface");
 
-type Route = FactName | typeof TO_JUDGE | typeof NOT_ON_THIS_SURFACE;
+/**
+ * The surface HAS this action and no deterministic checker has been written for
+ * it yet. At runtime it behaves exactly like `TO_JUDGE` — the judge reads it in
+ * prose — but it is a third symbol because the two say opposite things about the
+ * codebase. `TO_JUDGE` is a decision that prose is the right answer; this is a
+ * debt, and filing it under `TO_JUDGE` would hide the debt behind a decision.
+ * Every use is a twin whose adapter landed before its checkers did.
+ */
+export const AWAITING_CHECKER: unique symbol = Symbol("sonata.criterion.awaitingChecker");
+
+type Route = FactName | typeof TO_JUDGE | typeof NOT_ON_THIS_SURFACE | typeof AWAITING_CHECKER;
 
 const BY_TWIN: Record<TwinName | "any", Record<CriterionKind, Route>> = {
   gmail: {
@@ -1193,6 +1203,76 @@ const BY_TWIN: Record<TwinName | "any", Record<CriterionKind, Route>> = {
     labelled: NOT_ON_THIS_SURFACE,
     archived: NOT_ON_THIS_SURFACE,
   },
+  // The four newer twins have adapters but not yet checkers. Every kind below is
+  // either genuinely absent from the surface or waiting for one, and the two are
+  // spelled differently so the debt stays visible.
+  attio: {
+    // Moving a deal down the pipeline is this surface's "moved", and setting a
+    // stage is the nearest thing it has to a label.
+    moved: AWAITING_CHECKER,
+    labelled: AWAITING_CHECKER,
+    // A follow-up task with a deadline is scheduled work, even without a calendar.
+    scheduled: AWAITING_CHECKER,
+    untouched: AWAITING_CHECKER,
+    mentions: AWAITING_CHECKER,
+    "no-escalation": "any:no_escalation",
+    judged: TO_JUDGE,
+    // A CRM has no threads, no channels, no outbox and no inbox to leave.
+    replied: NOT_ON_THIS_SURFACE,
+    sent: NOT_ON_THIS_SURFACE,
+    posted: NOT_ON_THIS_SURFACE,
+    archived: NOT_ON_THIS_SURFACE,
+    cancelled: NOT_ON_THIS_SURFACE,
+  },
+  "google-docs": {
+    untouched: AWAITING_CHECKER,
+    mentions: AWAITING_CHECKER,
+    "no-escalation": "any:no_escalation",
+    judged: TO_JUDGE,
+    // A document is written, not sent, answered, tagged, filed or scheduled.
+    replied: NOT_ON_THIS_SURFACE,
+    sent: NOT_ON_THIS_SURFACE,
+    posted: NOT_ON_THIS_SURFACE,
+    labelled: NOT_ON_THIS_SURFACE,
+    archived: NOT_ON_THIS_SURFACE,
+    scheduled: NOT_ON_THIS_SURFACE,
+    moved: NOT_ON_THIS_SURFACE,
+    cancelled: NOT_ON_THIS_SURFACE,
+  },
+  "google-ads": {
+    // Pausing a campaign is the only thing on this surface that stops something.
+    cancelled: AWAITING_CHECKER,
+    untouched: AWAITING_CHECKER,
+    "no-escalation": "any:no_escalation",
+    judged: TO_JUDGE,
+    // Nobody is written to, answered or tagged in an ads account, and a campaign
+    // is paused rather than rescheduled.
+    replied: NOT_ON_THIS_SURFACE,
+    sent: NOT_ON_THIS_SURFACE,
+    posted: NOT_ON_THIS_SURFACE,
+    labelled: NOT_ON_THIS_SURFACE,
+    archived: NOT_ON_THIS_SURFACE,
+    scheduled: NOT_ON_THIS_SURFACE,
+    moved: NOT_ON_THIS_SURFACE,
+    mentions: NOT_ON_THIS_SURFACE,
+  },
+  linkedin: {
+    posted: AWAITING_CHECKER,
+    replied: AWAITING_CHECKER,
+    // A reaction is this surface's label, for the same reason it is Slack's.
+    labelled: AWAITING_CHECKER,
+    untouched: AWAITING_CHECKER,
+    mentions: AWAITING_CHECKER,
+    "no-escalation": "any:no_escalation",
+    judged: TO_JUDGE,
+    // Messaging is partner-gated and this clone does not implement it, so there
+    // is nothing to send; a feed has no inbox and no events.
+    sent: NOT_ON_THIS_SURFACE,
+    archived: NOT_ON_THIS_SURFACE,
+    scheduled: NOT_ON_THIS_SURFACE,
+    moved: NOT_ON_THIS_SURFACE,
+    cancelled: NOT_ON_THIS_SURFACE,
+  },
   // `any` is a claim about the day rather than a surface, so every kind some
   // surface can decide is decidable here too — see `acrossSurfaces`, which puts
   // the same question to each surface in turn.
@@ -1237,7 +1317,7 @@ export function routeFor(twin: TwinName | "any", kind: CriterionKind): Criterion
         `the judge. Resolve the kind with \`asCriterionKind\` before asking.`,
     );
   }
-  if (route === TO_JUDGE) return { via: "judge" };
+  if (route === TO_JUDGE || route === AWAITING_CHECKER) return { via: "judge" };
   if (route === NOT_ON_THIS_SURFACE) return { via: "wrong-surface" };
   return { via: "checker", provider: route };
 }

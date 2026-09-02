@@ -30,11 +30,23 @@ import { formatDuration, formatPercent, formatSimTime, formatUsd, UNKNOWN } from
 // It invents nothing. Every number, action and scope is read straight off the
 // artifact — that is what lets this read as diligence rather than as a pitch.
 
-const TWIN_ORDER: readonly TwinName[] = ["gmail", "slack", "calendar"];
+const TWIN_ORDER: readonly TwinName[] = [
+  "gmail",
+  "slack",
+  "calendar",
+  "attio",
+  "google-docs",
+  "google-ads",
+  "linkedin",
+];
 const TWIN_LABEL: Record<TwinName, string> = {
   gmail: "Gmail",
   slack: "Slack",
   calendar: "Calendar",
+  attio: "Attio",
+  "google-docs": "Google Docs",
+  "google-ads": "Google Ads",
+  linkedin: "LinkedIn",
 };
 
 // ---------------------------------------------------------------------------

@@ -103,10 +103,26 @@ export interface FakeAdapter extends TwinAdapter {
   failInject?: string;
 }
 
+// One empty snapshot per twin. Spelled out rather than defaulted, because each
+// twin's snapshot has its own required lists and a fake that returned the wrong
+// shape would exercise the engine against a world no twin can produce.
 const emptySnapshot = (twin: TwinName): TwinSnapshot => {
-  if (twin === "gmail") return { twin, capturedAt: 0, labels: [], threads: [], drafts: [] };
-  if (twin === "slack") return { twin, capturedAt: 0, channels: [], messages: [] };
-  return { twin, capturedAt: 0, events: [] };
+  switch (twin) {
+    case "gmail":
+      return { twin, capturedAt: 0, labels: [], threads: [], drafts: [] };
+    case "slack":
+      return { twin, capturedAt: 0, channels: [], messages: [] };
+    case "calendar":
+      return { twin, capturedAt: 0, events: [] };
+    case "attio":
+      return { twin, capturedAt: 0, records: [], notes: [], tasks: [] };
+    case "google-docs":
+      return { twin, capturedAt: 0, documents: [] };
+    case "google-ads":
+      return { twin, capturedAt: 0, campaigns: [] };
+    case "linkedin":
+      return { twin, capturedAt: 0, posts: [], comments: [] };
+  }
 };
 
 export function fakeAdapter(name: TwinName): FakeAdapter {

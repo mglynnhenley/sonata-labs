@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "One description in, one coherent fake company out — the same cast in Gmail, Slack and Calendar.",
+  "description": "One description in, one coherent fake company out — the same cast on every twin.",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {

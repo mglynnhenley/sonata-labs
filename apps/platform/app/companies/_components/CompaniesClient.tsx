@@ -31,8 +31,8 @@ import { ago } from "@/lib/format";
 // Until this existed, a cloned company only reached Gmail when a run started —
 // so the first thing a new user did, opening the fake inbox to look at what they
 // had just invented, showed them somebody else's company. Seeding is its own
-// act here, with its own warning (it wipes all three clones) and its own
-// receipt (what landed, and a door into each app).
+// act here, with its own warning (it wipes every clone) and its own receipt
+// (what landed, and a door into each app).
 
 export interface CompaniesData {
   companies: CompanyCard[];
@@ -45,7 +45,8 @@ const WRITING_LINES = [
   "Filling the inbox: threads, replies, the ones nobody answered…",
   "Backfilling Slack, in everyone's own voice…",
   "Putting the meetings on the calendar…",
-  "Loading it into Gmail, Slack and Calendar…",
+  "Filing the deals, the briefs, the ad account and what the page posted…",
+  "Loading it into every clone…",
 ];
 
 function stateBadge(company: CompanyCard) {
@@ -92,7 +93,7 @@ export function CompaniesClient({ initial }: { initial: CompaniesData }) {
       setOutcome(seeded);
       toast({
         title: `${seeded.worldName} is in the clones`,
-        description: "Open Gmail, Slack or the calendar and read what these people have been up to.",
+        description: "Open any of the clones and read what these people have been up to.",
         tone: "success",
       });
       refresh();
@@ -117,7 +118,7 @@ export function CompaniesClient({ initial }: { initial: CompaniesData }) {
       <PageHeader
         eyebrow="Companies"
         title="The companies you've cloned"
-        subtitle="Each one is a cast of people with an inbox, Slack channels and a calendar — the same people in all three. Put one into the clones, then go and read their mail."
+        subtitle="Each one is a cast of people with an inbox, Slack channels, a calendar, a CRM, shared documents, an ad account and a company page — the same people on every one. Put one into the clones, then go and read their mail."
         actions={
           <Link href="/scenarios/new">
             <Button variant="primary" iconRight={<IconArrowRight size={14} />}>
@@ -127,8 +128,8 @@ export function CompaniesClient({ initial }: { initial: CompaniesData }) {
         }
       />
 
-      {/* Seeding needs all three clones up, so a clone that is off is shown here
-          with its own switch rather than discovered as a failed POST. */}
+      {/* Seeding needs every clone up, so a clone that is off is shown here with
+          its own switch rather than discovered as a failed POST. */}
       {offline.length > 0 ? (
         <Card padding="lg" radius="2xl">
           <div className="flex items-start gap-2.5">
@@ -139,8 +140,8 @@ export function CompaniesClient({ initial }: { initial: CompaniesData }) {
                 {offline.length === 1 ? "is" : "are"} not running.
               </p>
               <p className="mt-1 text-[12.5px] leading-[19px] text-sn-muted">
-                A company is loaded into all three at once, so all three have to be answering.
-                Starting one takes a few seconds the first time.
+                A company is loaded into every clone at once, so every one of them has to be
+                answering. Starting one takes a few seconds the first time.
               </p>
             </div>
           </div>
@@ -206,6 +207,25 @@ interface TileProps {
   onSeed: () => void;
 }
 
+/**
+ * One more surface on the "what has been written" line, or nothing at all.
+ *
+ * Nothing at all covers two different truths, and both of them want silence: a
+ * company that runs no advertising is a real company rather than a failed
+ * generation, and a company cloned before a surface existed has no number for it
+ * to print — its record was written when a backlog was three surfaces wide,
+ * which is why `n` can be undefined at runtime whatever `WorldCounts` says.
+ */
+function Also({ n, label }: { n: number | undefined; label: string }) {
+  if (!n) return null;
+  return (
+    <>
+      {" · "}
+      <span data-numeric>{n}</span> {label}
+    </>
+  );
+}
+
 function CompanyTile({ company, clones, busy, busyLine, disabled, onSeed }: TileProps) {
   const now = Date.now();
   return (
@@ -231,7 +251,11 @@ function CompanyTile({ company, clones, busy, busyLine, disabled, onSeed }: Tile
         <p className="mt-3 text-[12px] leading-[18px] text-sn-subtle">
           <span data-numeric>{company.counts.threads}</span> threads ·{" "}
           <span data-numeric>{company.counts.slackMessages}</span> Slack messages ·{" "}
-          <span data-numeric>{company.counts.events}</span> events written
+          <span data-numeric>{company.counts.events}</span> events
+          <Also n={company.counts.records} label="CRM records" />
+          <Also n={company.counts.documents} label="documents" />
+          <Also n={company.counts.campaigns} label="campaigns" />
+          <Also n={company.counts.posts} label="posts" /> written
         </p>
       ) : (
         <p className="mt-3 text-[12px] leading-[18px] text-sn-subtle">
@@ -303,8 +327,8 @@ interface ConfirmProps {
   onConfirm: (company: CompanyCard) => void;
 }
 
-/** The warning goes BEFORE the deed: seeding rebuilds all three clones from
- *  scratch, and anything a run left in them is gone. */
+/** The warning goes BEFORE the deed: seeding rebuilds every clone from scratch,
+ *  and anything a run left in them is gone. */
 function ConfirmSeed({ company, replacing, onCancel, onConfirm }: ConfirmProps) {
   if (!company) return null;
   const displaced = replacing && replacing.id !== company.id ? replacing.name : null;
@@ -315,8 +339,8 @@ function ConfirmSeed({ company, replacing, onCancel, onConfirm }: ConfirmProps) 
       title={`Put ${company.name} into the clones?`}
       description={
         company.counts
-          ? "Gmail, Slack and the calendar are rebuilt from this company. It takes a few seconds."
-          : "Gmail, Slack and the calendar are rebuilt from this company. Its history has to be written first, so give it about a minute."
+          ? "Every clone is rebuilt from this company. It takes a few seconds."
+          : "Every clone is rebuilt from this company. Its history has to be written first, so give it about a minute."
       }
       footer={
         <>
@@ -338,8 +362,9 @@ function ConfirmSeed({ company, replacing, onCancel, onConfirm }: ConfirmProps) 
         </li>
         {company.counts ? null : (
           <li>
-            This company has no history yet, so it gets written first: threads, channels and
-            meetings for the days before today. That is a model call, and takes about a minute.
+            This company has no history yet, so it gets written first: threads, channels,
+            meetings, deals, documents and posts for the days before today. That is a model call,
+            and takes about a minute.
           </li>
         )}
         <li>Nothing outside this machine is touched. No real account is ever involved.</li>

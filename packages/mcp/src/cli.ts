@@ -1,10 +1,17 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { configFromEnv, isServedTwin, TWINS, type ServedTwin } from "./config";
+import {
+  configFromEnv,
+  DEFAULT_TWIN_URLS,
+  isServedTwin,
+  TWINS,
+  urlEnvFor,
+  type ServedTwin,
+} from "./config";
 import { serveStdio } from "./server";
 import { connectionSnippets, launchFor } from "./snippets";
 
-// `sonata-mcp` serves all three twins; `sonata-mcp gmail` serves one.
+// `sonata-mcp` serves every twin; `sonata-mcp gmail` serves one.
 //
 // Serving one is not a nicety: a mailbox-only evaluation should hand the agent a
 // mailbox and nothing else, because an agent that is given calendar tools it never
@@ -35,19 +42,24 @@ export function parseArgv(argv: readonly string[]): ParsedArgv {
 }
 
 export function helpText(): string {
+  // The URL lines are generated from the same tables the server resolves
+  // against, so a twin that is served can never be missing from the help — the
+  // one place where a stale list reads as "this twin is not supported".
+  const width = Math.max(...TWINS.map((twin) => urlEnvFor(twin).length), "SONATA_TOKEN".length) + 2;
+  const urls = TWINS.map(
+    (twin) => `  ${urlEnvFor(twin).padEnd(width)}default ${DEFAULT_TWIN_URLS[twin]}`,
+  );
   return [
     "sonata-mcp — plug your agent into the Sonata twins over MCP (stdio).",
     "",
     "Usage:",
-    "  sonata-mcp                    serve gmail, slack and calendar",
+    `  sonata-mcp                    serve every twin: ${TWINS.join(", ")}`,
     "  sonata-mcp gmail              serve one twin (any subset works)",
     "  sonata-mcp connect            print connection config and exit",
     "",
     "Environment:",
-    "  SONATA_TOKEN          bearer token the twins accept (default sandbox-token)",
-    "  SONATA_GMAIL_URL      default http://localhost:3101",
-    "  SONATA_SLACK_URL      default http://localhost:3200",
-    "  SONATA_CALENDAR_URL   default http://localhost:3400",
+    `  ${"SONATA_TOKEN".padEnd(width)}bearer token the twins accept (default sandbox-token)`,
+    ...urls,
     "",
   ].join("\n");
 }

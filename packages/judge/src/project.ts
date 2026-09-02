@@ -1,8 +1,12 @@
 import { endISO, runTruncation, TWIN_NAMES, type RunTruncation } from "@sonata/core";
 import type {
   AgentStep,
+  AttioBeatBody,
+  AttioSnapshot,
+  AttioWriteValue,
   BeatBody,
   ByTwin,
+  CalendarBeatBody,
   CalendarSnapshot,
   Clock,
   Criterion,
@@ -12,8 +16,14 @@ import type {
   EpisodeRun,
   EpisodeSpec,
   GmailSnapshot,
+  GoogleAdsBeatBody,
+  GoogleAdsSnapshot,
+  GoogleDocsBeatBody,
+  GoogleDocsSnapshot,
   JudgeStep,
   JudgeTrace,
+  LinkedInBeatBody,
+  LinkedInSnapshot,
   SlackSnapshot,
   TickRecord,
   TimelineEntry,
@@ -50,7 +60,13 @@ function truncate(s: string, max: number): string {
   return t.length <= max ? t : `${t.slice(0, max - 1)}…`;
 }
 
-/** One line for anything a beat or the director injected, whatever surface it hit. */
+/**
+ * One line for anything a beat or the director injected, whatever surface it hit.
+ *
+ * Split by twin into the helpers below rather than one switch over `kind`,
+ * because `reaction` names two different payloads — a Slack emoji and a LinkedIn
+ * reaction — and a single switch would have to guess which it was holding.
+ */
 function describeBody(body: BeatBody): string {
   switch (body.twin) {
     case "gmail":
@@ -60,17 +76,110 @@ function describeBody(body: BeatBody): string {
         ? `${body.payload.from} in #${body.payload.channel}: ${body.payload.text}`
         : `${body.payload.from} reacted :${body.payload.emoji}:`;
     case "calendar":
-      switch (body.kind) {
-        case "invite":
-          return `${body.payload.organizer} invited ${body.payload.attendees.join(", ")} to "${body.payload.title}" at ${body.payload.startISO}`;
-        case "move":
-          return `event moved to ${body.payload.startISO}${body.payload.reason ? ` — ${body.payload.reason}` : ""}`;
-        case "cancel":
-          return `event cancelled${body.payload.reason ? ` — ${body.payload.reason}` : ""}`;
-        case "rsvp":
-          return `${body.payload.who} ${body.payload.response}${body.payload.comment ? ` — ${body.payload.comment}` : ""}`;
-      }
+      return describeCalendar(body);
+    case "attio":
+      return describeAttio(body);
+    case "google-docs":
+      return describeDocs(body);
+    case "google-ads":
+      return describeAds(body);
+    case "linkedin":
+      return describeLinkedIn(body);
   }
+}
+
+function describeCalendar(body: CalendarBeatBody): string {
+  switch (body.kind) {
+    case "invite":
+      return `${body.payload.organizer} invited ${body.payload.attendees.join(", ")} to "${body.payload.title}" at ${body.payload.startISO}`;
+    case "move":
+      return `event moved to ${body.payload.startISO}${body.payload.reason ? ` — ${body.payload.reason}` : ""}`;
+    case "cancel":
+      return `event cancelled${body.payload.reason ? ` — ${body.payload.reason}` : ""}`;
+    case "rsvp":
+      return `${body.payload.who} ${body.payload.response}${body.payload.comment ? ` — ${body.payload.comment}` : ""}`;
+  }
+}
+
+function describeAttio(body: AttioBeatBody): string {
+  switch (body.kind) {
+    case "record":
+      return `a ${body.payload.object} record was created: ${describeValues(body.payload.values)}`;
+    case "update":
+      return `the CRM record "${body.payload.recordRef}" changed: ${describeValues(body.payload.values)}`;
+    case "note":
+      return `a note "${body.payload.title}" was logged on "${body.payload.parentRecordRef}": ${body.payload.content}`;
+    case "task":
+      return (
+        `a task was raised for ${body.payload.assignee ?? "nobody"}: ${body.payload.content}` +
+        (body.payload.deadlineISO ? ` (due ${body.payload.deadlineISO})` : "")
+      );
+  }
+}
+
+function describeDocs(body: GoogleDocsBeatBody): string {
+  switch (body.kind) {
+    case "document":
+      // The text itself, not a count of it: on this surface what the document
+      // SAYS is the graded question, and a judge shown "3 paragraphs" cannot
+      // tell whether the agent edited a brief or rewrote it.
+      return (
+        `${body.payload.owner ?? "the workspace owner"} shared the document ` +
+        `"${body.payload.title}": ${body.payload.paragraphs.map((p) => p.text).join(" ")}`
+      );
+    case "append":
+      return (
+        `"${body.payload.documentRef}" gained a section: ` +
+        body.payload.paragraphs.map((p) => p.text).join(" ")
+      );
+    case "replace":
+      return `in "${body.payload.documentRef}", "${body.payload.find}" became "${body.payload.replaceWith}"`;
+  }
+}
+
+function describeAds(body: GoogleAdsBeatBody): string {
+  switch (body.kind) {
+    case "status":
+      return `campaign "${adsCampaign(body.payload)}" was set to ${body.payload.status}`;
+    case "budget":
+      return `campaign "${adsCampaign(body.payload)}" got a daily budget of ${body.payload.amountMicros} micros`;
+    case "spend":
+      return (
+        `ad group "${body.payload.adGroup}" took ${body.payload.impressions} impression(s), ` +
+        `${body.payload.clicks} click(s) and ${body.payload.costMicros} micros of spend` +
+        (body.payload.date ? ` on ${body.payload.date}` : "")
+      );
+  }
+}
+
+function describeLinkedIn(body: LinkedInBeatBody): string {
+  const who = body.payload.from ?? "the company page";
+  switch (body.kind) {
+    case "post":
+      return `${who} posted: ${body.payload.commentary}`;
+    case "comment":
+      return (
+        `${who} ` +
+        (body.payload.parentRef
+          ? `replied under "${body.payload.parentRef}"`
+          : `commented on "${body.payload.postRef ?? "the feed"}"`) +
+        `: ${body.payload.text}`
+      );
+    case "reaction":
+      return `${who} reacted ${body.payload.reactionType ?? "LIKE"} to "${body.payload.entityRef}"`;
+  }
+}
+
+/** An attribute bag the way a CRM row reads it back: `stage → Won 🎉`. */
+function describeValues(values: Record<string, AttioWriteValue>): string {
+  return Object.entries(values)
+    .map(([slug, v]) => `${slug} → ${Array.isArray(v) ? v.join(", ") : v}`)
+    .join(", ");
+}
+
+/** Either half of how a beat names a campaign; neither is resolved here. */
+function adsCampaign(payload: { campaign?: string; campaignRef?: string }): string {
+  return payload.campaign ?? payload.campaignRef ?? "unnamed";
 }
 
 function directorLine(e: DirectorEvent): string {
@@ -292,6 +401,17 @@ function truncationOf(input: ProjectInput): RunTruncation | null {
 // The window's ends come from the spec's clock, so a scenario simulating three
 // days gets a three-day window with nobody editing this file.
 //
+// The four surfaces that landed later are NOT windowed, and the reason is in
+// their snapshots rather than in a judgement about them: a CRM record, a
+// document, a campaign and a post all arrive undated, so there is no instant to
+// compare a window against. Filtering them by anything else — the records the
+// run touched, the campaigns it moved — would delete exactly the untouched rows
+// this whole section exists to carry. They are therefore kept whole, their long
+// strings clipped to a line, and `fitLines` in prompt.ts samples them if they
+// still do not fit and says by how much. Each one's `kept` says so in words, so
+// a judge is never left guessing whether a short list is a small surface or a
+// filtered one.
+//
 // What that costs, measured on the same run: gmail 8,189 -> 6,231 (11 of 20
 // threads), slack 10,566 -> 9,279 (26 of 30 messages), calendar 101,912 -> 3,892
 // (10 of 250 events). 120,667 chars of snapshot down to 19,402, and the whole
@@ -439,6 +559,84 @@ function calendarFinalState(
 }
 
 /**
+ * The CRM at close. Everything, because nothing in the snapshot dates a record:
+ * a deal has a stage and a value, never a "last touched", so there is no instant
+ * to window against — and any other filter would hide the accounts the agent
+ * left alone, which is what a criterion about a CRM is usually about.
+ *
+ * Values are clipped rather than dropped: an attribute bag is a handful of short
+ * strings and it is the whole reason to look at a record.
+ */
+function attioFinalState(s: AttioSnapshot): TwinFinalState {
+  return {
+    state: {
+      ...s,
+      records: s.records.map((r) => ({
+        ...r,
+        title: truncate(r.title, MAX_LINE),
+        values: Object.fromEntries(
+          Object.entries(r.values).map(([k, v]) => [k, truncate(v, MAX_LINE)]),
+        ),
+      })),
+      notes: s.notes.map((n) => ({ ...n, excerpt: truncate(n.excerpt, MAX_LINE) })),
+      tasks: s.tasks.map((t) => ({ ...t, content: truncate(t.content, MAX_LINE) })),
+    },
+    coverage: { shown: s.records.length, total: s.records.length },
+    kept: "every record the CRM held — a record carries no date to narrow it by",
+  };
+}
+
+/**
+ * The workspace at close. The body text is the expensive part here: the adapter
+ * keeps 4,000 characters a document, which is right for the DIFF because that is
+ * all `diffGoogleDocs` has to work from, and far too much for this section,
+ * where the question is which documents exist, whose they are and how long they
+ * now are. So the text is clipped to a line and the character count carries the
+ * size.
+ */
+function googleDocsFinalState(s: GoogleDocsSnapshot): TwinFinalState {
+  return {
+    state: {
+      ...s,
+      documents: s.documents.map((d) => ({
+        ...d,
+        title: truncate(d.title, MAX_LINE),
+        excerpt: truncate(d.excerpt, MAX_LINE),
+      })),
+    },
+    coverage: { shown: s.documents.length, total: s.documents.length },
+    kept: "every document in the workspace, opening line only — a document carries no date to narrow it by",
+  };
+}
+
+/** The account at close. Undated like the others, and short: tens of campaigns. */
+function googleAdsFinalState(s: GoogleAdsSnapshot): TwinFinalState {
+  return {
+    state: { ...s, campaigns: s.campaigns.map((c) => ({ ...c, name: truncate(c.name, MAX_LINE) })) },
+    coverage: { shown: s.campaigns.length, total: s.campaigns.length },
+    kept: "every campaign in the account — a campaign carries no date to narrow it by",
+  };
+}
+
+/**
+ * The feed at close. Posts are the counted list; comments ride along whole,
+ * because a customer's comment with nothing under it is the loose end this
+ * section exists to show, and the adapter's per-post cap has already bounded
+ * them.
+ */
+function linkedInFinalState(s: LinkedInSnapshot): TwinFinalState {
+  return {
+    state: {
+      ...s,
+      posts: s.posts.map((p) => ({ ...p, commentary: truncate(p.commentary, MAX_LINE) })),
+      comments: s.comments.map((c) => ({ ...c, text: truncate(c.text, MAX_LINE) })),
+    },
+    coverage: { shown: s.posts.length, total: s.posts.length },
+    kept: "every post the capture held — a post carries no date to narrow it by",
+  };
+}
+
+/**
  * The end of the day on each surface, narrowed.
  *
  * A twin whose after-snapshot never landed is simply absent, and the engine's
@@ -454,9 +652,29 @@ export function buildFinalState(input: ProjectInput): ByTwin<TwinFinalState> {
     const after = input.run.snapshots[name]?.after;
     if (!after) continue;
     const diff = input.diffs[name];
-    if (after.twin === "gmail") out.gmail = gmailFinalState(after, touchedThreads(diff));
-    else if (after.twin === "slack") out.slack = slackFinalState(after, w);
-    else out.calendar = calendarFinalState(after, w, touchedEvents(diff));
+    switch (after.twin) {
+      case "gmail":
+        out.gmail = gmailFinalState(after, touchedThreads(diff));
+        break;
+      case "slack":
+        out.slack = slackFinalState(after, w);
+        break;
+      case "calendar":
+        out.calendar = calendarFinalState(after, w, touchedEvents(diff));
+        break;
+      case "attio":
+        out.attio = attioFinalState(after);
+        break;
+      case "google-docs":
+        out["google-docs"] = googleDocsFinalState(after);
+        break;
+      case "google-ads":
+        out["google-ads"] = googleAdsFinalState(after);
+        break;
+      case "linkedin":
+        out.linkedin = linkedInFinalState(after);
+        break;
+    }
   }
   return out;
 }

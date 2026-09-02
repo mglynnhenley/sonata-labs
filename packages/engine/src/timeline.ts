@@ -1,4 +1,16 @@
-import type { BeatBody, BeatFired, DirectorEvent, TickRecord, TimelineEntry } from "@sonata/core";
+import type {
+  AttioBeatBody,
+  BeatBody,
+  BeatFired,
+  CalendarBeatBody,
+  DirectorEvent,
+  GoogleAdsBeatBody,
+  GoogleDocsBeatBody,
+  LinkedInBeatBody,
+  TickRecord,
+  TimelineEntry,
+  TwinName,
+} from "@sonata/core";
 
 // The run's story, flattened. Two readers, one source:
 //
@@ -58,14 +70,31 @@ export function describeEvent(event: DirectorEvent): string {
 }
 
 function bodyLabel(body: BeatBody & { personId?: string }): string {
-  const who = body.personId ?? "someone";
-  switch (body.kind) {
-    case "email":
+  // The company page has no `personId`, and on LinkedIn that is not an unknown
+  // actor but a real one — so "someone" is the fallback everywhere else.
+  const who = body.personId ?? (body.twin === "linkedin" ? "the company page" : "someone");
+  switch (body.twin) {
+    case "gmail":
       return `${who} emailed: "${body.payload.subject}"`;
-    case "message":
-      return `${who} posted in #${body.payload.channel.replace(/^#/, "")}`;
-    case "reaction":
-      return `${who} reacted :${body.payload.emoji}:`;
+    case "slack":
+      return body.kind === "message"
+        ? `${who} posted in #${body.payload.channel.replace(/^#/, "")}`
+        : `${who} reacted :${body.payload.emoji}:`;
+    case "calendar":
+      return calendarLabel(body, who);
+    case "attio":
+      return attioLabel(body, who);
+    case "google-docs":
+      return docsLabel(body, who);
+    case "google-ads":
+      return adsLabel(body, who);
+    case "linkedin":
+      return linkedInLabel(body, who);
+  }
+}
+
+function calendarLabel(body: CalendarBeatBody, who: string): string {
+  switch (body.kind) {
     case "invite":
       return `${who} sent an invite: "${body.payload.title}"`;
     case "move":
@@ -74,6 +103,56 @@ function bodyLabel(body: BeatBody & { personId?: string }): string {
       return `${who} cancelled a meeting`;
     case "rsvp":
       return `${who} ${body.payload.response} an invite`;
+  }
+}
+
+function attioLabel(body: AttioBeatBody, who: string): string {
+  switch (body.kind) {
+    case "record":
+      return `${who} added a ${body.payload.object} record to the CRM`;
+    case "update":
+      return `${who} changed "${body.payload.recordRef}" in the CRM`;
+    case "note":
+      return `${who} logged a note: "${body.payload.title}"`;
+    case "task":
+      return `${who} raised a follow-up: "${body.payload.content}"`;
+  }
+}
+
+function docsLabel(body: GoogleDocsBeatBody, who: string): string {
+  switch (body.kind) {
+    case "document":
+      return `${who} shared a document: "${body.payload.title}"`;
+    case "append":
+      return `${who} added a section to "${body.payload.documentRef}"`;
+    case "replace":
+      return `${who} revised "${body.payload.find}" in "${body.payload.documentRef}"`;
+  }
+}
+
+function adsLabel(body: GoogleAdsBeatBody, who: string): string {
+  switch (body.kind) {
+    case "status":
+      return `${who} set a campaign to ${body.payload.status}`;
+    case "budget":
+      return `${who} moved a campaign's daily budget`;
+    case "spend":
+      // Nobody's name on this one: traffic arrives because the day happened,
+      // and putting a person in front of it would invent an actor.
+      return `spend landed on "${body.payload.adGroup}"`;
+  }
+}
+
+function linkedInLabel(body: LinkedInBeatBody, who: string): string {
+  switch (body.kind) {
+    case "post":
+      return `${who} posted on LinkedIn`;
+    case "comment":
+      return body.payload.parentRef
+        ? `${who} replied to a comment: "${body.payload.text}"`
+        : `${who} commented on a post: "${body.payload.text}"`;
+    case "reaction":
+      return `${who} reacted ${body.payload.reactionType ?? "LIKE"} on LinkedIn`;
   }
 }
 
@@ -119,17 +198,38 @@ export function tallyLanded(
   ];
 
   for (const item of landed) {
-    const what =
-      item.twin === "gmail"
-        ? "new mail in the inbox"
-        : item.kind === "reaction"
-          ? "a new reaction in Slack"
-          : item.twin === "slack"
-            ? "new activity in Slack"
-            : "a change on the calendar";
+    const what = digestPhrase(item.twin, item.kind);
     counts.set(what, (counts.get(what) ?? 0) + 1);
   }
   return counts;
+}
+
+/**
+ * What the agent is told about one landed thing — a surface and no more.
+ *
+ * A switch over the twin rather than a chain of ternaries, because the chain
+ * ended in an `else` that said "a change on the calendar": every twin added
+ * after it silently announced itself as the diary, and the agent would have gone
+ * looking for a meeting that a CRM note had caused. An exhaustive switch makes
+ * the next twin a typecheck failure instead of a wrong sentence.
+ */
+function digestPhrase(twin: TwinName, kind: string): string {
+  switch (twin) {
+    case "gmail":
+      return "new mail in the inbox";
+    case "slack":
+      return kind === "reaction" ? "a new reaction in Slack" : "new activity in Slack";
+    case "calendar":
+      return "a change on the calendar";
+    case "attio":
+      return "a change in the CRM";
+    case "google-docs":
+      return "a change in a document";
+    case "google-ads":
+      return "a change in the ads account";
+    case "linkedin":
+      return kind === "reaction" ? "a new reaction on LinkedIn" : "new activity on LinkedIn";
+  }
 }
 
 /** The tail of the story, for the director's prompt. Oldest first. */

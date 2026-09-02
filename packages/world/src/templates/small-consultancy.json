@@ -353,5 +353,281 @@
         "description": "Monday morning. The pack goes Friday lunchtime whatever happens."
       }
     ]
+  },
+  "attio": {
+    "companies": [
+      {
+        "name": "Harrowgate Foods",
+        "domain": "harrowgatefoods.com",
+        "description": "Pricing engagement, week six of eight. Board presentation on Monday and the PO still has not been raised."
+      },
+      {
+        "name": "Cormorant Energy",
+        "domain": "cormorantenergy.com",
+        "description": "Market entry study. Steering group wants two recommended markets and has been given four."
+      },
+      {
+        "name": "Selwyn Dairy",
+        "domain": "selwyndairy.com",
+        "description": "Introduced by Harrowgate's COO. Wants a scoping call before they will talk about fees."
+      }
+    ],
+    "contacts": [
+      {
+        "personId": "gus",
+        "companyName": "Harrowgate Foods",
+        "jobTitle": "Chief Operating Officer"
+      },
+      {
+        "personId": "yara",
+        "companyName": "Cormorant Energy",
+        "jobTitle": "Head of Strategy"
+      }
+    ],
+    "deals": [
+      {
+        "name": "Harrowgate — pricing engagement",
+        "companyName": "Harrowgate Foods",
+        "stage": "In Progress",
+        "value": 120000,
+        "ownerPersonId": "ines",
+        "contactPersonIds": [
+          "gus"
+        ]
+      },
+      {
+        "name": "Cormorant — market entry",
+        "companyName": "Cormorant Energy",
+        "stage": "In Progress",
+        "value": 95000,
+        "ownerPersonId": "duncan",
+        "contactPersonIds": [
+          "yara"
+        ]
+      },
+      {
+        "name": "Selwyn Dairy — scoping",
+        "companyName": "Selwyn Dairy",
+        "stage": "Lead",
+        "value": 40000,
+        "ownerPersonId": "ines",
+        "contactPersonIds": []
+      }
+    ],
+    "notes": [
+      {
+        "about": "Harrowgate — pricing engagement",
+        "title": "Gus, Wednesday",
+        "body": "Wants the pricing recommendation moved into the board deck itself rather than the appendix. That is a different piece of work and he knows it. Also mentioned, in passing, that finance never raised the PO.",
+        "minutesAgo": 1600
+      },
+      {
+        "about": "Cormorant — market entry",
+        "title": "Steering group, last week",
+        "body": "Yara asked which two markets we are recommending. Duncan gave four with a ranking. She asked again. Still four.",
+        "minutesAgo": 8600
+      }
+    ],
+    "tasks": [
+      {
+        "content": "Chase the Harrowgate PO before invoicing on Friday",
+        "assigneePersonId": "frances",
+        "about": "Harrowgate — pricing engagement",
+        "dueInMinutes": -4320,
+        "isCompleted": false,
+        "minutesAgo": 10080
+      },
+      {
+        "content": "Cut the Cormorant recommendation from four markets to two",
+        "assigneePersonId": "duncan",
+        "about": "Cormorant — market entry",
+        "dueInMinutes": 2880,
+        "isCompleted": false,
+        "minutesAgo": 4300
+      },
+      {
+        "content": "Send Selwyn Dairy a scoping note before the call",
+        "assigneePersonId": "ines",
+        "about": "Selwyn Dairy — scoping",
+        "dueInMinutes": 1440,
+        "isCompleted": false,
+        "minutesAgo": 2900
+      }
+    ]
+  },
+  "googleDocs": {
+    "documents": [
+      {
+        "title": "Harrowgate board deck — narrative",
+        "ownerPersonId": "ines",
+        "paragraphs": [
+          {
+            "text": "Harrowgate board deck — narrative",
+            "namedStyleType": "TITLE"
+          },
+          {
+            "text": "Monday, 45 minutes, eleven people in the room and two on a call.",
+            "namedStyleType": "SUBTITLE"
+          },
+          {
+            "text": "The argument",
+            "namedStyleType": "HEADING_1"
+          },
+          {
+            "text": "Volume is not the problem. The problem is that the discount ladder was designed for a wholesale mix they no longer have.",
+            "namedStyleType": ""
+          },
+          {
+            "text": "Recommendation",
+            "namedStyleType": "HEADING_1"
+          },
+          {
+            "text": "Three tiers, not seven. Move the threshold on tier two. Expected margin effect: TBC — waiting on Otto's v6 model with the corrected base year.",
+            "namedStyleType": ""
+          },
+          {
+            "text": "What we are not saying",
+            "namedStyleType": "HEADING_1"
+          },
+          {
+            "text": "That two of their top ten customers are on legacy terms nobody can justify. Gus knows. It is not our sentence to say in front of his board.",
+            "namedStyleType": ""
+          }
+        ]
+      },
+      {
+        "title": "Elasticity model v6 — assumptions",
+        "ownerPersonId": "otto",
+        "paragraphs": [
+          {
+            "text": "Elasticity model v6 — assumptions",
+            "namedStyleType": "TITLE"
+          },
+          {
+            "text": "v5 used 2024 as the base year. It should have been 2025. Every number in the deck built on v5 is wrong by roughly four points.",
+            "namedStyleType": ""
+          },
+          {
+            "text": "Corrected in v6. Re-run the tier two threshold before anything goes in front of the board.",
+            "namedStyleType": ""
+          },
+          {
+            "text": "Mei has checked the first two sheets. The rest have not been checked by anyone.",
+            "namedStyleType": ""
+          }
+        ]
+      },
+      {
+        "title": "Cormorant — market entry, working draft",
+        "ownerPersonId": "mei",
+        "paragraphs": [
+          {
+            "text": "Cormorant — market entry",
+            "namedStyleType": "TITLE"
+          },
+          {
+            "text": "Four markets survived the screen: Ireland, Denmark, Portugal, Czechia.",
+            "namedStyleType": ""
+          },
+          {
+            "text": "Yara has asked twice for two. Ranking them is not the same as choosing, and she has noticed.",
+            "namedStyleType": ""
+          },
+          {
+            "text": "Recommendation to land on: TBC before the steering group.",
+            "namedStyleType": ""
+          }
+        ]
+      }
+    ]
+  },
+  "googleAds": {
+    "campaigns": [
+      {
+        "name": "Ambrose Hale — brand",
+        "status": "ENABLED",
+        "dailyBudget": 20,
+        "channel": "SEARCH",
+        "adGroups": [
+          {
+            "name": "Exact — ambrose hale",
+            "status": "ENABLED",
+            "dailyImpressions": 140,
+            "dailyClicks": 18,
+            "dailyCost": 11,
+            "dailyConversions": 1
+          }
+        ]
+      },
+      {
+        "name": "Pricing strategy — search",
+        "status": "PAUSED",
+        "dailyBudget": 60,
+        "channel": "SEARCH",
+        "adGroups": [
+          {
+            "name": "Pricing consultants",
+            "status": "PAUSED",
+            "dailyImpressions": 2200,
+            "dailyClicks": 64,
+            "dailyCost": 58,
+            "dailyConversions": 0
+          }
+        ]
+      }
+    ]
+  },
+  "linkedin": {
+    "posts": [
+      {
+        "personId": "ines",
+        "commentary": "Most pricing projects are not really about price. They are about a discount ladder somebody designed for a business that no longer exists, which nobody has been allowed to touch since.",
+        "minutesAgo": 3100,
+        "isDraft": false,
+        "comments": [
+          {
+            "personId": "gus",
+            "text": "Uncomfortably close to home. Are you saying this in front of my board on Monday?",
+            "minutesAgo": 2800,
+            "replies": [
+              {
+                "personId": "ines",
+                "text": "Only the parts you have already said yourself, Gus.",
+                "minutesAgo": 2700
+              }
+            ]
+          },
+          {
+            "personId": "yara",
+            "text": "Does the same logic hold when the ladder is regulated? Genuinely asking — we have the same problem and half the freedom.",
+            "minutesAgo": 1200,
+            "replies": []
+          }
+        ],
+        "reactedByPersonIds": [
+          "duncan",
+          "mei",
+          "otto"
+        ]
+      },
+      {
+        "personId": "",
+        "commentary": "Ambrose Hale is six people. That is deliberate, and it is the whole answer to \"who will actually be doing the work\".",
+        "minutesAgo": 7300,
+        "isDraft": false,
+        "comments": [],
+        "reactedByPersonIds": [
+          "frances"
+        ]
+      },
+      {
+        "personId": "ines",
+        "commentary": "Market entry work in energy: four markets pass the screen, two survive contact with a regulator, and one of those is the one nobody wanted to talk about. Writing this up properly next week.",
+        "minutesAgo": 500,
+        "isDraft": true,
+        "comments": [],
+        "reactedByPersonIds": []
+      }
+    ]
   }
 }

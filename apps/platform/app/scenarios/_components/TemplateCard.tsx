@@ -32,7 +32,8 @@ export function TemplateCard({ template, busy, onAction }: TemplateCardProps) {
         <div className="mt-4 flex flex-wrap items-center gap-1.5">
           {template.services.map((service) => (
             <Chip key={service.twin} service={service.twin} size="sm">
-              {SERVICE_LABELS[service.twin]} · {service.count} {service.unit}
+              {SERVICE_LABELS[service.twin]}
+              {service.count === undefined ? "" : ` · ${service.count} ${service.unit}`}
             </Chip>
           ))}
           <Chip size="sm" icon={<IconLayers size={11} />}>

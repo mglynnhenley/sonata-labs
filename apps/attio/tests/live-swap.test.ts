@@ -3,6 +3,7 @@ import Database from "better-sqlite3";
 import { copyFileSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { trackDb } from "./helpers";
 
 // What happens to the control plane when working.db is replaced underneath it.
 //
@@ -101,7 +102,7 @@ async function swapWorkingFileOutOfProcess(withDemoWorld: boolean): Promise<void
   for (const suffix of ["", "-wal", "-shm"]) {
     rmSync(WORKING_PATH + suffix, { force: true });
   }
-  const fresh = new Database(WORKING_PATH);
+  const fresh = trackDb(new Database(WORKING_PATH));
   fresh.exec(readSchema());
   if (withDemoWorld) seedDatabase(fresh);
   fresh.pragma("wal_checkpoint(TRUNCATE)");
@@ -115,7 +116,7 @@ function rowCount(db: Database.Database, table: string): number {
 /** Read the file itself, the way any other process would. */
 async function onDisk<T>(read: (db: Database.Database) => T): Promise<T> {
   const { WORKING_PATH } = await import("@/lib/db");
-  const db = new Database(WORKING_PATH, { readonly: true });
+  const db = trackDb(new Database(WORKING_PATH, { readonly: true }));
   try {
     return read(db);
   } finally {

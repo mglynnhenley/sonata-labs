@@ -1,4 +1,4 @@
-import type { EpisodeJudgeInput, JudgeStep, TwinFinalState } from "@sonata/core";
+import type { EpisodeJudgeInput, JudgeStep, TwinDiff, TwinFinalState } from "@sonata/core";
 import { describe, expect, it } from "vitest";
 import { buildEpisodePrompt, EPISODE_JUDGE_SCHEMA, fitLines } from "../src/prompt";
 
@@ -544,6 +544,247 @@ describe("buildEpisodePrompt final state", () => {
 
     expect(section).toContain("no surface was snapshotted at the end of this run");
     expect(section).toContain("where the day left things is unknown");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The four surfaces that landed after the first three. The judge reads prose, so
+// what is asserted here is the prose: that every fact the contract carries makes
+// it onto a line, and that the ones the capture CANNOT know are said to be
+// unknown rather than printed as a blank.
+// ---------------------------------------------------------------------------
+
+/** The diff section, cut out by its neighbours. */
+function changed(prompt: string): string {
+  return prompt.slice(
+    prompt.indexOf("WHAT CHANGED ON EACH SURFACE"),
+    prompt.indexOf("WHERE THINGS ENDED UP"),
+  );
+}
+
+describe("buildEpisodePrompt on the CRM", () => {
+  const diff: TwinDiff = {
+    twin: "attio",
+    created: [{ recordId: "r9", object: "deals", title: "Northwind renewal" }],
+    valuesChanged: [
+      {
+        recordId: "r1",
+        object: "deals",
+        title: "Brightline expansion",
+        attribute: "stage",
+        from: "Negotiation",
+        to: "Won",
+      },
+    ],
+    notesAdded: [
+      {
+        noteId: "n1",
+        parentObject: "companies",
+        parentRecordId: "31fedb90-c349-41f5-b9eb-5c344b6737dd",
+        parentTitle: "Vertex Logistics",
+        title: "Chased the buyer",
+        excerpt: "Left a voicemail.",
+      },
+    ],
+    tasksAdded: [
+      { taskId: "t1", content: "Send the revised quote", deadlineISO: "2026-08-05T09:00:00Z", assignees: ["priya@x.test"] },
+      { taskId: "t2", content: "Tidy the pipeline", assignees: [] },
+    ],
+    tasksCompleted: [{ taskId: "t0", content: "Call the buyer back" }],
+    unchangedCount: 41,
+  };
+
+  it("names the record a note was logged against, never its uuid", () => {
+    const section = changed(buildEpisodePrompt(input({ diffs: { attio: diff } })).prompt);
+
+    expect(section).toContain('+ note "Chased the buyer" on companies "Vertex Logistics"');
+    expect(section).not.toContain("31fedb90");
+  });
+
+  it("says who a follow-up landed on, and says when nobody did", () => {
+    const section = changed(buildEpisodePrompt(input({ diffs: { attio: diff } })).prompt);
+
+    expect(section).toContain('+ task "Send the revised quote" for priya@x.test, due 2026-08-05');
+    // Both halves of an unowned, undated task are findings in their own right.
+    expect(section).toContain('+ task "Tidy the pipeline" assigned to nobody, with no deadline');
+  });
+
+  it("reports a superseded value as the move it was", () => {
+    const section = changed(buildEpisodePrompt(input({ diffs: { attio: diff } })).prompt);
+
+    expect(section).toContain('~ "Brightline expansion" stage: Negotiation → Won');
+    expect(section).toContain('+ created a record in deals: "Northwind renewal"');
+    expect(section).toContain("41 other item(s) unchanged");
+  });
+
+  it("shows the CRM's open follow-ups where the day ended, not just the ones it raised", () => {
+    const section = endedUp(
+      buildEpisodePrompt(
+        input({
+          diffs: { attio: diff },
+          finalState: {
+            attio: {
+              state: {
+                twin: "attio",
+                capturedAt: 2000,
+                records: [
+                  {
+                    recordId: "r1",
+                    object: "deals",
+                    title: "Brightline expansion",
+                    values: { stage: "Won", value: "42000 USD" },
+                  },
+                ],
+                notes: [],
+                tasks: [
+                  {
+                    taskId: "t5",
+                    content: "Chase the signed order form",
+                    isCompleted: false,
+                    assignees: ["priya@x.test"],
+                  },
+                ],
+              },
+              coverage: { shown: 1, total: 1 },
+              kept: "every record the CRM held — a record carries no date to narrow it by",
+            },
+          },
+        }),
+      ).prompt,
+    );
+
+    expect(section).toContain("ATTIO");
+    expect(section).toContain("1 follow-up(s) still open");
+    expect(section).toContain('deals "Brightline expansion" — stage: Won, value: 42000 USD');
+    expect(section).toContain('"Chase the signed order form" — priya@x.test');
+    expect(section).toContain("a record carries no date to narrow it by");
+  });
+});
+
+describe("buildEpisodePrompt on documents", () => {
+  it("says whose document moved and whether the count is exact", () => {
+    const section = changed(
+      buildEpisodePrompt(
+        input({
+          diffs: {
+            "google-docs": {
+              twin: "google-docs",
+              created: [{ documentId: "d2", title: "Handover", ownerEmail: "sam@x.test" }],
+              edited: [
+                {
+                  documentId: "d1",
+                  title: "Q3 brief",
+                  ownerEmail: "priya@x.test",
+                  charactersAdded: 120,
+                  charactersRemoved: 0,
+                  excerpt: "Owner: Priya Raman",
+                  approximate: true,
+                },
+              ],
+              renamed: [],
+              unchangedCount: 3,
+            },
+          },
+        }),
+      ).prompt,
+    );
+
+    // "It rewrote a colleague's brief" and "it finished its own draft" are
+    // different findings off an otherwise identical row.
+    expect(section).toContain('~ edited "Q3 brief" (owner priya@x.test) +120 characters');
+    expect(section).toContain('+ created "Handover" owned by sam@x.test');
+    // A net count read as an exact one understates what the agent wrote.
+    expect(section).toContain("NET of a document captured only in part");
+  });
+});
+
+describe("buildEpisodePrompt on the ad account", () => {
+  it("reports a campaign re-pointed at another budget of the same size", () => {
+    const section = changed(
+      buildEpisodePrompt(
+        input({
+          diffs: {
+            "google-ads": {
+              twin: "google-ads",
+              statusChanged: [
+                { campaignId: "c1", name: "Retargeting", from: "ENABLED", to: "PAUSED" },
+              ],
+              budgetChanged: [
+                {
+                  campaignId: "c2",
+                  name: "Brand",
+                  fromBudgetId: "b1",
+                  toBudgetId: "b2",
+                  fromMicros: 15_000_000,
+                  toMicros: 15_000_000,
+                },
+                {
+                  campaignId: "c3",
+                  name: "Prospecting",
+                  fromBudgetId: "b3",
+                  toBudgetId: "b3",
+                  fromMicros: 15_000_000,
+                  toMicros: 42_000_000,
+                },
+              ],
+              created: [],
+              unchangedCount: 6,
+            },
+          },
+        }),
+      ).prompt,
+    );
+
+    expect(section).toContain('~ paused "Retargeting" (was ENABLED)');
+    // The move that used to be invisible: same money a day, different budget.
+    expect(section).toContain('~ "Brand" moved onto another budget of the same 15.00 a day');
+    expect(section).toContain('~ "Prospecting" daily budget 15.00 → 42.00');
+  });
+});
+
+describe("buildEpisodePrompt on the feed", () => {
+  it("counts anonymous reactions up rather than printing a blank name each time", () => {
+    const section = changed(
+      buildEpisodePrompt(
+        input({
+          diffs: {
+            linkedin: {
+              twin: "linkedin",
+              posted: [
+                { postUrn: "urn:li:activity:1", author: "urn:li:person:sam", commentary: "We are hiring" },
+              ],
+              edited: [],
+              deleted: [],
+              commented: [
+                {
+                  commentUrn: "urn:li:comment:9",
+                  postUrn: "urn:li:activity:1",
+                  postCommentary: "We are hiring",
+                  actor: "urn:li:person:dana",
+                  text: "Is this remote?",
+                  isReply: false,
+                },
+              ],
+              // Three rows, because the count is the only fact the capture holds:
+              // this API has no reactions finder, so there is no actor to name.
+              reactionsAdded: [
+                { entityUrn: "urn:li:activity:1", entityCommentary: "We are hiring", actor: "", reactionType: "" },
+                { entityUrn: "urn:li:activity:1", entityCommentary: "We are hiring", actor: "", reactionType: "" },
+                { entityUrn: "urn:li:activity:1", entityCommentary: "We are hiring", actor: "", reactionType: "" },
+              ],
+              unchangedCount: 4,
+            },
+          },
+        }),
+      ).prompt,
+    );
+
+    expect(section).toContain('~ 3 reaction(s) arrived on "We are hiring"');
+    expect(section).toContain("from nobody this API will name");
+    // Names, not URNs: a judge cannot tell which post `urn:li:activity:1` is, and
+    // `urn:li:organization:*` is this twin's one company page rather than a number.
+    expect(section).toContain('+ published as sam: "We are hiring"');
+    expect(section).toContain('+ dana commented on "We are hiring"');
   });
 });
 

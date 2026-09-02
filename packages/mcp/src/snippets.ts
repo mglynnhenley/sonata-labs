@@ -16,7 +16,7 @@ export interface LaunchSpec {
 
 export interface SnippetInput {
   config: SonataConfig;
-  /** Which twins this connection serves. Defaults to all three. */
+  /** Which twins this connection serves. Defaults to every twin. */
   twins?: readonly ServedTwin[];
   /** How to start the server. Defaults to the bin the workspace install links. */
   launch?: LaunchSpec;
@@ -91,15 +91,22 @@ export function restSnippet(input: SnippetInput): string {
     gmail: "Gmail API v1        e.g. GET /gmail/v1/users/me/messages?labelIds=INBOX",
     slack: "Slack Web API       e.g. POST /api/conversations.list",
     calendar: "Google Calendar v3  e.g. GET /calendar/v3/users/me/calendarList",
+    attio: "Attio API v2        e.g. GET /v2/tasks",
+    // No list method, and that is the vendor's design rather than a gap in the
+    // clone: finding a document is Drive's job. An agent reaches one through the
+    // link it was sent; a human poking at it reads the sandbox's own projection.
+    "google-docs": "Google Docs v1      e.g. GET /api/sandbox/snapshot (no list method exists)",
+    "google-ads": "Google Ads v17      e.g. GET /v17/customers:listAccessibleCustomers",
+    linkedin: "LinkedIn /rest      e.g. GET /v2/userinfo",
   };
   const lines = [
     "# Sonata twins over plain HTTP — the same surface the MCP tools call.",
-    `# Slack and calendar take: Authorization: Bearer ${input.config.token}`,
+    `# Every twin but Gmail takes: Authorization: Bearer ${input.config.token}`,
     "",
   ];
   for (const twin of TWINS) {
     if (!twins.includes(twin)) continue;
-    lines.push(`${twin.padEnd(9)} ${input.config.urls[twin]}   ${shape[twin]}`);
+    lines.push(`${twin.padEnd(12)} ${input.config.urls[twin]}   ${shape[twin]}`);
   }
   // Gmail is behind the clone's own OAuth2 server; the token above is admin-only
   // there and earns a 401 on /gmail/v1/*. Printing the curl that works is the
@@ -126,13 +133,46 @@ export function restSnippet(input: SnippetInput): string {
       `  "${input.config.urls[rest]}${sample(rest)}"`,
     );
   }
+  // Two twins refuse a call that carries only the bearer, and both refusals look
+  // like the twin is broken rather than like a missing header. Same reasoning as
+  // the Gmail note above: the hour this saves is the first one.
+  if (twins.includes("google-ads")) {
+    lines.push(
+      "",
+      "# google-ads wants a second credential on every /v* call, as the real API does:",
+      '#   -H "developer-token: sandbox-dev-token"',
+    );
+  }
+  if (twins.includes("linkedin")) {
+    lines.push(
+      "",
+      "# linkedin refuses any /rest/* call with no version, as the real API does:",
+      '#   -H "LinkedIn-Version: 202506" -H "X-Restli-Protocol-Version: 2.0.0"',
+    );
+  }
   return `${lines.join("\n")}\n`;
 }
 
+/** One read per twin that needs no id, so the printed curl runs as pasted. */
 function sample(twin: ServedTwin): string {
-  if (twin === "gmail") return "/gmail/v1/users/me/messages?labelIds=INBOX&maxResults=10";
-  if (twin === "slack") return "/api/conversations.list";
-  return "/calendar/v3/users/me/calendarList";
+  switch (twin) {
+    case "gmail":
+      return "/gmail/v1/users/me/messages?labelIds=INBOX&maxResults=10";
+    case "slack":
+      return "/api/conversations.list";
+    case "calendar":
+      return "/calendar/v3/users/me/calendarList";
+    case "attio":
+      return "/v2/tasks";
+    // Every other twin's sample is a provider read. This one cannot be: the Docs
+    // API has no call that answers "what is in this workspace".
+    case "google-docs":
+      return "/api/sandbox/snapshot";
+    case "google-ads":
+      return "/v17/customers:listAccessibleCustomers";
+    case "linkedin":
+      return "/v2/userinfo";
+  }
 }
 
 export function connectionSnippets(input: SnippetInput): ConnectionSnippets {

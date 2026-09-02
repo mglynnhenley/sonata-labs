@@ -19,6 +19,7 @@ import { hasScope, parseScopes, partitionScopes, GMAIL_SCOPE } from "@/lib/oauth
 import { revokeToken, type TokenRow } from "@/lib/oauth/store";
 import { authMode, authenticate, setAuthMode, SANDBOX_TOKEN } from "@/lib/gmail/auth";
 import { NextResponse } from "next/server";
+import { trackDb } from "./helpers";
 
 const schema = readFileSync(path.resolve(__dirname, "..", "db", "schema.sql"), "utf8");
 
@@ -30,7 +31,7 @@ const CHALLENGE = s256Challenge(VERIFIER);
 const T0 = 1_000_000; // fixed base time for deterministic expiry
 
 function makeDb(client: Partial<ClientRow> = {}): Database.Database {
-  const db = new Database(":memory:");
+  const db = trackDb(new Database(":memory:"));
   db.exec(schema);
   setMeta(db, "profile_email", "test@sandbox.local");
   insertClient(db, {

@@ -13,6 +13,10 @@ const BLURBS: Record<TwinName, string> = {
   gmail: "Threads, labels and drafts",
   slack: "Channels, DMs and reactions",
   calendar: "Events, invites and free/busy",
+  attio: "Records, deals and notes",
+  "google-docs": "Documents and revisions",
+  "google-ads": "Campaigns, budgets and spend",
+  linkedin: "Posts, comments and reactions",
 };
 
 type Action = "start" | "stop" | "auth-token" | "auth-oauth";

@@ -12,7 +12,7 @@ import {
   loadDocument,
   saveDocument,
 } from "@/lib/store/documents";
-import { CORPUS, DOCUMENT_SCHEMA, makeTestDb, makeModel, OWNER } from "./helpers";
+import { CORPUS, DOCUMENT_SCHEMA, OWNER, makeModel, makeTestDb, trackDb } from "./helpers";
 
 // The scaffold suite: the schema the API depends on, the store round trip, and
 // the audit invariant every mutation rests on.
@@ -65,7 +65,7 @@ describe("schema", () => {
     // empty forever and shadow the ATTACHed ones, so the day a query lost its
     // `audit.` prefix it would still succeed — writing the trail into the file
     // the next reset overwrites.
-    const documents = new Database(":memory:");
+    const documents = trackDb(new Database(":memory:"));
     documents.exec(DOCUMENT_SCHEMA);
     const names = (
       documents.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as {
@@ -77,7 +77,7 @@ describe("schema", () => {
   });
 
   it("applies cleanly to a fresh audit-only in-memory database", () => {
-    const fresh = new Database(":memory:");
+    const fresh = trackDb(new Database(":memory:"));
     fresh.prepare("ATTACH DATABASE ':memory:' AS audit").run();
     expect(() => fresh.exec(AUDIT_DDL)).not.toThrow();
   });

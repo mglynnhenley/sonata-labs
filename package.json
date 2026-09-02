@@ -29,7 +29,8 @@
     "test:slack": "npm run test -w apps/slack",
     "test:calendar": "npm run test -w apps/calendar",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "check:twin": "tsx packages/engine/scripts/twin-contract-check.ts"
+    "check:twin": "tsx packages/engine/scripts/twin-contract-check.ts",
+    "check:seed": "tsx packages/world/scripts/seed-contract-check.ts"
   },
   "devDependencies": {
     "concurrently": "^10.0.4"
