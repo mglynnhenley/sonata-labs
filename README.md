@@ -1,14 +1,26 @@
 # Sonata Labs
 
+[![CI](https://github.com/mglynnhenley/sonata-labs/actions/workflows/ci.yml/badge.svg)](https://github.com/mglynnhenley/sonata-labs/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Node >= 22](https://img.shields.io/badge/node-%3E%3D22-brightgreen)](#requirements)
+
+**Clone a company. Find out what your agent can actually do inside it.**
+
 Sonata clones a business into a fake Gmail, Slack and Calendar that share one
 cast, one backlog and one clock. Your agent works a simulated day inside the
 clone, and Sonata scores how much of the job it finished without handing
 anything back to a human.
 
-Nothing leaves your machine. The clones are three local Next apps over SQLite
-that speak the real vendor APIs, so the agent you already have — the official
+Nothing leaves your machine. Each clone is a local Next app over SQLite that
+speaks the real vendor API, so the agent you already have — the official
 `googleapis` and `@slack/web-api` SDKs, or an MCP client — works against them
-with nothing changed but a base URL.
+with nothing changed but a base URL. Seven clones ship — Gmail, Slack,
+Calendar, Attio, Google Docs, Google Ads and LinkedIn — and the benchmark
+currently runs its days inside the first three
+([the other four](#the-other-four-clones) are API surfaces an agent can call,
+not yet scored days).
+
+![The Sonata dashboard on a fresh install — three clones up, a demo day one button away](docs/dashboard.png)
 
 ## The loop
 
@@ -185,13 +197,14 @@ this day will have a different cast and a different verdict.
 | 3101 | `apps/gmail` | Gmail clone — Gmail API v1, `/gmail/v1/users/me/…` |
 | 3200 | `apps/slack` | Slack clone — Slack Web API, `/api/…` |
 | 3400 | `apps/calendar` | Calendar clone — Google Calendar v3, `/calendar/v3/…` |
-| 3901 | `apps/gmail-ui` | the Gmail front end, as a real third-party OAuth client |
 | 3500 | `apps/attio` | Attio clone — Attio API v2, `/v2/objects/…` |
 | 3600 | `apps/google-docs` | Google Docs clone — Docs API v1, `/v1/documents/…` |
 | 3700 | `apps/google-ads` | Google Ads clone — GAQL search and mutate, `/v17/customers/…` |
 | 3800 | `apps/linkedin` | LinkedIn clone — Posts and social actions, `/rest/…` |
+| 3901 | `apps/gmail-ui` | the Gmail front end, as a real third-party OAuth client |
 
-`npm run dev` brings up the first five at once. Each also runs alone:
+`npm run dev` brings up five of these at once — the dashboard, the three
+episode twins and the Gmail front end. Each also runs alone:
 
 ```bash
 npm run dev:platform      # dashboard only
@@ -305,7 +318,9 @@ dependency — but the dependency floor is the binding one. Developed on 25.
 ## Layout
 
 ```
-apps/gmail  apps/slack  apps/calendar   the clones (SQLite, local)
+apps/gmail  apps/slack  apps/calendar   the three episode twins (SQLite, local)
+apps/attio  apps/google-docs            four more API clones, same insides,
+apps/google-ads  apps/linkedin            not yet episode twins
 apps/gmail-ui                           the Gmail front end, over OAuth
 apps/platform                           the dashboard, and the commands it shares
 packages/cli        `npm run sonata` — doctor, init, up/down, and the front door to the rest
