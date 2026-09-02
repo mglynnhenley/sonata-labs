@@ -5,11 +5,8 @@ import type { GeneratedWorld } from "./generate";
 import type {
   AttioSeed,
   CalendarSeed,
-  FeedCommentSeed,
   GmailSeed,
-  GoogleAdsSeed,
   GoogleDocsSeed,
-  LinkedInSeed,
   SlackSeed,
 } from "./schema";
 
@@ -21,8 +18,6 @@ import type {
 //   POST http://127.0.0.1:3400/api/sandbox/seed   (calendar)
 //   POST http://127.0.0.1:3500/api/sandbox/seed   (attio)
 //   POST http://127.0.0.1:3600/api/sandbox/seed   (google-docs)
-//   POST http://127.0.0.1:3700/api/sandbox/seed   (google-ads)
-//   POST http://127.0.0.1:3800/api/sandbox/seed   (linkedin)
 //   Content-Type: application/json
 //   Authorization: Bearer $SANDBOX_TOKEN
 //
@@ -58,10 +53,8 @@ import type {
 //
 // `counts` is free-form per twin (gmail: threads/messages/labels; slack:
 // channels/messages/users; calendar: calendars/events; attio: companies/people/
-// deals/notes/tasks; google-docs: documents/paragraphs; google-ads: campaigns/
-// adGroups/budgets/statRows; linkedin: members/organizations/posts/comments/
-// reactions) and is surfaced in the dashboard's clone step, so it should count
-// what was actually written.
+// deals/notes/tasks; google-docs: documents/paragraphs) and is surfaced in the
+// dashboard's clone step, so it should count what was actually written.
 // ---------------------------------------------------------------------------
 
 const MINUTE = 60_000;
@@ -276,73 +269,12 @@ export interface DocsWireSeed extends WireBase {
   documents: DocsWireDocument[];
 }
 
-export interface GoogleAdsWireSeed extends WireBase {
-  ownerEmail: string;
-  customer: { id: string; descriptiveName: string; currencyCode: string; timezone: string };
-  budgets: Array<{ id: string; name: string; amountMicros: number }>;
-  campaigns: Array<{
-    id: string;
-    budgetId: string;
-    name: string;
-    status: string;
-    advertisingChannelType: string;
-    /** YYYY-MM-DD in the account's zone. */
-    startDate: string;
-  }>;
-  adGroups: Array<{ id: string; campaignId: string; name: string; status: string; type: string }>;
-  dailyStats: Array<{
-    adGroupId: string;
-    date: string;
-    impressions: number;
-    clicks: number;
-    costMicros: number;
-    conversions: number;
-  }>;
-}
-
-export interface LinkedInWireReaction {
-  actorEmail: string;
-  reactionType: string;
-  createdISO: string;
-}
-
-export interface LinkedInWireComment {
-  /** Decimal, like every LinkedIn id, and unique across the whole seed. */
-  id: string;
-  actorKind: "organization" | "member";
-  actorEmail?: string;
-  text: string;
-  createdISO: string;
-  replies?: LinkedInWireComment[];
-}
-
-export interface LinkedInWirePost {
-  id: string;
-  authorKind: "organization" | "member";
-  authorEmail?: string;
-  commentary: string;
-  visibility: "PUBLIC";
-  lifecycleState: "PUBLISHED" | "DRAFT";
-  publishedISO: string;
-  comments: LinkedInWireComment[];
-  reactions: LinkedInWireReaction[];
-}
-
-export interface LinkedInWireSeed extends WireBase {
-  ownerEmail: string;
-  organization: { id: string; name: string; vanityName: string };
-  members: Array<{ email: string; personId: string; pageAdmin: boolean }>;
-  posts: LinkedInWirePost[];
-}
-
 export type WireSeed =
   | GmailWireSeed
   | SlackWireSeed
   | CalendarWireSeed
   | AttioWireSeed
-  | DocsWireSeed
-  | GoogleAdsWireSeed
-  | LinkedInWireSeed;
+  | DocsWireSeed;
 
 export interface SeedRequest {
   twin: TwinName;
@@ -618,45 +550,12 @@ function documentIdFrom(key: string): string {
   return createHash("sha512").update(`sonata:world:doc:${key}`).digest("base64url").slice(0, 44);
 }
 
-/**
- * `digits` decimal characters, never starting with a zero.
- *
- * Google Ads customer ids and LinkedIn ids both cross the wire as decimal
- * strings, and both twins refuse anything else. FNV-1a over the key, offset into
- * the range so the leading digit cannot be lost.
- */
-function digitsFrom(key: string, digits: number): string {
-  let hash = 2166136261;
-  for (let i = 0; i < key.length; i++) {
-    hash = Math.imul(hash ^ key.charCodeAt(i), 16777619);
-  }
-  const span = 10 ** (digits - 1);
-  return String(span + ((hash >>> 0) % (10 * span - span)));
-}
-
-/** 0..1 from a key, for the day-to-day wobble in a seeded ad account. */
-function unitFrom(key: string): number {
-  let hash = 2166136261;
-  for (let i = 0; i < key.length; i++) {
-    hash = Math.imul(hash ^ key.charCodeAt(i), 16777619);
-  }
-  return ((hash >>> 0) % 10_000) / 10_000;
-}
-
 function slugify(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "workspace";
 }
 
-/**
- * A LinkedIn person id from a cast id. LinkedIn's are base64url, so anything
- * outside that alphabet has to go or every URN built from it fails to parse.
- */
-function personIdFor(castId: string): string {
-  return castId.replace(/[^A-Za-z0-9_-]+/g, "-") || "member";
-}
-
 // ---------------------------------------------------------------------------
-// Resolution for the four later surfaces
+// Resolution for the two later surfaces
 // ---------------------------------------------------------------------------
 
 export function resolveAttioSeed(
@@ -808,210 +707,6 @@ export function resolveGoogleDocsSeed(
   };
 }
 
-/** How far back a seeded ad account's history runs. */
-const AD_HISTORY_DAYS = 30;
-
-/**
- * The ad group type that goes with a campaign's channel.
- *
- * Not decoration: the twin validates both against the same catalogue its GAQL
- * parser reads, and a display campaign whose ad group claims to be a search one
- * is an account no report could describe. Performance Max has no ad group type
- * in that catalogue, so it borrows the standard one.
- */
-const AD_GROUP_TYPE: Record<string, string> = {
-  SEARCH: "SEARCH_STANDARD",
-  DISPLAY: "DISPLAY_STANDARD",
-  SHOPPING: "SHOPPING_PRODUCT_ADS",
-  VIDEO: "VIDEO_TRUE_VIEW_IN_STREAM",
-  PERFORMANCE_MAX: "SEARCH_STANDARD",
-};
-
-/** YYYY-MM-DD in the account's own zone, which is what every ads date is. */
-function accountDate(ms: number, timezone: string): string {
-  // en-CA is the locale that formats a date as YYYY-MM-DD, which is the format
-  // the twin's own DATE_RE insists on.
-  return new Intl.DateTimeFormat("en-CA", { timeZone: timezone }).format(new Date(ms));
-}
-
-export function resolveGoogleAdsSeed(
-  world: WorldSeed,
-  seed: GoogleAdsSeed,
-  nowMs: number,
-  promoteToSnapshot = true,
-): GoogleAdsWireSeed {
-  const me = ownerOf(world);
-  const timezone = world.timezone ?? "UTC";
-  const business = world.business.name;
-
-  const budgets = seed.campaigns.map((c) => ({
-    id: digitsFrom(`budget:${business}:${c.name}`, 10),
-    name: `${c.name} daily budget`,
-    amountMicros: c.dailyBudget * 1_000_000,
-  }));
-
-  const campaigns = seed.campaigns.map((c, i) => ({
-    id: digitsFrom(`campaign:${business}:${c.name}`, 11),
-    budgetId: budgets[i].id,
-    name: c.name,
-    status: c.status,
-    advertisingChannelType: c.channel,
-    // Running since before the history starts, so every stat row sits inside the
-    // campaign's own lifetime rather than before it began.
-    startDate: accountDate(nowMs - (AD_HISTORY_DAYS + 1) * 24 * 60 * MINUTE, timezone),
-  }));
-
-  const adGroups = seed.campaigns.flatMap((c, i) =>
-    c.adGroups.map((g) => ({
-      id: digitsFrom(`adgroup:${business}:${c.name}:${g.name}`, 11),
-      campaignId: campaigns[i].id,
-      name: g.name,
-      status: g.status,
-      type: AD_GROUP_TYPE[c.channel] ?? "SEARCH_STANDARD",
-    })),
-  );
-
-  // A month of daily rows per ad group, expanded from the one typical day the
-  // narrative pass wrote. Deterministic: the wobble is a hash of the ad group
-  // and the date, so two seedings of one world produce the same account and a
-  // report run twice returns the same numbers.
-  //
-  // Yesterday backwards, never today: Google defines LAST_7_DAYS as the seven
-  // days NOT including today, so a window the agent asks for is covered by whole
-  // days rather than by a day that is still happening.
-  const dailyStats: GoogleAdsWireSeed["dailyStats"] = [];
-  const groupsByIndex = seed.campaigns.flatMap((c) => c.adGroups);
-  for (const [index, group] of groupsByIndex.entries()) {
-    const adGroupId = adGroups[index].id;
-    for (let back = 1; back <= AD_HISTORY_DAYS; back++) {
-      const date = accountDate(nowMs - back * 24 * 60 * MINUTE, timezone);
-      // 0.7 to 1.3 of a typical day. A paused ad group still shows the days it
-      // ran, which is what makes "this was switched off last week" readable.
-      const factor = 0.7 + unitFrom(`${adGroupId}:${date}`) * 0.6;
-      const impressions = Math.round(group.dailyImpressions * factor);
-      dailyStats.push({
-        adGroupId,
-        date,
-        impressions,
-        clicks: Math.min(impressions, Math.round(group.dailyClicks * factor)),
-        costMicros: Math.round(group.dailyCost * factor) * 1_000_000,
-        conversions: Math.round(group.dailyConversions * factor),
-      });
-    }
-  }
-
-  return {
-    world,
-    nowISO: new Date(nowMs).toISOString(),
-    promoteToSnapshot,
-    ownerEmail: me.email,
-    customer: {
-      id: digitsFrom(`customer:${business}`, 10),
-      descriptiveName: business,
-      currencyCode: "USD",
-      timezone,
-    },
-    // Always at least one, because the twin refuses a seed carrying none: an
-    // account with nothing to spend is not a state Google Ads can express, and a
-    // world whose company runs no advertising still has to load.
-    budgets: budgets.length
-      ? budgets
-      : [
-          {
-            id: digitsFrom(`budget:${business}`, 10),
-            name: `${business} daily budget`,
-            amountMicros: 100_000_000,
-          },
-        ],
-    campaigns,
-    adGroups,
-    dailyStats,
-  };
-}
-
-export function resolveLinkedInSeed(
-  world: WorldSeed,
-  seed: LinkedInSeed,
-  nowMs: number,
-  promoteToSnapshot = true,
-): LinkedInWireSeed {
-  const me = ownerOf(world);
-  const business = world.business.name;
-
-  /** The two-field actor spelling: absent means the company page itself. */
-  function actor(personId: string): { kind: "organization" | "member"; email?: string } {
-    const person = personId ? resolvePerson(world, personId) : undefined;
-    return person ? { kind: "member", email: person.email } : { kind: "organization" };
-  }
-
-  let commentSeq = 0;
-  function wireComments(comments: FeedCommentSeed[], postKey: string): LinkedInWireComment[] {
-    return comments.map((c) => {
-      const { kind, email } = actor(c.personId);
-      const replies = wireComments(c.replies ?? [], postKey);
-      return {
-        id: digitsFrom(`comment:${business}:${postKey}:${commentSeq++}`, 12),
-        actorKind: kind,
-        ...(email ? { actorEmail: email } : {}),
-        text: c.text,
-        createdISO: iso(nowMs, c.minutesAgo),
-        ...(replies.length ? { replies } : {}),
-      };
-    });
-  }
-
-  return {
-    world,
-    nowISO: new Date(nowMs).toISOString(),
-    promoteToSnapshot,
-    ownerEmail: me.email,
-    organization: {
-      id: digitsFrom(`organization:${business}`, 7),
-      name: business,
-      vanityName: slugify(business),
-    },
-    // Every cast member gets a LinkedIn identity: a commenter the page has never
-    // heard of is refused by name, and the owner is the page's administrator
-    // because a page nobody administers cannot be posted to.
-    members: world.cast.map((p) => ({
-      email: p.email,
-      personId: personIdFor(p.id),
-      pageAdmin: p.id === me.id,
-    })),
-    posts: seed.posts.map((post, i) => {
-      const { kind, email } = actor(post.personId);
-      const postKey = `${i}`;
-      return {
-        id: digitsFrom(`post:${business}:${postKey}`, 12),
-        authorKind: kind,
-        ...(email ? { authorEmail: email } : {}),
-        commentary: post.commentary,
-        visibility: "PUBLIC" as const,
-        lifecycleState: post.isDraft ? ("DRAFT" as const) : ("PUBLISHED" as const),
-        publishedISO: iso(nowMs, post.minutesAgo),
-        comments: wireComments(post.comments ?? [], postKey),
-        // LIKE for all of them: the seed knows who reacted and not how, and the
-        // other five flavours would be five different claims about people's
-        // feelings that nobody wrote down. Dated with the post, for the same
-        // reason — a reaction carries no time of its own in the source seed, and
-        // it certainly cannot predate the thing it is on.
-        reactions: (post.reactedByPersonIds ?? []).flatMap((id) => {
-          const person = resolvePerson(world, id);
-          return person
-            ? [
-                {
-                  actorEmail: person.email,
-                  reactionType: "LIKE",
-                  createdISO: iso(nowMs, post.minutesAgo),
-                },
-              ]
-            : [];
-        }),
-      };
-    }),
-  };
-}
-
 /**
  * Which field of a `GeneratedWorld` a twin is seeded from.
  *
@@ -1019,10 +714,10 @@ export function resolveLinkedInSeed(
  * it in a form the compiler can prove exhaustive. A `GeneratedWorld` is written
  * to disk by the dashboard and read back weeks later, so it outlives its own
  * type: a company cloned when a backlog was a mailbox, a workspace and a diary
- * carries no CRM, no documents, no ad account and no page, and TypeScript says
- * so about a value it has never seen. Without this the first thing that happens
- * is `.map` of undefined, and a user reading the failed seed is told the CRM
- * could not be loaded because of a TypeError.
+ * carries no CRM and no documents, and TypeScript says so about a value it has
+ * never seen. Without this the first thing that happens is `.map` of undefined,
+ * and a user reading the failed seed is told the CRM could not be loaded because
+ * of a TypeError.
  */
 const SOURCE_SEED: Record<TwinName, keyof GeneratedWorld> = {
   gmail: "gmail",
@@ -1030,8 +725,6 @@ const SOURCE_SEED: Record<TwinName, keyof GeneratedWorld> = {
   calendar: "calendar",
   attio: "attio",
   "google-docs": "googleDocs",
-  "google-ads": "googleAds",
-  linkedin: "linkedin",
 };
 
 /**
@@ -1045,7 +738,7 @@ const SOURCE_SEED: Record<TwinName, keyof GeneratedWorld> = {
  * total, so an empty one posts successfully, wipes whatever the twin held, and
  * leaves the agent working a surface the story says is full. A world that has
  * nothing to say about a surface therefore refuses, by name, the way this
- * function used to refuse the four surfaces generation did not yet write.
+ * function used to refuse the surfaces generation did not yet write.
  */
 export function buildSeedRequest(
   generated: GeneratedWorld,
@@ -1076,16 +769,6 @@ export function buildSeedRequest(
       return {
         twin,
         seed: resolveGoogleDocsSeed(world, generated.googleDocs, nowMs, promoteToSnapshot),
-      };
-    case "google-ads":
-      return {
-        twin,
-        seed: resolveGoogleAdsSeed(world, generated.googleAds, nowMs, promoteToSnapshot),
-      };
-    case "linkedin":
-      return {
-        twin,
-        seed: resolveLinkedInSeed(world, generated.linkedin, nowMs, promoteToSnapshot),
       };
   }
 }
@@ -1159,11 +842,11 @@ export async function injectWorld(
     const url = `${twinBaseUrl(twin, opts.baseUrls)}/api/sandbox/seed`;
     // A seed that cannot be built at all is reported like any other failure
     // rather than thrown out of the whole load. Building one is pure, but not
-    // total: a world whose `mailboxOwner` is not in its own cast, or whose
-    // `timezone` is not a zone, cannot be resolved for anybody. The other
-    // surfaces still get their world, and the caller — `loadClone` — still
-    // refuses to start a run on a report that is not ok. The dashboard shows
-    // which twin and why.
+    // total: a world whose `mailboxOwner` is not in its own cast resolves for
+    // nobody, and a world stored before a surface existed carries no seed for
+    // that one twin. The other surfaces still get their world, and the caller —
+    // `loadClone` — still refuses to start a run on a report that is not ok. The
+    // dashboard shows which twin and why.
     let body: SeedRequest;
     try {
       body = buildSeedRequest(generated, twin, nowMs, opts.promoteToSnapshot ?? true);

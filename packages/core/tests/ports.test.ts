@@ -23,8 +23,6 @@ describe("port allocation", () => {
       calendar: 3400,
       attio: 3500,
       "google-docs": 3600,
-      "google-ads": 3700,
-      linkedin: 3800,
     });
   });
 
@@ -101,8 +99,6 @@ describe("resolution precedence", () => {
       calendar: "http://localhost:3400",
       attio: "http://localhost:3500",
       "google-docs": "http://localhost:3600",
-      "google-ads": "http://localhost:3700",
-      linkedin: "http://localhost:3800",
     });
   });
 });

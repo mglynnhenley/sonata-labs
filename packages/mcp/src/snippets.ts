@@ -96,8 +96,6 @@ export function restSnippet(input: SnippetInput): string {
     // clone: finding a document is Drive's job. An agent reaches one through the
     // link it was sent; a human poking at it reads the sandbox's own projection.
     "google-docs": "Google Docs v1      e.g. GET /api/sandbox/snapshot (no list method exists)",
-    "google-ads": "Google Ads v17      e.g. GET /v17/customers:listAccessibleCustomers",
-    linkedin: "LinkedIn /rest      e.g. GET /v2/userinfo",
   };
   const lines = [
     "# Sonata twins over plain HTTP — the same surface the MCP tools call.",
@@ -133,23 +131,6 @@ export function restSnippet(input: SnippetInput): string {
       `  "${input.config.urls[rest]}${sample(rest)}"`,
     );
   }
-  // Two twins refuse a call that carries only the bearer, and both refusals look
-  // like the twin is broken rather than like a missing header. Same reasoning as
-  // the Gmail note above: the hour this saves is the first one.
-  if (twins.includes("google-ads")) {
-    lines.push(
-      "",
-      "# google-ads wants a second credential on every /v* call, as the real API does:",
-      '#   -H "developer-token: sandbox-dev-token"',
-    );
-  }
-  if (twins.includes("linkedin")) {
-    lines.push(
-      "",
-      "# linkedin refuses any /rest/* call with no version, as the real API does:",
-      '#   -H "LinkedIn-Version: 202506" -H "X-Restli-Protocol-Version: 2.0.0"',
-    );
-  }
   return `${lines.join("\n")}\n`;
 }
 
@@ -168,10 +149,6 @@ function sample(twin: ServedTwin): string {
     // API has no call that answers "what is in this workspace".
     case "google-docs":
       return "/api/sandbox/snapshot";
-    case "google-ads":
-      return "/v17/customers:listAccessibleCustomers";
-    case "linkedin":
-      return "/v2/userinfo";
   }
 }
 

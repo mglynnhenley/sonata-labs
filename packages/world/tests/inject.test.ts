@@ -9,9 +9,7 @@ import {
   resolveAttioSeed,
   resolveCalendarSeed,
   resolveGmailSeed,
-  resolveGoogleAdsSeed,
   resolveGoogleDocsSeed,
-  resolveLinkedInSeed,
   resolveSlackSeed,
   twinBaseUrl,
   type SeedRequest,
@@ -164,91 +162,6 @@ describe("resolveGoogleDocsSeed", () => {
     expect(paragraphs[0].namedStyleType).toBe("TITLE");
     expect(paragraphs[1].namedStyleType).toBe("HEADING_1");
     expect(paragraphs[2].namedStyleType).toBeUndefined();
-  });
-});
-
-describe("resolveGoogleAdsSeed", () => {
-  const wire = resolveGoogleAdsSeed(built.world, built.googleAds, NOW);
-
-  it("mints decimal ids and funds every campaign, because a budget is required", () => {
-    expect(wire.customer.id).toMatch(/^[1-9]\d{9}$/);
-    expect(wire.customer.timezone).toBe("America/New_York");
-    expect(wire.budgets).toHaveLength(wire.campaigns.length);
-    expect(wire.budgets[0].amountMicros).toBe(250_000_000);
-    expect(wire.campaigns[0].budgetId).toBe(wire.budgets[0].id);
-    expect(wire.campaigns[0].advertisingChannelType).toBe("SEARCH");
-    expect(wire.adGroups[0].type).toBe("SEARCH_STANDARD");
-  });
-
-  it("expands one typical day into a month of dated rows, yesterday backwards", () => {
-    const rows = wire.dailyStats.filter((r) => r.adGroupId === wire.adGroups[0].id);
-    expect(rows).toHaveLength(30);
-    expect(new Set(rows.map((r) => r.date)).size).toBe(30);
-    // LAST_7_DAYS does not include today, so history stops at yesterday.
-    const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(
-      new Date(NOW),
-    );
-    expect(rows.some((r) => r.date === today)).toBe(false);
-    // The normalizer already capped clicks at impressions; the wobble keeps it.
-    expect(rows.every((r) => r.clicks <= r.impressions)).toBe(true);
-    expect(rows.every((r) => r.costMicros % 1_000_000 === 0)).toBe(true);
-  });
-
-  it("is deterministic, so a report run twice returns the same numbers", () => {
-    expect(resolveGoogleAdsSeed(built.world, built.googleAds, NOW)).toEqual(wire);
-  });
-
-  it("still funds an account for a company that advertises nothing", () => {
-    // The twin refuses a seed carrying no budget at all, so a world with no
-    // campaigns has to arrive with an empty account rather than a broken one.
-    const quiet = resolveGoogleAdsSeed(built.world, { campaigns: [] }, NOW);
-    expect(quiet.campaigns).toEqual([]);
-    expect(quiet.dailyStats).toEqual([]);
-    expect(quiet.budgets).toHaveLength(1);
-    expect(quiet.budgets[0].amountMicros).toBe(100_000_000);
-  });
-});
-
-describe("resolveLinkedInSeed", () => {
-  const wire = resolveLinkedInSeed(built.world, built.linkedin, NOW);
-
-  it("gives every cast member an identity and the owner the page", () => {
-    expect(wire.members.map((m) => m.personId)).toEqual(["priya", "marcus", "gerald"]);
-    expect(wire.members.find((m) => m.personId === "priya")!.pageAdmin).toBe(true);
-    expect(wire.organization.vanityName).toBe("northwind-ledger");
-  });
-
-  it("posts as the page when nobody in the cast wrote it", () => {
-    const [post] = wire.posts;
-    expect(post.authorKind).toBe("organization");
-    expect(post.authorEmail).toBeUndefined();
-    expect(post.id).toMatch(/^[1-9]\d{11}$/);
-    expect(post.publishedISO).toBe(new Date(NOW - 2000 * 60_000).toISOString());
-  });
-
-  it("keeps a thread one level deep and dates every reply after its parent", () => {
-    const [comment] = wire.posts[0].comments;
-    expect(comment.actorEmail).toBe("gerald.pike@halloranpike.com");
-    // Depth two was flattened up beside its parent, and the reply that claimed
-    // to predate the comment it answers was pulled back to it.
-    expect(comment.replies).toHaveLength(2);
-    expect(comment.replies!.every((r) => !r.replies)).toBe(true);
-    expect(comment.replies![0].createdISO).toBe(new Date(NOW - 1000 * 60_000).toISOString());
-    const ids = wire.posts.flatMap((p) => p.comments.flatMap((c) => [c.id, ...(c.replies ?? []).map((r) => r.id)]));
-    expect(new Set(ids).size).toBe(ids.length);
-  });
-
-  it("leaves a draft unpublished and unengaged, which is the only state it can be in", () => {
-    const draft = wire.posts.find((p) => p.lifecycleState === "DRAFT")!;
-    expect(draft.comments).toEqual([]);
-    expect(draft.reactions).toEqual([]);
-  });
-
-  it("reacts once per person, and only for people the page has heard of", () => {
-    expect(wire.posts[0].reactions.map((r) => r.actorEmail)).toEqual([
-      "marcus.bell@northwindledger.com",
-    ]);
-    expect(wire.posts[0].reactions[0].reactionType).toBe("LIKE");
   });
 });
 
@@ -407,21 +320,21 @@ describe("injectWorld over HTTP", () => {
 
   it("reports a world that cannot be resolved at all, and still seeds the rest", async () => {
     seen.length = 0;
-    // A time zone that is not a zone. Every ads date is resolved in it, so the
-    // ads seed cannot be built — and that is a line in the report rather than a
-    // stack trace out of the whole load.
-    const broken = { ...built, world: { ...built.world, timezone: "Mars/Phobos" } };
-    const report = await injectWorld(broken, {
-      twins: ["gmail", "google-ads"],
-      baseUrls: { gmail: base, "google-ads": base },
+    // A world stored before the CRM existed. Its attio seed cannot be built —
+    // and that is a line in the report rather than a stack trace out of the
+    // whole load, with every other surface seeded regardless.
+    const { attio: _attio, ...legacy } = built;
+    const report = await injectWorld(legacy as typeof built, {
+      twins: ["gmail", "attio"],
+      baseUrls: { gmail: base, attio: base },
       now: NOW,
     });
 
     expect(seen.map((s) => s.body.twin)).toEqual(["gmail"]);
     expect(report.ok).toBe(false);
-    const ads = report.results.find((r) => r.twin === "google-ads")!;
-    expect(ads.status).toBe(0);
-    expect(ads.error).toContain("Mars/Phobos");
+    const crm = report.results.find((r) => r.twin === "attio")!;
+    expect(crm.status).toBe(0);
+    expect(crm.error).toContain("cloned before the attio twin existed");
     expect(report.results.find((r) => r.twin === "gmail")!.ok).toBe(true);
   });
 

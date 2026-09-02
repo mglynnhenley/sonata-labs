@@ -4,9 +4,7 @@ import type {
   EpisodeJudgeReport,
   EpisodeRun,
   GmailSnapshot,
-  GoogleAdsSnapshot,
   GoogleDocsSnapshot,
-  LinkedInSnapshot,
   Person,
   SlackSnapshot,
   TickRecord,
@@ -55,8 +53,6 @@ export const TWIN_WORD: Record<TwinName, string> = {
   calendar: "Calendar",
   attio: "CRM",
   "google-docs": "Docs",
-  "google-ads": "Ads",
-  linkedin: "LinkedIn",
 };
 
 /** One number about the state at close. */
@@ -505,81 +501,6 @@ function googleDocsEnd(after: GoogleDocsSnapshot, ctx: Ctx): TwinEnd {
   };
 }
 
-/**
- * The advertiser account at close. A campaign left PAUSED is the thing a reader
- * stops at — an agent that paused something at 10:00 and never put it back has
- * left the money switched off — and a campaign with no budget attached cannot
- * run at all.
- */
-function googleAdsEnd(after: GoogleAdsSnapshot): TwinEnd {
-  const paused = after.campaigns.filter((c) => c.status === "PAUSED");
-  const unfunded = after.campaigns.filter((c) => c.status !== "REMOVED" && !c.budgetId);
-
-  return {
-    twin: "google-ads",
-    counts: [
-      { label: agree(after.campaigns.length, "campaign"), value: after.campaigns.length, flag: false },
-      { label: "left paused", value: paused.length, flag: paused.length > 0 },
-    ],
-    open: [
-      ...paused.slice(0, OPEN_CAP).map((c) => ({
-        key: `paused-${c.campaignId}`,
-        what: c.name,
-        who: "",
-        when: "",
-        why: "paused when the day ended",
-      })),
-      ...unfunded.slice(0, SECOND_CAP).map((c) => ({
-        key: `unfunded-${c.campaignId}`,
-        what: c.name,
-        who: "",
-        when: "",
-        why: "no budget attached, so it cannot spend",
-      })),
-    ],
-    more: Math.max(0, paused.length - OPEN_CAP) + Math.max(0, unfunded.length - SECOND_CAP),
-    settled: "No campaign was left paused, and every one of them has a budget.",
-    // Spend is in the snapshot and deliberately not counted here: the capture
-    // covers a reporting window several days wide, so a figure printed under a
-    // heading about one day would be the kind of lie a reader cannot catch.
-    scope: "What these campaigns spent is not counted here: the capture covers a window several days wide, not this day.",
-  };
-}
-
-/**
- * The feed at close. A post still in DRAFT is the loose end — written and never
- * published is the same shape of failure as a mail draft never sent.
- *
- * Comments are counted, never listed as open, and the scope line says why: the
- * capture names each comment's post but never its parent, so "nobody answered
- * this customer" is not a claim this snapshot can support.
- */
-function linkedInEnd(after: LinkedInSnapshot): TwinEnd {
-  const drafts = after.posts.filter((p) => p.lifecycleState === "DRAFT");
-  return {
-    twin: "linkedin",
-    counts: [
-      { label: agree(after.posts.length, "post"), value: after.posts.length, flag: false },
-      { label: agree(after.comments.length, "comment"), value: after.comments.length, flag: false },
-      { label: agree(drafts.length, "post", " left in draft"), value: drafts.length, flag: drafts.length > 0 },
-    ],
-    open: drafts.slice(0, OPEN_CAP).map((p) => ({
-      key: `draft-${p.postUrn}`,
-      what: excerpt(p.commentary, 130) || "(no text)",
-      // The URN is the only name this surface gives an author, and it is not one
-      // the cast can be matched against.
-      who: p.author,
-      when: "",
-      why: "written, never published",
-    })),
-    more: Math.max(0, drafts.length - OPEN_CAP),
-    settled: "Nothing is left sitting in draft.",
-    scope:
-      "Whether anyone answered a comment cannot be read off this: the capture names each " +
-      "comment's post, never the comment it replies to.",
-  };
-}
-
 // ---------------------------------------------------------------------------
 // What the assessor was shown of it
 // ---------------------------------------------------------------------------
@@ -620,8 +541,6 @@ const TWIN_ORDER: readonly TwinName[] = [
   "calendar",
   "attio",
   "google-docs",
-  "google-ads",
-  "linkedin",
 ];
 
 function endOf(after: TwinSnapshot, ctx: Ctx): TwinEnd {
@@ -636,10 +555,6 @@ function endOf(after: TwinSnapshot, ctx: Ctx): TwinEnd {
       return attioEnd(after, ctx);
     case "google-docs":
       return googleDocsEnd(after, ctx);
-    case "google-ads":
-      return googleAdsEnd(after);
-    case "linkedin":
-      return linkedInEnd(after);
   }
 }
 

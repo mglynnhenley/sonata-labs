@@ -626,7 +626,7 @@ describe("buildEpisodePrompt final state", () => {
 });
 
 // ---------------------------------------------------------------------------
-// The four surfaces that landed after the first three. The judge reads prose, so
+// The two surfaces that landed after the first three. The judge reads prose, so
 // what is asserted here is the prose: that every fact the contract carries makes
 // it onto a line, and that the ones the capture CANNOT know are said to be
 // unknown rather than printed as a blank.
@@ -773,96 +773,6 @@ describe("buildEpisodePrompt on documents", () => {
     expect(section).toContain('+ created "Handover" owned by sam@x.test');
     // A net count read as an exact one understates what the agent wrote.
     expect(section).toContain("NET of a document captured only in part");
-  });
-});
-
-describe("buildEpisodePrompt on the ad account", () => {
-  it("reports a campaign re-pointed at another budget of the same size", () => {
-    const section = changed(
-      buildEpisodePrompt(
-        input({
-          diffs: {
-            "google-ads": {
-              twin: "google-ads",
-              statusChanged: [
-                { campaignId: "c1", name: "Retargeting", from: "ENABLED", to: "PAUSED" },
-              ],
-              budgetChanged: [
-                {
-                  campaignId: "c2",
-                  name: "Brand",
-                  fromBudgetId: "b1",
-                  toBudgetId: "b2",
-                  fromMicros: 15_000_000,
-                  toMicros: 15_000_000,
-                },
-                {
-                  campaignId: "c3",
-                  name: "Prospecting",
-                  fromBudgetId: "b3",
-                  toBudgetId: "b3",
-                  fromMicros: 15_000_000,
-                  toMicros: 42_000_000,
-                },
-              ],
-              created: [],
-              unchangedCount: 6,
-            },
-          },
-        }),
-      ).prompt,
-    );
-
-    expect(section).toContain('~ paused "Retargeting" (was ENABLED)');
-    // The move that used to be invisible: same money a day, different budget.
-    expect(section).toContain('~ "Brand" moved onto another budget of the same 15.00 a day');
-    expect(section).toContain('~ "Prospecting" daily budget 15.00 → 42.00');
-  });
-});
-
-describe("buildEpisodePrompt on the feed", () => {
-  it("counts anonymous reactions up rather than printing a blank name each time", () => {
-    const section = changed(
-      buildEpisodePrompt(
-        input({
-          diffs: {
-            linkedin: {
-              twin: "linkedin",
-              posted: [
-                { postUrn: "urn:li:activity:1", author: "urn:li:person:sam", commentary: "We are hiring" },
-              ],
-              edited: [],
-              deleted: [],
-              commented: [
-                {
-                  commentUrn: "urn:li:comment:9",
-                  postUrn: "urn:li:activity:1",
-                  postCommentary: "We are hiring",
-                  actor: "urn:li:person:dana",
-                  text: "Is this remote?",
-                  isReply: false,
-                },
-              ],
-              // Three rows, because the count is the only fact the capture holds:
-              // this API has no reactions finder, so there is no actor to name.
-              reactionsAdded: [
-                { entityUrn: "urn:li:activity:1", entityCommentary: "We are hiring", actor: "", reactionType: "" },
-                { entityUrn: "urn:li:activity:1", entityCommentary: "We are hiring", actor: "", reactionType: "" },
-                { entityUrn: "urn:li:activity:1", entityCommentary: "We are hiring", actor: "", reactionType: "" },
-              ],
-              unchangedCount: 4,
-            },
-          },
-        }),
-      ).prompt,
-    );
-
-    expect(section).toContain('~ 3 reaction(s) arrived on "We are hiring"');
-    expect(section).toContain("from nobody this API will name");
-    // Names, not URNs: a judge cannot tell which post `urn:li:activity:1` is, and
-    // `urn:li:organization:*` is this twin's one company page rather than a number.
-    expect(section).toContain('+ published as sam: "We are hiring"');
-    expect(section).toContain('+ dana commented on "We are hiring"');
   });
 });
 

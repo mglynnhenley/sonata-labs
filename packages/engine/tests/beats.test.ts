@@ -583,7 +583,7 @@ describe("summarizeBody", () => {
     ).toContain("Priya Raman invited Dana Reyes");
   });
 
-  it("describes what happened on the four later surfaces, not the kind it happened as", () => {
+  it("describes what happened on the two later surfaces, not the kind it happened as", () => {
     expect(
       summarizeBody(
         {
@@ -614,49 +614,17 @@ describe("summarizeBody", () => {
         world,
       ),
     ).toBe('Priya Raman shared a document: "SLA review"');
-    expect(
-      summarizeBody(
-        {
-          twin: "google-ads",
-          kind: "status",
-          payload: { campaign: "Brand", status: "PAUSED" },
-        },
-        world,
-      ),
-    ).toBe('campaign "Brand" was paused');
-    expect(
-      summarizeBody(
-        { twin: "google-ads", kind: "budget", payload: { campaign: "Brand", amountMicros: 250_000_000 } },
-        world,
-      ),
-    ).toBe('campaign "Brand" now has 250.00 a day to spend');
-    expect(
-      summarizeBody(
-        {
-          twin: "linkedin",
-          kind: "comment",
-          payload: { postRef: "launch", from: "dana", text: "still waiting" },
-        },
-        world,
-      ),
-    ).toBe('Dana Reyes commented on "launch": "still waiting"');
   });
 
-  // A Slack emoji and a LinkedIn reaction are both `kind: "reaction"`, so a
-  // summary written off the kind alone reached into the wrong payload.
-  it("tells a Slack reaction from a LinkedIn one", () => {
+  // A reaction's payload is its twin's, not the kind's: `summarizeBody` reaches
+  // for the emoji only once it knows the beat is Slack's.
+  it("summarizes a Slack reaction from the emoji, not the kind", () => {
     expect(
       summarizeBody(
         { twin: "slack", kind: "reaction", payload: { messageRef: "m1", from: "sam", emoji: "eyes" } },
         world,
       ),
     ).toBe("Sam Okafor reacted :eyes:");
-    expect(
-      summarizeBody(
-        { twin: "linkedin", kind: "reaction", payload: { entityRef: "launch", reactionType: "PRAISE" } },
-        world,
-      ),
-    ).toBe('the company page reacted PRAISE to "launch"');
   });
 
   it("falls back to the raw ref for someone outside the cast", () => {

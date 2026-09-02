@@ -59,7 +59,7 @@ export const color = {
 
 /** Every twin. Brand hues pulled toward the cream palette so chips sit inside
  *  the page instead of shouting over it — which is the whole reason these are
- *  hand-picked rather than taken from each vendor: seven real brand colours side
+ *  hand-picked rather than taken from each vendor: five real brand colours side
  *  by side in one timeline is a fruit salad, and the surface a marker names
  *  matters more than whose logo it is. Neighbouring hues are kept apart so two
  *  chips in the same row never read as the same service at a glance. */
@@ -69,8 +69,6 @@ export const serviceColor = {
   calendar: { ink: "#2f6497", soft: "#e5edf6", line: "#cfdcea" },
   attio: { ink: "#2f6b5d", soft: "#e3f0ec", line: "#cadfd8" },
   "google-docs": { ink: "#3a5aa8", soft: "#e6eaf7", line: "#d0d8ee" },
-  "google-ads": { ink: "#a06a24", soft: "#f7eede", line: "#eaddc4" },
-  linkedin: { ink: "#2a5f86", soft: "#e4eef5", line: "#ccdfea" },
 } as const;
 
 export type ServiceId = keyof typeof serviceColor;
@@ -81,8 +79,6 @@ export const SERVICE_IDS: readonly ServiceId[] = [
   "calendar",
   "attio",
   "google-docs",
-  "google-ads",
-  "linkedin",
 ];
 
 export const SERVICE_LABELS: Record<ServiceId, string> = {
@@ -91,8 +87,6 @@ export const SERVICE_LABELS: Record<ServiceId, string> = {
   calendar: "Calendar",
   attio: "Attio",
   "google-docs": "Google Docs",
-  "google-ads": "Google Ads",
-  linkedin: "LinkedIn",
 };
 
 /** Run lifecycle. `running` wears the accent — live is the loudest thing on

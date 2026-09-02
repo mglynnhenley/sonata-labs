@@ -4,9 +4,7 @@ import {
   attioTools,
   calendarTools,
   gmailTools,
-  googleAdsTools,
   googleDocsTools,
-  linkedInTools,
   slackTools,
 } from "@sonata/engine/tools/index";
 import { TWINS } from "../src/config";
@@ -33,8 +31,6 @@ function engineNames(): string[] {
     ...calendarTools(http).map((t) => `calendar_${t.name}`),
     ...attioTools(http).map((t) => `attio_${t.name}`),
     ...googleDocsTools(http).map((t) => `google-docs_${t.name}`),
-    ...googleAdsTools(http).map((t) => `google-ads_${t.name}`),
-    ...linkedInTools(http).map((t) => `linkedin_${t.name}`),
   ];
 }
 
@@ -68,12 +64,10 @@ describe("manifest", () => {
     expect(names).toContain("gmail_list_messages");
     expect(names).toContain("slack_send_message");
     expect(names).toContain("calendar_find_free_time");
-    // One per surface that landed later, including the two whose own names carry
+    // One per surface that landed later, including the one whose own name carries
     // a hyphen — the thing most likely to be mangled by a prefixing scheme.
     expect(names).toContain("attio_update_record");
     expect(names).toContain("google-docs_append_paragraph");
-    expect(names).toContain("google-ads_set_campaign_budget");
-    expect(names).toContain("linkedin_create_post");
   });
 
   it("serves one twin when asked for one twin", () => {

@@ -21,48 +21,12 @@ export const DEFAULT_SANDBOX_TOKEN = process.env.SANDBOX_TOKEN || "sandbox-token
 /** Twins whose provider API is behind the sandbox's own OAuth2 server. */
 const OAUTH_TWINS: readonly TwinName[] = ["gmail"];
 
-/**
- * Headers a twin's provider API demands on top of the bearer.
- *
- * Two twins want one. Google Ads asks for a second credential: every `/v*` call
- * carries a `developer-token`, and the twin checks that it is present (never
- * what it says) precisely because that requirement is the one thing that makes
- * Ads' auth different from every other Google API. Without it every read and
- * every mutation comes back 400 DEVELOPER_TOKEN_PARAMETER_MISSING. LinkedIn asks
- * for a version instead: `/rest/*` refuses any request with no `LinkedIn-Version`
- * at all, so a client that does not send one cannot read a single post.
- *
- * Both belong here, next to the OAuth table, for the same reason that one does:
- * an agent driven by the engine and an agent connected over MCP have to
- * authenticate identically, and both build their client through `createTwinHttp`.
- */
-const PROVIDER_HEADERS: Partial<Record<TwinName, Record<string, string>>> = {
-  "google-ads": {
-    "developer-token": process.env.GOOGLE_ADS_DEVELOPER_TOKEN || "sandbox-dev-token",
-  },
-  linkedin: {
-    // The floor apps/linkedin's auth.ts answers; anything older is a 426, and
-    // LinkedIn retires versions on a rolling one-year window.
-    "LinkedIn-Version": "202506",
-    // The clone speaks Rest.li 2.0.0 and refuses any other value. Sending it is
-    // what LinkedIn's own clients do, and it is documented as required on the
-    // finders this adapter reads.
-    "X-Restli-Protocol-Version": "2.0.0",
-  },
-};
-
 export interface TwinHttpOptions {
   baseUrl: string;
   token?: string;
   fetchImpl?: typeof globalThis.fetch;
   /** Guard against a hung twin taking the whole run's wall-clock budget. */
   timeoutMs?: number;
-  /**
-   * Extra headers for provider-API calls, never for the control plane — those
-   * routes are machinery and deliberately not provider-shaped. `createTwinHttp`
-   * fills this from `PROVIDER_HEADERS`; pass it only to override that table.
-   */
-  providerHeaders?: Record<string, string>;
   /**
    * When true, provider-API calls use a real OAuth2 access token minted via
    * POST /api/sandbox/token (admin-gated) instead of the static token, with a
@@ -109,7 +73,6 @@ export class TwinHttp {
   private readonly timeoutMs: number;
   private readonly oauth: boolean;
   private readonly oauthScope?: string;
-  private readonly providerHeaders: Record<string, string>;
   /** Lazily-minted provider access token (only used when `oauth` is set). */
   private oauthToken?: string;
 
@@ -120,7 +83,6 @@ export class TwinHttp {
     this.timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     this.oauth = opts.oauth ?? false;
     this.oauthScope = opts.oauthScope;
-    this.providerHeaders = opts.providerHeaders ?? {};
   }
 
   /** Control-plane routes stay on the admin token; everything else is provider API. */
@@ -173,7 +135,6 @@ export class TwinHttp {
       // for them means one client works against a twin that gates /api/sandbox/*
       // and one that does not. Provider (OAuth) calls send only the bearer.
       if (!useOAuth) headers["X-Sandbox-Token"] = this.token;
-      if (isProvider) Object.assign(headers, this.providerHeaders);
       let body: string | undefined;
       if (init.json !== undefined) {
         headers["Content-Type"] = "application/json";
@@ -240,7 +201,6 @@ export function createTwinHttp(twin: TwinName, opts: TwinHttpOptions): TwinHttp 
   return new TwinHttp({
     ...opts,
     oauth: opts.oauth ?? OAUTH_TWINS.includes(twin),
-    providerHeaders: opts.providerHeaders ?? PROVIDER_HEADERS[twin] ?? {},
   });
 }
 

@@ -16,14 +16,10 @@ import type {
   EpisodeRun,
   EpisodeSpec,
   GmailSnapshot,
-  GoogleAdsBeatBody,
-  GoogleAdsSnapshot,
   GoogleDocsBeatBody,
   GoogleDocsSnapshot,
   JudgeStep,
   JudgeTrace,
-  LinkedInBeatBody,
-  LinkedInSnapshot,
   SlackSnapshot,
   TickRecord,
   TimelineEntry,
@@ -64,8 +60,9 @@ function truncate(s: string, max: number): string {
  * One line for anything a beat or the director injected, whatever surface it hit.
  *
  * Split by twin into the helpers below rather than one switch over `kind`,
- * because `reaction` names two different payloads — a Slack emoji and a LinkedIn
- * reaction — and a single switch would have to guess which it was holding.
+ * because a `kind` only means anything inside its own twin: `record` in the CRM
+ * and `invite` on the diary share the word and nothing else, so a single switch
+ * would have to guess which payload it was holding.
  */
 function describeBody(body: BeatBody): string {
   switch (body.twin) {
@@ -81,10 +78,6 @@ function describeBody(body: BeatBody): string {
       return describeAttio(body);
     case "google-docs":
       return describeDocs(body);
-    case "google-ads":
-      return describeAds(body);
-    case "linkedin":
-      return describeLinkedIn(body);
   }
 }
 
@@ -137,49 +130,11 @@ function describeDocs(body: GoogleDocsBeatBody): string {
   }
 }
 
-function describeAds(body: GoogleAdsBeatBody): string {
-  switch (body.kind) {
-    case "status":
-      return `campaign "${adsCampaign(body.payload)}" was set to ${body.payload.status}`;
-    case "budget":
-      return `campaign "${adsCampaign(body.payload)}" got a daily budget of ${body.payload.amountMicros} micros`;
-    case "spend":
-      return (
-        `ad group "${body.payload.adGroup}" took ${body.payload.impressions} impression(s), ` +
-        `${body.payload.clicks} click(s) and ${body.payload.costMicros} micros of spend` +
-        (body.payload.date ? ` on ${body.payload.date}` : "")
-      );
-  }
-}
-
-function describeLinkedIn(body: LinkedInBeatBody): string {
-  const who = body.payload.from ?? "the company page";
-  switch (body.kind) {
-    case "post":
-      return `${who} posted: ${body.payload.commentary}`;
-    case "comment":
-      return (
-        `${who} ` +
-        (body.payload.parentRef
-          ? `replied under "${body.payload.parentRef}"`
-          : `commented on "${body.payload.postRef ?? "the feed"}"`) +
-        `: ${body.payload.text}`
-      );
-    case "reaction":
-      return `${who} reacted ${body.payload.reactionType ?? "LIKE"} to "${body.payload.entityRef}"`;
-  }
-}
-
 /** An attribute bag the way a CRM row reads it back: `stage → Won 🎉`. */
 function describeValues(values: Record<string, AttioWriteValue>): string {
   return Object.entries(values)
     .map(([slug, v]) => `${slug} → ${Array.isArray(v) ? v.join(", ") : v}`)
     .join(", ");
-}
-
-/** Either half of how a beat names a campaign; neither is resolved here. */
-function adsCampaign(payload: { campaign?: string; campaignRef?: string }): string {
-  return payload.campaign ?? payload.campaignRef ?? "unnamed";
 }
 
 function directorLine(e: DirectorEvent): string {
@@ -410,12 +365,12 @@ function truncationOf(input: ProjectInput): RunTruncation | null {
 // The window's ends come from the spec's clock, so a scenario simulating three
 // days gets a three-day window with nobody editing this file.
 //
-// The four surfaces that landed later are NOT windowed, and the reason is in
-// their snapshots rather than in a judgement about them: a CRM record, a
-// document, a campaign and a post all arrive undated, so there is no instant to
-// compare a window against. Filtering them by anything else — the records the
-// run touched, the campaigns it moved — would delete exactly the untouched rows
-// this whole section exists to carry. They are therefore kept whole, their long
+// The two surfaces that landed later are NOT windowed, and the reason is in
+// their snapshots rather than in a judgement about them: a CRM record and a
+// document both arrive undated, so there is no instant to compare a window
+// against. Filtering them by anything else — the records the run touched, the
+// documents it edited — would delete exactly the untouched rows this whole
+// section exists to carry. They are therefore kept whole, their long
 // strings clipped to a line, and `fitLines` in prompt.ts samples them if they
 // still do not fit and says by how much. Each one's `kept` says so in words, so
 // a judge is never left guessing whether a short list is a small surface or a
@@ -618,33 +573,6 @@ function googleDocsFinalState(s: GoogleDocsSnapshot): TwinFinalState {
   };
 }
 
-/** The account at close. Undated like the others, and short: tens of campaigns. */
-function googleAdsFinalState(s: GoogleAdsSnapshot): TwinFinalState {
-  return {
-    state: { ...s, campaigns: s.campaigns.map((c) => ({ ...c, name: truncate(c.name, MAX_LINE) })) },
-    coverage: { shown: s.campaigns.length, total: s.campaigns.length },
-    kept: "every campaign in the account — a campaign carries no date to narrow it by",
-  };
-}
-
-/**
- * The feed at close. Posts are the counted list; comments ride along whole,
- * because a customer's comment with nothing under it is the loose end this
- * section exists to show, and the adapter's per-post cap has already bounded
- * them.
- */
-function linkedInFinalState(s: LinkedInSnapshot): TwinFinalState {
-  return {
-    state: {
-      ...s,
-      posts: s.posts.map((p) => ({ ...p, commentary: truncate(p.commentary, MAX_LINE) })),
-      comments: s.comments.map((c) => ({ ...c, text: truncate(c.text, MAX_LINE) })),
-    },
-    coverage: { shown: s.posts.length, total: s.posts.length },
-    kept: "every post the capture held — a post carries no date to narrow it by",
-  };
-}
-
 /**
  * The end of the day on each surface, narrowed.
  *
@@ -676,12 +604,6 @@ export function buildFinalState(input: ProjectInput): ByTwin<TwinFinalState> {
         break;
       case "google-docs":
         out["google-docs"] = googleDocsFinalState(after);
-        break;
-      case "google-ads":
-        out["google-ads"] = googleAdsFinalState(after);
-        break;
-      case "linkedin":
-        out.linkedin = linkedInFinalState(after);
         break;
     }
   }

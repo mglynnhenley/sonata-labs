@@ -6,10 +6,8 @@ import { SERVICE_LABELS, type ServiceId } from "../tokens";
 import {
   IconCalendar,
   IconDoc,
-  IconFeed,
   IconMail,
   IconMessage,
-  IconTrend,
   IconUsers,
   type IconProps,
 } from "./icons";
@@ -25,8 +23,6 @@ const TONES: Record<ChipTone, string> = {
   calendar: "border-sn-calendar-line bg-sn-calendar-soft text-sn-calendar-ink",
   attio: "border-sn-attio-line bg-sn-attio-soft text-sn-attio-ink",
   "google-docs": "border-sn-google-docs-line bg-sn-google-docs-soft text-sn-google-docs-ink",
-  "google-ads": "border-sn-google-ads-line bg-sn-google-ads-soft text-sn-google-ads-ink",
-  linkedin: "border-sn-linkedin-line bg-sn-linkedin-soft text-sn-linkedin-ink",
 };
 
 const SIZES: Record<ChipSize, string> = {
@@ -40,8 +36,6 @@ const SERVICE_ICONS: Record<ServiceId, (props: IconProps) => ReactNode> = {
   calendar: IconCalendar,
   attio: IconUsers,
   "google-docs": IconDoc,
-  "google-ads": IconTrend,
-  linkedin: IconFeed,
 };
 
 export type ChipProps = HTMLAttributes<HTMLElement> & {

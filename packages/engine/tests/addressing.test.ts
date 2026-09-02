@@ -1,21 +1,19 @@
 import { describe, expect, it } from "vitest";
 import type { BeatBody, InjectContext } from "@sonata/core";
 import { createAttioAdapter } from "../src/adapters/attio";
-import { createGoogleAdsAdapter } from "../src/adapters/google-ads";
 import { createGoogleDocsAdapter } from "../src/adapters/google-docs";
-import { createLinkedInAdapter } from "../src/adapters/linkedin";
 import { world } from "./fixtures";
 
-// How a beat says which thing it means, on the four surfaces where the thing
+// How a beat says which thing it means, on the two surfaces where the thing
 // already exists before the day starts.
 //
 // This is the property the whole file is about: an episode author writes against
-// a WorldSeed, and a WorldSeed names no CRM record, no document, no ad group and
-// no post. Every id on these four surfaces is a hash minted at seed time inside
-// @sonata/world and published nowhere a person reads — so a beat that could only
-// point at ids could only ever touch what its own siblings had created, and
-// `injectBody` never throws, which means every attempt to name the deal the day
-// is about became a per-beat error nobody saw.
+// a WorldSeed, and a WorldSeed names no CRM record and no document. Every id on
+// these two surfaces is a hash minted at seed time inside @sonata/world and
+// published nowhere a person reads — so a beat that could only point at ids
+// could only ever touch what its own siblings had created, and `injectBody`
+// never throws, which means every attempt to name the deal the day is about
+// became a per-beat error nobody saw.
 //
 // Offline: each adapter is handed a fetch that answers the twin's routes from a
 // literal, and the assertions are on what was POSTed.
@@ -180,138 +178,5 @@ describe("google-docs addressing", () => {
       ),
     ).rejects.toThrow(/"prya", who is not in the cast/);
     expect(sent).toHaveLength(0);
-  });
-});
-
-describe("google-ads addressing", () => {
-  const CUSTOMERS = { resourceNames: ["customers/4802938157"] };
-  const AD_GROUPS = {
-    results: [
-      { adGroup: { id: "10152730819", name: "Brand teams, UK" }, campaign: { name: "Halfmoon — brand search" } },
-      { adGroup: { id: "10999000111", name: "Prospecting, US" }, campaign: { name: "Halfmoon — prospecting" } },
-    ],
-  };
-
-  it("resolves an ad group by the name a person would say", async () => {
-    const { sent, fetchImpl } = stubTwin({
-      "/v17/customers:listAccessibleCustomers": CUSTOMERS,
-      "/v17/customers/4802938157/googleAds:search": AD_GROUPS,
-      "/api/sandbox/inject": { ok: true },
-    });
-    const adapter = createGoogleAdsAdapter({ baseUrl: "http://twin.test", fetchImpl });
-
-    const handle = await adapter.inject(
-      {
-        twin: "google-ads",
-        kind: "spend",
-        payload: {
-          adGroup: "Brand teams, UK",
-          impressions: 91_000,
-          clicks: 512,
-          costMicros: 402_000_000,
-        },
-      } satisfies BeatBody,
-      ctx(),
-    );
-
-    expect(handle.id).toBe("10152730819");
-    expect(sent.find((s) => s.url === "/api/sandbox/inject")?.body).toMatchObject({
-      spend: [{ adGroupId: "10152730819", clicks: 512 }],
-    });
-  });
-
-  it("names what the account does hold when a spend beat names an ad group it does not", async () => {
-    const { fetchImpl } = stubTwin({
-      "/v17/customers:listAccessibleCustomers": CUSTOMERS,
-      "/v17/customers/4802938157/googleAds:search": AD_GROUPS,
-    });
-    const adapter = createGoogleAdsAdapter({ baseUrl: "http://twin.test", fetchImpl });
-
-    await expect(
-      adapter.inject(
-        {
-          twin: "google-ads",
-          kind: "spend",
-          payload: { adGroup: "Brand teams, IE", impressions: 1, clicks: 1, costMicros: 1 },
-        } satisfies BeatBody,
-        ctx(),
-      ),
-    ).rejects.toThrow(/"Brand teams, UK" \(Halfmoon — brand search\)/);
-  });
-});
-
-describe("linkedin addressing", () => {
-  const FEED = {
-    elements: [
-      { id: "urn:li:share:8096605588685246622", author: "urn:li:organization:2869201", commentary: "We're hiring a second compliance engineer. Remote, UK.", lifecycleState: "PUBLISHED" },
-    ],
-  };
-  const ROUTES = {
-    "/v2/userinfo": { sub: "priya" },
-    "/rest/organizationAcls": { elements: [{ organizationTarget: "urn:li:organization:2869201" }] },
-    "/rest/posts": FEED,
-    "/api/sandbox/inject": {
-      injected: { comments: [{ commentUrn: "urn:li:comment:(urn:li:activity:8096605588685246622,7)", postUrn: "urn:li:activity:8096605588685246622" }] },
-    },
-  };
-
-  it("resolves a seeded post by its opening words", async () => {
-    const { sent, fetchImpl } = stubTwin(ROUTES);
-    const adapter = createLinkedInAdapter({ baseUrl: "http://twin.test", fetchImpl });
-
-    await adapter.inject(
-      {
-        twin: "linkedin",
-        kind: "comment",
-        payload: { postRef: "We're hiring a second compliance engineer", from: "dana", text: "Is this remote?" },
-      } satisfies BeatBody,
-      ctx(),
-    );
-
-    expect(sent.find((s) => s.url === "/api/sandbox/inject")?.body).toMatchObject({
-      comments: [{ postUrn: "urn:li:activity:8096605588685246622", actorEmail: "dana@acme.test" }],
-    });
-  });
-
-  it("says what the feed holds when a beat names something that is not on it", async () => {
-    const { fetchImpl } = stubTwin(ROUTES);
-    const adapter = createLinkedInAdapter({ baseUrl: "http://twin.test", fetchImpl });
-
-    await expect(
-      adapter.inject(
-        {
-          twin: "linkedin",
-          kind: "comment",
-          payload: { postRef: "a post nobody wrote", text: "…" },
-        } satisfies BeatBody,
-        ctx(),
-      ),
-    ).rejects.toThrow(/neither a beat's ref, a URN, nor the opening of anything on this feed/);
-  });
-
-  it("refuses to publish on a colleague's own feed", async () => {
-    // Not a simplification — the surface's own limit. LinkedIn has no directory
-    // to enumerate an employer's people, so the capture and every tool start
-    // from the owner and the pages they administer; a post anywhere else is a
-    // row in SQLite that nothing downstream can read.
-    const { sent, fetchImpl } = stubTwin(ROUTES);
-    const adapter = createLinkedInAdapter({ baseUrl: "http://twin.test", fetchImpl });
-
-    await expect(
-      adapter.inject(
-        { twin: "linkedin", kind: "post", payload: { from: "sam", commentary: "My own take." } } satisfies BeatBody,
-        ctx(),
-      ),
-    ).rejects.toThrow(/Only the company page \(omit `from`\) or priya can/);
-    expect(sent).toHaveLength(0);
-
-    // The owner's own feed IS read back, so the owner may post on it.
-    const ok = stubTwin({ ...ROUTES, "/api/sandbox/inject": { injected: { posts: [{ id: "77" }] } } });
-    const publisher = createLinkedInAdapter({ baseUrl: "http://twin.test", fetchImpl: ok.fetchImpl });
-    const handle = await publisher.inject(
-      { twin: "linkedin", kind: "post", payload: { from: "priya", commentary: "Mine." } } satisfies BeatBody,
-      ctx(),
-    );
-    expect(handle.id).toBe("urn:li:activity:77");
   });
 });

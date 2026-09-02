@@ -46,8 +46,6 @@ export const START_COMMAND: Record<ServedTwin, string> = {
   calendar: "npm run dev:calendar",
   attio: "npm run dev:attio",
   "google-docs": "npm run dev:google-docs",
-  "google-ads": "npm run dev:google-ads",
-  linkedin: "npm run dev:linkedin",
 };
 
 /** The same default every twin's own auth.ts uses; the token is a seatbelt, not a lock. */
@@ -71,8 +69,6 @@ const URL_ENV: Record<ServedTwin, string> = {
   calendar: "SONATA_CALENDAR_URL",
   attio: "SONATA_ATTIO_URL",
   "google-docs": "SONATA_GOOGLE_DOCS_URL",
-  "google-ads": "SONATA_GOOGLE_ADS_URL",
-  linkedin: "SONATA_LINKEDIN_URL",
 };
 
 export function isServedTwin(name: string): name is ServedTwin {

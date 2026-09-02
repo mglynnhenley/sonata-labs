@@ -202,13 +202,13 @@ export interface CalendarSeed {
 }
 
 // ---------------------------------------------------------------------------
-// The four later surfaces. Same discipline as the three above: prose, roster
+// The two later surfaces. Same discipline as the three above: prose, roster
 // ids and relative offsets, never an address, a record id or a timestamp.
 //
 // Each one is deliberately smaller than the mailbox. A day's work reaches one or
-// two accounts in the CRM, one brief, one campaign and one post — and every row
-// written here is a row that ships inside two snapshots in every run artifact
-// for the rest of the artifact's life.
+// two accounts in the CRM and one brief — and every row written here is a row
+// that ships inside two snapshots in every run artifact for the rest of the
+// artifact's life.
 // ---------------------------------------------------------------------------
 
 export interface CrmCompanySeed {
@@ -288,81 +288,13 @@ export interface GoogleDocsSeed {
   documents: DocumentSeed[];
 }
 
-/**
- * An ad group and the day it typically has.
- *
- * One typical day rather than a month of rows: the account's history is
- * generated from this in code, day by day, because a model asked for thirty
- * dated rows per ad group writes a novel and gets the arithmetic wrong. What it
- * is good at is the shape of the business — that this campaign is the one that
- * spends, and that one has been coasting.
- */
-export interface AdsAdGroupSeed {
-  name: string;
-  /** ENABLED or PAUSED. */
-  status: string;
-  dailyImpressions: number;
-  dailyClicks: number;
-  /** Whole currency units a day, e.g. 120 for $120. */
-  dailyCost: number;
-  dailyConversions: number;
-}
-
-export interface AdsCampaignSeed {
-  name: string;
-  /** ENABLED or PAUSED. */
-  status: string;
-  /** Whole currency units a day. */
-  dailyBudget: number;
-  /** SEARCH, DISPLAY, SHOPPING, VIDEO or PERFORMANCE_MAX. */
-  channel: string;
-  adGroups: AdsAdGroupSeed[];
-}
-
-export interface GoogleAdsSeed {
-  campaigns: AdsCampaignSeed[];
-}
-
-export interface FeedCommentSeed {
-  /** `Person.id`, or empty for the company page itself. */
-  personId: string;
-  text: string;
-  minutesAgo: number;
-  /** One level deep — LinkedIn threads do not nest further, and the twin refuses it. */
-  replies?: FeedCommentSeed[];
-}
-
-export interface FeedPostSeed {
-  /**
-   * Empty for the company page, or the `Person.id` of the MAILBOX OWNER — the
-   * only two feeds anything downstream can read. LinkedIn has no directory to
-   * enumerate an employer's people, so a colleague's own post is written into the
-   * twin and then invisible to the snapshot, the diff and every tool the agent
-   * has; `normalizeLinkedInSeed` drops one rather than seed a row nobody reads.
-   */
-  personId: string;
-  commentary: string;
-  minutesAgo: number;
-  /** An unpublished draft: nobody has seen it, so it carries no engagement. */
-  isDraft?: boolean;
-  comments?: FeedCommentSeed[];
-  /** `Person.id` values who reacted. One reaction per person per post. */
-  reactedByPersonIds?: string[];
-}
-
-export interface LinkedInSeed {
-  posts: FeedPostSeed[];
-}
-
-/** All seven surfaces together: the merged storyline core, plus the business-systems pass. */
+/** All five surfaces together: the merged storyline core, plus the business-systems pass. */
 export interface TwinSeeds {
   gmail: GmailSeed;
   slack: SlackSeed;
   calendar: CalendarSeed;
   attio: AttioSeed;
   googleDocs: GoogleDocsSeed;
-  googleAds: GoogleAdsSeed;
-  linkedin: LinkedInSeed;
 }
 
 const GMAIL_THREAD_ITEM_SCHEMA = {
@@ -887,160 +819,26 @@ const GOOGLE_DOCS_SEED_SCHEMA = {
   },
 } as const;
 
-const GOOGLE_ADS_SEED_SCHEMA = {
-  type: "object",
-  additionalProperties: false,
-  required: ["campaigns"],
-  properties: {
-    campaigns: {
-      type: "array",
-      description:
-        "2 to 4 campaigns for this company's own advertising. One of them should be the " +
-        "one somebody keeps complaining about — overspending, or paused and forgotten.",
-      items: {
-        type: "object",
-        additionalProperties: false,
-        required: ["name", "status", "dailyBudget", "channel", "adGroups"],
-        properties: {
-          name: { type: "string", description: "How the team refers to it." },
-          status: { type: "string", description: "ENABLED or PAUSED." },
-          dailyBudget: { type: "integer", description: "Whole currency units a day." },
-          channel: {
-            type: "string",
-            description: "SEARCH, DISPLAY, SHOPPING, VIDEO or PERFORMANCE_MAX.",
-          },
-          adGroups: {
-            type: "array",
-            description: "1 to 3 ad groups, each with the day it typically has.",
-            items: {
-              type: "object",
-              additionalProperties: false,
-              required: [
-                "name",
-                "status",
-                "dailyImpressions",
-                "dailyClicks",
-                "dailyCost",
-                "dailyConversions",
-              ],
-              properties: {
-                name: { type: "string" },
-                status: { type: "string", description: "ENABLED or PAUSED." },
-                dailyImpressions: { type: "integer" },
-                dailyClicks: { type: "integer" },
-                dailyCost: {
-                  type: "integer",
-                  description:
-                    "Whole currency units on a typical day. Over the campaign's daily budget " +
-                    "is exactly the problem worth writing.",
-                },
-                dailyConversions: { type: "integer" },
-              },
-            },
-          },
-        },
-      },
-    },
-  },
-} as const;
-
-const LINKEDIN_COMMENT_PROPERTIES = {
-  personId: { type: "string", description: "personId from the roster, or empty for the page." },
-  text: { type: "string" },
-  minutesAgo: { type: "integer", description: "Minutes before now. Never negative." },
-} as const;
-
-const LINKEDIN_SEED_SCHEMA = {
-  type: "object",
-  additionalProperties: false,
-  required: ["posts"],
-  properties: {
-    posts: {
-      type: "array",
-      description:
-        "2 to 4 posts, every one of them on the company page or the mailbox owner's own feed. " +
-        "At least one with a customer's question sitting unanswered underneath it.",
-      items: {
-        type: "object",
-        additionalProperties: false,
-        required: [
-          "personId",
-          "commentary",
-          "minutesAgo",
-          "isDraft",
-          "comments",
-          "reactedByPersonIds",
-        ],
-        properties: {
-          personId: {
-            type: "string",
-            description:
-              "Empty string for the company page, or the mailbox owner's personId. Nobody else " +
-              "may publish: only those two feeds can be read back. Colleagues comment instead.",
-          },
-          commentary: { type: "string", description: "The post, as this company would write it." },
-          minutesAgo: { type: "integer", description: "Minutes before now. Never negative." },
-          isDraft: {
-            type: "boolean",
-            description: "True for a post nobody has published yet. A draft has no engagement.",
-          },
-          comments: {
-            type: "array",
-            description: "0 to 4 comments. Empty array for a post nobody engaged with.",
-            items: {
-              type: "object",
-              additionalProperties: false,
-              required: ["personId", "text", "minutesAgo", "replies"],
-              properties: {
-                ...LINKEDIN_COMMENT_PROPERTIES,
-                replies: {
-                  type: "array",
-                  description: "Replies to this comment. One level only; empty array for none.",
-                  items: {
-                    type: "object",
-                    additionalProperties: false,
-                    required: ["personId", "text", "minutesAgo"],
-                    properties: LINKEDIN_COMMENT_PROPERTIES,
-                  },
-                },
-              },
-            },
-          },
-          reactedByPersonIds: {
-            type: "array",
-            description: "personId values who reacted. Empty array for none.",
-            items: { type: "string" },
-          },
-        },
-      },
-    },
-  },
-} as const;
-
-/** The four business systems together: what pass 5 returns in one reply. */
+/** The two business systems together: what pass 5 returns in one reply. */
 export interface BusinessSeeds {
   attio: AttioSeed;
   googleDocs: GoogleDocsSeed;
-  googleAds: GoogleAdsSeed;
-  linkedin: LinkedInSeed;
 }
 
 /**
- * Pass 5's wire shape. The four systems share one call — a CRM whose deals were
- * invented apart from the documents about them is the seven-fixtures failure in
- * miniature — but the three CORE surfaces are deliberately absent: they were
+ * Pass 5's wire shape. Both systems share one call — a CRM whose deals were
+ * invented apart from the documents about them is the unrelated-fixtures failure
+ * in miniature — but the three CORE surfaces are deliberately absent: they were
  * already written, per storyline, and asking for them again invites the model
  * to retell the story instead of furnishing it.
  */
 export const BUSINESS_SYSTEMS_SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["attio", "googleDocs", "googleAds", "linkedin"],
+  required: ["attio", "googleDocs"],
   properties: {
     attio: ATTIO_SEED_SCHEMA,
     googleDocs: GOOGLE_DOCS_SEED_SCHEMA,
-    googleAds: GOOGLE_ADS_SEED_SCHEMA,
-    linkedin: LINKEDIN_SEED_SCHEMA,
   },
 } as const;
 

@@ -89,15 +89,13 @@ const REPLY_TOOLS: Record<TwinName, string[]> = {
   gmail: ["send_reply", "reply", "reply_all", "send_message", "send"],
   slack: ["post_message", "reply_in_thread", "chat_postMessage", "send_message"],
   calendar: ["rsvp", "respond", "update_event"],
-  linkedin: ["create_comment", "reply_to_comment", "comment"],
-  // Nothing on these three answers a person: a CRM note, a document edit and a
-  // budget change are all statements about the world rather than replies to it.
-  // The empty list falls through to the mutating-verb search below, which is the
-  // right behaviour — this control's job is to make the agent act, not to insist
-  // the action is a reply.
+  // Nothing on these two answers a person: a CRM note and a document edit are
+  // both statements about the world rather than replies to it. The empty list
+  // falls through to the mutating-verb search below, which is the right
+  // behaviour — this control's job is to make the agent act, not to insist the
+  // action is a reply.
   attio: [],
   "google-docs": [],
-  "google-ads": [],
 };
 
 /** The argument name each twin's reply tool wants its prose under. */
@@ -105,10 +103,8 @@ const BODY_ARG: Record<TwinName, string> = {
   gmail: "body",
   slack: "text",
   calendar: "comment",
-  linkedin: "text",
   attio: "content",
   "google-docs": "text",
-  "google-ads": "text",
 };
 
 /** What it says every single time, to everyone, about everything. */

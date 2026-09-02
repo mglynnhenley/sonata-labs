@@ -179,49 +179,6 @@ describe("assembleWorld", () => {
       { text: "Restore test — TBC", namedStyleType: "" },
     ]);
   });
-
-  it("keeps an ad account inside what the API can express", () => {
-    const [treasury, ghost] = built.googleAds.campaigns;
-    expect(treasury.status).toBe("ENABLED");
-    expect(treasury.channel).toBe("SEARCH");
-    // More clicks than impressions is not a busy day, it is a broken row.
-    expect(treasury.adGroups[0].dailyClicks).toBe(100);
-    // A campaign with nothing to spend is not a state Google Ads has.
-    expect(ghost.dailyBudget).toBe(1);
-    expect(ghost.channel).toBe("SEARCH");
-  });
-
-  it("flattens a LinkedIn thread to the one level LinkedIn has", () => {
-    const [post] = built.linkedin.posts;
-    // Written by nobody, so written by the company page.
-    expect(post.personId).toBe("");
-    const [comment] = post.comments!;
-    expect(comment.replies!.map((r) => r.text)).toEqual([
-      "It is.",
-      "Depth two, which does not exist.",
-    ]);
-    // A reply cannot predate the comment it answers.
-    expect(comment.replies!.map((r) => r.minutesAgo)).toEqual([1000, 900]);
-    // One reaction per person, and only people the page has heard of.
-    expect(post.reactedByPersonIds).toEqual(["marcus"]);
-  });
-
-  it("leaves a draft with no engagement, the only state an unpublished post has", () => {
-    const draft = built.linkedin.posts.find((p) => p.isDraft)!;
-    expect(draft.comments).toEqual([]);
-    expect(draft.reactedByPersonIds).toEqual([]);
-  });
-
-  it("drops a post on a colleague's own feed, which nothing downstream can read", () => {
-    // The page and the mailbox owner are the only two feeds the snapshot, the
-    // diff and the agent's tools can reach — LinkedIn has no directory to
-    // enumerate an employer's people — so a colleague's post would be a row in
-    // SQLite and nothing else. The two that survive are the page's and Priya's.
-    expect(built.linkedin.posts.map((p) => p.personId)).toEqual(["", "priya"]);
-    expect(built.linkedin.posts.map((p) => p.commentary)).not.toContain(
-      "Posted by a colleague, on a feed nobody can read.",
-    );
-  });
 });
 
 describe("mergeStorylines", () => {
@@ -439,7 +396,7 @@ describe("generateWorld", () => {
     expect(generated.warnings).toContain(warning);
     expect(lines).toContain(warning);
     expect(generated.attio.deals).toEqual([]);
-    expect(generated.linkedin.posts).toEqual([]);
+    expect(generated.googleDocs.documents).toEqual([]);
     // The storyline core is untouched.
     expect(generated.gmail.threads.map((t) => t.subject)).toContain("Renewal terms");
     expect(generated.calendar.events.length).toBeGreaterThan(0);

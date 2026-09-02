@@ -118,43 +118,12 @@ export interface GoogleDocsSnapshot {
   }>;
 }
 
-export interface GoogleAdsSnapshot {
-  twin: "google-ads";
-  capturedAt: number;
-  campaigns: Array<{
-    campaignId: string;
-    name: string;
-    status: string;
-    budgetId: string;
-    budgetMicros: number;
-    /** Spend over the window the adapter asked for, so "did it overspend" is
-     *  answerable from the snapshot alone. */
-    costMicros: number;
-  }>;
-}
-
-export interface LinkedInSnapshot {
-  twin: "linkedin";
-  capturedAt: number;
-  posts: Array<{
-    postUrn: string;
-    author: string;
-    commentary: string;
-    lifecycleState: string;
-    commentCount: number;
-    reactionCount: number;
-  }>;
-  comments: Array<{ commentUrn: string; postUrn: string; actor: string; text: string; isReply: boolean }>;
-}
-
 export type TwinSnapshot =
   | GmailSnapshot
   | SlackSnapshot
   | CalendarSnapshot
   | AttioSnapshot
-  | GoogleDocsSnapshot
-  | GoogleAdsSnapshot
-  | LinkedInSnapshot;
+  | GoogleDocsSnapshot;
 
 // ---------------------------------------------------------------------------
 // Diffs. Derived from two snapshots by the twin's adapter, and pure — old
@@ -255,66 +224,12 @@ export interface GoogleDocsDiff {
   unchangedCount: number;
 }
 
-export interface GoogleAdsDiff {
-  twin: "google-ads";
-  statusChanged: Array<{ campaignId: string; name: string; from: string; to: string }>;
-  /** Keyed on the campaign and not on the amount: re-pointing a campaign at a
-   *  DIFFERENT budget of the same size is a real mutation (campaign.campaignBudget
-   *  is writable), and with only the amounts here it was invisible — the campaign
-   *  counted as untouched. The two ids are what tell the two moves apart. */
-  budgetChanged: Array<{
-    campaignId: string;
-    name: string;
-    fromBudgetId: string;
-    toBudgetId: string;
-    fromMicros: number;
-    toMicros: number;
-  }>;
-  created: Array<{ campaignId: string; name: string }>;
-  unchangedCount: number;
-}
-
-/**
- * Every row here carries the post's own words beside its URN, and that is the
- * point of the shape rather than decoration. A URN on this surface is twelve
- * digits nobody typed — an activity id the twin minted — so a judge shown
- * `urn:li:person:elena commented on urn:li:activity:8096605588688817908` cannot
- * tell which post that is, whereas every sibling twin's diff names a thread, a
- * channel, an event or a document. The renderers read `postCommentary` and print
- * the URN only when the post fell outside the capture.
- */
-export interface LinkedInDiff {
-  twin: "linkedin";
-  posted: Array<{ postUrn: string; author: string; commentary: string }>;
-  edited: Array<{ postUrn: string; commentary: string }>;
-  deleted: Array<{ postUrn: string; commentary: string }>;
-  commented: Array<{
-    commentUrn: string;
-    postUrn: string;
-    /** The post this landed under, as it reads. */
-    postCommentary: string;
-    actor: string;
-    text: string;
-    isReply: boolean;
-  }>;
-  reactionsAdded: Array<{
-    entityUrn: string;
-    /** The post reacted to, as it reads; empty for anything not in the capture. */
-    entityCommentary: string;
-    actor: string;
-    reactionType: string;
-  }>;
-  unchangedCount: number;
-}
-
 export type TwinDiff =
   | GmailDiff
   | SlackDiff
   | CalendarDiff
   | AttioDiff
-  | GoogleDocsDiff
-  | GoogleAdsDiff
-  | LinkedInDiff;
+  | GoogleDocsDiff;
 
 // ---------------------------------------------------------------------------
 // Final state. The after-snapshot, narrowed — where each twin ENDED UP, as

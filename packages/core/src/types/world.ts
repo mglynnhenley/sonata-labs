@@ -4,9 +4,9 @@
 // twin's adapter reads the SAME seed. That is the whole point — see `Person`.
 
 /** The three surfaces a Sonata world spans. */
-export type TwinName = "gmail" | "slack" | "calendar" | "attio" | "google-docs" | "google-ads" | "linkedin";
+export type TwinName = "gmail" | "slack" | "calendar" | "attio" | "google-docs";
 
-export const TWIN_NAMES: readonly TwinName[] = ["gmail", "slack", "calendar", "attio", "google-docs", "google-ads", "linkedin"];
+export const TWIN_NAMES: readonly TwinName[] = ["gmail", "slack", "calendar", "attio", "google-docs"];
 
 /** Sparse per-twin map. Used everywhere a run may touch only some surfaces. */
 export type ByTwin<T> = Partial<Record<TwinName, T>>;
