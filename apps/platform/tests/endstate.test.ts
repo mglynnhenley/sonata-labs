@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { EpisodeRun, Person, TickRecord, TwinSnapshot } from "@sonata/core";
 import { endOfDay, type EndStateInput } from "../app/results/_components/endstate";
 
-// WHERE THE DAY ENDED UP, on the four surfaces that landed after the first three.
+// WHERE THE DAY ENDED UP, on the two surfaces that landed after the first three.
 //
 // The rule this section keeps to is that every number is read off the closing
 // snapshot's own list and every omission is admitted. These tests hold it to
@@ -142,90 +142,5 @@ describe("the workspace at close", () => {
         why: "started, never written",
       },
     ]);
-  });
-});
-
-describe("the ad account at close", () => {
-  it("stops the reader at money switched off and at a campaign that cannot spend", () => {
-    const end = report({
-      twin: "google-ads",
-      capturedAt: 2000,
-      campaigns: [
-        {
-          campaignId: "c1",
-          name: "Retargeting",
-          status: "PAUSED",
-          budgetId: "b1",
-          budgetMicros: 15_000_000,
-          costMicros: 0,
-        },
-        {
-          campaignId: "c2",
-          name: "Brand",
-          status: "ENABLED",
-          budgetId: "",
-          budgetMicros: 0,
-          costMicros: 318_940_000,
-        },
-      ],
-    });
-
-    expect(end.counts).toEqual([
-      { label: "campaigns", value: 2, flag: false },
-      { label: "left paused", value: 1, flag: true },
-    ]);
-    expect(end.open.map((o) => o.why)).toEqual([
-      "paused when the day ended",
-      "no budget attached, so it cannot spend",
-    ]);
-    // Spend is in the snapshot and covers a window several days wide, so it is
-    // owned up to rather than printed under a heading about one day.
-    expect(end.scope).toContain("a window several days wide");
-  });
-});
-
-describe("the feed at close", () => {
-  it("flags a post written and never published, and admits what it cannot know", () => {
-    const end = report({
-      twin: "linkedin",
-      capturedAt: 2000,
-      posts: [
-        {
-          postUrn: "urn:li:activity:1",
-          author: "urn:li:person:chris",
-          commentary: "We are hiring",
-          lifecycleState: "PUBLISHED",
-          commentCount: 1,
-          reactionCount: 3,
-        },
-        {
-          postUrn: "urn:li:activity:2",
-          author: "urn:li:person:chris",
-          commentary: "Draft about the new berth",
-          lifecycleState: "DRAFT",
-          commentCount: 0,
-          reactionCount: 0,
-        },
-      ],
-      comments: [
-        {
-          commentUrn: "urn:li:comment:9",
-          postUrn: "urn:li:activity:1",
-          actor: "urn:li:person:dana",
-          text: "Is this remote?",
-          isReply: false,
-        },
-      ],
-    });
-
-    expect(end.counts).toEqual([
-      { label: "posts", value: 2, flag: false },
-      { label: "comment", value: 1, flag: false },
-      { label: "post left in draft", value: 1, flag: true },
-    ]);
-    expect(end.open.map((o) => o.what)).toEqual(["Draft about the new berth"]);
-    // "Nobody answered this customer" is not a claim the capture can support: a
-    // comment names its post, never the comment it replies to.
-    expect(end.scope).toContain("never the comment it replies to");
   });
 });

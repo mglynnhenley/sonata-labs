@@ -3,7 +3,7 @@
 import { forwardRef, type HTMLAttributes, type ReactNode, type Ref } from "react";
 import { cn } from "../cn";
 import { SERVICE_LABELS, type ServiceId } from "../tokens";
-import { IconCalendar, IconDoc, IconFeed, IconMail, IconMessage, IconTrend, IconUsers } from "./icons";
+import { IconCalendar, IconDoc, IconMail, IconMessage, IconUsers } from "./icons";
 
 export type ChipTone = "neutral" | "gold" | ServiceId;
 export type ChipSize = "sm" | "md";
@@ -16,8 +16,6 @@ const TONES: Record<ChipTone, string> = {
   calendar: "border-sn-calendar-line bg-sn-calendar-soft text-sn-calendar-ink",
   attio: "border-sn-attio-line bg-sn-attio-soft text-sn-attio-ink",
   "google-docs": "border-sn-google-docs-line bg-sn-google-docs-soft text-sn-google-docs-ink",
-  "google-ads": "border-sn-google-ads-line bg-sn-google-ads-soft text-sn-google-ads-ink",
-  linkedin: "border-sn-linkedin-line bg-sn-linkedin-soft text-sn-linkedin-ink",
 };
 
 const SIZES: Record<ChipSize, string> = {
@@ -31,8 +29,6 @@ const SERVICE_ICONS: Record<ServiceId, (props: { size?: number }) => ReactNode> 
   calendar: IconCalendar,
   attio: IconUsers,
   "google-docs": IconDoc,
-  "google-ads": IconTrend,
-  linkedin: IconFeed,
 };
 
 export type ChipProps = HTMLAttributes<HTMLElement> & {

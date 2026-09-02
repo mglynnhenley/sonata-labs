@@ -18,8 +18,6 @@ export const TWIN_API_PORTS: Record<TwinName, number> = {
   calendar: 3400,
   attio: 3500,
   "google-docs": 3600,
-  "google-ads": 3700,
-  linkedin: 3800,
 };
 
 /** The web UI for each twin: API port + 800, so the pairing is guessable. */
@@ -29,8 +27,6 @@ export const TWIN_UI_PORTS: Record<TwinName, number> = {
   calendar: 4200,
   attio: 4300,
   "google-docs": 4400,
-  "google-ads": 4500,
-  linkedin: 4600,
 };
 
 /**
@@ -57,14 +53,12 @@ export const TWIN_API_URL_ENV: Record<TwinName, readonly string[]> = {
   gmail: ["SONATA_GMAIL_URL", "GMAIL_TWIN_URL"],
   slack: ["SONATA_SLACK_URL", "SLACK_TWIN_URL"],
   calendar: ["SONATA_CALENDAR_URL", "CALENDAR_TWIN_URL"],
-  // The newer four get both spellings from the start, so no consumer has to know
+  // The newer two get both spellings from the start, so no consumer has to know
   // which generation of twin it is talking to. An underscore stands in for the
   // hyphen: `SONATA_GOOGLE-DOCS_URL` is not a legal shell identifier and could
   // not be exported.
   attio: ["SONATA_ATTIO_URL", "ATTIO_TWIN_URL"],
   "google-docs": ["SONATA_GOOGLE_DOCS_URL", "GOOGLE_DOCS_TWIN_URL"],
-  "google-ads": ["SONATA_GOOGLE_ADS_URL", "GOOGLE_ADS_TWIN_URL"],
-  linkedin: ["SONATA_LINKEDIN_URL", "LINKEDIN_TWIN_URL"],
 };
 
 export const TWIN_UI_URL_ENV: Record<TwinName, readonly string[]> = {
@@ -73,8 +67,6 @@ export const TWIN_UI_URL_ENV: Record<TwinName, readonly string[]> = {
   calendar: ["SONATA_CALENDAR_UI_URL", "CALENDAR_UI_URL"],
   attio: ["SONATA_ATTIO_UI_URL", "ATTIO_UI_URL"],
   "google-docs": ["SONATA_GOOGLE_DOCS_UI_URL", "GOOGLE_DOCS_UI_URL"],
-  "google-ads": ["SONATA_GOOGLE_ADS_UI_URL", "GOOGLE_ADS_UI_URL"],
-  linkedin: ["SONATA_LINKEDIN_UI_URL", "LINKEDIN_UI_URL"],
 };
 
 /**
@@ -125,7 +117,7 @@ export function resolveTwinUiUrl(
   return trimSlashes(opts?.override ?? fromEnv(TWIN_UI_URL_ENV[twin], env) ?? twinUiUrl(twin, opts));
 }
 
-/** Every API URL at once, for callers that fan out over all three twins. */
+/** Every API URL at once, for callers that fan out over every twin. */
 export function allTwinApiUrls(
   env: Record<string, string | undefined> = {},
   opts?: UrlOptions,

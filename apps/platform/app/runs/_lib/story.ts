@@ -39,11 +39,12 @@ export interface StoryRow {
 /**
  * What a beat was, in a sentence, keyed by twin and then by kind.
  *
- * Twin first because `reaction` happens on two surfaces now: a Slack emoji and a
- * LinkedIn reaction would otherwise share one sentence, and half of every day
- * would be described as happening somewhere it did not. `whateverElse` is the
- * fallback for a kind stored by a newer engine than this dashboard — it still
- * names the surface, because that much the row can always be sure of.
+ * Twin first because a `kind` only means anything inside its own twin: `record`
+ * in the CRM and `invite` on the diary share the word and nothing else, and one
+ * sentence per kind would describe half of every day as happening somewhere it
+ * did not. `whateverElse` is the fallback for a kind stored by a newer engine
+ * than this dashboard — it still names the surface, because that much the row
+ * can always be sure of.
  */
 const BEAT_LABEL: Record<TwinName, { kinds: Record<string, string>; whateverElse: string }> = {
   gmail: { kinds: { email: "An email arrived" }, whateverElse: "Something happened in the inbox" },
@@ -76,22 +77,6 @@ const BEAT_LABEL: Record<TwinName, { kinds: Record<string, string>; whateverElse
       replace: "A document was revised",
     },
     whateverElse: "Something happened in a document",
-  },
-  "google-ads": {
-    kinds: {
-      status: "A campaign was switched",
-      budget: "A campaign budget moved",
-      spend: "A day's spend landed",
-    },
-    whateverElse: "Something happened in the ads account",
-  },
-  linkedin: {
-    kinds: {
-      post: "Something was posted on LinkedIn",
-      comment: "Someone commented on LinkedIn",
-      reaction: "Someone reacted on LinkedIn",
-    },
-    whateverElse: "Something happened on LinkedIn",
   },
 };
 
@@ -202,68 +187,28 @@ function directorBody(event: DirectorEvent): { description: string; details: Sto
       details: [{ label: "The task", body: event.payload.content }],
     };
   }
-  if (event.twin === "google-docs") {
-    if (event.kind === "document") {
-      return {
-        description: `Shared "${event.payload.title}"`,
-        details: [
-          { label: "What they wrote", body: event.payload.paragraphs.map((p) => p.text).join("\n") },
-        ],
-      };
-    }
-    if (event.kind === "append") {
-      return {
-        description: `Added to "${event.payload.documentRef}"`,
-        details: [
-          { label: "What they wrote", body: event.payload.paragraphs.map((p) => p.text).join("\n") },
-        ],
-      };
-    }
+  if (event.kind === "document") {
     return {
-      description: `Revised "${event.payload.documentRef}"`,
+      description: `Shared "${event.payload.title}"`,
       details: [
-        { label: "Was", body: event.payload.find },
-        { label: "Now", body: event.payload.replaceWith },
+        { label: "What they wrote", body: event.payload.paragraphs.map((p) => p.text).join("\n") },
       ],
     };
   }
-  if (event.twin === "google-ads") {
-    if (event.kind === "spend") {
-      return {
-        description: `Spend landed on "${event.payload.adGroup}"`,
-        details: [
-          {
-            label: "The day",
-            body:
-              `${event.payload.impressions} impressions, ${event.payload.clicks} clicks, ` +
-              `${(event.payload.costMicros / 1_000_000).toFixed(2)} spent`,
-          },
-        ],
-      };
-    }
-    const campaign = event.payload.campaign ?? event.payload.campaignRef ?? "a campaign";
-    return event.kind === "status"
-      ? { description: `Set "${campaign}" to ${event.payload.status}`, details: [] }
-      : {
-          description: `Moved "${campaign}" to ${(event.payload.amountMicros / 1_000_000).toFixed(2)} a day`,
-          details: [],
-        };
-  }
-  if (event.kind === "post") {
+  if (event.kind === "append") {
     return {
-      description: "Posted on LinkedIn",
-      details: [{ label: "What they wrote", body: event.payload.commentary }],
-    };
-  }
-  if (event.kind === "comment") {
-    return {
-      description: event.payload.parentRef ? "Replied to a comment" : "Commented on a post",
-      details: [{ label: "What they wrote", body: event.payload.text }],
+      description: `Added to "${event.payload.documentRef}"`,
+      details: [
+        { label: "What they wrote", body: event.payload.paragraphs.map((p) => p.text).join("\n") },
+      ],
     };
   }
   return {
-    description: `Reacted ${event.payload.reactionType ?? "LIKE"} on LinkedIn`,
-    details: [],
+    description: `Revised "${event.payload.documentRef}"`,
+    details: [
+      { label: "Was", body: event.payload.find },
+      { label: "Now", body: event.payload.replaceWith },
+    ],
   };
 }
 

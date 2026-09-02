@@ -38,36 +38,11 @@ describe("summarize, for a mutation", () => {
     expect(
       summarize(call({ name: "replace_text", result: { documentId: "1aB", occurrencesChanged: 2 } })),
     ).toBe("replaced text in document 1aB — 2 occurrence(s)");
-    expect(
-      summarize(call({ name: "set_campaign_status", result: { campaignId: "991", status: "PAUSED" } })),
-    ).toBe("switched campaign 991 — now PAUSED");
-    expect(
-      summarize(
-        call({ name: "set_campaign_budget", result: { campaignId: "991", budgetId: "7", toMicros: 250_000_000 } }),
-      ),
-    ).toBe("re-budgeted campaign 991 — daily budget 250.00");
-    expect(
-      summarize(call({ name: "create_post", result: { urn: "urn:li:share:12", lifecycleState: "PUBLISHED" } })),
-    ).toBe("published post urn:li:share:12");
-    expect(
-      summarize(
-        call({
-          name: "create_comment",
-          result: { commentUrn: "urn:li:comment:(a,b)", postUrn: "urn:li:activity:12", isReply: true },
-        }),
-      ),
-    ).toBe("commented on urn:li:comment:(a,b) — on urn:li:activity:12");
   });
 
-  it("says what a publish did, without saying it twice on a fresh post", () => {
-    expect(
-      summarize(call({ name: "update_post", result: { urn: "urn:li:share:12", lifecycleState: "PUBLISHED" } })),
-    ).toBe("edited post urn:li:share:12 — now published");
-  });
-
-  // A calendar event's `status` is "confirmed" on every write, which is not
-  // news; a campaign's is the whole point of the call. Same field name, two
-  // meanings, so it is read per tool rather than per field.
+  // A calendar event's `status` comes back "confirmed" on every write, which is
+  // not news — so `status` is never one of the attributes a confirmation prints,
+  // and the line says what the call actually moved instead.
   it("does not turn a calendar event's own status into a finding", () => {
     expect(
       summarize(call({ name: "create_event", result: { id: "evt-1", status: "confirmed", start: "09:00" } })),
@@ -97,17 +72,5 @@ describe("summarize, for a read", () => {
         call({ name: "read_document", isMutation: false, result: { title: "Brief", paragraphs: [{}], revisionId: "r1" } }),
       ),
     ).toBe('"Brief": 1 paragraphs, r1');
-    expect(
-      summarize(call({ name: "list_campaigns", isMutation: false, result: { campaigns: [{}, {}, {}] } })),
-    ).toBe("3 campaigns");
-    expect(
-      summarize(
-        call({
-          name: "get_post_engagement",
-          isMutation: false,
-          result: { entityUrn: "urn:li:activity:12", comments: 3, topLevelComments: 2, reactions: 9 },
-        }),
-      ),
-    ).toBe("3 comments (2 top-level), 9 reactions on urn:li:activity:12");
   });
 });

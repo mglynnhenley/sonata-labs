@@ -113,7 +113,7 @@ describe("tickEntries", () => {
     ).toBe("dana posted in #ops");
   });
 
-  it("describes an event on the four later surfaces without reaching for a payload it has not got", () => {
+  it("describes an event on the two later surfaces without reaching for a payload it has not got", () => {
     expect(
       describeEvent(
         event({
@@ -134,27 +134,6 @@ describe("tickEntries", () => {
         }),
       ),
     ).toBe('dana revised "TBC" in "brief"');
-    expect(
-      describeEvent(
-        event({
-          twin: "google-ads",
-          kind: "spend",
-          payload: { adGroup: "Brand teams, UK", impressions: 10, clicks: 1, costMicros: 1_000_000 },
-          reason: "",
-        }),
-      ),
-    ).toBe('spend landed on "Brand teams, UK"');
-    expect(
-      describeEvent(
-        event({
-          twin: "linkedin",
-          kind: "comment",
-          payload: { postRef: "launch", text: "any update?" },
-          personId: undefined,
-          reason: "",
-        }),
-      ),
-    ).toBe('the company page commented on a post: "any update?"');
   });
 });
 
@@ -203,16 +182,6 @@ describe("tickDigest", () => {
     expect(tickDigest([fired({ twin: "attio", kind: "note" })], [])).toBe("a change in the CRM");
     expect(tickDigest([fired({ twin: "google-docs", kind: "append" })], [])).toBe(
       "a change in a document",
-    );
-    expect(tickDigest([fired({ twin: "google-ads", kind: "spend" })], [])).toBe(
-      "a change in the ads account",
-    );
-    expect(tickDigest([fired({ twin: "linkedin", kind: "comment" })], [])).toBe(
-      "new activity on LinkedIn",
-    );
-    // `reaction` happens on two surfaces and means something different on each.
-    expect(tickDigest([fired({ twin: "linkedin", kind: "reaction" })], [])).toBe(
-      "a new reaction on LinkedIn",
     );
   });
 

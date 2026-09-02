@@ -14,9 +14,7 @@ import {
   diffAttio,
   diffCalendar,
   diffGmail,
-  diffGoogleAds,
   diffGoogleDocs,
-  diffLinkedIn,
   diffSlack,
 } from "@sonata/engine";
 import {
@@ -101,10 +99,6 @@ function diffOf(pair: { before: TwinSnapshot; after: TwinSnapshot }): TwinDiff |
       return after.twin === "attio" ? diffAttio(before, after) : null;
     case "google-docs":
       return after.twin === "google-docs" ? diffGoogleDocs(before, after) : null;
-    case "google-ads":
-      return after.twin === "google-ads" ? diffGoogleAds(before, after) : null;
-    case "linkedin":
-      return after.twin === "linkedin" ? diffLinkedIn(before, after) : null;
   }
 }
 

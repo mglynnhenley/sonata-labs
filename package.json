@@ -21,8 +21,6 @@
     "dev:calendar": "PORT=${PORT:-3400} npm run dev -w apps/calendar",
     "dev:attio": "PORT=${PORT:-3500} npm run dev -w apps/attio",
     "dev:google-docs": "PORT=${PORT:-3600} npm run dev -w apps/google-docs",
-    "dev:google-ads": "PORT=${PORT:-3700} npm run dev -w apps/google-ads",
-    "dev:linkedin": "PORT=${PORT:-3800} npm run dev -w apps/linkedin",
     "sonata": "node packages/cli/bin/sonata.mjs",
     "test": "npm run test --workspaces --if-present",
     "test:gmail": "npm run test -w apps/gmail",

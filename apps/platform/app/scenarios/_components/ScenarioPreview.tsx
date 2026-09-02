@@ -1,6 +1,6 @@
 "use client";
 
-import { Badge, Card, Chip, IconCalendar, IconDoc, IconFeed, IconInfo, IconMail, IconMessage, IconTrend, IconUsers, SERVICE_LABELS, Timeline, TimelineItem } from "@sonata/ui";
+import { Badge, Card, Chip, IconCalendar, IconDoc, IconInfo, IconMail, IconMessage, IconUsers, SERVICE_LABELS, Timeline, TimelineItem } from "@sonata/ui";
 import type { ReactNode } from "react";
 import type { TwinName } from "@sonata/core";
 import { dayRange } from "@/lib/format";
@@ -35,8 +35,6 @@ const TWIN_ICON: Record<TwinName, ReactNode> = {
   calendar: <IconCalendar size={11} />,
   attio: <IconUsers size={11} />,
   "google-docs": <IconDoc size={11} />,
-  "google-ads": <IconTrend size={11} />,
-  linkedin: <IconFeed size={11} />,
 };
 
 export type ScenarioPreviewProps = {

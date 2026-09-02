@@ -25,19 +25,15 @@ describe("previewWorld", () => {
     // Two companies, one surviving contact and one surviving deal.
     expect(preview.records).toBe(4);
     expect(preview.documents).toBe(1);
-    expect(preview.campaigns).toBe(2);
-    expect(preview.posts).toBe(2);
   });
 
   it("names the later surfaces, and only when the world carries them", () => {
-    expect(preview.sentence).toContain(
-      "Also 4 CRM records, 1 document, 2 ad campaigns, 2 LinkedIn posts.",
-    );
-    // A company that runs no advertising is a real company, not a failed
-    // generation, so nothing is claimed about a surface with nothing on it.
-    const quiet = previewWorld({ ...built, googleAds: { campaigns: [] } });
-    expect(quiet.sentence).not.toContain("ad campaign");
-    expect(quiet.sentence).toContain("Also 4 CRM records, 1 document, 2 LinkedIn posts.");
+    expect(preview.sentence).toContain("Also 4 CRM records, 1 document.");
+    // A company that writes nothing down in a shared document is a real company,
+    // not a failed generation, so nothing is claimed about an empty surface.
+    const quiet = previewWorld({ ...built, googleDocs: { documents: [] } });
+    expect(quiet.sentence).not.toContain("document");
+    expect(quiet.sentence).toContain("Also 4 CRM records.");
   });
 
   it("names the identity the agent will operate as", () => {

@@ -2,9 +2,7 @@ import type { ByTwin, TwinName } from "@sonata/core";
 import type { TwinHttp } from "../http";
 import { attioTools } from "./attio";
 import { gmailTools } from "./gmail";
-import { googleAdsTools } from "./google-ads";
 import { googleDocsTools } from "./google-docs";
-import { linkedInTools } from "./linkedin";
 import { slackTools } from "./slack";
 import { calendarTools } from "./calendar";
 import type { EngineTool } from "./types";
@@ -15,8 +13,6 @@ export { slackTools } from "./slack";
 export { calendarTools, freeWindows } from "./calendar";
 export { attioTools } from "./attio";
 export { googleDocsTools } from "./google-docs";
-export { googleAdsTools } from "./google-ads";
-export { linkedInTools } from "./linkedin";
 export {
   createOpenItems,
   describeOpenItems,
@@ -63,9 +59,5 @@ function toolsForTwin(twin: TwinName, http: TwinHttp): EngineTool[] {
       return attioTools(http);
     case "google-docs":
       return googleDocsTools(http);
-    case "google-ads":
-      return googleAdsTools(http);
-    case "linkedin":
-      return linkedInTools(http);
   }
 }

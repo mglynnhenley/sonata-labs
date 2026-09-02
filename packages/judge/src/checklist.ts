@@ -1203,7 +1203,7 @@ const BY_TWIN: Record<TwinName | "any", Record<CriterionKind, Route>> = {
     labelled: NOT_ON_THIS_SURFACE,
     archived: NOT_ON_THIS_SURFACE,
   },
-  // The four newer twins have adapters but not yet checkers. Every kind below is
+  // The two newer twins have adapters but not yet checkers. Every kind below is
   // either genuinely absent from the surface or waiting for one, and the two are
   // spelled differently so the debt stays visible.
   attio: {
@@ -1234,40 +1234,6 @@ const BY_TWIN: Record<TwinName | "any", Record<CriterionKind, Route>> = {
     sent: NOT_ON_THIS_SURFACE,
     posted: NOT_ON_THIS_SURFACE,
     labelled: NOT_ON_THIS_SURFACE,
-    archived: NOT_ON_THIS_SURFACE,
-    scheduled: NOT_ON_THIS_SURFACE,
-    moved: NOT_ON_THIS_SURFACE,
-    cancelled: NOT_ON_THIS_SURFACE,
-  },
-  "google-ads": {
-    // Pausing a campaign is the only thing on this surface that stops something.
-    cancelled: AWAITING_CHECKER,
-    untouched: AWAITING_CHECKER,
-    "no-escalation": "any:no_escalation",
-    judged: TO_JUDGE,
-    // Nobody is written to, answered or tagged in an ads account, and a campaign
-    // is paused rather than rescheduled.
-    replied: NOT_ON_THIS_SURFACE,
-    sent: NOT_ON_THIS_SURFACE,
-    posted: NOT_ON_THIS_SURFACE,
-    labelled: NOT_ON_THIS_SURFACE,
-    archived: NOT_ON_THIS_SURFACE,
-    scheduled: NOT_ON_THIS_SURFACE,
-    moved: NOT_ON_THIS_SURFACE,
-    mentions: NOT_ON_THIS_SURFACE,
-  },
-  linkedin: {
-    posted: AWAITING_CHECKER,
-    replied: AWAITING_CHECKER,
-    // A reaction is this surface's label, for the same reason it is Slack's.
-    labelled: AWAITING_CHECKER,
-    untouched: AWAITING_CHECKER,
-    mentions: AWAITING_CHECKER,
-    "no-escalation": "any:no_escalation",
-    judged: TO_JUDGE,
-    // Messaging is partner-gated and this clone does not implement it, so there
-    // is nothing to send; a feed has no inbox and no events.
-    sent: NOT_ON_THIS_SURFACE,
     archived: NOT_ON_THIS_SURFACE,
     scheduled: NOT_ON_THIS_SURFACE,
     moved: NOT_ON_THIS_SURFACE,

@@ -113,7 +113,6 @@ export {
   IconClose,
   IconCopy,
   IconDoc,
-  IconFeed,
   IconInbox,
   IconInfo,
   IconLayers,
@@ -124,7 +123,6 @@ export {
   IconPlay,
   IconSearch,
   IconSpark,
-  IconTrend,
   IconUsers,
   type IconProps,
 } from "./components/icons";

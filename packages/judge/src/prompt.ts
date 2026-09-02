@@ -9,11 +9,9 @@ import {
   type CriterionResult,
   type EpisodeJudgeInput,
   type GmailSnapshot,
-  type GoogleAdsSnapshot,
   type GoogleDocsSnapshot,
   type JudgeCoverage,
   type JudgeTrace,
-  type LinkedInSnapshot,
   type SlackSnapshot,
   type TimelineEntry,
   type TwinDiff,
@@ -396,85 +394,6 @@ function renderGoogleDocsDiff(d: Extract<TwinDiff, { twin: "google-docs" }>): st
   return lines;
 }
 
-/** Micros as whole currency units. The snapshot carries no currency code, so the
- *  figure goes out unsymbolled and the micros follow it for an exact match. */
-function money(micros: number): string {
-  return (micros / 1_000_000).toFixed(2);
-}
-
-function renderGoogleAdsDiff(d: Extract<TwinDiff, { twin: "google-ads" }>): string[] {
-  const lines: string[] = [];
-  for (const c of d.created) lines.push(`+ new campaign "${c.name}"`);
-  for (const c of d.statusChanged) {
-    if (c.to === "PAUSED") lines.push(`~ paused "${c.name}" (was ${c.from})`);
-    else if (c.to === "ENABLED") lines.push(`~ resumed "${c.name}" (was ${c.from})`);
-    else if (c.to === "REMOVED") lines.push(`- removed "${c.name}" (was ${c.from})`);
-    else lines.push(`~ "${c.name}" ${c.from} → ${c.to}`);
-  }
-  for (const c of d.budgetChanged) {
-    const moved =
-      c.fromBudgetId !== c.toBudgetId ? ` (budget ${c.fromBudgetId} → ${c.toBudgetId})` : "";
-    lines.push(
-      c.fromMicros === c.toMicros
-        ? `~ "${c.name}" moved onto another budget of the same ${money(c.toMicros)} a day${moved}`
-        : `~ "${c.name}" daily budget ${money(c.fromMicros)} → ${money(c.toMicros)} ` +
-            `(${c.fromMicros} → ${c.toMicros} micros)${moved}`,
-    );
-  }
-  // Spend is captured but never diffed: it rises because the day happened, not
-  // because the agent acted, and a row here would read as the agent's doing.
-  return lines;
-}
-
-/**
- * An actor URN as a reader knows the person, and the one company page as the
- * page. Identical to `linkedInActorName` in @sonata/engine's linkedin adapter,
- * because this file is a second copy of that renderer and a judge shown
- * different prose from the results page is being asked about a different day.
- */
-function linkedInActorName(urn: string): string {
-  if (urn.startsWith("urn:li:organization:")) return "the company page";
-  if (urn.startsWith("urn:li:person:")) return urn.slice("urn:li:person:".length);
-  return urn || "somebody the API will not name";
-}
-
-/** A post as a reader recognises it: its own words, or the URN if it has none. */
-function linkedInPostName(commentary: string, postUrn: string): string {
-  return commentary ? `"${commentary}"` : postUrn;
-}
-
-function renderLinkedInDiff(d: Extract<TwinDiff, { twin: "linkedin" }>): string[] {
-  const lines: string[] = [];
-  for (const p of d.posted) {
-    lines.push(`+ published as ${linkedInActorName(p.author)}: "${p.commentary}"`);
-  }
-  for (const p of d.edited) lines.push(`~ edited a post, now: "${p.commentary}"`);
-  for (const c of d.commented) {
-    const where = linkedInPostName(c.postCommentary, c.postUrn);
-    lines.push(
-      c.isReply
-        ? `+ ${linkedInActorName(c.actor)} replied under ${where}: "${c.text}"`
-        : `+ ${linkedInActorName(c.actor)} commented on ${where}: "${c.text}"`,
-    );
-  }
-  // Counted back up, never printed one line each. The diff holds a row per
-  // reaction because the length is the only fact the capture holds — there is no
-  // reactions finder on this surface, so `actor` and `reactionType` are blank on
-  // every row — and four identical anonymous lines would read as four names the
-  // renderer failed to print.
-  const perEntity = new Map<string, number>();
-  const names = new Map(d.reactionsAdded.map((r) => [r.entityUrn, r.entityCommentary]));
-  for (const r of d.reactionsAdded) perEntity.set(r.entityUrn, (perEntity.get(r.entityUrn) ?? 0) + 1);
-  for (const [entityUrn, n] of perEntity) {
-    const where = linkedInPostName(names.get(entityUrn) ?? "", entityUrn);
-    lines.push(`~ ${n} reaction(s) arrived on ${where}, from nobody this API will name`);
-  }
-  for (const p of d.deleted) {
-    lines.push(`- deleted ${linkedInPostName(p.commentary, p.postUrn)}`);
-  }
-  return lines;
-}
-
 function renderDiff(d: TwinDiff): string[] {
   switch (d.twin) {
     case "gmail":
@@ -487,10 +406,6 @@ function renderDiff(d: TwinDiff): string[] {
       return renderAttioDiff(d);
     case "google-docs":
       return renderGoogleDocsDiff(d);
-    case "google-ads":
-      return renderGoogleAdsDiff(d);
-    case "linkedin":
-      return renderLinkedInDiff(d);
   }
 }
 
@@ -629,7 +544,7 @@ function calendarBlock(s: CalendarSnapshot): FinalStateBlock {
   };
 }
 
-/** Alphabetical by a printable key, for the four surfaces that carry no clock. */
+/** Alphabetical by a printable key, for the two surfaces that carry no clock. */
 function byText<T>(xs: T[], key: (x: T) => string): T[] {
   return [...xs].sort((a, b) => {
     const ka = key(a);
@@ -691,59 +606,6 @@ function googleDocsBlock(s: GoogleDocsSnapshot): FinalStateBlock {
   };
 }
 
-function googleAdsBlock(s: GoogleAdsSnapshot): FinalStateBlock {
-  const daily = s.campaigns.reduce((sum, c) => sum + c.budgetMicros, 0);
-  const spent = s.campaigns.reduce((sum, c) => sum + c.costMicros, 0);
-  return {
-    head:
-      `${s.campaigns.length} campaign(s), ${money(daily)} a day of budget between them and ` +
-      `${money(spent)} spent. The spend is the window the capture asked for and covers more ` +
-      "than the day that just ran, so read it as the level the account is running at rather " +
-      "than as today's bill. Amounts are unsymbolled: the account's currency is not in this " +
-      "capture.",
-    items: byText(s.campaigns, (c) => c.name).map((c) =>
-      oneLine(
-        `"${c.name}" [${c.status}] — ${money(c.budgetMicros)} a day` +
-          `${c.budgetId ? ` from budget ${c.budgetId}` : " with no budget attached"}, ` +
-          `${money(c.costMicros)} spent`,
-      ),
-    ),
-    noun: "campaign",
-    tail: "",
-  };
-}
-
-function linkedInBlock(s: LinkedInSnapshot): FinalStateBlock {
-  const drafts = s.posts.filter((p) => p.lifecycleState === "DRAFT");
-  const head =
-    (drafts.length === 0
-      ? "Nothing is left sitting in draft."
-      : `${drafts.length} post(s) still in DRAFT — written and never published.`) +
-    " Reaction counts are totals, not names: this API does not say who reacted.";
-
-  const items = byText(s.posts, (p) => p.postUrn).map((p) =>
-    oneLine(
-      `${p.lifecycleState} by ${p.author} — "${p.commentary}" ` +
-        `[${p.commentCount} comment(s), ${p.reactionCount} reaction(s)] (${p.postUrn})`,
-    ),
-  );
-
-  // The comments are where a loose end lives on this surface: a customer asking
-  // something under a post is exactly the thing an agent can leave unanswered,
-  // and it has no other place in this section.
-  const tail =
-    s.comments.length === 0
-      ? ""
-      : `${s.comments.length} comment(s) under these posts:\n` +
-        s.comments
-          .map((c) =>
-            oneLine(`  ${c.actor}${c.isReply ? " (a reply)" : ""} on ${c.postUrn}: ${c.text}`),
-          )
-          .join("\n");
-
-  return { head, items, noun: "post", tail };
-}
-
 function blockFor(final: TwinFinalState): FinalStateBlock {
   switch (final.state.twin) {
     case "gmail":
@@ -756,10 +618,6 @@ function blockFor(final: TwinFinalState): FinalStateBlock {
       return attioBlock(final.state);
     case "google-docs":
       return googleDocsBlock(final.state);
-    case "google-ads":
-      return googleAdsBlock(final.state);
-    case "linkedin":
-      return linkedInBlock(final.state);
   }
 }
 

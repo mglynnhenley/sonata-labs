@@ -45,7 +45,7 @@ const WRITING_LINES = [
   "Filling the inbox: threads, replies, the ones nobody answered…",
   "Backfilling Slack, in everyone's own voice…",
   "Putting the meetings on the calendar…",
-  "Filing the deals, the briefs, the ad account and what the page posted…",
+  "Filing the deals and the briefs…",
   "Loading it into every clone…",
 ];
 
@@ -118,7 +118,7 @@ export function CompaniesClient({ initial }: { initial: CompaniesData }) {
       <PageHeader
         eyebrow="Companies"
         title="The companies you've cloned"
-        subtitle="Each one is a cast of people with an inbox, Slack channels, a calendar, a CRM, shared documents, an ad account and a company page — the same people on every one. Put one into the clones, then go and read their mail."
+        subtitle="Each one is a cast of people with an inbox, Slack channels, a calendar, a CRM and shared documents — the same people on every one. Put one into the clones, then go and read their mail."
         actions={
           <Link href="/scenarios/new">
             <Button variant="primary" iconRight={<IconArrowRight size={14} />}>
@@ -211,7 +211,7 @@ interface TileProps {
  * One more surface on the "what has been written" line, or nothing at all.
  *
  * Nothing at all covers two different truths, and both of them want silence: a
- * company that runs no advertising is a real company rather than a failed
+ * company that keeps nothing in a CRM is a real company rather than a failed
  * generation, and a company cloned before a surface existed has no number for it
  * to print — its record was written when a backlog was three surfaces wide,
  * which is why `n` can be undefined at runtime whatever `WorldCounts` says.
@@ -253,9 +253,7 @@ function CompanyTile({ company, clones, busy, busyLine, disabled, onSeed }: Tile
           <span data-numeric>{company.counts.slackMessages}</span> Slack messages ·{" "}
           <span data-numeric>{company.counts.events}</span> events
           <Also n={company.counts.records} label="CRM records" />
-          <Also n={company.counts.documents} label="documents" />
-          <Also n={company.counts.campaigns} label="campaigns" />
-          <Also n={company.counts.posts} label="posts" /> written
+          <Also n={company.counts.documents} label="documents" /> written
         </p>
       ) : (
         <p className="mt-3 text-[12px] leading-[18px] text-sn-subtle">
@@ -363,8 +361,8 @@ function ConfirmSeed({ company, replacing, onCancel, onConfirm }: ConfirmProps) 
         {company.counts ? null : (
           <li>
             This company has no history yet, so it gets written first: threads, channels,
-            meetings, deals, documents and posts for the days before today. That is a model call,
-            and takes about a minute.
+            meetings, deals and documents for the days before today. That is a model call, and
+            takes about a minute.
           </li>
         )}
         <li>Nothing outside this machine is touched. No real account is ever involved.</li>

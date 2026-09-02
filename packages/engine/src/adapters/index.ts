@@ -2,9 +2,7 @@ import type { ByTwin, TwinAdapter, TwinName } from "@sonata/core";
 import { createAttioAdapter, type AttioAdapterOptions } from "./attio";
 import { createCalendarAdapter, type CalendarAdapterOptions } from "./calendar";
 import { createGmailAdapter, type GmailAdapterOptions } from "./gmail";
-import { createGoogleAdsAdapter, type GoogleAdsAdapterOptions } from "./google-ads";
 import { createGoogleDocsAdapter, type GoogleDocsAdapterOptions } from "./google-docs";
-import { createLinkedInAdapter, type LinkedInAdapterOptions } from "./linkedin";
 import { createSlackAdapter, type SlackAdapterOptions } from "./slack";
 
 export * from "./gmail";
@@ -12,10 +10,9 @@ export * from "./slack";
 export * from "./calendar";
 export * from "./attio";
 export * from "./google-docs";
-export * from "./google-ads";
-export * from "./linkedin";
-// Only this one, deliberately: `./shared` also exports a `seedBodyFor`, and
-// starring it here would collide with the LinkedIn adapter's own.
+// Only this one, deliberately: the rest of `./shared` is plumbing the adapters
+// call each other's way, and starring it would publish helpers nobody outside
+// this directory should be reaching for.
 export { normalizeAudit } from "./shared";
 
 export interface AdapterSetOptions {
@@ -24,8 +21,6 @@ export interface AdapterSetOptions {
   calendar?: CalendarAdapterOptions;
   attio?: AttioAdapterOptions;
   "google-docs"?: GoogleDocsAdapterOptions;
-  "google-ads"?: GoogleAdsAdapterOptions;
-  linkedin?: LinkedInAdapterOptions;
 }
 
 /**
@@ -40,8 +35,6 @@ export function createAdapters(opts: AdapterSetOptions = {}): TwinAdapter[] {
     createCalendarAdapter(opts.calendar),
     createAttioAdapter(opts.attio),
     createGoogleDocsAdapter(opts["google-docs"]),
-    createGoogleAdsAdapter(opts["google-ads"]),
-    createLinkedInAdapter(opts.linkedin),
   ];
 }
 

@@ -36,8 +36,6 @@ const TWIN_ORDER: readonly TwinName[] = [
   "calendar",
   "attio",
   "google-docs",
-  "google-ads",
-  "linkedin",
 ];
 const TWIN_LABEL: Record<TwinName, string> = {
   gmail: "Gmail",
@@ -45,8 +43,6 @@ const TWIN_LABEL: Record<TwinName, string> = {
   calendar: "Calendar",
   attio: "Attio",
   "google-docs": "Google Docs",
-  "google-ads": "Google Ads",
-  linkedin: "LinkedIn",
 };
 
 // ---------------------------------------------------------------------------

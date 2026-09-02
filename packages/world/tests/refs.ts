@@ -27,17 +27,5 @@ export function referencedPeople(generated: GeneratedWorld): string[] {
   refs.push(...generated.attio.tasks.map((t) => t.assigneePersonId));
 
   refs.push(...generated.googleDocs.documents.map((d) => d.ownerPersonId));
-
-  // Nothing in an ad account names a person: a campaign has no organizer and a
-  // budget has no owner, so there is nothing here to check against the cast.
-
-  for (const post of generated.linkedin.posts) {
-    // An empty `personId` is the company page acting as itself, which is an
-    // actor rather than a missing one — and it is deliberately not a cast id.
-    refs.push(...[post.personId, ...(post.reactedByPersonIds ?? [])].filter(Boolean));
-    for (const comment of post.comments ?? []) {
-      refs.push(...[comment.personId, ...(comment.replies ?? []).map((r) => r.personId)].filter(Boolean));
-    }
-  }
   return refs;
 }

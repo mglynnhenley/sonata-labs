@@ -14,11 +14,10 @@ anything back to a human.
 Nothing leaves your machine. Each clone is a local Next app over SQLite that
 speaks the real vendor API, so the agent you already have — the official
 `googleapis` and `@slack/web-api` SDKs, or an MCP client — works against them
-with nothing changed but a base URL. Seven clones ship — Gmail, Slack,
-Calendar, Attio, Google Docs, Google Ads and LinkedIn — and the benchmark
-currently runs its days inside the first three
-([the other four](#the-other-four-clones) are API surfaces an agent can call,
-not yet scored days).
+with nothing changed but a base URL. Five clones ship — Gmail, Slack,
+Calendar, Attio and Google Docs — and the benchmark currently runs its days
+inside the first three ([the other two](#the-other-two-clones) are episode
+twins the shipped scenarios do not script yet).
 
 ![The Sonata dashboard on a fresh install — three clones up, a demo day one button away](docs/dashboard.png)
 
@@ -199,8 +198,6 @@ this day will have a different cast and a different verdict.
 | 3400 | `apps/calendar` | Calendar clone — Google Calendar v3, `/calendar/v3/…` |
 | 3500 | `apps/attio` | Attio clone — Attio API v2, `/v2/objects/…` |
 | 3600 | `apps/google-docs` | Google Docs clone — Docs API v1, `/v1/documents/…` |
-| 3700 | `apps/google-ads` | Google Ads clone — GAQL search and mutate, `/v17/customers/…` |
-| 3800 | `apps/linkedin` | LinkedIn clone — Posts and social actions, `/rest/…` |
 | 3901 | `apps/gmail-ui` | the Gmail front end, as a real third-party OAuth client |
 
 `npm run dev` brings up five of these at once — the dashboard, the three
@@ -215,17 +212,18 @@ npm run dev:slack
 npm run dev:calendar
 ```
 
-### The other four clones
+### The other two clones
 
-Attio, Google Docs, Google Ads and LinkedIn are API clones with the same
-insides as the three above — the same control plane, the same audit trail, the
-same seed and reset — but they are **not yet episode twins**. An agent can call
-them directly, and `npm run dev:attio`, `dev:google-docs`, `dev:google-ads` and
-`dev:linkedin` each start one; the engine, the judge and the dashboard's twin
-strip do not know about them yet, so their absence there is the current state
-and not a fault. Wiring them in means widening `TwinName`, which is referenced
-in 58 files behind twenty exhaustive maps — worth doing deliberately, and not
-as a side effect of adding a fourth surface.
+Attio and Google Docs are API clones with the same insides as the three above —
+the same control plane, the same audit trail, the same seed and reset — and they
+are full episode twins: an episode can script beats on them, cloning a business
+seeds them from the same cast, and the engine, the judge and the dashboard's
+twin strip all know about them. What they do not have yet is deterministic
+checkers, so a criterion on either surface goes to the judge rather than to a
+checker, and no shipped scenario scripts one — which is why the benchmark's days
+still run inside Gmail, Slack and the calendar. `npm run dev:attio` and
+`npm run dev:google-docs` each start one; `npm run dev` leaves them out, since
+nothing the benchmark runs needs them up.
 
 The dashboard starts the clones itself when a run needs them, and `sonata up`
 goes through the same scripts, so the Gmail front end comes up with its API
@@ -318,9 +316,9 @@ dependency — but the dependency floor is the binding one. Developed on 25.
 ## Layout
 
 ```
-apps/gmail  apps/slack  apps/calendar   the three episode twins (SQLite, local)
-apps/attio  apps/google-docs            four more API clones, same insides,
-apps/google-ads  apps/linkedin            not yet episode twins
+apps/gmail  apps/slack  apps/calendar   the three clones the benchmark scores
+apps/attio  apps/google-docs            two more, same insides, scriptable but
+                                          not yet in a shipped scenario
 apps/gmail-ui                           the Gmail front end, over OAuth
 apps/platform                           the dashboard, and the commands it shares
 packages/cli        `npm run sonata` — doctor, init, up/down, and the front door to the rest

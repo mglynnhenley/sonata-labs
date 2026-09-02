@@ -33,7 +33,7 @@ export function TemplateCard({ template, busy, onAction }: TemplateCardProps) {
           {template.services.map((service) => (
             <Chip key={service.twin} service={service.twin} size="sm">
               {SERVICE_LABELS[service.twin]}
-              {service.count === undefined ? "" : ` · ${service.count} ${service.unit}`}
+              {` · ${service.count} ${service.unit}`}
             </Chip>
           ))}
           <Chip size="sm" icon={<IconLayers size={11} />}>

@@ -53,7 +53,7 @@ function refsOf(spec: EpisodeSpec): string[] {
  * What a beat points backwards at: a thread, a parent message, an event.
  *
  * The five scenarios in this package are a mailbox, a workspace and a diary, so
- * anything on the four later surfaces is `undefined` here rather than reached
+ * anything on the two later surfaces is `undefined` here rather than reached
  * for — a ref this function invented for a twin no scenario uses would be
  * asserted against a registry that never held it.
  */

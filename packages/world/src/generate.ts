@@ -6,11 +6,8 @@ import {
   WORLD_DRAFT_SCHEMA,
   type AttioSeed,
   type CalendarSeed,
-  type FeedCommentSeed,
   type GmailSeed,
-  type GoogleAdsSeed,
   type GoogleDocsSeed,
-  type LinkedInSeed,
   type SlackSeed,
   type TwinSeeds,
   type WorldDraft,
@@ -22,12 +19,12 @@ import {
 //
 // Two model passes, and only two:
 //   1. the company and its people — who exists, what they do, how they write;
-//   2. one narrative pass over all seven surfaces at once, so the story agrees
+//   2. one narrative pass over all five surfaces at once, so the story agrees
 //      with itself (the thread the auditor started is the thing #finance is
 //      arguing about, the people in the 2pm are the people on the thread, and
 //      the deal in the CRM is the one the thread is about). Writing the surfaces
-//      separately is what makes a clone feel like seven unrelated fixtures, so
-//      it is deliberately not seven calls.
+//      separately is what makes a clone feel like five unrelated fixtures, so
+//      it is deliberately not five calls.
 //
 // The model writes PROSE ONLY. Person ids, email addresses, Slack user and
 // channel ids, calendar ids, channel membership, threading and every timestamp
@@ -50,8 +47,6 @@ export interface GeneratedWorld {
   calendar: CalendarSeed;
   attio: AttioSeed;
   googleDocs: GoogleDocsSeed;
-  googleAds: GoogleAdsSeed;
-  linkedin: LinkedInSeed;
 }
 
 export interface GenerateOptions {
@@ -80,9 +75,8 @@ export interface GenerateOptions {
 
 const SYSTEM = [
   "You invent realistic fake companies for an offline agent-testing sandbox. Everything you write",
-  "is loaded into local clones of Gmail, Slack, a calendar, a CRM, a document workspace, an ads",
-  "account and a company page; none of it is ever sent to anyone, and none of it describes a real",
-  "company or a real person.",
+  "is loaded into local clones of Gmail, Slack, a calendar, a CRM and a document workspace; none",
+  "of it is ever sent to anyone, and none of it describes a real company or a real person.",
   "",
   "Write the way working people actually write: unfinished sentences, shorthand, mild irritation,",
   "half-remembered context. Never mention that this is a test, a scenario, a simulation or an",
@@ -495,128 +489,6 @@ export function normalizeGoogleDocsSeed(
   return { documents };
 }
 
-const AD_STATUSES = new Set(["ENABLED", "PAUSED", "REMOVED"]);
-const AD_CHANNELS = new Set(["SEARCH", "DISPLAY", "SHOPPING", "VIDEO", "PERFORMANCE_MAX"]);
-
-function adStatus(written: string | undefined): string {
-  const value = (written ?? "").trim().toUpperCase();
-  return AD_STATUSES.has(value) ? value : "ENABLED";
-}
-
-/** A count as the twin stores one: whole, never negative, never a NaN. */
-function whole(value: number | undefined): number {
-  return Math.max(0, Math.round(value ?? 0) || 0);
-}
-
-export function normalizeGoogleAdsSeed(seed: GoogleAdsSeed): GoogleAdsSeed {
-  const names = new Set<string>();
-  const groupNames = new Set<string>();
-  const campaigns = (seed.campaigns ?? [])
-    .filter((c) => c.name.trim().length > 0)
-    .map((c) => {
-      const channel = (c.channel ?? "").trim().toUpperCase();
-      return {
-        name: unique(c.name.trim(), names, " "),
-        status: adStatus(c.status),
-        // Every campaign needs a budget: the twin refuses a seed without one,
-        // and a campaign that may spend nothing is not a campaign.
-        dailyBudget: Math.max(1, whole(c.dailyBudget)),
-        channel: AD_CHANNELS.has(channel) ? channel : "SEARCH",
-        adGroups: (c.adGroups ?? [])
-          .filter((g) => g.name.trim().length > 0)
-          .map((g) => {
-            const impressions = whole(g.dailyImpressions);
-            return {
-              name: unique(g.name.trim(), groupNames, " "),
-              status: adStatus(g.status),
-              dailyImpressions: impressions,
-              // Clicks cannot exceed impressions. Models write a click-through
-              // rate above 100% often enough that clamping is cheaper than
-              // re-prompting, and an agent reading one would draw the wrong
-              // conclusion about the account rather than spot the mistake.
-              dailyClicks: Math.min(impressions, whole(g.dailyClicks)),
-              dailyCost: whole(g.dailyCost),
-              dailyConversions: whole(g.dailyConversions),
-            };
-          }),
-      };
-    });
-  return { campaigns };
-}
-
-export function normalizeLinkedInSeed(
-  seed: LinkedInSeed,
-  cast: Person[],
-  mailboxOwner: string,
-): LinkedInSeed {
-  const known = new Set(cast.map((p) => p.id));
-  /** "" is the company page, which is an actor and not a missing one. */
-  const actor = (personId: string | undefined) =>
-    personId && known.has(personId) ? personId : "";
-
-  function comments(entries: FeedCommentSeed[], parentMinutesAgo: number): FeedCommentSeed[] {
-    return entries
-      .map((c) => {
-        const minutesAgo = Math.min(parentMinutesAgo, clampMinutesAgo(c.minutesAgo));
-        return {
-          personId: actor(c.personId),
-          text: c.text.trim(),
-          minutesAgo,
-          // One level, because that is all LinkedIn has: the twin refuses a
-          // reply to a reply, and a deeper thread would be written and never
-          // read back. Anything under a reply is flattened up beside it.
-          replies: (c.replies ?? []).flatMap((r) => [
-            {
-              personId: actor(r.personId),
-              text: r.text.trim(),
-              minutesAgo: Math.min(minutesAgo, clampMinutesAgo(r.minutesAgo)),
-            },
-            ...comments(r.replies ?? [], Math.min(minutesAgo, clampMinutesAgo(r.minutesAgo))),
-          ]),
-        };
-      })
-      .filter((c) => c.text.length > 0)
-      .sort((a, b) => b.minutesAgo - a.minutesAgo);
-  }
-
-  const posts = (seed.posts ?? [])
-    // A post belongs to the company page or to the mailbox owner, and nothing
-    // else survives. LinkedIn has no directory to enumerate an employer's
-    // people, so every read this product has starts from "who may I act as" —
-    // the owner and the pages they administer. A colleague's own feed is written
-    // into the twin and then read by nobody: not the snapshot, not the diff, not
-    // one of the agent's tools. Dropped rather than quietly re-attributed to the
-    // page, because putting a person's words in the company's mouth is a claim
-    // the judge would read as true.
-    //
-    // Judged on the RESOLVED author, so a model naming somebody outside the cast
-    // is the page speaking — which is what `actor` already means by it — rather
-    // than a post thrown away for a typo.
-    .filter((p) => {
-      const author = actor(p.personId);
-      return author === "" || author === mailboxOwner;
-    })
-    .map((p) => {
-      const minutesAgo = clampMinutesAgo(p.minutesAgo);
-      const isDraft = p.isDraft === true;
-      return {
-        personId: actor(p.personId),
-        commentary: p.commentary.trim(),
-        minutesAgo,
-        isDraft,
-        // Nobody can comment on or react to something nobody has published, and
-        // the twin refuses a draft that carries either.
-        comments: isDraft ? [] : comments(p.comments ?? [], minutesAgo),
-        reactedByPersonIds: isDraft
-          ? []
-          : [...new Set(p.reactedByPersonIds ?? [])].filter((id) => known.has(id)),
-      };
-    })
-    .filter((p) => p.commentary.length > 0)
-    .sort((a, b) => b.minutesAgo - a.minutesAgo);
-  return { posts };
-}
-
 /** Channels are authored once, in the Slack seed; the world reads them back. */
 function channelsFromSlack(slack: SlackSeed): ChannelSeed[] {
   return slack.channels.map((c, i) => ({
@@ -655,10 +527,6 @@ export function canonicalize(generated: GeneratedWorld): GeneratedWorld {
     calendar: normalizeCalendarSeed(generated.calendar, cast, mailboxOwner),
     attio: normalizeAttioSeed(generated.attio, cast, mailboxOwner),
     googleDocs: normalizeGoogleDocsSeed(generated.googleDocs, cast, mailboxOwner),
-    // No cast in an ad account: Google Ads resources name no people, so nothing
-    // here needs the roster to check itself against.
-    googleAds: normalizeGoogleAdsSeed(generated.googleAds),
-    linkedin: normalizeLinkedInSeed(generated.linkedin, cast, mailboxOwner),
   };
 }
 
@@ -702,8 +570,6 @@ export function assembleWorld(
     calendar: seeds.calendar,
     attio: seeds.attio,
     googleDocs: seeds.googleDocs,
-    googleAds: seeds.googleAds,
-    linkedin: seeds.linkedin,
   });
 }
 
@@ -767,9 +633,9 @@ export async function narrateSurfaces(
       `${draft.business.description}\n\n` +
       `THE BRIEF THIS GREW FROM: ${description}\n\n` +
       `ROSTER (refer to people ONLY by these ids):\n${rosterBlock(cast, ownerId)}\n\n` +
-      `You are writing the last few days of this company as they appear in seven places at once: ` +
-      `${owner.name}'s inbox, the company Slack, ${owner.name}'s calendar, the CRM, the shared ` +
-      `documents, the ads account and the company's LinkedIn page. This is one story, not seven. ` +
+      `You are writing the last few days of this company as they appear in five places at once: ` +
+      `${owner.name}'s inbox, the company Slack, ${owner.name}'s calendar, the CRM and the shared ` +
+      `documents. This is one story, not five. ` +
       `The thread that is worrying people in email is the thread #channel is arguing about; the ` +
       `meeting on the calendar is the meeting someone proposed in that thread; the deal in the ` +
       `CRM is the account that thread is about; the brief in the documents is the one the meeting ` +
@@ -795,27 +661,19 @@ export async function narrateSurfaces(
       `DOCUMENTS — the shared documents the emails and Slack messages point at: the brief, the ` +
       `post-mortem, the agenda for that meeting. Write them as the named person would have, and ` +
       `leave at least one unfinished — a section nobody filled in, a figure still marked TBC.\n\n` +
-      `ADS — this company's own advertising, only if it plausibly runs any. Two to four campaigns, ` +
-      `with the day each ad group typically has. One of them is the campaign somebody keeps ` +
-      `bringing up: spending past its budget, or paused weeks ago and never turned back on.\n\n` +
-      `LINKEDIN — what this company has said in public lately, and what came back. Every post is ` +
-      `the company page's or ${owner.name}'s own; everybody else appears in the comments. At ` +
-      `least one post with a customer's question underneath it that nobody has answered, and one ` +
-      `draft sitting unpublished.\n\n` +
-      `TIME: every offset is relative to right now. Gmail, Slack, the CRM and LinkedIn use ` +
-      `minutesAgo (bigger = older, never negative). The calendar uses startOffsetMin, negative for ` +
-      `meetings that already happened; a CRM task's dueInMinutes is negative when the deadline has ` +
-      `already passed. The ads account has no dates at all — a typical day is enough, and the ` +
-      `month behind it is filled in afterwards. Keep offsets consistent with what people say: ` +
-      `nobody may write "as we agreed this morning" about something that happens tomorrow.\n\n` +
+      `TIME: every offset is relative to right now. Gmail, Slack and the CRM use minutesAgo ` +
+      `(bigger = older, never negative). The calendar uses startOffsetMin, negative for meetings ` +
+      `that already happened; a CRM task's dueInMinutes is negative when the deadline has already ` +
+      `passed. Keep offsets consistent with what people say: nobody may write "as we agreed this ` +
+      `morning" about something that happens tomorrow.\n\n` +
       `Do not invent ids, email addresses, Slack handles or timestamps. Use the roster ids exactly ` +
       `as written above; everything else is attached afterwards.`,
     schema: asSchema(TWIN_SEEDS_SCHEMA),
     schemaName: "twin_seeds",
     model: opts.model,
     effort: opts.effort ?? "high",
-    // Raised with the surfaces: seven of them in one reply is roughly twice the
-    // three this was set for, and a narrative pass cut off mid-JSON is a whole
+    // Raised with the surfaces: five of them in one reply is well past the three
+    // this was set for, and a narrative pass cut off mid-JSON is a whole
     // generation thrown away rather than a short one.
     maxTokens: 48000,
   });
@@ -844,8 +702,7 @@ export async function generateWorld(
   say(
     `${generated.world.business.name}: ${generated.gmail.threads.length} threads, ` +
       `${generated.slack.channels.length} channels, ${generated.calendar.events.length} events, ` +
-      `${generated.attio.deals.length} deals, ${generated.googleDocs.documents.length} documents, ` +
-      `${generated.googleAds.campaigns.length} campaigns, ${generated.linkedin.posts.length} posts`,
+      `${generated.attio.deals.length} deals, ${generated.googleDocs.documents.length} documents`,
   );
   return generated;
 }

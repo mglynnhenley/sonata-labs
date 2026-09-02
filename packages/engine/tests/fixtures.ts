@@ -118,10 +118,6 @@ const emptySnapshot = (twin: TwinName): TwinSnapshot => {
       return { twin, capturedAt: 0, records: [], notes: [], tasks: [] };
     case "google-docs":
       return { twin, capturedAt: 0, documents: [] };
-    case "google-ads":
-      return { twin, capturedAt: 0, campaigns: [] };
-    case "linkedin":
-      return { twin, capturedAt: 0, posts: [], comments: [] };
   }
 };
 

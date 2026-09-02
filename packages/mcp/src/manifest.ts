@@ -3,9 +3,7 @@ import {
   attioTools,
   calendarTools,
   gmailTools,
-  googleAdsTools,
   googleDocsTools,
-  linkedInTools,
   slackTools,
   type EngineTool,
 } from "@sonata/engine/tools/index";
@@ -95,10 +93,6 @@ export function engineToolsFor(twin: ServedTwin, http: TwinHttp): EngineTool[] {
       return attioTools(http);
     case "google-docs":
       return googleDocsTools(http);
-    case "google-ads":
-      return googleAdsTools(http);
-    case "linkedin":
-      return linkedInTools(http);
   }
 }
 

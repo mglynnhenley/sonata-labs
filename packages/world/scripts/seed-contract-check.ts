@@ -14,7 +14,7 @@
 // is green on both, and the failure arrives as a 400 in the middle of seeding a
 // run somebody is waiting for.
 //
-// It is a script rather than a vitest case for one reason: it imports four Next
+// It is a script rather than a vitest case for one reason: it imports two Next
 // applications' source, and @sonata/world must keep depending on nothing but
 // @sonata/core.
 
@@ -22,8 +22,6 @@ import { buildSeedRequest } from "../src/inject";
 import { TEMPLATES } from "../src/templates/index";
 import { parseSeedRequest as parseAttio } from "../../../apps/attio/src/lib/sandbox/parse";
 import { parseSeedRequest as parseDocs } from "../../../apps/google-docs/src/lib/sandbox/parse";
-import { parseSeedRequest as parseAds } from "../../../apps/google-ads/src/lib/sandbox/parse";
-import { parseSeedRequest as parseLinkedIn } from "../../../apps/linkedin/src/lib/sandbox/parse";
 
 /** Fixed, so a failure is reproducible rather than a thing that happened once. */
 const NOW = Date.UTC(2026, 7, 14, 13, 0, 0);
@@ -31,8 +29,6 @@ const NOW = Date.UTC(2026, 7, 14, 13, 0, 0);
 const PARSERS = {
   attio: parseAttio,
   "google-docs": parseDocs,
-  "google-ads": parseAds,
-  linkedin: parseLinkedIn,
 } as const;
 
 let passed = 0;

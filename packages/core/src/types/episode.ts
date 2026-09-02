@@ -188,119 +188,6 @@ export interface DocsReplacePayload {
   matchCase?: boolean;
 }
 
-/**
- * A campaign starts or stops behind the agent's back.
- *
- * The campaign is named rather than pointed at, because unlike a thread or an
- * event it already exists before the day starts: `campaign` takes an id, a
- * resource name or the name a person would say. `campaignRef` is for the second
- * half of a pair — "pause it at 10, put it back at 4" — where the first beat is
- * what the second one means.
- */
-export interface GoogleAdsStatusPayload {
-  campaign?: string;
-  campaignRef?: string;
-  /** ENABLED, PAUSED or REMOVED, as Google spells them. */
-  status: string;
-}
-
-/** Somebody moves what a campaign may spend in a day. */
-export interface GoogleAdsBudgetPayload {
-  campaign?: string;
-  campaignRef?: string;
-  /** The currency unit × 1_000_000. A $250/day budget is 250000000. */
-  amountMicros: number;
-}
-
-/**
- * A day's traffic lands on the account — the money moving while the agent works,
- * which is what makes an overspend something it has to notice rather than read.
- */
-export interface GoogleAdsSpendPayload {
-  /**
-   * Which ad group the money landed on: an eleven-digit id, or the name a person
-   * would say ("Brand teams, UK") — the same two spellings `campaign` above
-   * takes, and for the same reason. An ad group's id is minted at seed time by
-   * @sonata/world and published nowhere an author reads, so the name is the only
-   * handle a spec can actually be written with; it is also what the timeline, the
-   * judge prompt and the results page print, none of which can say anything about
-   * a bare eleven digits.
-   */
-  adGroup: string;
-  /** YYYY-MM-DD in the account's zone. The beat's own simulated day when absent. */
-  date?: string;
-  impressions: number;
-  clicks: number;
-  costMicros: number;
-  conversions?: number;
-  conversionsValue?: number;
-}
-
-/** Reaction vocabulary, as LinkedIn and its twin both spell it. */
-export type LinkedInReactionType =
-  | "LIKE"
-  | "PRAISE"
-  | "EMPATHY"
-  | "INTEREST"
-  | "APPRECIATION"
-  | "ENTERTAINMENT";
-
-/** Something goes out on the feed — the company page's, or the owner's own. */
-export interface LinkedInPostPayload {
-  /**
-   * Who publishes it, and the ONLY two answers are the company page (omit this)
-   * or the mailbox owner. It is an absence rather than a sentinel string because
-   * a `PersonRef` is a string too, and `"organization" | PersonRef` erases to
-   * `string`.
-   *
-   * A colleague cannot publish, and the limit is the surface's rather than a
-   * simplification: LinkedIn has no directory to enumerate an employer's people,
-   * so this clone's reads all start from "who may I act as" — the owner and the
-   * pages they administer. A post on anybody else's feed lands in the twin and is
-   * then invisible to the snapshot, to the diff and to every tool the agent has,
-   * which is a beat whose only trace is a row in SQLite. The adapter refuses one
-   * by name rather than writing it.
-   */
-  from?: PersonRef;
-  commentary: string;
-  visibility?: "PUBLIC" | "CONNECTIONS" | "LOGGED_IN";
-}
-
-/**
- * How a beat says which post or comment on the feed it means.
- *
- * An earlier beat's `ref`, a URN the twin minted (`urn:li:activity:…`), or the
- * opening words of what was written — "We're hiring a second compliance
- * engineer". The last is the one an author can write against a world they did
- * not run: a seeded post's URN is twelve digits of hash that appear in no
- * `WorldSeed` and no preview, so a spec that could only point at URNs could only
- * ever engage with posts its own beats had published.
- */
-export type LinkedInEntityTarget = string;
-
-/** Somebody says something in public that the company now has to answer. */
-export interface LinkedInCommentPayload {
-  /** The post this comments on — see `LinkedInEntityTarget`. */
-  postRef?: LinkedInEntityTarget;
-  /** The comment this answers. Threads are one level deep. */
-  parentRef?: LinkedInEntityTarget;
-  /**
-   * Omitted means the company page answered. Unlike a post, ANY cast member may
-   * comment: a comment hangs on a post the capture already reads, so it is
-   * visible to the snapshot and the diff whoever wrote it.
-   */
-  from?: PersonRef;
-  text: string;
-}
-
-/** The cheap acknowledgement: engagement arriving without a word being written. */
-export interface LinkedInReactionPayload {
-  /** The post or comment being reacted to — see `LinkedInEntityTarget`. */
-  entityRef: LinkedInEntityTarget;
-  from?: PersonRef;
-  reactionType?: LinkedInReactionType;
-}
-
 // ---------------------------------------------------------------------------
 // Beat bodies. Split out from the beat's own metadata because the director
 // emits the exact same (twin, kind, payload) triple at runtime — see
@@ -337,24 +224,12 @@ export type GoogleDocsBeatBody =
   | { twin: "google-docs"; kind: "append"; payload: DocsAppendPayload }
   | { twin: "google-docs"; kind: "replace"; payload: DocsReplacePayload };
 
-export type GoogleAdsBeatBody =
-  | { twin: "google-ads"; kind: "status"; payload: GoogleAdsStatusPayload }
-  | { twin: "google-ads"; kind: "budget"; payload: GoogleAdsBudgetPayload }
-  | { twin: "google-ads"; kind: "spend"; payload: GoogleAdsSpendPayload };
-
-export type LinkedInBeatBody =
-  | { twin: "linkedin"; kind: "post"; payload: LinkedInPostPayload }
-  | { twin: "linkedin"; kind: "comment"; payload: LinkedInCommentPayload }
-  | { twin: "linkedin"; kind: "reaction"; payload: LinkedInReactionPayload };
-
 export type BeatBody =
   | GmailBeatBody
   | SlackBeatBody
   | CalendarBeatBody
   | AttioBeatBody
-  | GoogleDocsBeatBody
-  | GoogleAdsBeatBody
-  | LinkedInBeatBody;
+  | GoogleDocsBeatBody;
 
 /** Every `kind` string in use, across all twins. */
 export type BeatKind = BeatBody["kind"];
