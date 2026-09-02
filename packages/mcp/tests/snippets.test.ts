@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { configFromEnv, DEFAULT_TWIN_URLS } from "../src/config";
+import { configFromEnv, DEFAULT_TWIN_URLS, TWINS } from "../src/config";
 import { parseArgv, helpText } from "../src/cli";
 import {
   claudeCodeSnippet,
@@ -24,6 +24,10 @@ describe("connection snippets", () => {
         "--env SONATA_GMAIL_URL=http://gmail.test " +
         "--env SONATA_SLACK_URL=http://slack.test " +
         "--env SONATA_CALENDAR_URL=http://calendar.test " +
+        "--env SONATA_ATTIO_URL=http://attio.test " +
+        "--env SONATA_GOOGLE_DOCS_URL=http://google-docs.test " +
+        "--env SONATA_GOOGLE_ADS_URL=http://google-ads.test " +
+        "--env SONATA_LINKEDIN_URL=http://linkedin.test " +
         "-- /repo/sonata/node_modules/.bin/sonata-mcp",
     );
   });
@@ -50,6 +54,10 @@ describe("connection snippets", () => {
             SONATA_GMAIL_URL: "http://gmail.test",
             SONATA_SLACK_URL: "http://slack.test",
             SONATA_CALENDAR_URL: "http://calendar.test",
+            SONATA_ATTIO_URL: "http://attio.test",
+            SONATA_GOOGLE_DOCS_URL: "http://google-docs.test",
+            SONATA_GOOGLE_ADS_URL: "http://google-ads.test",
+            SONATA_LINKEDIN_URL: "http://linkedin.test",
           },
         },
       },
@@ -58,13 +66,32 @@ describe("connection snippets", () => {
 
   it("renders raw REST details for an agent that speaks no MCP", () => {
     const text = restSnippet({ config: testConfig, launch });
-    expect(text).toContain("gmail     http://gmail.test");
-    expect(text).toContain("slack     http://slack.test");
-    expect(text).toContain("calendar  http://calendar.test");
+    expect(text).toContain("gmail        http://gmail.test");
+    expect(text).toContain("slack        http://slack.test");
+    expect(text).toContain("calendar     http://calendar.test");
+    expect(text).toContain("attio        http://attio.test");
+    expect(text).toContain("google-docs  http://google-docs.test");
+    expect(text).toContain("google-ads   http://google-ads.test");
+    expect(text).toContain("linkedin     http://linkedin.test");
     expect(text).toContain(
       'curl -s -H "Authorization: Bearer test-token" \\\n' +
         '  "http://slack.test/api/conversations.list"',
     );
+  });
+
+  // Both of these are refusals that read as a broken twin: a bare bearer earns a
+  // 400 DEVELOPER_TOKEN_PARAMETER_MISSING from one and a 426 from the other, and
+  // the header that fixes it appears nowhere else in the product.
+  it("names the extra header the two twins that demand one will not work without", () => {
+    const text = restSnippet({ config: testConfig, launch });
+    expect(text).toContain('-H "developer-token: sandbox-dev-token"');
+    expect(text).toContain('-H "LinkedIn-Version: 202506"');
+  });
+
+  it("leaves those notes out when neither twin is served", () => {
+    const text = restSnippet({ config: testConfig, twins: ["gmail", "slack"], launch });
+    expect(text).not.toContain("developer-token");
+    expect(text).not.toContain("LinkedIn-Version");
   });
 
   // The printed curl is the first thing anyone runs. Pointed at /gmail/v1/* with
@@ -114,11 +141,14 @@ describe("config", () => {
 });
 
 describe("cli", () => {
-  it("serves all three twins by default and one when named", () => {
-    expect(parseArgv([]).twins).toEqual(["gmail", "slack", "calendar"]);
+  it("serves every twin by default and one when named", () => {
+    expect(parseArgv([]).twins).toEqual([...TWINS]);
     expect(parseArgv(["gmail"]).twins).toEqual(["gmail"]);
     expect(parseArgv(["slack", "calendar"]).twins).toEqual(["slack", "calendar"]);
     expect(parseArgv(["gmail", "gmail"]).twins).toEqual(["gmail"]);
+    // The two whose names carry a hyphen, since an arg parser that split on one
+    // would silently serve nothing and report a typo.
+    expect(parseArgv(["google-docs", "google-ads"]).twins).toEqual(["google-docs", "google-ads"]);
   });
 
   it("reports a typo instead of silently serving everything", () => {
@@ -128,6 +158,9 @@ describe("cli", () => {
   it("has a connect mode and a help mode", () => {
     expect(parseArgv(["connect"]).mode).toBe("connect");
     expect(parseArgv(["--help"]).mode).toBe("help");
+    // Every served twin, since help that omits one reads as "not supported".
+    for (const twin of TWINS) expect(helpText()).toContain(DEFAULT_TWIN_URLS[twin]);
     expect(helpText()).toContain("SONATA_CALENDAR_URL");
+    expect(helpText()).toContain("SONATA_GOOGLE_DOCS_URL");
   });
 });

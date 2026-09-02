@@ -32,8 +32,8 @@ import { ago } from "@/lib/format";
 // Until this existed, a cloned company only reached Gmail when a run started —
 // so the first thing a new user did, opening the fake inbox to look at what they
 // had just invented, showed them somebody else's company. Seeding is its own
-// act here, with its own warning (it wipes all three clones) and its own
-// receipt (what landed, and a door into each app).
+// act here, with its own warning (it wipes every clone) and its own receipt
+// (what landed, and a door into each app).
 
 export interface CompaniesData {
   companies: CompanyCard[];
@@ -50,7 +50,8 @@ const WRITING_LINES = [
   "Filling the inbox: threads, replies, the ones nobody answered…",
   "Backfilling Slack, in everyone's own voice…",
   "Putting the meetings on the calendar…",
-  "Loading it into Gmail, Slack and Calendar…",
+  "Filing the deals, the briefs, the ad account and what the page posted…",
+  "Loading it into every clone…",
 ];
 
 function stateBadge(company: CompanyCard) {
@@ -97,7 +98,7 @@ export function CompaniesClient({ initial }: { initial: CompaniesData }) {
       setOutcome(seeded);
       toast({
         title: `${seeded.worldName} is in the clones`,
-        description: "Open Gmail, Slack or the calendar and read what these people have been up to.",
+        description: "Open any of the clones and read what these people have been up to.",
         tone: "success",
       });
       refresh();
@@ -122,7 +123,7 @@ export function CompaniesClient({ initial }: { initial: CompaniesData }) {
       <PageHeader
         eyebrow="Companies"
         title="The companies you've cloned"
-        subtitle="Each one is a cast of people with an inbox, Slack channels and a calendar — the same people in all three. Put one into the clones, then go and read their mail."
+        subtitle="Each one is a cast of people with an inbox, Slack channels, a calendar, a CRM, shared documents, an ad account and a company page — the same people on every one. Put one into the clones, then go and read their mail."
         actions={
           // The Link IS the button. Wrapping one around a `<button>` is invalid
           // markup and leaves the page's main exit deaf to Cmd-click.
@@ -133,8 +134,8 @@ export function CompaniesClient({ initial }: { initial: CompaniesData }) {
         }
       />
 
-      {/* Seeding needs all three clones up, so a clone that is off is shown here
-          with its own switch rather than discovered as a failed POST. */}
+      {/* Seeding needs every clone up, so a clone that is off is shown here with
+          its own switch rather than discovered as a failed POST. */}
       {offline.length > 0 ? (
         <Card padding="lg" radius="2xl">
           <div className="flex items-start gap-2.5">
@@ -145,8 +146,8 @@ export function CompaniesClient({ initial }: { initial: CompaniesData }) {
                 {offline.length === 1 ? "is" : "are"} not running.
               </p>
               <p className="mt-1 text-sn-sm leading-[19px] text-sn-muted">
-                A company is loaded into all three at once, so all three have to be answering.
-                Starting one takes a few seconds the first time.
+                A company is loaded into every clone at once, so every one of them has to be
+                answering. Starting one takes a few seconds the first time.
               </p>
             </div>
           </div>
@@ -217,94 +218,100 @@ interface TileProps {
   onSeed: () => void;
 }
 
+/**
+ * One more surface on the "what has been written" line, or nothing at all.
+ *
+ * Nothing at all covers two different truths, and both of them want silence: a
+ * company that runs no advertising is a real company rather than a failed
+ * generation, and a company cloned before a surface existed has no number for it
+ * to print — its record was written when a backlog was three surfaces wide,
+ * which is why `n` can be undefined at runtime whatever `WorldCounts` says.
+ */
+function Also({ n, label }: { n: number | undefined; label: string }) {
+  if (!n) return null;
+  return (
+    <>
+      {" · "}
+      <span data-numeric>{n}</span> {label}
+    </>
+  );
+}
+
 function CompanyTile({ company, clones, now, busy, busyLine, disabled, onSeed }: TileProps) {
   return (
     <Card padding="lg" radius="2xl" className="flex h-full flex-col">
-      <div className="sn-stack-group">
-        <div className="sn-stack-item">
-          <div className="flex items-start justify-between gap-3">
-            <h2 className="min-w-0 truncate text-sn-md font-bold text-sn-ink">{company.name}</h2>
-            {stateBadge(company)}
-          </div>
-          {/* Not clamped. These run from 158 to 653 characters — most of them
-              past nine lines — so cutting them to three would have hidden the
-              majority of what the page is for. The dead air came from the grid
-              stretching every card to its row's tallest, which `items-start`
-              fixes without taking a word off the screen. */}
-          {/* Clamped, not cut: these run to 650 characters and a tile that
-              carries all of one sits beside a tile carrying none. Three lines
-              is enough to say what the business is; the rest stays in the DOM
-              and in the tooltip. */}
-          <p title={company.description} className="line-clamp-3 text-sn-base text-sn-muted">
-            {company.description}
-          </p>
-        </div>
+      <div className="flex items-start justify-between gap-3">
+        <h2 className="min-w-0 truncate text-sn-md font-bold text-sn-ink">{company.name}</h2>
+        {stateBadge(company)}
+      </div>
+      <p title={company.description} className="mt-2 line-clamp-3 text-sn-base text-sn-muted">
+        {company.description}
+      </p>
 
-        <div className="sn-stack-item">
-          <div className="flex flex-wrap items-center gap-1.5">
-            {company.industry ? <Chip size="sm">{company.industry}</Chip> : null}
-            <Chip size="sm">
-              {company.castSize} people · {company.channelCount} channels
-            </Chip>
-            <Chip size="sm">Cloned {ago(company.createdAt, now)}</Chip>
-          </div>
-
-          {/* What has been written, or an honest note that nothing has. The counts
-              the preview promised are not shown here: they describe an inbox that
-              does not exist until the backlog is. */}
-          {company.counts ? (
-            <p className="text-sn-sm text-sn-subtle">
-              <span data-numeric>{company.counts.threads}</span> threads ·{" "}
-              <span data-numeric>{company.counts.slackMessages}</span> Slack messages ·{" "}
-              <span data-numeric>{company.counts.events}</span> events written
-            </p>
-          ) : (
-            <p className="text-sn-sm text-sn-subtle">
-              No history written yet — seeding writes it first, which takes about a minute.
-            </p>
-          )}
-
-          {company.state === "superseded" && company.supersededBy ? (
-            <p className="text-sn-sm text-sn-subtle">
-              Was in the clones {ago(company.seededAt, now)}; {company.supersededBy} replaced it.
-            </p>
-          ) : null}
-        </div>
-
-        {company.state === "seeded" ? (
-          <div className="rounded-sn-lg border border-sn-passed-line bg-sn-passed-soft px-3.5 py-3">
-            <p className="flex items-center gap-1.5 text-sn-sm font-medium text-sn-passed-ink">
-              <IconCheck size="sm" />
-              Loaded {ago(company.seededAt, now)} — this is what the clones are holding
-            </p>
-            <ul className="mt-2 flex flex-col gap-1">
-              {clones.map((clone) => (
-                <li key={clone.twin} className="flex items-center justify-between gap-3">
-                  <span className="text-sn-sm text-sn-muted">
-                    {clone.label} · {clone.ok ? clone.detail : "not running"}
-                  </span>
-                  <a
-                    href={clone.url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center gap-1 text-sn-sm font-medium text-sn-primary-ink hover:underline"
-                  >
-                    Open
-                    <IconArrowRight size="xs" />
-                  </a>
-                </li>
-              ))}
-            </ul>
-          </div>
-        ) : null}
+      <div className="mt-4 flex flex-wrap items-center gap-1.5">
+        {company.industry ? <Chip size="sm">{company.industry}</Chip> : null}
+        <Chip size="sm">
+          {company.castSize} people · {company.channelCount} channels
+        </Chip>
+        <Chip size="sm">Cloned {ago(company.createdAt, now)}</Chip>
       </div>
 
-      {/* The button is on the floor of the card, not wherever the text above it
-          happened to end, so a row of them reads as one row. */}
-      <div className="mt-auto flex flex-wrap items-center gap-3 pt-6">
+      {/* What has been written, or an honest note that nothing has. The counts
+          the preview promised are not shown here: they describe an inbox that
+          does not exist until the backlog is. */}
+      {company.counts ? (
+        <p className="mt-3 text-[12px] leading-[18px] text-sn-subtle">
+          <span data-numeric>{company.counts.threads}</span> threads ·{" "}
+          <span data-numeric>{company.counts.slackMessages}</span> Slack messages ·{" "}
+          <span data-numeric>{company.counts.events}</span> events
+          <Also n={company.counts.records} label="CRM records" />
+          <Also n={company.counts.documents} label="documents" />
+          <Also n={company.counts.campaigns} label="campaigns" />
+          <Also n={company.counts.posts} label="posts" /> written
+        </p>
+      ) : (
+        <p className="mt-3 text-[12px] leading-[18px] text-sn-subtle">
+          No history written yet — seeding writes it first, which takes about a minute.
+        </p>
+      )}
+
+      {company.state === "superseded" && company.supersededBy ? (
+        <p className="mt-3 text-[12px] leading-[18px] text-sn-subtle">
+          Was in the clones {ago(company.seededAt, now)}; {company.supersededBy} replaced it.
+        </p>
+      ) : null}
+
+      {company.state === "seeded" ? (
+        <div className="mt-4 rounded-sn-lg border border-sn-passed-line bg-sn-passed-soft px-3.5 py-3">
+          <p className="flex items-center gap-1.5 text-[12.5px] font-medium text-sn-passed-ink">
+            <IconCheck size={13} />
+            Loaded {ago(company.seededAt, now)} — this is what the clones are holding
+          </p>
+          <ul className="mt-2 flex flex-col gap-1">
+            {clones.map((clone) => (
+              <li key={clone.twin} className="flex items-center justify-between gap-3">
+                <span className="text-[12px] text-sn-muted">
+                  {clone.label} · {clone.ok ? clone.detail : "not running"}
+                </span>
+                <a
+                  href={clone.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1 text-[12px] font-medium text-sn-primary-ink hover:underline"
+                >
+                  Open
+                  <IconArrowRight size={11} />
+                </a>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      <div className="mt-auto flex flex-wrap items-center gap-3 pt-5">
         <Button
-          variant="secondary"
-          icon={<IconSpark size="sm" />}
+          variant={company.state === "seeded" ? "secondary" : "primary"}
+          icon={<IconSpark size={14} />}
           loading={busy}
           disabled={disabled && !busy}
           onClick={onSeed}
@@ -312,7 +319,7 @@ function CompanyTile({ company, clones, now, busy, busyLine, disabled, onSeed }:
           {company.state === "seeded" ? "Load it again" : "Put this company in the clones"}
         </Button>
         {busy ? (
-          <span className="flex items-center gap-2 text-sn-sm text-sn-muted">
+          <span className="flex items-center gap-2 text-[12px] text-sn-muted">
             <Spinner size="sm" />
             {busyLine}
           </span>
@@ -332,8 +339,8 @@ interface ConfirmProps {
   onConfirm: (company: CompanyCard) => void;
 }
 
-/** The warning goes BEFORE the deed: seeding rebuilds all three clones from
- *  scratch, and anything a run left in them is gone. */
+/** The warning goes BEFORE the deed: seeding rebuilds every clone from scratch,
+ *  and anything a run left in them is gone. */
 function ConfirmSeed({ company, replacing, onCancel, onConfirm }: ConfirmProps) {
   if (!company) return null;
   const displaced = replacing && replacing.id !== company.id ? replacing.name : null;
@@ -344,8 +351,8 @@ function ConfirmSeed({ company, replacing, onCancel, onConfirm }: ConfirmProps) 
       title={`Put ${company.name} into the clones?`}
       description={
         company.counts
-          ? "Gmail, Slack and the calendar are rebuilt from this company. It takes a few seconds."
-          : "Gmail, Slack and the calendar are rebuilt from this company. Its history has to be written first, so give it about a minute."
+          ? "Every clone is rebuilt from this company. It takes a few seconds."
+          : "Every clone is rebuilt from this company. Its history has to be written first, so give it about a minute."
       }
       footer={
         <>
@@ -367,8 +374,9 @@ function ConfirmSeed({ company, replacing, onCancel, onConfirm }: ConfirmProps) 
         </li>
         {company.counts ? null : (
           <li>
-            This company has no history yet, so it gets written first: threads, channels and
-            meetings for the days before today. That is a model call, and takes about a minute.
+            This company has no history yet, so it gets written first: threads, channels,
+            meetings, deals, documents and posts for the days before today. That is a model call,
+            and takes about a minute.
           </li>
         )}
         <li>Nothing outside this machine is touched. No real account is ever involved.</li>

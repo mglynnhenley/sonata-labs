@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { TwinHttp } from "@sonata/engine/http";
-import { calendarTools, gmailTools, slackTools } from "@sonata/engine/tools/index";
+import {
+  attioTools,
+  calendarTools,
+  gmailTools,
+  googleAdsTools,
+  googleDocsTools,
+  linkedInTools,
+  slackTools,
+} from "@sonata/engine/tools/index";
+import { TWINS } from "../src/config";
 import { buildManifest, engineToolsFor, toInputSchema } from "../src/manifest";
 import { buildTools, toolDescriptors } from "../src/server";
 import { fetchFake, testConfig } from "./fixtures";
@@ -13,12 +22,19 @@ import { fetchFake, testConfig } from "./fixtures";
 const fake = fetchFake({});
 const manifest = () => buildManifest({ config: testConfig, fetchImpl: fake.fetch });
 
+// Built from the engine's own tool builders and NOT from `engineToolsFor`, which
+// is what the manifest itself calls — a test that went through the same door
+// would agree with the manifest about a twin they had both forgotten.
 function engineNames(): string[] {
   const http = new TwinHttp({ baseUrl: "http://x.test", fetchImpl: fake.fetch });
   return [
     ...gmailTools(http).map((t) => `gmail_${t.name}`),
     ...slackTools(http).map((t) => `slack_${t.name}`),
     ...calendarTools(http).map((t) => `calendar_${t.name}`),
+    ...attioTools(http).map((t) => `attio_${t.name}`),
+    ...googleDocsTools(http).map((t) => `google-docs_${t.name}`),
+    ...googleAdsTools(http).map((t) => `google-ads_${t.name}`),
+    ...linkedInTools(http).map((t) => `linkedin_${t.name}`),
   ];
 }
 
@@ -29,7 +45,7 @@ describe("manifest", () => {
 
   it("carries every description and schema through verbatim", () => {
     const http = new TwinHttp({ baseUrl: "http://x.test", fetchImpl: fake.fetch });
-    for (const twin of ["gmail", "slack", "calendar"] as const) {
+    for (const twin of TWINS) {
       for (const tool of engineToolsFor(twin, http)) {
         const entry = manifest().entries.find((e) => e.name === `${twin}_${tool.name}`);
         expect(entry, `${twin}_${tool.name} is missing`).toBeDefined();
@@ -42,13 +58,22 @@ describe("manifest", () => {
     }
   });
 
-  it("names are unique and self-describing, because the agent sees all three sets at once", () => {
+  it("names are unique and self-describing, because the agent sees every set at once", () => {
     const names = manifest().entries.map((e) => e.name);
     expect(new Set(names).size).toBe(names.length);
-    for (const name of names) expect(name).toMatch(/^(gmail|slack|calendar)_[a-z0-9_]+$/);
+    // Derived from the served list: a twin whose tools arrived unprefixed would
+    // otherwise pass a pattern that had not heard of it.
+    const prefixed = new RegExp(`^(${TWINS.join("|")})_[a-z0-9_]+$`);
+    for (const name of names) expect(name).toMatch(prefixed);
     expect(names).toContain("gmail_list_messages");
     expect(names).toContain("slack_send_message");
     expect(names).toContain("calendar_find_free_time");
+    // One per surface that landed later, including the two whose own names carry
+    // a hyphen — the thing most likely to be mangled by a prefixing scheme.
+    expect(names).toContain("attio_update_record");
+    expect(names).toContain("google-docs_append_paragraph");
+    expect(names).toContain("google-ads_set_campaign_budget");
+    expect(names).toContain("linkedin_create_post");
   });
 
   it("serves one twin when asked for one twin", () => {

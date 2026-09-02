@@ -82,7 +82,79 @@ export interface CalendarSnapshot {
   }>;
 }
 
-export type TwinSnapshot = GmailSnapshot | SlackSnapshot | CalendarSnapshot;
+export interface AttioSnapshot {
+  twin: "attio";
+  capturedAt: number;
+  /** Records across every object, flattened: the object is on each row, because
+   *  a CRM's shape is "which object is this" more than "which table". */
+  records: Array<{
+    recordId: string;
+    object: string;
+    title: string;
+    /** The currently-active value per attribute, already rendered to a string —
+     *  the versioning is the twin's business, and a snapshot is a moment. */
+    values: Record<string, string>;
+  }>;
+  notes: Array<{ noteId: string; parentObject: string; parentRecordId: string; title: string; excerpt: string }>;
+  tasks: Array<{ taskId: string; content: string; isCompleted: boolean; deadlineISO?: string; assignees: string[] }>;
+}
+
+export interface GoogleDocsSnapshot {
+  twin: "google-docs";
+  capturedAt: number;
+  documents: Array<{
+    documentId: string;
+    title: string;
+    revisionId: string;
+    /** Whose document this is. Every other twin's snapshot names an author —
+     *  gmail `from`, slack `user`, calendar `organizer` — and without one here
+     *  "the agent rewrote a colleague's brief instead of its own draft" is
+     *  invisible to both the diff and the end state. The twin serves it. */
+    ownerEmail: string;
+    /** Capped by the adapter. A document body is unbounded and most of it is
+     *  untouched, so the judge gets the text that changed and a length. */
+    excerpt: string;
+    characterCount: number;
+  }>;
+}
+
+export interface GoogleAdsSnapshot {
+  twin: "google-ads";
+  capturedAt: number;
+  campaigns: Array<{
+    campaignId: string;
+    name: string;
+    status: string;
+    budgetId: string;
+    budgetMicros: number;
+    /** Spend over the window the adapter asked for, so "did it overspend" is
+     *  answerable from the snapshot alone. */
+    costMicros: number;
+  }>;
+}
+
+export interface LinkedInSnapshot {
+  twin: "linkedin";
+  capturedAt: number;
+  posts: Array<{
+    postUrn: string;
+    author: string;
+    commentary: string;
+    lifecycleState: string;
+    commentCount: number;
+    reactionCount: number;
+  }>;
+  comments: Array<{ commentUrn: string; postUrn: string; actor: string; text: string; isReply: boolean }>;
+}
+
+export type TwinSnapshot =
+  | GmailSnapshot
+  | SlackSnapshot
+  | CalendarSnapshot
+  | AttioSnapshot
+  | GoogleDocsSnapshot
+  | GoogleAdsSnapshot
+  | LinkedInSnapshot;
 
 // ---------------------------------------------------------------------------
 // Diffs. Derived from two snapshots by the twin's adapter, and pure — old
@@ -134,7 +206,115 @@ export interface CalendarDiff {
   unchangedCount: number;
 }
 
-export type TwinDiff = GmailDiff | SlackDiff | CalendarDiff;
+export interface AttioDiff {
+  twin: "attio";
+  created: Array<{ recordId: string; object: string; title: string }>;
+  /** A superseded value, before and after — the whole point of this surface. */
+  valuesChanged: Array<{ recordId: string; object: string; title: string; attribute: string; from: string; to: string }>;
+  /** The parent is named as well as identified: "a note logged against a record"
+   *  is the likeliest beat on this surface, and a note on a record that did not
+   *  otherwise change has nothing else in the diff to look its title up in — so
+   *  without these the judge reads `+ note "Chased the buyer" on "31fedb90-…"`. */
+  notesAdded: Array<{
+    noteId: string;
+    parentObject: string;
+    parentRecordId: string;
+    parentTitle: string;
+    title: string;
+    excerpt: string;
+  }>;
+  /** Assignees, because "raise a follow-up for Priya" is a claim about who it
+   *  landed on, and a task nobody is named on is itself the finding. */
+  tasksAdded: Array<{ taskId: string; content: string; deadlineISO?: string; assignees: string[] }>;
+  tasksCompleted: Array<{ taskId: string; content: string }>;
+  unchangedCount: number;
+}
+
+export interface GoogleDocsDiff {
+  twin: "google-docs";
+  created: Array<{ documentId: string; title: string; ownerEmail: string }>;
+  /** Edited rather than replaced: a revisionId that moved, with the text that
+   *  moved with it, so the judge reads the change and not the whole document.
+   *
+   *  `approximate` is set when the capture was the HEAD of a document rather
+   *  than all of it: the character counts are then the net change the twin
+   *  reported and not the exact one, and a same-length rewrite past the cap
+   *  counts as nothing. Carried as a field rather than left to inference,
+   *  because the one thing a judge must not do is read a net count as an exact
+   *  one and conclude the agent wrote less than it did. */
+  edited: Array<{
+    documentId: string;
+    title: string;
+    ownerEmail: string;
+    charactersAdded: number;
+    charactersRemoved: number;
+    excerpt: string;
+    approximate?: boolean;
+  }>;
+  renamed: Array<{ documentId: string; from: string; to: string }>;
+  unchangedCount: number;
+}
+
+export interface GoogleAdsDiff {
+  twin: "google-ads";
+  statusChanged: Array<{ campaignId: string; name: string; from: string; to: string }>;
+  /** Keyed on the campaign and not on the amount: re-pointing a campaign at a
+   *  DIFFERENT budget of the same size is a real mutation (campaign.campaignBudget
+   *  is writable), and with only the amounts here it was invisible — the campaign
+   *  counted as untouched. The two ids are what tell the two moves apart. */
+  budgetChanged: Array<{
+    campaignId: string;
+    name: string;
+    fromBudgetId: string;
+    toBudgetId: string;
+    fromMicros: number;
+    toMicros: number;
+  }>;
+  created: Array<{ campaignId: string; name: string }>;
+  unchangedCount: number;
+}
+
+/**
+ * Every row here carries the post's own words beside its URN, and that is the
+ * point of the shape rather than decoration. A URN on this surface is twelve
+ * digits nobody typed — an activity id the twin minted — so a judge shown
+ * `urn:li:person:elena commented on urn:li:activity:8096605588688817908` cannot
+ * tell which post that is, whereas every sibling twin's diff names a thread, a
+ * channel, an event or a document. The renderers read `postCommentary` and print
+ * the URN only when the post fell outside the capture.
+ */
+export interface LinkedInDiff {
+  twin: "linkedin";
+  posted: Array<{ postUrn: string; author: string; commentary: string }>;
+  edited: Array<{ postUrn: string; commentary: string }>;
+  deleted: Array<{ postUrn: string; commentary: string }>;
+  commented: Array<{
+    commentUrn: string;
+    postUrn: string;
+    /** The post this landed under, as it reads. */
+    postCommentary: string;
+    actor: string;
+    text: string;
+    isReply: boolean;
+  }>;
+  reactionsAdded: Array<{
+    entityUrn: string;
+    /** The post reacted to, as it reads; empty for anything not in the capture. */
+    entityCommentary: string;
+    actor: string;
+    reactionType: string;
+  }>;
+  unchangedCount: number;
+}
+
+export type TwinDiff =
+  | GmailDiff
+  | SlackDiff
+  | CalendarDiff
+  | AttioDiff
+  | GoogleDocsDiff
+  | GoogleAdsDiff
+  | LinkedInDiff;
 
 // ---------------------------------------------------------------------------
 // Final state. The after-snapshot, narrowed — where each twin ENDED UP, as

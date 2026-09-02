@@ -4,10 +4,10 @@ import { ClonesDownError, UnknownCompanyError, seedCompany } from "@/lib/engine/
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// POST /api/companies/<id>/seed — put this business into Gmail, Slack and the
-// calendar, now. The same `injectWorld` a run uses at tick 0, reached through
-// the same `loadClone`, so a company seeded from this page and a company seeded
-// by a run are the same company.
+// POST /api/companies/<id>/seed — put this business into every clone, now. The
+// same `injectWorld` a run uses at tick 0, reached through the same
+// `loadClone`, so a company seeded from this page and a company seeded by a run
+// are the same company.
 //
 // Destructive: each twin is rebuilt from the body, so whatever was in the clones
 // is gone. The warning belongs to the page — this route is the deed.

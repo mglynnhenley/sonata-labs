@@ -36,14 +36,63 @@ export interface StoryRow {
   mutation?: boolean;
 }
 
-const BEAT_LABEL: Record<string, string> = {
-  email: "An email arrived",
-  message: "Someone posted in Slack",
-  reaction: "Someone reacted in Slack",
-  invite: "A meeting was set",
-  move: "A meeting moved",
-  cancel: "A meeting was cancelled",
-  rsvp: "An invite was answered",
+/**
+ * What a beat was, in a sentence, keyed by twin and then by kind.
+ *
+ * Twin first because `reaction` happens on two surfaces now: a Slack emoji and a
+ * LinkedIn reaction would otherwise share one sentence, and half of every day
+ * would be described as happening somewhere it did not. `whateverElse` is the
+ * fallback for a kind stored by a newer engine than this dashboard — it still
+ * names the surface, because that much the row can always be sure of.
+ */
+const BEAT_LABEL: Record<TwinName, { kinds: Record<string, string>; whateverElse: string }> = {
+  gmail: { kinds: { email: "An email arrived" }, whateverElse: "Something happened in the inbox" },
+  slack: {
+    kinds: { message: "Someone posted in Slack", reaction: "Someone reacted in Slack" },
+    whateverElse: "Something happened in Slack",
+  },
+  calendar: {
+    kinds: {
+      invite: "A meeting was set",
+      move: "A meeting moved",
+      cancel: "A meeting was cancelled",
+      rsvp: "An invite was answered",
+    },
+    whateverElse: "Something happened on the calendar",
+  },
+  attio: {
+    kinds: {
+      record: "A record was added to the CRM",
+      update: "A record changed in the CRM",
+      note: "A note was logged in the CRM",
+      task: "A follow-up was raised in the CRM",
+    },
+    whateverElse: "Something happened in the CRM",
+  },
+  "google-docs": {
+    kinds: {
+      document: "A document was shared",
+      append: "A document gained a section",
+      replace: "A document was revised",
+    },
+    whateverElse: "Something happened in a document",
+  },
+  "google-ads": {
+    kinds: {
+      status: "A campaign was switched",
+      budget: "A campaign budget moved",
+      spend: "A day's spend landed",
+    },
+    whateverElse: "Something happened in the ads account",
+  },
+  linkedin: {
+    kinds: {
+      post: "Something was posted on LinkedIn",
+      comment: "Someone commented on LinkedIn",
+      reaction: "Someone reacted on LinkedIn",
+    },
+    whateverElse: "Something happened on LinkedIn",
+  },
 };
 
 /**
@@ -79,7 +128,7 @@ function beatRow(record: TickRecord, fired: BeatFired, index: number): StoryRow 
     kind: "beat",
     twin: fired.twin,
     title: fired.summary,
-    description: BEAT_LABEL[fired.kind] ?? "Something happened in the world",
+    description: BEAT_LABEL[fired.twin].kinds[fired.kind] ?? BEAT_LABEL[fired.twin].whateverElse,
     details,
     ...(fired.handle?.url ? { url: fired.handle.url } : {}),
   };
@@ -102,30 +151,119 @@ function directorBody(event: DirectorEvent): { description: string; details: Sto
   if (event.twin === "slack") {
     return { description: `Reacted with :${event.payload.emoji}:`, details: [] };
   }
-  if (event.kind === "invite") {
+  if (event.twin === "calendar") {
+    if (event.kind === "invite") {
+      return {
+        description: `Set up "${event.payload.title}"`,
+        details: [{ label: "When", body: `${event.payload.startISO} → ${event.payload.endISO}` }],
+      };
+    }
+    if (event.kind === "move") {
+      return {
+        description: "Moved a meeting",
+        details: [
+          { label: "New time", body: `${event.payload.startISO} → ${event.payload.endISO}` },
+          ...(event.payload.reason ? [{ label: "Because", body: event.payload.reason }] : []),
+        ],
+      };
+    }
+    if (event.kind === "cancel") {
+      return {
+        description: "Cancelled a meeting",
+        details: event.payload.reason ? [{ label: "Because", body: event.payload.reason }] : [],
+      };
+    }
     return {
-      description: `Set up "${event.payload.title}"`,
-      details: [{ label: "When", body: `${event.payload.startISO} → ${event.payload.endISO}` }],
+      description: `Answered the invite — ${event.payload.response}`,
+      details: event.payload.comment ? [{ label: "They added", body: event.payload.comment }] : [],
     };
   }
-  if (event.kind === "move") {
+  if (event.twin === "attio") {
+    if (event.kind === "record") {
+      return { description: `Added a ${event.payload.object} record`, details: [] };
+    }
+    if (event.kind === "update") {
+      return {
+        description: `Changed "${event.payload.recordRef}" in the CRM`,
+        details: Object.entries(event.payload.values).map(([slug, value]) => ({
+          label: slug,
+          body: Array.isArray(value) ? value.join(", ") : String(value),
+        })),
+      };
+    }
+    if (event.kind === "note") {
+      return {
+        description: `Logged "${event.payload.title}" on "${event.payload.parentRecordRef}"`,
+        details: [{ label: "What they wrote", body: event.payload.content }],
+      };
+    }
     return {
-      description: "Moved a meeting",
+      description: "Raised a follow-up",
+      details: [{ label: "The task", body: event.payload.content }],
+    };
+  }
+  if (event.twin === "google-docs") {
+    if (event.kind === "document") {
+      return {
+        description: `Shared "${event.payload.title}"`,
+        details: [
+          { label: "What they wrote", body: event.payload.paragraphs.map((p) => p.text).join("\n") },
+        ],
+      };
+    }
+    if (event.kind === "append") {
+      return {
+        description: `Added to "${event.payload.documentRef}"`,
+        details: [
+          { label: "What they wrote", body: event.payload.paragraphs.map((p) => p.text).join("\n") },
+        ],
+      };
+    }
+    return {
+      description: `Revised "${event.payload.documentRef}"`,
       details: [
-        { label: "New time", body: `${event.payload.startISO} → ${event.payload.endISO}` },
-        ...(event.payload.reason ? [{ label: "Because", body: event.payload.reason }] : []),
+        { label: "Was", body: event.payload.find },
+        { label: "Now", body: event.payload.replaceWith },
       ],
     };
   }
-  if (event.kind === "cancel") {
+  if (event.twin === "google-ads") {
+    if (event.kind === "spend") {
+      return {
+        description: `Spend landed on "${event.payload.adGroup}"`,
+        details: [
+          {
+            label: "The day",
+            body:
+              `${event.payload.impressions} impressions, ${event.payload.clicks} clicks, ` +
+              `${(event.payload.costMicros / 1_000_000).toFixed(2)} spent`,
+          },
+        ],
+      };
+    }
+    const campaign = event.payload.campaign ?? event.payload.campaignRef ?? "a campaign";
+    return event.kind === "status"
+      ? { description: `Set "${campaign}" to ${event.payload.status}`, details: [] }
+      : {
+          description: `Moved "${campaign}" to ${(event.payload.amountMicros / 1_000_000).toFixed(2)} a day`,
+          details: [],
+        };
+  }
+  if (event.kind === "post") {
     return {
-      description: "Cancelled a meeting",
-      details: event.payload.reason ? [{ label: "Because", body: event.payload.reason }] : [],
+      description: "Posted on LinkedIn",
+      details: [{ label: "What they wrote", body: event.payload.commentary }],
+    };
+  }
+  if (event.kind === "comment") {
+    return {
+      description: event.payload.parentRef ? "Replied to a comment" : "Commented on a post",
+      details: [{ label: "What they wrote", body: event.payload.text }],
     };
   }
   return {
-    description: `Answered the invite — ${event.payload.response}`,
-    details: event.payload.comment ? [{ label: "They added", body: event.payload.comment }] : [],
+    description: `Reacted ${event.payload.reactionType ?? "LIKE"} on LinkedIn`,
+    details: [],
   };
 }
 

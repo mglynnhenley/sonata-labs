@@ -591,5 +591,302 @@
         "description": "Halloran & Pike on site Monday through Wednesday."
       }
     ]
+  },
+  "attio": {
+    "companies": [
+      {
+        "name": "Vantage Freight",
+        "domain": "vantagefreight.com",
+        "description": "Largest logistics customer, on an annual contract that renews in six weeks. Settlement timing has been late twice this month."
+      },
+      {
+        "name": "Ledgerlink",
+        "domain": "ledgerlink.io",
+        "description": "Reconciliation data vendor. Their renewal is on the desk and the number has moved twice."
+      },
+      {
+        "name": "Cardinal Haulage",
+        "domain": "cardinalhaulage.com",
+        "description": "Mid-market freight operator, introduced by Vantage. Nothing signed, and nobody has called them back."
+      }
+    ],
+    "contacts": [
+      {
+        "personId": "sofie",
+        "companyName": "Vantage Freight",
+        "jobTitle": "VP Operations"
+      },
+      {
+        "personId": "ravi",
+        "companyName": "Ledgerlink",
+        "jobTitle": "Account Executive"
+      }
+    ],
+    "deals": [
+      {
+        "name": "Vantage Freight — annual renewal",
+        "companyName": "Vantage Freight",
+        "stage": "In Progress",
+        "value": 180000,
+        "ownerPersonId": "dana",
+        "contactPersonIds": [
+          "sofie"
+        ]
+      },
+      {
+        "name": "Cardinal Haulage — pilot",
+        "companyName": "Cardinal Haulage",
+        "stage": "Lead",
+        "value": 45000,
+        "ownerPersonId": "marcus",
+        "contactPersonIds": []
+      }
+    ],
+    "notes": [
+      {
+        "about": "Vantage Freight — annual renewal",
+        "title": "Escalation call, Tuesday",
+        "body": "Sofie: second late settlement this month, 31 hours. Wants the timeline in writing before her CFO sees it. Did not say renewal out loud. Did say \"we are reviewing what we run on\".",
+        "minutesAgo": 1500
+      },
+      {
+        "about": "Ledgerlink",
+        "title": "Renewal number moved again",
+        "body": "Ravi now quoting a 14% uplift, was 9% last week. Marcus wants it flat. No decision until the audit is out of the way.",
+        "minutesAgo": 2900
+      }
+    ],
+    "tasks": [
+      {
+        "content": "Send Sofie the settlement timeline before the incident review",
+        "assigneePersonId": "priya",
+        "about": "Vantage Freight — annual renewal",
+        "dueInMinutes": 120,
+        "isCompleted": false,
+        "minutesAgo": 240
+      },
+      {
+        "content": "Get Marcus to sign off the Ledgerlink number",
+        "assigneePersonId": "dana",
+        "about": "Ledgerlink",
+        "dueInMinutes": -2880,
+        "isCompleted": false,
+        "minutesAgo": 5760
+      },
+      {
+        "content": "Call Cardinal Haulage back about the pilot",
+        "assigneePersonId": "marcus",
+        "about": "Cardinal Haulage — pilot",
+        "dueInMinutes": -1440,
+        "isCompleted": false,
+        "minutesAgo": 7200
+      }
+    ]
+  },
+  "googleDocs": {
+    "documents": [
+      {
+        "title": "SOC 2 evidence tracker — round 2",
+        "ownerPersonId": "aisha",
+        "paragraphs": [
+          {
+            "text": "SOC 2 evidence tracker — round 2",
+            "namedStyleType": "TITLE"
+          },
+          {
+            "text": "Fieldwork starts Monday. Four items outstanding from Gerald's list; two of them are mine.",
+            "namedStyleType": ""
+          },
+          {
+            "text": "Outstanding",
+            "namedStyleType": "HEADING_1"
+          },
+          {
+            "text": "CC6.1 access review — signed Wednesday, screenshot attached to the drive folder.",
+            "namedStyleType": ""
+          },
+          {
+            "text": "CC8.1 change tickets — Tomas is pulling the last quarter. Owner: Tomas. Due: Thursday.",
+            "namedStyleType": ""
+          },
+          {
+            "text": "A1.2 restore test — TBC. We have not run one since March and Gerald has said in writing that a missed restore test is a deficiency.",
+            "namedStyleType": ""
+          },
+          {
+            "text": "CC7.2 monitoring alerts — evidence exists, format is wrong, needs re-exporting.",
+            "namedStyleType": ""
+          }
+        ]
+      },
+      {
+        "title": "Vantage Freight — incident review (draft)",
+        "ownerPersonId": "tomas",
+        "paragraphs": [
+          {
+            "text": "Vantage Freight — settlement incident review",
+            "namedStyleType": "TITLE"
+          },
+          {
+            "text": "Draft. Do not send outside the company until Priya has read it.",
+            "namedStyleType": "SUBTITLE"
+          },
+          {
+            "text": "What happened",
+            "namedStyleType": "HEADING_1"
+          },
+          {
+            "text": "The Tuesday settlement batch queued behind a reconciliation job that ran long. Vantage's file landed 31 hours after the contractual window.",
+            "namedStyleType": ""
+          },
+          {
+            "text": "Why it happened twice",
+            "namedStyleType": "HEADING_1"
+          },
+          {
+            "text": "TBC — Tomas to confirm whether the queue split shipped before or after the second run.",
+            "namedStyleType": ""
+          },
+          {
+            "text": "What we are doing",
+            "namedStyleType": "HEADING_1"
+          },
+          {
+            "text": "Splitting the settlement queue away from reconciliation. Starting today regardless of the audit.",
+            "namedStyleType": ""
+          }
+        ]
+      },
+      {
+        "title": "Board pack, draft 3 — churn slide notes",
+        "ownerPersonId": "priya",
+        "paragraphs": [
+          {
+            "text": "Board pack, draft 3 — the churn slide",
+            "namedStyleType": "TITLE"
+          },
+          {
+            "text": "Marcus wants gross churn on one line and the Vantage situation nowhere near it.",
+            "namedStyleType": ""
+          },
+          {
+            "text": "Dana disagrees: two late settlements on the largest account is the number the board will ask about anyway, and being asked is worse than saying it first.",
+            "namedStyleType": ""
+          },
+          {
+            "text": "Unresolved. Decide at the 1:1.",
+            "namedStyleType": ""
+          }
+        ]
+      }
+    ]
+  },
+  "googleAds": {
+    "campaigns": [
+      {
+        "name": "Brand — Northwind Ledger",
+        "status": "ENABLED",
+        "dailyBudget": 60,
+        "channel": "SEARCH",
+        "adGroups": [
+          {
+            "name": "Exact — northwind ledger",
+            "status": "ENABLED",
+            "dailyImpressions": 900,
+            "dailyClicks": 120,
+            "dailyCost": 45,
+            "dailyConversions": 6
+          }
+        ]
+      },
+      {
+        "name": "Embedded treasury — search",
+        "status": "ENABLED",
+        "dailyBudget": 250,
+        "channel": "SEARCH",
+        "adGroups": [
+          {
+            "name": "Reconciliation software",
+            "status": "ENABLED",
+            "dailyImpressions": 14000,
+            "dailyClicks": 620,
+            "dailyCost": 290,
+            "dailyConversions": 4
+          },
+          {
+            "name": "Treasury API",
+            "status": "ENABLED",
+            "dailyImpressions": 5200,
+            "dailyClicks": 180,
+            "dailyCost": 95,
+            "dailyConversions": 2
+          }
+        ]
+      },
+      {
+        "name": "Freight operators — retargeting",
+        "status": "PAUSED",
+        "dailyBudget": 40,
+        "channel": "DISPLAY",
+        "adGroups": [
+          {
+            "name": "Site visitors, 30 days",
+            "status": "PAUSED",
+            "dailyImpressions": 21000,
+            "dailyClicks": 90,
+            "dailyCost": 18,
+            "dailyConversions": 0
+          }
+        ]
+      }
+    ]
+  },
+  "linkedin": {
+    "posts": [
+      {
+        "personId": "",
+        "commentary": "Reconciliation shouldn't be a Monday morning problem. We wrote up how our settlement engine handles late bank files, and what we changed after the last one. Link in comments.",
+        "minutesAgo": 2600,
+        "isDraft": false,
+        "comments": [
+          {
+            "personId": "sofie",
+            "text": "Genuine question since we're a customer — is the late file handling the same thing that made our settlement 31 hours late on Tuesday? Nobody has come back to me on that yet.",
+            "minutesAgo": 1400,
+            "replies": []
+          },
+          {
+            "personId": "ravi",
+            "text": "Good writeup. Would love to see the reconciliation side of this covered too.",
+            "minutesAgo": 900,
+            "replies": []
+          }
+        ],
+        "reactedByPersonIds": [
+          "marcus",
+          "dana",
+          "tomas"
+        ]
+      },
+      {
+        "personId": "priya",
+        "commentary": "Our SOC 2 Type II fieldwork starts Monday. Nine months of controls, one very patient compliance lead, and a team that filled in the gaps without being asked twice. Proud of this one.",
+        "minutesAgo": 4300,
+        "isDraft": false,
+        "comments": [],
+        "reactedByPersonIds": [
+          "priya",
+          "aisha"
+        ]
+      },
+      {
+        "personId": "",
+        "commentary": "We're hiring a second compliance engineer. Remote, EU or UK, someone who has been through a Type II and would do it again on purpose.",
+        "minutesAgo": 600,
+        "isDraft": true,
+        "comments": [],
+        "reactedByPersonIds": []
+      }
+    ]
   }
 }

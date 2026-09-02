@@ -1,21 +1,6 @@
 "use client";
 
-import {
-  Chip,
-  IconAlert,
-  IconArrowRight,
-  IconBolt,
-  IconCalendar,
-  IconMail,
-  IconMessage,
-  IconMinus,
-  IconSearch,
-  IconSpark,
-  SERVICE_LABELS,
-  Timeline,
-  TimelineItem,
-  type TimelineTone,
-} from "@sonata/ui";
+import { Chip, IconAlert, IconArrowRight, IconBolt, IconCalendar, IconDoc, IconFeed, IconMail, IconMessage, IconMinus, IconSearch, IconSpark, IconTrend, IconUsers, SERVICE_LABELS, Timeline, TimelineItem, type TimelineTone } from "@sonata/ui";
 import type { ReactNode } from "react";
 import type { TwinName } from "@sonata/core";
 import { simClock } from "@/lib/format";
@@ -26,9 +11,13 @@ import type { StoryKind, StoryRow } from "../_lib/story";
 // thing itself.
 
 const TWIN_ICON: Record<TwinName, ReactNode> = {
-  gmail: <IconMail size="xs" />,
-  slack: <IconMessage size="xs" />,
-  calendar: <IconCalendar size="xs" />,
+  gmail: <IconMail size={11} />,
+  slack: <IconMessage size={11} />,
+  calendar: <IconCalendar size={11} />,
+  attio: <IconUsers size={11} />,
+  "google-docs": <IconDoc size={11} />,
+  "google-ads": <IconTrend size={11} />,
+  linkedin: <IconFeed size={11} />,
 };
 
 function tone(row: StoryRow): TimelineTone {

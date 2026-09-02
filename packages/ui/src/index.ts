@@ -115,6 +115,8 @@ export {
   IconClock,
   IconClose,
   IconCopy,
+  IconDoc,
+  IconFeed,
   IconGear,
   IconInbox,
   IconInfo,
@@ -126,5 +128,7 @@ export {
   IconPlay,
   IconSearch,
   IconSpark,
+  IconTrend,
+  IconUsers,
   type IconProps,
 } from "./components/icons";

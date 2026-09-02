@@ -23,11 +23,12 @@ import { getOwnerMember } from "@/lib/store/members";
 import { getPostRow } from "@/lib/store/posts";
 import { hasApprovedAdminAcl } from "@/lib/store/organizations";
 import { reactionCountsByType } from "@/lib/store/reactions";
+import { trackDb } from "./helpers";
 
 const schema = readFileSync(path.resolve(__dirname, "..", "db", "schema.sql"), "utf8");
 
 function freshDb(): Database.Database {
-  const db = new Database(":memory:");
+  const db = trackDb(new Database(":memory:"));
   db.exec(schema);
   db.prepare("ATTACH DATABASE ':memory:' AS audit").run();
   db.exec(AUDIT_DDL);

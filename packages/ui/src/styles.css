@@ -69,11 +69,23 @@
   --color-sn-gmail-soft: #f7e8e5;
   --color-sn-gmail-line: #ecd5cf;
   --color-sn-slack-ink: #6b3f77;
-  --color-sn-slack-soft: #f1e9f3;
-  --color-sn-slack-line: #e2d5e6;
-  --color-sn-calendar-ink: #33648f;
-  --color-sn-calendar-soft: #e7edf4;
-  --color-sn-calendar-line: #d2dde9;
+  --color-sn-slack-soft: #f1e8f3;
+  --color-sn-slack-line: #e3d4e7;
+  --color-sn-calendar-ink: #2f6497;
+  --color-sn-calendar-soft: #e5edf6;
+  --color-sn-calendar-line: #cfdcea;
+  --color-sn-attio-ink: #2f6b5d;
+  --color-sn-attio-soft: #e3f0ec;
+  --color-sn-attio-line: #cadfd8;
+  --color-sn-google-docs-ink: #3a5aa8;
+  --color-sn-google-docs-soft: #e6eaf7;
+  --color-sn-google-docs-line: #d0d8ee;
+  --color-sn-google-ads-ink: #a06a24;
+  --color-sn-google-ads-soft: #f7eede;
+  --color-sn-google-ads-line: #eaddc4;
+  --color-sn-linkedin-ink: #2a5f86;
+  --color-sn-linkedin-soft: #e4eef5;
+  --color-sn-linkedin-line: #ccdfea;
 
   /* Status hues. Running wears the accent: live is the loudest thing on any
      page, so nothing else gets to borrow petrol. */

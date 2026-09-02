@@ -25,6 +25,10 @@ const MARKER_TONES: Record<TimelineTone, string> = {
   gmail: "border-sn-gmail-line bg-sn-gmail-soft text-sn-gmail-ink",
   slack: "border-sn-slack-line bg-sn-slack-soft text-sn-slack-ink",
   calendar: "border-sn-calendar-line bg-sn-calendar-soft text-sn-calendar-ink",
+  attio: "border-sn-attio-line bg-sn-attio-soft text-sn-attio-ink",
+  "google-docs": "border-sn-google-docs-line bg-sn-google-docs-soft text-sn-google-docs-ink",
+  "google-ads": "border-sn-google-ads-line bg-sn-google-ads-soft text-sn-google-ads-ink",
+  linkedin: "border-sn-linkedin-line bg-sn-linkedin-soft text-sn-linkedin-ink",
 };
 
 export type TimelineProps = HTMLAttributes<HTMLOListElement>;

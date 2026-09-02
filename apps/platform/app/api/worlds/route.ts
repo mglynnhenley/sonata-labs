@@ -9,7 +9,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 // Cloned businesses. A world is the cast, the channels and the company — the
-// thing all three twins are seeded from, so the same people appear everywhere.
+// thing every twin is seeded from, so the same people appear everywhere.
 
 export function GET() {
   try {

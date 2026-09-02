@@ -36,7 +36,7 @@ const INSTRUCTIONS =
   "gmail_*, slack_* and calendar_* tools to act.";
 
 export interface ServeOptions {
-  /** Which twins to front. Defaults to all three. */
+  /** Which twins to front. Defaults to every twin. */
   twins?: readonly ServedTwin[];
   config?: SonataConfig;
   /** Injectable for tests; the real server uses global fetch. */

@@ -2,21 +2,7 @@ import { describe, it, expect } from "vitest";
 import Database from "better-sqlite3";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import {
-  CORPUS,
-  COMMENT_JORDAN,
-  DAN_URN,
-  JORDAN_URN,
-  makeTestDb,
-  ORG_URN,
-  OWNER_URN,
-  POST_BUSY,
-  POST_DRAFT,
-  POST_PERSONAL,
-  POST_QUIET,
-  PRIYA_URN,
-  at,
-} from "./helpers";
+import { COMMENT_JORDAN, CORPUS, DAN_URN, JORDAN_URN, ORG_URN, OWNER_URN, POST_BUSY, POST_DRAFT, POST_PERSONAL, POST_QUIET, PRIYA_URN, at, makeTestDb, trackDb } from "./helpers";
 import { listActions, logAction, startNewSession } from "@/lib/audit";
 import { newPostId } from "@/lib/linkedin/ids";
 import { activityUrn, commentUrn } from "@/lib/linkedin/urn";
@@ -118,7 +104,7 @@ describe("schema", () => {
   });
 
   it("applies cleanly to a fresh audit-only database", () => {
-    const audit = new Database(":memory:");
+    const audit = trackDb(new Database(":memory:"));
     audit.exec(schema);
     const names = (
       audit.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as Array<{

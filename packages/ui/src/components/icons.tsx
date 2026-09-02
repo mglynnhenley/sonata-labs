@@ -118,6 +118,44 @@ export const IconCalendar = makeIcon(
   </>,
 );
 
+// The four newer twins. Each says what the surface IS rather than whose logo it
+// is — a CRM is people, Docs is a page of text, Ads is a spend line, LinkedIn is
+// a feed post — because the set has to read at 13px in a timeline marker.
+export const IconUsers = makeIcon(
+  "IconUsers",
+  <>
+    <circle cx="9" cy="8" r="3.5" />
+    <path d="M3 20a6 6 0 0 1 12 0" />
+    <path d="M16 5.2a3.5 3.5 0 0 1 0 5.6M18 20a6 6 0 0 0-2.5-4.9" />
+  </>,
+);
+
+export const IconDoc = makeIcon(
+  "IconDoc",
+  <>
+    <path d="M6 3.5h7L18.5 9v11.5h-12.5Z" />
+    <path d="M13 3.5V9h5.5M9 13h6M9 16.5h6" />
+  </>,
+);
+
+export const IconTrend = makeIcon(
+  "IconTrend",
+  <>
+    <path d="M4 20V4" />
+    <path d="M4 20h16" />
+    <path d="m7.5 15 3.5-4 3 2.5 5-6" />
+    <path d="M19 7.5h-3.5M19 7.5V11" />
+  </>,
+);
+
+export const IconFeed = makeIcon(
+  "IconFeed",
+  <>
+    <rect x="3.5" y="4.5" width="17" height="15" rx="2.5" />
+    <path d="M7.5 9.5h4M7.5 13h9M7.5 16h6" />
+  </>,
+);
+
 export const IconSearch = makeIcon(
   "IconSearch",
   <>
