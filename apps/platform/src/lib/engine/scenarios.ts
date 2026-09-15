@@ -186,7 +186,7 @@ export function listShipped(): Array<{ id: string; title: string; story: string 
 
 /** Ids of the shipped suite, in run order — the benchmark's default columns. */
 export function shippedIds(): string[] {
-  return SCENARIOS.map((s) => s.id);
+  return SCENARIOS.filter((s) => !s.benchmark).map((s) => s.id);
 }
 
 export function listTemplates(): ReturnType<typeof templateSummaries> {
@@ -274,6 +274,13 @@ export function specForRun(
   termination?: Partial<Termination>,
 ): EpisodeSpec {
   let out = spec;
+  // A continuity smoke run observes a prefix of the same authored week. Its
+  // denominator and future clock must survive the cap.
+  if (spec.benchmark) {
+    const guard = { ...spec.termination, ...termination };
+    if (ticks !== undefined) guard.maxTicks = Math.min(spec.clock.ticks, Math.max(1, Math.round(ticks)), guard.maxTicks ?? Infinity);
+    return { ...spec, termination: guard };
+  }
   if (ticks !== undefined) {
     const wanted = Math.max(1, Math.min(Math.round(ticks), 200));
     if (wanted !== spec.clock.ticks) out = { ...out, clock: { ...out.clock, ticks: wanted } };

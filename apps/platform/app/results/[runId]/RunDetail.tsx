@@ -10,6 +10,7 @@ import type { RunBrief } from "../_lib/artifacts";
 import { headlineUsd, type CostReport } from "../_lib/cost";
 import { buildMoments, findMomentIndex, replayStats } from "../_lib/moments";
 import { badgeStatus, outcomeLabel, summarizeRun } from "../_lib/summary";
+import { ContinuityResults } from "../_components/ContinuityResults";
 import { CostBreakdown } from "../_components/CostBreakdown";
 import { DayFailureMap } from "../_components/DayFailureMap";
 import { DayReplay } from "../_components/DayReplay";
@@ -107,7 +108,7 @@ export function RunDetail({
    */
   const settled = run.status !== "queued" && run.status !== "running";
   const rejudge = (variant: "primary" | "secondary") =>
-    settled ? (
+    settled && !run.benchmark ? (
       <RejudgeButton
         variant={variant}
         runId={run.runId}
@@ -161,7 +162,7 @@ export function RunDetail({
             ) : null}
             {/* The report is worth handing over once the day is scored; before
                 that it is a page of dashes, so it waits with the rejudge action. */}
-            {settled ? (
+            {settled && !run.benchmark ? (
               <Link
                 href={`/runs/${encodeURIComponent(run.runId)}/report`}
                 className={buttonClasses("secondary", "md")}
@@ -175,6 +176,7 @@ export function RunDetail({
         }
       />
 
+      {run.benchmark ? <ContinuityResults report={run.benchmark} /> : <>
       <VerdictHeader
         summary={summary}
         stats={stats}
@@ -213,6 +215,7 @@ export function RunDetail({
         <FailureModes judge={run.verdict?.judge ?? null} onJump={jump} />
       </div>
 
+      </>}
       <div id="replay" ref={replayRef}>
         <DayReplay
           moments={moments}

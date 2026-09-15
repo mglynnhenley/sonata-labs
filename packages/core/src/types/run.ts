@@ -6,6 +6,7 @@ import type { TwinAuditRow } from "../twin";
 import type { BeatBody, Criterion } from "./episode";
 import type { EpisodeJudgeReport, TwinSnapshot } from "./judge";
 import type { ByTwin, PersonRef, TwinName } from "./world";
+import type { BenchmarkReport } from "./benchmark";
 
 // The artifact a run leaves behind. It is written once and read forever: the
 // live dashboard, the step-by-step replay, the judge and the benchmark table all
@@ -314,6 +315,8 @@ export interface EpisodeRun {
   };
   /** Colleague context semantics; absent in historical artifacts. */
   worldContextVersion?: "recipient-observations-v1";
+  /** Deterministic domain evidence and coverage, independent of the model judge. */
+  benchmark?: BenchmarkReport;
   runId: string;
   specId: string;
   /** Denormalized so a runs list renders without loading every spec. */

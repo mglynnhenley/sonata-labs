@@ -87,6 +87,9 @@ export interface ScoredRun {
  */
 export function scoreRun(run: EpisodeRun, spec: EpisodeSpec, input: ScoreInput = {}): ScoredRun {
   const execution = runExecution(run);
+  // Domain rubrics carry per-unit partial credit and explicit unknowns. An empty
+  // legacy checklist cannot substitute for that separate report.
+  if (spec.benchmark) return { checklist: [], verdict: null, execution };
   if (!execution.executed) return { checklist: [], verdict: null, execution };
 
   const existing = run.verdict;
@@ -172,6 +175,7 @@ export async function judgeRun(
   // would write a diagnosis of nothing, and that diagnosis would then be quoted
   // as a finding about a model. Nothing is recorded for it either: a day with no
   // work in it was never a candidate, so it has no failed attempt to explain.
+  if (spec?.benchmark) throw new Error("Continuity cases use their persisted domain rubric. Free-text judge calibration is not implemented.");
   const execution = runExecution(run);
   if (!execution.executed) {
     throw new Error(`This run cannot be assessed. ${execution.reason ?? ""}`.trim());

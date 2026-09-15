@@ -354,6 +354,7 @@ const CAVEATS = [
 // ---------------------------------------------------------------------------
 
 export function createSession(opts: SessionOptions): Session {
+  if (opts.spec.benchmark) throw new Error("Continuity prototypes require the managed episode runner and its desk tools; external sessions are not implemented for these cases.");
   const { spec, timer } = opts;
   const timing = normalizeSessionTiming(opts.timing);
   const actionDriven = timing.policy === "provider-operations-v1";

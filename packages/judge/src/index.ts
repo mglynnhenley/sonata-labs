@@ -7,6 +7,7 @@
 // rewritten prompt months later with nothing live attached.
 
 export * from "./autonomy";
+export * from "./benchmark";
 export * from "./checklist";
 export * from "./controls";
 export * from "./project";

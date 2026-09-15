@@ -1,3 +1,5 @@
+import { waterReporting } from "./waterReporting";
+import { electricityContinuity } from "./electricityContinuity";
 import type { EpisodeSpec } from "@sonata/core";
 import { candidateScheduling } from "./candidateScheduling";
 import { clientEscalation } from "./clientEscalation";
@@ -35,6 +37,8 @@ export const SCENARIOS: readonly EpisodeSpec[] = [
   vcCopilotDay,
   taxReportingDay,
   taxWorkbookDay,
+  waterReporting,
+  electricityContinuity,
 ];
 
 /**
@@ -48,7 +52,7 @@ export function getScenario(id: string): EpisodeSpec | undefined {
 
 /** Every scenario id, in run order. The default suite for the benchmark. */
 export function scenarioIds(): string[] {
-  return SCENARIOS.map((s) => s.id);
+  return SCENARIOS.filter((s) => !s.benchmark).map((s) => s.id);
 }
 
 export {
@@ -70,3 +74,5 @@ export { vcCopilotDay, VC_COPILOT_WORLD, VC_CALLS } from "./vcCopilotDay";
 export { taxReportingDay, TAX_WORLD, TAX_PRIOR, TAX_CURRENT } from "./taxReportingDay";
 
 export { taxWorkbookDay, TAX_WORKBOOK_WORLD, TAX_WORKBOOK_MEETINGS } from "./taxWorkbookDay";
+
+export { waterReporting, electricityContinuity };

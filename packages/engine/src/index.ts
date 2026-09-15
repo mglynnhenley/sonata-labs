@@ -20,3 +20,5 @@ export * from "./trace";
 export * from "./project";
 export * from "./slackClient";
 export * from "./gmailMime";
+
+export * from "./benchmarks/index";

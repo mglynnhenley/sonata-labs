@@ -181,6 +181,8 @@ export interface AgentOptions {
   maxStepsPerTick?: number;
   /** How the day's conversation is kept within the model's window. */
   contextPolicy?: Partial<AgentContextPolicy>;
+  /** Actual tool executions, including reads and local notes. */
+  maxToolCallsPerTick?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -407,6 +409,8 @@ export function createAgent(opts: AgentOptions): Agent {
   return {
     async act(ctx: AgentContext): Promise<AgentStep[]> {
       const steps: AgentStep[] = [];
+      let toolCalls = 0;
+      const callLimit = opts.maxToolCallsPerTick ?? (spec.benchmark ? 6 : Infinity);
       // Dated as it is written, from the world's clock rather than the wall's.
       openItems.at(ctx.simTimeLabel);
       const trimNote = trimForPrompt();
@@ -444,6 +448,11 @@ export function createAgent(opts: AgentOptions): Agent {
             // Only function tools exist in this loop; anything else is a provider
             // extension the harness never asked for.
             if (call.type !== "function") continue;
+            if (toolCalls >= callLimit) {
+              messages.push({ role: "tool", tool_call_id: call.id, content: JSON.stringify({ error: "Tool-call budget exhausted. Continue next interval; this call was not executed." }) });
+              continue;
+            }
+            toolCalls++;
             const args = parseArgs(call.function.arguments);
             const { step, result } = await invoke(call.function.name, args);
             steps.push(step);
@@ -453,6 +462,7 @@ export function createAgent(opts: AgentOptions): Agent {
               content: JSON.stringify(result ?? null),
             });
           }
+          if (toolCalls >= callLimit) return;
         }
         // Out of turns. Said out loud rather than silently truncated, because an
         // agent that runs the tick out every tick is a finding in itself.

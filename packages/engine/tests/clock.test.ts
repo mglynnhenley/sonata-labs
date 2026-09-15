@@ -103,3 +103,11 @@ describe("createClock", () => {
     expect(createClock(utc).windowLabel(31)).toBe("16:45–17:00");
   });
 });
+
+// Explicit working opportunities have elapsed overnight gaps, but short windows.
+it("keeps the final work interval separate from the overnight gap", () => {
+  const clock = createClock({ startISO: "2026-09-21T17:45:00+01:00", ticks: 2, simMinutesPerTick: 15,
+    tickISOs: ["2026-09-21T17:45:00+01:00", "2026-09-22T09:00:00+01:00"], endISO: "2026-09-22T09:15:00+01:00" });
+  expect(clock.windowLabel(0)).toBe("17:45–18:00");
+  expect(clock.minutesBetween(0, 1)).toBe(915);
+});

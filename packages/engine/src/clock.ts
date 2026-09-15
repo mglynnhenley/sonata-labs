@@ -1,5 +1,6 @@
 import {
   type Clock,
+  offsetMinutes,
   endISO,
   isoToTick,
   lastTick,
@@ -89,8 +90,11 @@ export function createClock(spec: Clock): SimClock {
       const upper = startsAt(to, toISO) ? to - 1 : to;
       return clock.range(lower, upper);
     },
-    minutesBetween: (from, to) => (to - from) * spec.simMinutesPerTick,
-    windowLabel: (tick) => `${tickLabel(spec, tick)}–${tickLabel(spec, tick + 1)}`,
+    minutesBetween: (from, to) => (Date.parse(tickToISO(spec, to)) - Date.parse(tickToISO(spec, from))) / 60_000,
+    windowLabel: (tick) => {
+      const localEnd = new Date(Date.parse(tickToISO(spec, tick)) + (spec.simMinutesPerTick + offsetMinutes(spec.startISO)) * 60_000);
+      return `${tickLabel(spec, tick)}–${localEnd.toISOString().slice(11, 16)}`;
+    },
   };
   return clock;
 }

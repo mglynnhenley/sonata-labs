@@ -22,7 +22,9 @@ import { SIM_MINUTES_PER_TICK, WORKDAY_TICKS } from "../src/day";
 // engine and the judge rely on is asserted here, before a scenario ever costs a
 // model call.
 
-const SPECS: EpisodeSpec[] = [...SCENARIOS];
+// These assertions describe the original cross-clone days. Continuity domains
+// have their own receipt/state contract tests in the engine package.
+const SPECS: EpisodeSpec[] = SCENARIOS.filter(spec => !spec.benchmark);
 
 /** The date part of the clock, e.g. "2026-09-15" — every event shares it. */
 function dayOf(spec: EpisodeSpec): string {
@@ -67,6 +69,16 @@ function backReference(beat: Beat): string | undefined {
 }
 
 describe("the registry", () => {
+  it("also discovers two explicit continuity prototypes without expanding the default matrix", () => {
+    const cases = SCENARIOS.filter(spec => spec.benchmark);
+    expect(cases.map(spec => spec.benchmark?.caseId).sort()).toEqual(["E01", "W01"]);
+    for (const spec of cases) {
+      expect(getScenario(spec.id)).toBe(spec);
+      expect(spec.clock.ticks).toBe(180);
+      expect(spec.clock.tickISOs).toHaveLength(180);
+      expect(scenarioIds()).not.toContain(spec.id);
+    }
+  });
   it("holds the shipped scenarios, addressable by id", () => {
     expect(scenarioIds()).toEqual([
       "client-escalation",

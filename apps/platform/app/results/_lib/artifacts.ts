@@ -28,6 +28,8 @@ import {
   type TwinName,
 } from "@sonata/core";
 import {
+  aggregateBenchmark,
+  normalizeBenchmarkReport,
   autonomy,
   checklistWithUnjudged,
   escalationsFromTicks,
@@ -699,12 +701,25 @@ function normalizeRun(raw: unknown, fallbackId: string): SavedRun | null {
   const snapshots = (asRecord(r.snapshots) ?? {}) as EpisodeRun["snapshots"];
   const spec = (asRecord(r.spec) as unknown as EpisodeSpec | null) ?? null;
   const audit = list<TwinAuditRow>(r.audit);
-  const saved = normalizeVerdict(r.verdict, runId, ticks, checklistFrom(r));
+  let benchmark = normalizeBenchmarkReport(r.benchmark);
   const status = RUN_STATUSES.find((s) => s === r.status);
+  if (benchmark && (!spec?.benchmark || spec.benchmark.caseId !== benchmark.caseId || spec.id !== r.specId)) benchmark = null;
+  if (benchmark && spec) {
+    const full = status === "done" && benchmark.completion === "complete" && ticks.length === spec.clock.ticks &&
+      benchmark.completedTicks === ticks.length && benchmark.plannedTicks === spec.clock.ticks &&
+      benchmark.completedThrough !== null && Date.parse(benchmark.completedThrough) === Date.parse(spec.clock.endISO ?? "") &&
+      ticks.every((tick, index) => tick.tick === index && Date.parse(tick.simTimeISO) === Date.parse(spec.clock.tickISOs?.[index] ?? ""));
+    const available = { before: existsSync(benchmark.snapshots.before) ? benchmark.snapshots.before : "", after: existsSync(benchmark.snapshots.after) ? benchmark.snapshots.after : "" };
+    benchmark = aggregateBenchmark({ ...benchmark, snapshots: available, completedTicks: Math.min(ticks.length, spec.clock.ticks), plannedTicks: spec.clock.ticks,
+      completion: full ? "complete" : status === "failed" || status === "aborted" ? "failed" : "partial",
+      limitations: [...benchmark.limitations, ...(!full ? ["Stored report reconciled against the actual run status and observed tick sequence; complete-horizon credit is withheld."] : [])],
+    });
+  }
+  const saved = spec?.benchmark || benchmark ? null : normalizeVerdict(r.verdict, runId, ticks, checklistFrom(r));
   // Asked here, where the raw verdict is still in hand, because `cost.llmCalls`
   // is one of its inputs and the next line is about to throw the verdict away.
   const simulation = status
-    ? runSimulation({ status, ticks, audit, snapshots, verdict: saved })
+    ? runSimulation({ status, ticks, audit, snapshots, verdict: saved, ...(benchmark ? { benchmark } : {}) })
     : { simulated: false };
   // A verdict is only read back for a run that was in a state to have earned
   // one. Artifacts written before scoring learned to refuse still carry numbers
@@ -731,6 +746,7 @@ function normalizeRun(raw: unknown, fallbackId: string): SavedRun | null {
     ticks,
     snapshots,
     ...(audit.length > 0 ? { audit } : {}),
+    ...(benchmark ? { benchmark } : {}),
     evidence: evidenceOf(r, spec, snapshots, audit),
     simulated: simulation.simulated,
     ...(["per-run-local-processes", "docker-per-run-v1"].includes(String(asRecord(r.workplace)?.isolation)) ? { workplace: r.workplace as EpisodeRun["workplace"] } : {}),

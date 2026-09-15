@@ -41,6 +41,7 @@ import { attributeActions, newTrace, pairRowsToSteps, traceCost, withTrace } fro
 import { errorMessage } from "./http";
 import { byTwin } from "./adapters";
 import { AgentCallError, type Agent, type AgentContext } from "./agent";
+import { requireEnvironment, type EpisodeEnvironment } from "./benchmarks/runtime";
 
 // THE TICK LOOP.
 //
@@ -65,6 +66,8 @@ import { AgentCallError, type Agent, type AgentContext } from "./agent";
 // anything inside the world.
 
 export interface RunOptions {
+  /** Persisted deterministic operational domain, when the spec declares one. */
+  environment?: EpisodeEnvironment;
   spec: EpisodeSpec;
   adapters: TwinAdapter[];
   /** The agent under test. */
@@ -228,6 +231,7 @@ function unprotectedPhrases(
 // ---------------------------------------------------------------------------
 
 interface TickDeps {
+  environment?: EpisodeEnvironment;
   spec: EpisodeSpec;
   clock: SimClock;
   used: ByTwin<TwinAdapter>;
@@ -345,6 +349,7 @@ export async function runTick(deps: TickDeps, input: TickInput): Promise<TickRec
   const startedAt = deps.now();
   const simTimeISO = deps.clock.isoAt(tick);
   const notes: string[] = [];
+  deps.environment?.beforeTick({ tick, simTimeISO, simTimeLabel: deps.clock.labelAt(tick), digest: "", ticksLeft: Math.max(0, deps.clock.last() - tick) });
 
   const schedule = scheduleBeats(deps.spec.beats);
   const due = schedule.at(tick);
@@ -419,8 +424,8 @@ export async function runTick(deps: TickDeps, input: TickInput): Promise<TickRec
   const ctx: AgentContext = {
     tick,
     simTimeISO,
-    simTimeLabel: deps.clock.labelAt(tick),
-    digest: tickDigest(beatsFired, directorEvents),
+    simTimeLabel: deps.spec.benchmark ? `${simTimeISO.slice(0, 10)} ${deps.clock.labelAt(tick)}` : deps.clock.labelAt(tick),
+    digest: deps.environment ? "Read the desk change feed and current records for newly released sources and counterpart receipts." : tickDigest(beatsFired, directorEvents),
     ticksLeft: Math.max(0, deps.clock.last() - tick),
   };
   let agentSteps: AgentStep[];
@@ -433,6 +438,7 @@ export async function runTick(deps: TickDeps, input: TickInput): Promise<TickRec
     harnessError = err.message;
     notes.push(`Harness error: ${harnessError}`);
   }
+  deps.environment?.afterTick(ctx);
 
   for (const row of deltas) if (row.observationError) notes.push(row.observationError);
   for (const beat of beatsFired) if (beat.error) notes.push(`beat ${beat.beatId}: ${beat.error}`);
@@ -543,6 +549,7 @@ export async function runEpisode(opts: RunOptions): Promise<RunResult> {
     refs,
     director,
     agent: opts.agent,
+    environment: opts.environment,
     historyLimit: opts.historyLimit ?? 40,
     now,
     before,
@@ -561,6 +568,7 @@ export async function runEpisode(opts: RunOptions): Promise<RunResult> {
   });
 
   try {
+    requireEnvironment(spec, opts.environment);
     if (opts.resetTwins) for (const adapter of Object.values(used)) await adapter.reset();
     if (opts.seedWorld) for (const adapter of Object.values(used)) await adapter.seed(spec);
 
@@ -644,11 +652,22 @@ export async function runEpisode(opts: RunOptions): Promise<RunResult> {
     }
 
     if (run.status === "running") run.status = "done";
+    if (opts.environment) {
+      const inferenceFailed = trace.llmCalls.some(call => call.role === "agent" && call.error);
+      if (inferenceFailed && !run.error) {
+        run.error = "Agent inference failed; complete benchmark scoring withheld.";
+      }
+      run.benchmark = opts.environment.finish(run.ticks.length, run.status !== "done" || inferenceFailed);
+    }
     run.endedAt = now();
     return result();
   } catch (err) {
     run.status = "failed";
     run.error = errorMessage(err);
+    if (opts.environment) {
+      try { run.benchmark = opts.environment.finish(run.ticks.length, true); }
+      catch (captureError) { run.error += `; benchmark evidence capture failed: ${errorMessage(captureError)}`; }
+    }
     run.endedAt = now();
     return result();
   }

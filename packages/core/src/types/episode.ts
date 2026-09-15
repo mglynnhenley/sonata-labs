@@ -22,6 +22,10 @@ export interface Clock {
   ticks: number;
   /** Simulated minutes each tick advances — 15 for a normal workday. */
   simMinutesPerTick: number;
+  /** Explicit opportunity starts, for workweeks that skip nights. Must contain exactly `ticks` instants. */
+  tickISOs?: string[];
+  /** Exclusive horizon end. Required with tickISOs; not the next business day's opening. */
+  endISO?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -656,6 +660,8 @@ export interface Termination {
 }
 
 export interface EpisodeSpec {
+  /** An authored deterministic continuity case, scored separately from the legacy checklist. */
+  benchmark?: { kind: "continuity"; caseId: "W01" | "E01"; version: 1 };
   id: string;
   title: string;
   /** The day as a story, in prose. Shown in the dashboard; given to the judge. */

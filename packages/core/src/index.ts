@@ -6,6 +6,7 @@
 export * from "./types/world";
 export * from "./types/episode";
 export * from "./types/run";
+export * from "./types/benchmark";
 export * from "./types/judge";
 export * from "./failureModes";
 export * from "./twin";
