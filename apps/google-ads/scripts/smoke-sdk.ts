@@ -1,3 +1,4 @@
+import { controlToken } from "@sonata/core/controlAuth";
 // Acceptance harness: drive the running sandbox exactly the way Google's own
 // REST examples do.
 //
@@ -16,6 +17,7 @@
 const PORT = process.env.PORT || "3700";
 const ROOT_URL = process.env.SANDBOX_ROOT_URL || `http://localhost:${PORT}`;
 const TOKEN = process.env.SANDBOX_TOKEN || "sandbox-token";
+const CONTROL_TOKEN = controlToken();
 const DEV_TOKEN = process.env.GOOGLE_ADS_DEVELOPER_TOKEN || "sandbox-dev-token";
 const API_VERSION = "v17";
 
@@ -88,11 +90,35 @@ function search(cid: string, query: string, extra: Record<string, unknown> = {})
 }
 
 async function main(): Promise<void> {
+  // Prove the control boundary over HTTP before the harness mutates this world.
+  const controlRoutes = [
+    ["GET", "/api/activity"],
+    ["POST", "/api/sandbox/reset"],
+    ["POST", "/api/sandbox/seed"],
+    ["POST", "/api/sandbox/inject"],
+    ["GET", "/api/sandbox/snapshot"],
+    ["POST", "/api/sandbox/snapshot"],
+  ];
+  for (const [method, path] of controlRoutes) {
+    const denied = await fetch(`${ROOT_URL}${path}`, { method });
+    check(`${method} ${path} rejects missing control credential`, denied.status === 401);
+    if (CONTROL_TOKEN !== TOKEN) {
+      const providerDenied = await fetch(`${ROOT_URL}${path}`, {
+        method, headers: { authorization: `Bearer ${TOKEN}` },
+      });
+      check(`${method} ${path} rejects provider credential`, providerDenied.status === 401);
+    }
+  }
+  const evidence = await fetch(`${ROOT_URL}/api/activity`, {
+    headers: { "x-sandbox-token": CONTROL_TOKEN },
+  });
+  check("control credential can read audit evidence", evidence.status === 200);
+
   console.log(`\n\x1b[1mGoogle Ads sandbox smoke — ${ROOT_URL}\x1b[0m`);
 
   const reset = await fetch(`${ROOT_URL}/api/sandbox/reset`, {
     method: "POST",
-    headers: { "content-type": "application/json", "x-sandbox-token": TOKEN },
+    headers: { "content-type": "application/json", "x-sandbox-token": CONTROL_TOKEN },
     body: JSON.stringify({ note: "smoke" }),
   });
   const resetBody = (await reset.json()) as { status?: string; campaigns?: number };
@@ -347,10 +373,10 @@ async function main(): Promise<void> {
   // Scoped to the session the reset opened: audit.db is a separate file that
   // deliberately SURVIVES a reset, so the unscoped trail carries every earlier
   // run of this script too.
-  const sessions = await (await fetch(`${ROOT_URL}/api/activity?limit=1`)).json();
+  const sessions = await (await fetch(`${ROOT_URL}/api/activity?limit=1`, { headers: { "x-sandbox-token": CONTROL_TOKEN } })).json();
   const sessionId = sessions.sessions?.[0]?.id;
   const activity = await (
-    await fetch(`${ROOT_URL}/api/activity?sessionId=${sessionId}`)
+    await fetch(`${ROOT_URL}/api/activity?sessionId=${sessionId}`, { headers: { "x-sandbox-token": CONTROL_TOKEN } })
   ).json();
   const summaries: string[] = (activity.actions ?? []).map((a: any) => a.summary);
   check("the audit trail records the pause in words a person can read", summaries.some((s) => s.startsWith("Paused “")), summaries.slice(0, 5));

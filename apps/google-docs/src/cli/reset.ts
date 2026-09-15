@@ -1,3 +1,4 @@
+import { controlToken } from "@sonata/core/controlAuth";
 // Reset the working DB to the pristine snapshot.
 //
 //   npm run reset
@@ -12,7 +13,7 @@ import { SNAPSHOT_PATH, WORKING_PATH } from "../lib/db.js";
 // twin runs on 3101, and a wrong PORT does not fail loudly — it resets a
 // different server and reports success.
 const PORT = process.env.PORT || "3600";
-const TOKEN = process.env.SANDBOX_TOKEN || "sandbox-token";
+const TOKEN = controlToken();
 const URL = `http://localhost:${PORT}/api/sandbox/reset`;
 
 async function viaServer(): Promise<boolean> {

@@ -1,6 +1,5 @@
 import { notFound } from "next/navigation";
 import { sessionStatus, sweepOrphanSessions } from "@/lib/engine/session";
-import { twinUrls } from "../../api/_lib/twins";
 import { LiveSession } from "../_components/LiveSession";
 
 // Never cached: the whole point of this page is that it is current. The server
@@ -25,5 +24,5 @@ export default async function SessionPage({ params }: { params: Promise<{ sessio
   const poll = sessionStatus(sessionId);
   if (!poll) notFound();
 
-  return <LiveSession initial={poll} twinLinks={twinUrls(poll.session.twins)} />;
+  return <LiveSession initial={poll} />;
 }

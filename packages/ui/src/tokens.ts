@@ -70,6 +70,7 @@ export const serviceColor = {
   attio: { ink: "#2f6b5d", soft: "#e3f0ec", line: "#cadfd8" },
   "google-docs": { ink: "#3a5aa8", soft: "#e6eaf7", line: "#d0d8ee" },
   "google-ads": { ink: "#a06a24", soft: "#f7eede", line: "#eaddc4" },
+  excel: { ink: "#217346", soft: "#e4f0e9", line: "#c8dfd2" },
   linkedin: { ink: "#2a5f86", soft: "#e4eef5", line: "#ccdfea" },
 } as const;
 
@@ -83,6 +84,7 @@ export const SERVICE_IDS: readonly ServiceId[] = [
   "google-docs",
   "google-ads",
   "linkedin",
+  "excel",
 ];
 
 export const SERVICE_LABELS: Record<ServiceId, string> = {
@@ -93,6 +95,7 @@ export const SERVICE_LABELS: Record<ServiceId, string> = {
   "google-docs": "Google Docs",
   "google-ads": "Google Ads",
   linkedin: "LinkedIn",
+  excel: "Excel",
 };
 
 /** Run lifecycle. `running` wears the accent — live is the loudest thing on

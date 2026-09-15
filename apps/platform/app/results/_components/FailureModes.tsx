@@ -85,7 +85,7 @@ export function FailureModes({
       subtitle={
         rows.length === 0
           ? "The judge returns only the modes it found evidence for. It found none."
-          : `${rows.length} finding${rows.length === 1 ? "" : "s"}. Click one to jump to the moment it happened.`
+          : `${rows.length} finding${rows.length === 1 ? "" : "s"} — things it got wrong, not things it left undone. Click one to jump to the moment it happened.`
       }
       className="scroll-mt-6"
     >
@@ -96,10 +96,9 @@ export function FailureModes({
         <div className="flex items-start gap-2.5 border-t border-sn-gold/30 bg-sn-gold-soft/35 px-5 py-3">
           <IconAlert size="sm" className="mt-0.5 shrink-0 text-sn-gold-ink" />
           <p className="max-w-[78ch] text-sn-sm leading-[19px] text-sn-muted">
-            <span className="font-medium text-sn-gold-ink">
-              These are the findings from the last judge pass that worked.
-            </span>{" "}
-            A later attempt to re-read this day did not finish: {state.reason}
+            <span className="font-medium text-sn-gold-ink">These findings are out of date.</span>{" "}
+            They come from the last judge pass that worked. A later attempt to re-read this day
+            did not finish: {state.reason}
           </p>
         </div>
       ) : null}
@@ -196,24 +195,22 @@ function PartialSightNote({
         {sight.kind === "partial" ? (
           <>
             <span className="font-medium text-sn-gold-ink">
-              Formed on {sight.portion} of this day.
+              This list covers {sight.portion} of the day, not all of it.
             </span>{" "}
-            The day was too large to put in front of the assessor whole, so it read{" "}
-            {sliceSentence(sight.missing[0])}, sampled evenly across the day.{" "}
+            The day was too large to show the assessor whole, so it read{" "}
+            {sliceSentence(sight.missing[0])}, sampled evenly.{" "}
             {empty
               ? "Finding nothing is a claim about that sample, not about the run."
-              : "Anything the agent did inside a gap is missing from this list."}{" "}
-            Ours, not the agent&rsquo;s — the full account is at the top of the page.
+              : "Anything the agent did inside a gap is missing here."}{" "}
+            Our limit, not the agent&rsquo;s — the full account is at the top of the page.
           </>
         ) : (
           <>
             <span className="font-medium text-sn-gold-ink">
-              How much of this day the assessor read was not recorded.
+              This list may cover only part of the day.
             </span>{" "}
-            This report predates the counting, so we cannot tell you whether{" "}
-            {empty ? "it found nothing in the whole run" : "this list was formed on the whole run"}{" "}
-            or on part of it. Not recorded is not the same as complete — re-judge the run to find
-            out.
+            The report predates the counting, so how much the assessor read was never recorded.
+            Not recorded is not the same as complete. Re-judge the run to find out.
           </>
         )}
       </p>
@@ -257,21 +254,32 @@ function FindingRow({
         ) : null}
       </div>
 
+      {/* The catalog writes its `question` for the judge's prompt, where a bare
+          question reads right. Under a finding that has already fired it reads
+          like the page is asking the reader — so it is labelled as what it is:
+          the definition this finding was matched against. */}
       {row.question ? (
-        <p className="mt-1.5 text-sn-sm leading-[19px] text-sn-subtle">{row.question}</p>
+        <p className="mt-1.5 text-sn-sm leading-[19px] text-sn-subtle">
+          <span className="font-medium">What this checks:</span> {row.question}
+        </p>
       ) : null}
 
       {row.evidence.length > 0 ? (
-        <ul className="mt-2.5 space-y-1.5">
-          {row.evidence.map((quote, i) => (
-            <li
-              key={i}
-              className="border-l-2 border-sn-line-strong pl-3 text-sn-base text-sn-muted"
-            >
-              {quote}
-            </li>
-          ))}
-        </ul>
+        <>
+          <p className="mt-2.5 text-sn-xs font-medium tracking-[0.06em] text-sn-subtle uppercase">
+            Evidence
+          </p>
+          <ul className="mt-1.5 space-y-1.5">
+            {row.evidence.map((quote, i) => (
+              <li
+                key={i}
+                className="border-l-2 border-sn-line-strong pl-3 text-sn-base text-sn-muted"
+              >
+                {quote}
+              </li>
+            ))}
+          </ul>
+        </>
       ) : (
         <p className="mt-2 text-sn-sm text-sn-subtle">
           The judge quoted nothing for this one, which is itself worth a second look.

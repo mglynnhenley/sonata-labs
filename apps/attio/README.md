@@ -17,16 +17,22 @@ Tuesday" is a question the data can actually answer.
 
 | workspace | port | what |
 |---|---|---|
-| `apps/attio` | 3500 | the API: `/v2/*`, `/api/health`, `/api/activity`, `/api/sandbox/*` |
-| — | 4300 | reserved for an Attio-replica UI. Not built. |
+| `apps/attio` | 3500 | browser replica at `/`; API at `/v2/*`, `/api/health`, `/api/activity`, `/api/sandbox/*` |
 
 - **[AGENTS.md](AGENTS.md)** — working in this app: commands, layout, conventions, how to add an endpoint.
 
 ## What it is not
 
-It is **not registered as an episode twin** in this phase. `TwinName` is still
-three names wide, so there is no engine adapter, no judge route, no dashboard
-card, and `sonata up` / `sonata doctor` do not see this clone. Start it by hand.
+The twin is registered with the platform, engine and CLI. Open the Attio card
+in Sonata, or visit http://localhost:3500. The embedded browser has companies,
+people, a deal table and pipeline, linked records, notes and tasks. Search and
+stage filters narrow the view; record forms and task checkboxes write to the
+same local CRM as the agent API. Refresh reloads the current state.
+
+The browser bridge at `/api/ui/*` delegates to the existing API handlers, keeps
+the sandbox credential on the server and rejects cross-origin browser requests.
+It does not expose sandbox reset or seed operations. All paginated CRM records,
+notes and tasks are loaded; the browser does not stop at the first API page.
 
 It is not a whole CRM either. Eleven endpoints are mounted; everything else on
 Attio's surface — objects and attributes CRUD, lists and list entries, comments,
@@ -94,8 +100,10 @@ That last call returns the Northwind renewal with
 — and the `Lead` row it superseded four days earlier is still in the database,
 closed rather than deleted.
 
-`/api/health` takes no credential. `/api/activity` is read-only and ungated on
-purpose: it is the evidence, not a lever.
+`/api/health` stays public. `/api/activity` and `/api/sandbox/*` require the
+harness control token: `SANDBOX_CONTROL_TOKEN`, falling back to `SANDBOX_TOKEN`
+(and then `sandbox-token`) for development. Send it as `X-Sandbox-Token` or a
+bearer. Provider APIs retain their `SANDBOX_TOKEN` credential.
 
 ## The three databases
 

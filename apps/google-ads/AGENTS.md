@@ -27,7 +27,7 @@ dashboard card. All of that is Phase 2, and none of it lives here — the routes
 this clone serves already answer the shared control-plane contracts, so Phase 2 is
 an adapter file elsewhere.
 
-## Two credentials
+## Provider and control credentials
 
 - `/v*/…` — the **static `SANDBOX_TOKEN`** as `Authorization: Bearer`, PLUS a
   non-empty `developer-token` header. The developer token's *value* is not
@@ -41,10 +41,14 @@ an adapter file elsewhere.
   failed identity, and `AuthenticationError` has no `..._PARAMETER_MISSING` member
   to borrow. A bad bearer IS the 401. `login-customer-id` is accepted and ignored
   — the sandbox holds one account, so there is nothing to impersonate.
-- `/api/sandbox/*` — the same `SANDBOX_TOKEN`, as `X-Sandbox-Token`, a bearer, or
-  `?access_token=`. These routes answer in plain JSON (`{ok:false,error}`), never
-  the Google envelope: they are machinery, and dressing them as Google Ads would
-  teach an agent that stumbled onto them the wrong thing.
+
+The control plane (`/api/sandbox/*` and `/api/activity`) uses
+`SANDBOX_CONTROL_TOKEN`, falling back to `SANDBOX_TOKEN` and then `sandbox-token`
+for local development. `src/lib/sandbox/auth.ts` delegates to the shared
+`@sonata/core/controlAuth` helper. Control callers may use `X-Sandbox-Token`,
+a bearer, `?access_token=`, or `?token=`; rejection is plain `{ok:false,error}`.
+`/api/health` stays public. A run with distinct credentials must never give its
+control token to the tested agent.
 
 ## Commands
 

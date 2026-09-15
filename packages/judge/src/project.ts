@@ -680,6 +680,9 @@ export function buildFinalState(input: ProjectInput): ByTwin<TwinFinalState> {
       case "google-ads":
         out["google-ads"] = googleAdsFinalState(after);
         break;
+      case "excel":
+        out.excel = { state: after, coverage: { shown: after.workbooks.length, total: after.workbooks.length }, kept: "every workbook, cell and history entry captured, without truncation" };
+        break;
       case "linkedin":
         out.linkedin = linkedInFinalState(after);
         break;
@@ -698,7 +701,10 @@ function deferredQuestion(c: Criterion): string {
 
 export function projectEpisode(input: ProjectInput): EpisodeJudgeInput {
   const truncation = truncationOf(input);
+  const observationGaps = input.run.ticks.flatMap(t => (t.observedActions ?? []).flatMap(row =>
+    row.observationError ? [{ tick: t.tick, twin: row.twin, actionId: row.id, reason: row.observationError }] : []));
   return {
+    ...(observationGaps.length ? { observationGaps } : {}),
     runId: input.run.runId,
     specId: input.spec.id,
     task: input.spec.task,

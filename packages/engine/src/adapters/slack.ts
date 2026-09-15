@@ -1,3 +1,4 @@
+import { audienceIds } from "../observations";
 import {
   resolveTwinApiUrl,
   slackIdOf,
@@ -178,6 +179,10 @@ export function createSlackAdapter(opts: SlackAdapterOptions = {}): TwinAdapter 
         if (body.kind === "message") {
           const p = body.payload;
           const parent = p.threadRef ? ctx.resolve(p.threadRef) : undefined;
+          if (p.threadRef && !parent) throw new Error(`thread ref "${p.threadRef}" was not created`);
+          if (parent && parent.twin !== "slack") throw new Error(`thread ref "${p.threadRef}" belongs to ${parent.twin}, not Slack`);
+          const destination = parent ? messageRef(parent) : undefined;
+          if (destination && !destination.channel) throw new Error(`thread ref "${p.threadRef}" has no channel`);
           // The route resolves a channel name itself, so no roster lookup here:
           // one fewer round trip, and the twin stays the only thing that decides
           // what "#ops" means.
@@ -185,10 +190,10 @@ export function createSlackAdapter(opts: SlackAdapterOptions = {}): TwinAdapter 
             parent
               ? {
                   kind: "thread_reply",
-                  channel: p.channel.replace(/^#/, ""),
+                  channel: destination!.channel,
                   user: slackIdOf(ctx.world, p.from),
                   text: p.text,
-                  threadTs: messageRef(parent).ts,
+                  threadTs: destination!.ts,
                   atISO: ctx.atISO,
                 }
               : {
@@ -210,6 +215,7 @@ export function createSlackAdapter(opts: SlackAdapterOptions = {}): TwinAdapter 
         const p = body.payload;
         const target = ctx.resolve(p.messageRef);
         if (!target) throw new Error(`reaction targets "${p.messageRef}", which nothing created`);
+        if (target.twin !== "slack") throw new Error(`reaction ref "${p.messageRef}" belongs to ${target.twin}, not Slack`);
         const { ts, channel } = messageRef(target);
         if (!channel) {
           throw new Error(`reaction target "${p.messageRef}" has no channel to react in`);
@@ -243,6 +249,31 @@ export function createSlackAdapter(opts: SlackAdapterOptions = {}): TwinAdapter 
 
     reset(): Promise<void> {
       return resetViaApi(http, "episode reset");
+    },
+
+    async observe(row, world) {
+      if (row.actionType !== "post" && row.actionType !== "update") return undefined;
+      const slash = row.targetId?.indexOf("/") ?? -1;
+      if (slash < 1) throw new Error("Posted message has no channel/id");
+      const channel = row.targetId!.slice(0, slash);
+      const ts = row.targetId!.slice(slash + 1);
+      const result = await slack.call<{ messages?: SlackMessage[] }>("conversations.replies", { channel, ts, limit: 1 });
+      const message = result.messages?.find(m => m.ts === ts);
+      if (!message || typeof message.text !== "string") throw new Error("Posted message is unavailable");
+      const members: string[] = [];
+      let cursor: string | undefined;
+      const cursors = new Set<string>();
+      do {
+        const page = await slack.call<{ members?: string[]; response_metadata?: { next_cursor?: string } }>(
+          "conversations.members", { channel, limit: 200, ...(cursor ? { cursor } : {}) });
+        if (!Array.isArray(page.members)) throw new Error("Channel membership is unavailable");
+        members.push(...page.members);
+        cursor = page.response_metadata?.next_cursor || undefined;
+        if (cursor && cursors.has(cursor)) throw new Error("Channel membership pagination repeated");
+        if (cursor) cursors.add(cursor);
+      } while (cursor);
+      return { audience: audienceIds(world, members), actor: audienceIds(world, [message.user ?? ""])[0],
+        text: message.text, channelId: channel };
     },
 
     auditSince(sinceId: number): Promise<TwinAuditRow[]> {

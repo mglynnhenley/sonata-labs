@@ -1,0 +1,38 @@
+/* Scenario review is a reading surface, including the editable rubric. */
+.reading {
+  --text-sn-xs: 14px;
+  --text-sn-xs--line-height: 21px;
+  --text-sn-sm: 16px;
+  --text-sn-sm--line-height: 24px;
+  --text-sn-base: 17px;
+  --text-sn-base--line-height: 27px;
+  --text-sn-md: 17px;
+  --text-sn-md--line-height: 27px;
+  --text-sn-lg: 20px;
+  --text-sn-lg--line-height: 29px;
+  --text-sn-xl: 25px;
+  --text-sn-xl--line-height: 34px;
+  --text-sn-2xl: 30px;
+  --text-sn-2xl--line-height: 38px;
+  --color-sn-muted: #383e3e;
+  max-width: 1040px;
+  margin-inline: auto;
+}
+
+.reading textarea {
+  line-height: 1.6;
+}
+
+.reading p,
+.reading li {
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 640px) {
+  .reading {
+    --text-sn-2xl: 26px;
+    --text-sn-2xl--line-height: 34px;
+    --text-sn-xl: 23px;
+    --text-sn-xl--line-height: 31px;
+  }
+}

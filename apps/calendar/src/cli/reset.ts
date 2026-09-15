@@ -7,9 +7,10 @@
 
 import { copyFileSync, existsSync, rmSync } from "node:fs";
 import { SNAPSHOT_PATH, WORKING_PATH } from "../lib/db.js";
+import { controlToken } from "@sonata/core/controlAuth";
 
 const PORT = process.env.PORT || "3400";
-const TOKEN = process.env.SANDBOX_TOKEN || "sandbox-token";
+const TOKEN = controlToken();
 const URL = `http://localhost:${PORT}/api/sandbox/reset`;
 
 async function viaServer(): Promise<boolean> {

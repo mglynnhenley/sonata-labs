@@ -303,7 +303,7 @@ const USD_PER_TICK = 0.12;
 const MIN_WALL_CLOCK_MS = 20 * 60_000;
 const MIN_COST_USD = 2;
 
-function guardsFor(clock: Clock): Termination {
+export function guardsFor(clock: Clock): Termination {
   return {
     stopWhenAllMustPass: false,
     // Consecutive dead intervals, not a fraction of the day: six in a row is a

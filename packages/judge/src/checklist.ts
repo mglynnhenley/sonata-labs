@@ -159,6 +159,12 @@ export interface FactQuery extends FactVerdicts {
 
 export type FactProvider = (q: FactQuery) => Fact;
 
+/** Logical completion belongs to the operation, even when wall timestamps tie. */
+function auditTick(q: FactQuery, row: TwinAuditRow): number | undefined {
+  if (row.logicalTime === null) return undefined;
+  return row.logicalTime?.tick ?? q.tickOf(row.ts);
+}
+
 function verdictsFor(c: Criterion): FactVerdicts {
   const mint = (status: CriterionStatus, evidence: string, tick?: number): Fact => ({
     [MINTED_FOR]: c.id,
@@ -306,7 +312,7 @@ function touches(r: TwinAuditRow, id: string | undefined): boolean {
 }
 
 function fromRow(r: TwinAuditRow, q: FactQuery, prefix: string): Fact {
-  return q.holds(`${prefix}: ${describeRow(r)}`, q.tickOf(r.ts));
+  return q.holds(`${prefix}: ${describeRow(r)}`, auditTick(q, r));
 }
 
 /** The container the criterion is about: a Gmail thread, a Slack channel, a calendar. */
@@ -394,7 +400,7 @@ function unsentDraft(
     q.audit,
     (r) => isDraftRow(r) && (touches(r, threadId) || (subject ? contains(r.summary, bareSubject(subject)) : false)),
   );
-  return row ? { text: describeRow(row), tick: q.tickOf(row.ts) } : undefined;
+  return row ? { text: describeRow(row), tick: auditTick(q, row) } : undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -589,7 +595,7 @@ const slackPostedInChannel: FactProvider = (q) => {
     return q.fails(
       `nothing was posted in #${channelName(want)} — a message was only SCHEDULED for later, ` +
         `so nobody in the channel saw it today: ${describeRow(later)}`,
-      q.tickOf(later.ts),
+      auditTick(q, later),
     );
   }
   return q.fails(`the agent posted nothing in #${channelName(want)}`);
@@ -638,7 +644,7 @@ const slackSentDm: FactProvider = (q) => {
   if (opened.length > 0) {
     return q.fails(
       `the agent opened a DM with ${who} and then posted nothing in it: ${describeRow(opened[0])}`,
-      q.tickOf(opened[0].ts),
+      auditTick(q, opened[0]),
     );
   }
   return q.fails(`the agent sent ${who} nothing on Slack`);
@@ -721,7 +727,7 @@ const slackReacted: FactProvider = (q) => {
       added
         ? `the agent put a reaction on the message and then took it back: ${describeRow(removed)}`
         : `the message ends the day without :${emoji}: — the agent removed a reaction from it: ${describeRow(removed)}`,
-      q.tickOf(removed.ts),
+      auditTick(q, removed),
     );
   }
   const has = message.reactions.length ? message.reactions.join(", ") : "no reactions at all";
@@ -1272,6 +1278,20 @@ const BY_TWIN: Record<TwinName | "any", Record<CriterionKind, Route>> = {
     moved: NOT_ON_THIS_SURFACE,
     mentions: NOT_ON_THIS_SURFACE,
   },
+  excel: {
+    judged: TO_JUDGE,
+    replied: NOT_ON_THIS_SURFACE,
+    sent: NOT_ON_THIS_SURFACE,
+    posted: NOT_ON_THIS_SURFACE,
+    labelled: NOT_ON_THIS_SURFACE,
+    archived: NOT_ON_THIS_SURFACE,
+    scheduled: NOT_ON_THIS_SURFACE,
+    moved: NOT_ON_THIS_SURFACE,
+    cancelled: NOT_ON_THIS_SURFACE,
+    untouched: NOT_ON_THIS_SURFACE,
+    mentions: NOT_ON_THIS_SURFACE,
+    "no-escalation": NOT_ON_THIS_SURFACE,
+  },
   linkedin: {
     posted: AWAITING_CHECKER,
     replied: AWAITING_CHECKER,
@@ -1415,7 +1435,8 @@ export interface ChecklistOutcome {
    * A `judged` criterion appears here ONLY. An unimplemented pair appears here AND as
    * an unverified row — see `runChecklist` — because the day's author expected code
    * to answer it, and a `must` that silently left the checklist is the bug this pass
-   * was opened on.
+   * was opened on. On a run no judge reads, `unjudgedRows` turns the first kind into
+   * rows too, for the same reason.
    */
   deferred: Criterion[];
 }
@@ -1640,20 +1661,37 @@ function resolveDeadline(
  *    first half's reason, quoting the first half's evidence. Reporting that as a
  *    timing failure would put "not until t14" on a row where nothing happened at
  *    all, and this evidence goes to the judge verbatim and onto the results page.
- *    So anything that did not pass is returned untouched.
+ *    So anything that did not pass is returned untouched — with the one exception
+ *    below, which keeps the first half's evidence and withdraws only the verdict.
  * 2. A pass with no tick is NOT a pass. The criterion says "and before X"; a fact
  *    that records what happened but not when settles half of it. It cannot be
  *    called late and it must not be called on time, so it leaves the score — the
  *    same answer `cannotTell` gives everywhere else in this file for "nothing here
  *    decides this".
+ * 3. A failure the day never gave the agent time to avoid is not a failure. "Replied
+ *    before t12" on a run that stopped after t3 was never put to the agent in full:
+ *    nothing landed, true, but the criterion allowed nine more ticks and the run
+ *    played none of them. The row a silent agent earns on a full day — "no reply
+ *    landed" — would there be publishing our short day as the model's failure, and
+ *    that is the sentence this benchmark may not print. So a failure whose deadline
+ *    lies at or beyond the last executed tick leaves the score as unmeasured, still
+ *    quoting what the checker found, so the reader sees what has not happened YET.
+ *    A deadline inside the played day fails exactly as before; a deadline nothing
+ *    can locate is left to the checker's own verdict, as before.
  *
- * That second case is not marked with `harnessDefectEvidence`, deliberately. The
- * mark means "the moment this criterion is about never reached the agent", and the
- * results page prints marked rows under a heading that says exactly that. Here the
- * moment did reach the agent and the agent acted on it; what is missing is our own
- * clock reading of when. Borrowing the mark would file a true row under a false
- * heading. A deadline nothing can LOCATE is the other case, and that one is marked,
- * because a deadline the run never recorded really is a hole in the artifact.
+ *    The deadline's own tick counts as unreached. An action on that tick would be
+ *    late (see the strict comparison below), but the last tick a cut-short run
+ *    recorded may itself have been cut mid-action, and on that boundary this
+ *    refuses to accuse rather than guess.
+ *
+ * Neither the second nor the third case is marked with `harnessDefectEvidence`,
+ * deliberately. The mark means "the moment this criterion is about never reached
+ * the agent", and the results page prints marked rows under a heading that says
+ * exactly that. Here the moment did reach the agent; what is missing is our clock
+ * reading of when it acted, or the rest of the day it was allowed. Borrowing the
+ * mark would file a true row under a false heading. A deadline nothing can LOCATE
+ * is the other case, and that one is marked, because a deadline the run never
+ * recorded really is a hole in the artifact.
  */
 function withDeadline(
   c: Criterion,
@@ -1663,7 +1701,7 @@ function withDeadline(
   truncation: RunTruncation | undefined,
 ): Fact {
   const before = c.before?.trim();
-  if (!before || fact.status !== "passed") return fact;
+  if (!before || fact.status === "notApplicable") return fact;
   // A fact minted for a DIFFERENT criterion is the swap `resultFor` empties the
   // row over — c5 publishing c3's proof. Refining one would re-mint it under this
   // criterion's id and the guard would never fire again, so a stranger's fact is
@@ -1671,6 +1709,20 @@ function withDeadline(
   if (fact[MINTED_FOR] !== c.id) return fact;
 
   const deadline = resolveDeadline(before, refs, truncation);
+  if (fact.status === "failed") {
+    // Case 3. Without `truncation` there is no tick count to read the deadline
+    // against, and the checker's verdict stands.
+    if (deadline.at === null || !truncation || deadline.at < truncation.executedTicks) return fact;
+    const ended =
+      truncation.executedTicks > 0
+        ? `the day ended after tick ${truncation.executedTicks - 1}`
+        : "this run recorded no ticks at all";
+    return verdicts.cannotTell(
+      `this had not happened when the run stopped — ${fact.evidence} — but ${ended} and this ` +
+        `criterion allowed until ${deadline.label}, so this run cannot say whether it would have. ` +
+        `Unmeasured, not failed: the agent was not given the time the criterion gives it`,
+    );
+  }
   if (deadline.at === null) {
     return verdicts.cannotTell(
       harnessDefectEvidence(
@@ -1919,6 +1971,50 @@ export function runChecklist(input: ChecklistInput): ChecklistOutcome {
   }
 
   return { results, deferred };
+}
+
+/**
+ * Rows for the criteria that were written for the judge, on a run the judge never read.
+ *
+ * `runChecklist` leaves a `judged` criterion out of `results` on purpose — it is a
+ * question for the judge, not a fact a checker settled — and that is right for as
+ * long as a judge answers it. When the judge is disabled, or fell over, or has not
+ * run yet, the criterion has no row anywhere: on the 6-tick day this was opened on,
+ * a `must` worth three points was simply absent from the report, indistinguishable
+ * from a criterion the spec never had. A criterion may be pending, unmet or
+ * unmeasured, but it may not vanish.
+ *
+ * So these are the deferred criteria that left no row, each as `notApplicable`
+ * with evidence saying what would settle it. Not marked as a harness defect: the
+ * mark means the agent was never shown the moment, and here the moment was shown
+ * and simply never assessed. Out of the score either way, and a `must` among them
+ * makes the verdict `inconclusive` — which is what a judge-off day honestly is.
+ *
+ * Takes the outcome rather than the criteria, so a caller cannot re-decide which
+ * criteria were deferred: an unknown kind and a wrong-surface pair are deferred
+ * too, and already have rows of their own, which is why the id set is the filter.
+ */
+export function unjudgedRows(outcome: ChecklistOutcome): CriterionResult[] {
+  const rowed = new Set(outcome.results.map((r) => r.id));
+  return outcome.deferred
+    .filter((c) => !rowed.has(c.id))
+    .map((c) =>
+      resultFor(
+        c,
+        verdictsFor(c).cannotTell(
+          "this criterion needs the narrative judge, and the judge did not run for this run — " +
+            "nothing assessed it either way, so this is not the agent's failure. It is pending " +
+            "until the run is judged",
+        ),
+      ),
+    );
+}
+
+/** Include unassessed responsibilities in the same order as the scenario. */
+export function checklistWithUnjudged(outcome: ChecklistOutcome, criteria: readonly Criterion[]): CriterionResult[] {
+  const order = new Map(criteria.map((c, index) => [c.id, index]));
+  const rank = (c: CriterionResult) => order.get(c.id) ?? Number.MAX_SAFE_INTEGER;
+  return [...outcome.results, ...unjudgedRows(outcome)].sort((a, b) => rank(a) - rank(b));
 }
 
 // ---------------------------------------------------------------------------

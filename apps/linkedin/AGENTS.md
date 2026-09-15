@@ -25,15 +25,16 @@ The port lives in exactly one place that matters: the root `package.json`'s
 `dev:linkedin` script (`PORT=${PORT:-3800}`). `packages/core/src/ports.ts` is
 `Record<TwinName, number>` and cannot take it until the union does.
 
-## Two credentials, one token
+## Provider and control credentials
 
-`SANDBOX_TOKEN` (default `sandbox-token`) gates both surfaces:
-
-- the provider API (`/v2/*`, `/rest/*`) as `Authorization: Bearer`, failing with
-  the LinkedIn envelope — `src/lib/linkedin/auth.ts`;
-- the control plane (`/api/sandbox/*`) as `X-Sandbox-Token`, a bearer or
-  `?access_token=`, failing with `{ok:false,error}` and a real HTTP status —
-  `src/lib/sandbox/auth.ts`.
+Provider APIs retain their `SANDBOX_TOKEN` credential and provider-shaped errors.
+The control plane (`/api/sandbox/*` and `/api/activity`) uses
+`SANDBOX_CONTROL_TOKEN`, falling back to `SANDBOX_TOKEN` and then `sandbox-token`
+for local development. `src/lib/sandbox/auth.ts` delegates to the shared
+`@sonata/core/controlAuth` helper. Control callers may use `X-Sandbox-Token`,
+a bearer, `?access_token=`, or `?token=`; rejection is plain `{ok:false,error}`.
+`/api/health` stays public. A run with distinct credentials must never give its
+control token to the tested agent.
 
 There is no OAuth2 server. If a phase-2 episode wants to grade scope-denial
 behaviour, that is when Gmail's `/oauth/*` + `POST /api/sandbox/token` model
@@ -105,7 +106,8 @@ app/rest/posts, app/rest/posts/[postUrn] the headline read and the headline writ
 app/rest/socialActions/[entityUrn]/comments
 app/rest/socialMetadata/[entityUrn]      "check the engagement on a post"
 app/rest/reactions
-app/api/health, app/api/activity         ungated: liveness, and the evidence
+app/api/health                          public liveness
+app/api/activity                        control-gated evidence
 app/api/sandbox/{seed,inject,snapshot,reset}   token-gated machinery
 src/lib/linkedin/                        urn, ids, errors, auth, actor, paging,
                                          shape, post-input, route-helpers

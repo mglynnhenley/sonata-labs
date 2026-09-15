@@ -1,4 +1,5 @@
-import { getSettings } from "@/lib/settings";
+import { redirect } from "next/navigation";
+import { canCallModels, getSettings } from "@/lib/settings";
 import { getEpisode, listEpisodes } from "../api/_lib/records";
 import { activeRun, listRuns, resumeInterruptedRuns } from "../api/_lib/runner";
 import { RunsClient } from "./_components/RunsClient";
@@ -18,6 +19,8 @@ export default async function RunsPage({
   searchParams: Promise<{ scenario?: string; demo?: string }>;
 }) {
   const { scenario, demo } = await searchParams;
+  // Old demo bookmarks now enter the same review flow as every other scenario.
+  if (demo === "1") redirect("/scenarios");
   resumeInterruptedRuns();
 
   const active = activeRun();
@@ -38,10 +41,10 @@ export default async function RunsPage({
       episodes={episodes}
       defaultModel={getSettings().models.agent}
       beatTicks={beatTicks}
+      hasKey={canCallModels()}
       {...(scenario && episodes.some((e) => e.id === scenario)
         ? { initialEpisodeId: scenario }
         : {})}
-      demo={demo === "1"}
     />
   );
 }

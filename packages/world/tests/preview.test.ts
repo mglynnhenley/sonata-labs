@@ -93,9 +93,14 @@ describe("previewWorld over the shipped templates", () => {
       );
       expect(preview.events).toBe(template.calendar.events.length);
       // A template that previews as a couple of days of history is one a user
-      // will believe; one that reaches back a month is a fixture.
+      // will believe; one that reaches back a month is a fixture. Meridian is
+      // the deliberate exception: its scripted day scores whether an agent digs
+      // clauses out of weeks-old threads, so its backlog reaches back to July
+      // on purpose — the depth IS the test, not an accident of authoring.
       expect(preview.spanDays).toBeGreaterThanOrEqual(1);
-      expect(preview.spanDays).toBeLessThanOrEqual(7);
+      expect(preview.spanDays).toBeLessThanOrEqual(
+        template.id === "meridian-clinical-supply" ? 60 : 7,
+      );
     });
   }
 });

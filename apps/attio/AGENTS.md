@@ -18,31 +18,26 @@ attribute appends. That pair is what `active_from`/`active_until` mean on the
 wire, and it is why the seed ships a Northwind deal whose stage already has two
 rows.
 
-**This app is NOT registered as an episode twin in this phase.** `TwinName` in
-`packages/core/src/types/world.ts` is still three names wide, so there is no
-engine adapter, no judge route, no dashboard card, and `sonata up` / `sonata
-doctor` do not see this clone. Widening that union breaks ~20 exhaustive
-`Record<TwinName, X>` maps, which is the point of the union and not a thing to
-work around. Phase 2.
+The twin is registered with the platform, engine and CLI. Its browser replica
+runs in this app at **http://localhost:3500/** alongside the API, like Calendar.
+There is no separate UI service on the reserved 4300 port.
 
-**This app has no UI.** Port 4300 is reserved for an Attio replica and nothing is
-built there — no `app/page.tsx`, no `app/_components/**`, no `/api/ui/*`, and no
-Tailwind toolchain. A UI-projection layer with no UI to project into is a file
-that cannot be wrong yet.
+`app/_components/AttioApp.tsx` renders companies, people, deals, notes and tasks.
+`app/api/ui/[...path]/route.ts` is an allowlisted browser bridge to the existing
+API route handlers. Keep the token server-side and reuse the API write path;
+never introduce separate UI SQL mutations. Check real browser flows as well as
+the API smoke, using an isolated world for destructive tests.
 
-## One credential
+## Provider and control credentials
 
-`SANDBOX_TOKEN` (default `sandbox-token`) gates both surfaces, so the engine
-carries one credential for this twin:
-
-- `/v2/*` — `Authorization: Bearer <token>` (or `?access_token=`), checked in
-  `src/lib/attio/auth.ts`. A failure is Attio's 401 envelope.
-- `/api/sandbox/*` — the same string, accepted as `X-Sandbox-Token`, a bearer or
-  `?access_token=` (`src/lib/sandbox/auth.ts`). A failure is a plain
-  `{ok: false, error}`, deliberately NOT dressed as Attio: these routes are
-  machinery an agent must not learn from.
-- `/api/health` takes none. `/api/activity` is read-only and ungated — it is the
-  evidence, not a lever.
+Provider APIs retain their `SANDBOX_TOKEN` credential and provider-shaped errors.
+The control plane (`/api/sandbox/*` and `/api/activity`) uses
+`SANDBOX_CONTROL_TOKEN`, falling back to `SANDBOX_TOKEN` and then `sandbox-token`
+for local development. `src/lib/sandbox/auth.ts` delegates to the shared
+`@sonata/core/controlAuth` helper. Control callers may use `X-Sandbox-Token`,
+a bearer, `?access_token=`, or `?token=`; rejection is plain `{ok:false,error}`.
+`/api/health` stays public. A run with distinct credentials must never give its
+control token to the tested agent.
 
 Attio has no OAuth mode here, so unlike the Gmail twin there is no
 `/api/sandbox/token` route and no authorization server. `GET /v2/self` still

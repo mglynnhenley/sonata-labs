@@ -3,7 +3,7 @@ import { NewScenarioComposer } from "../_components/NewScenarioComposer";
 
 export const metadata = {
   title: "New scenario",
-  description: "Describe a business in plain language and watch it become an inbox, channels and a calendar.",
+  description: "Describe a business and a situation, then review the generated scenario and rubric.",
 };
 
 // The shipped days travel with the page rather than being fetched on failure:

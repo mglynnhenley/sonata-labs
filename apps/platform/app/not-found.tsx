@@ -10,10 +10,10 @@ import { ROUTES } from "@/lib/routes";
 // language, and offers the way on rather than a dead end.
 
 const ELSEWHERE = [
-  { href: ROUTES.companies, label: "Companies", hint: "The fake companies you've cloned" },
+  { href: ROUTES.companies, label: "Environments", hint: "The companies, people and apps behind your scenarios" },
   { href: ROUTES.scenarios, label: "Scenarios", hint: "The days you can run" },
   { href: ROUTES.runs, label: "Runs", hint: "Every day played, live or finished" },
-  { href: ROUTES.compare, label: "Compare", hint: "Models against scenarios, cell by cell" },
+  { href: ROUTES.compare, label: "Results", hint: "Models against scenarios, cell by cell" },
   { href: ROUTES.settings, label: "Settings", hint: "Models, key and the three apps" },
 ] as const;
 

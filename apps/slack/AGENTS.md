@@ -56,11 +56,15 @@ loaded — never point it at a twin that is mid-episode.
 
 ## Authentication
 
-One static bearer token, `SANDBOX_TOKEN` (default `sandbox-token`), for the Web
-API (`src/lib/slack/auth.ts`) and for the control plane. `/api/sandbox/{seed,
-inject,snapshot}` require it; `/api/sandbox/{reset,chaos,events,upload}` do not,
-because the browser UI drives those and has no token. If you add a control route
-the UI does not call, gate it.
+The Web API uses `SANDBOX_TOKEN` (default `sandbox-token`). Control routes
+(`/api/sandbox/*` and `/api/activity`) require `SANDBOX_CONTROL_TOKEN`, falling
+back to `SANDBOX_TOKEN` only in shared development. A scoped workplace's agent
+credential cannot reset the workspace, configure chaos or events, or read its
+audit feed. Health remains public. Operator scripts send explicit control auth.
+
+The provider upload URL is `/api/uploads/[fileId]`: its pending file identifier
+is the upload capability returned by an authenticated `files.getUploadURLExternal`
+call. The official SDK posts bytes there without a control credential.
 
 ## Environment quirks
 
@@ -270,7 +274,7 @@ Socket Mode / RTM, `views.*` (modals), interactive component callbacks,
 return `{ok:false, error:"unknown_method"}`.
 
 `files.uploadV2`'s external flow **is** implemented (getUploadURLExternal ->
-byte sink at `/api/sandbox/upload/[fileId]` -> completeUploadExternal), so the
+byte sink at `/api/uploads/[fileId]` -> completeUploadExternal), so the
 SDK helper works.
 
 Incremental sync is just re-running `npm run sync` (upserts are idempotent).

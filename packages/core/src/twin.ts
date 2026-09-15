@@ -1,4 +1,5 @@
 import type { BeatBody, EpisodeSpec } from "./types/episode";
+import type { LogicalActionTime } from "./timing";
 import type { JudgeStep, TwinDiff, TwinSnapshot } from "./types/judge";
 import type { AgentTrace, InjectedRef } from "./types/run";
 import type { TwinName, WorldSeed } from "./types/world";
@@ -19,8 +20,18 @@ export interface TwinHealth {
   detail?: string;
 }
 
+/** Released communication, with an explicit audience of Person.id values. */
+export interface WorldObservation {
+  audience: string[];
+  actor?: string;
+  text: string;
+  channelId?: string;
+}
+
 /** One audit row, normalized across twins from each one's own audit table. */
 export interface TwinAuditRow {
+  /** Added by the trusted session; null means logical timing could not be captured. */
+  logicalTime?: LogicalActionTime | null;
   id: number;
   twin: TwinName;
   ts: number;
@@ -30,6 +41,8 @@ export interface TwinAuditRow {
   targetType: string | null;
   targetId: string | null;
   summary: string;
+  observation?: WorldObservation;
+  observationError?: string;
 }
 
 export interface InjectContext {
@@ -80,6 +93,9 @@ export interface TwinAdapter {
 
   /** This twin's own record of what the agent did, newer than `sinceId`. */
   auditSince(sinceId: number): Promise<TwinAuditRow[]>;
+
+  /** Read a delivered communication for the world, identically for hosted and external agents. */
+  observe?(row: TwinAuditRow, world: WorldSeed): Promise<WorldObservation | undefined>;
 
   /** Pure. Pull this twin's calls out of a run trace and shrink them for the judge. */
   projectTrace(trace: AgentTrace): JudgeStep[];

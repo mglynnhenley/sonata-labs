@@ -6,6 +6,7 @@ import type { GeneratedWorld } from "./generate";
 // call is made, so a template previews instantly.
 
 export interface WorldPreview {
+  workbooks?: number;
   /** Company name and the cast size, for the card heading. */
   business: string;
   /** `"Priya Raman — Chief of Staff"`, the identity the agent will operate as. */
@@ -68,6 +69,7 @@ export function previewWorld(generated: GeneratedWorld): WorldPreview {
   // and "0 campaigns" on the screen where somebody decides whether to seed reads
   // as a generator that failed rather than as a business that does not advertise.
   const alsoHas = [
+    generated.excel?.workbooks.length ? plural(generated.excel.workbooks.length, "Excel workbook") : "",
     records ? plural(records, "CRM record") : "",
     documents ? plural(documents, "document") : "",
     campaigns ? plural(campaigns, "ad campaign") : "",
@@ -75,6 +77,7 @@ export function previewWorld(generated: GeneratedWorld): WorldPreview {
   ].filter(Boolean);
 
   return {
+    ...(generated.excel ? { workbooks: generated.excel.workbooks.length } : {}),
     business: world.business.name,
     owner,
     people: world.cast.length,

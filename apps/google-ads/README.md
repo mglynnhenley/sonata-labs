@@ -53,6 +53,10 @@ Every `/v*/…` call needs an `Authorization: Bearer` token **and** a non-empty
 sandbox is not an approval gate — but its absence is, because that requirement is
 what makes Google Ads' auth different from every other Google API.
 
+`/api/sandbox/*` and `/api/activity` require `SANDBOX_CONTROL_TOKEN` as
+`X-Sandbox-Token` or a bearer, falling back to `SANDBOX_TOKEN` and then
+`sandbox-token` for development. `/api/health` stays public.
+
 The calls below are the ones in Google's own REST examples, unchanged apart from
 the host.
 

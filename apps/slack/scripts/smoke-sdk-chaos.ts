@@ -1,3 +1,4 @@
+import { controlToken } from "@sonata/core/controlAuth";
 // Part 3 of the acceptance harness: fault injection. Proves the sandbox can
 // deliberately fail in the ways real Slack fails, and that the official SDK
 // reacts the way it would in production.
@@ -15,11 +16,11 @@ const ROOT_URL =
   process.env.SANDBOX_ROOT_URL || `http://localhost:${process.env.PORT || "3200"}`;
 const TOKEN = process.env.SANDBOX_TOKEN || "sandbox-token";
 
-const chaosOff = () => fetch(`${ROOT_URL}/api/sandbox/chaos`, { method: "DELETE" });
+const chaosOff = () => fetch(`${ROOT_URL}/api/sandbox/chaos`, { headers: { "x-sandbox-token": controlToken() }, method: "DELETE" });
 const chaosSet = (body: unknown) =>
   fetch(`${ROOT_URL}/api/sandbox/chaos`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "x-sandbox-token": controlToken(), "content-type": "application/json" },
     body: JSON.stringify(body),
   });
 
@@ -157,7 +158,7 @@ export async function part3Chaos({ client, check }: Harness): Promise<void> {
     check("latency injection delays calls", elapsed >= 300, `${elapsed}ms`);
 
     // --- the control surface reports what it injected ---
-    const status = (await fetch(`${ROOT_URL}/api/sandbox/chaos`).then((r) => r.json())) as {
+    const status = (await fetch(`${ROOT_URL}/api/sandbox/chaos`, { headers: { "x-sandbox-token": controlToken() } }).then((r) => r.json())) as {
       config: { enabled: boolean };
       faults: Array<{ method: string; kind: string }>;
     };

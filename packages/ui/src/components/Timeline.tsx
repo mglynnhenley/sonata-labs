@@ -28,6 +28,7 @@ const MARKER_TONES: Record<TimelineTone, string> = {
   attio: "border-sn-attio-line bg-sn-attio-soft text-sn-attio-ink",
   "google-docs": "border-sn-google-docs-line bg-sn-google-docs-soft text-sn-google-docs-ink",
   "google-ads": "border-sn-google-ads-line bg-sn-google-ads-soft text-sn-google-ads-ink",
+  excel: "border-sn-excel-line bg-sn-excel-soft text-sn-excel-ink",
   linkedin: "border-sn-linkedin-line bg-sn-linkedin-soft text-sn-linkedin-ink",
 };
 

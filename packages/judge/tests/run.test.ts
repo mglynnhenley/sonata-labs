@@ -40,6 +40,51 @@ const OK = {
   ],
 };
 
+describe("the bulleted account", () => {
+  it("passes the four lists through", async () => {
+    const { complete } = stub({
+      ...OK,
+      taskPoints: ["Answer Dana.", "Keep the diary honest."],
+      taskAmbiguities: ["The brief never says who signs off."],
+      did: ["Replied to Dana. [4]"],
+      didNot: ["Never told the team. [9]"],
+    });
+    const report = await judge(INPUT, { complete, now: () => 1 });
+
+    expect(report.taskPoints).toEqual(["Answer Dana.", "Keep the diary honest."]);
+    expect(report.taskAmbiguities).toEqual(["The brief never says who signs off."]);
+    expect(report.did).toEqual(["Replied to Dana. [4]"]);
+    expect(report.didNot).toEqual(["Never told the team. [9]"]);
+  });
+
+  it("strips the bullet a model adds to an array of strings", async () => {
+    // The UI draws its own bullet. Left in, every row reads "• - Replied to Dana."
+    const { complete } = stub({ ...OK, did: ["- Replied to Dana.", "* Filed it.", "• Left."] });
+    const report = await judge(INPUT, { complete, now: () => 1 });
+
+    expect(report.did).toEqual(["Replied to Dana.", "Filed it.", "Left."]);
+  });
+
+  it("drops blank and non-string entries rather than rendering empty bullets", async () => {
+    const { complete } = stub({ ...OK, didNot: ["Never sent it.", "", "   ", null, 7] });
+    const report = await judge(INPUT, { complete, now: () => 1 });
+
+    expect(report.didNot).toEqual(["Never sent it."]);
+  });
+
+  it("gives empty lists when a model omits them entirely", async () => {
+    // Every field is `required` in strict mode, so this is the model misbehaving
+    // rather than an expected shape — but a report is still worth storing.
+    const { complete } = stub(OK);
+    const report = await judge(INPUT, { complete, now: () => 1 });
+
+    expect(report.taskPoints).toEqual([]);
+    expect(report.taskAmbiguities).toEqual([]);
+    expect(report.did).toEqual([]);
+    expect(report.didNot).toEqual([]);
+  });
+});
+
 describe("judge", () => {
   it("stamps the report and asks the model for a schema, nothing else", async () => {
     const { complete, seen } = stub(OK);
@@ -192,8 +237,9 @@ describe("judge coverage", () => {
   }
 
   it("lands on the report, so a reader is never left to assume the judge saw it all", async () => {
-    const { complete } = stub(OK);
+    const { complete, seen } = stub(OK);
     const report = await judge(INPUT, { complete });
+    expect(seen[0].coverage).toEqual(report.coverage);
     expect(report.coverage).toEqual({
       steps: { shown: 0, total: 0 },
       timeline: { shown: 0, total: 0 },
@@ -208,13 +254,14 @@ describe("judge coverage", () => {
   });
 
   it("carries the partial figure when the day did not fit", async () => {
-    const { complete } = stub(OK);
+    const { complete, seen } = stub(OK);
     const report = await judge(
       { ...INPUT, trace: { steps: fatSteps(4000), turns: [], escalations: [] } },
       { complete },
     );
 
     expect(report.coverage?.complete).toBe(false);
+    expect(seen[0].coverage).toEqual(report.coverage);
     expect(report.coverage?.steps.total).toBe(4000);
     expect(report.coverage?.fraction).toBeLessThan(1);
     expect(report.coverage?.fraction).toBeGreaterThan(0);

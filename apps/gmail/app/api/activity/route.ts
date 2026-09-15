@@ -1,3 +1,4 @@
+import { requireSandboxToken } from "@/lib/sandbox/auth";
 import { NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { listSessions, listActions } from "@/lib/audit";
@@ -14,6 +15,8 @@ const MAX_LIMIT = 1000;
 // backwards past the limit — without it an agent that takes more actions than
 // the page size gets silently truncated and graded on a partial log.
 export function GET(req: Request) {
+  const authErr = requireSandboxToken(req);
+  if (authErr) return authErr;
   try {
     const db = getDb();
     const sp = new URL(req.url).searchParams;

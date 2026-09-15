@@ -1,41 +1,31 @@
 "use client";
 
-import { buttonClasses, Card, Chip, IconArrowRight, IconSpark, PageHeader } from "@sonata/ui";
+import { buttonClasses, Card, Chip, IconArrowRight, PageHeader } from "@sonata/ui";
 import { ROUTES } from "@/lib/routes";
 import type { TwinStatus } from "@/lib/twins";
 import { TwinStrip } from "./TwinStrip";
 import { useGo } from "./useGo";
 
-// The first thing anyone sees. It has one job: get a stranger from here to
-// watching an agent work inside a fake company in under five minutes. So it
-// teaches the product in three sentences, offers exactly one primary action,
-// and puts the only piece of setup — starting the clones — on the same screen.
-
-// Stamped with elapsed time: the promise is five minutes, so the steps prove it.
+// Introduce the environment, scenario and assessment in the order they are used.
 const STEPS = [
   {
     n: 1,
-    stamp: "0:00",
-    title: "A company appears.",
-    body: "12 people, their threads, their channels, a week of meetings. The same cast in Gmail, Slack and the calendar.",
-    href: ROUTES.scenarios,
-    cta: "See the five scenarios",
+    title: "Choose an environment",
+    body: "The company, its people and their history. Connected apps give the agent somewhere to read, communicate and act.",
+    href: ROUTES.companies,
+    cta: "Explore environments",
   },
   {
     n: 2,
-    stamp: "0:30",
-    title: "The day starts at 9am.",
-    body: "The clock moves in 15-minute steps. A client escalates at 9:15; a meeting collides after lunch. Your agent is told the time and what's new, and works. When it writes to someone, that person writes back — in their own voice.",
-    href: ROUTES.runs,
-    cta: "See how a run works",
+    title: "Review the scenario",
+    body: "Pick a situation to test, then review what the agent should achieve and what it must avoid. Sonata proposes the success criteria for you.",
+    href: ROUTES.scenarios,
+    cta: "Choose a scenario",
   },
   {
     n: 3,
-    stamp: "4:00",
-    // The highest-value string in the product: it defines the coined word and
-    // gives it a reference point.
-    title: "You get one number.",
-    body: "Autonomy: the share of the day's job that got done without a human stepping in. 100% means you could have gone to lunch. Every number on the page opens the moment that produced it.",
+    title: "Run and inspect the result",
+    body: "Choose a model or connect your own agent. Measure completed work, mistakes and cost, then inspect the actions behind each result.",
     href: ROUTES.compare,
     cta: "See what gets scored",
   },
@@ -55,14 +45,11 @@ export function FirstRun({ twins, onTwinsChanged }: FirstRunProps) {
       <PageHeader
         size="lg"
         eyebrow="Welcome to Sonata Labs"
-        title="Clone a company. Find out what your agent can actually do inside it."
-        subtitle="Sonata builds a fake company — an inbox, Slack channels and a calendar, with the same people in all three — then plays one workday inside it while your agent works. Emails arrive on a clock, coworkers write back in character, meetings move. At 5pm you get one number: how much of the job it handled without you. Everything runs on this machine. Nothing touches a real account."
+        title="Benchmark models and agents on realistic workdays."
+        subtitle="Test the work you want to delegate: competing requests, changing information and follow-ups. See what gets done, where it goes wrong and what the run costs."
         meta={
           <>
-            <Chip tone="gold" icon={<IconSpark size="sm" />}>
-              Five minutes end to end
-            </Chip>
-            <Chip>Local only</Chip>
+            <Chip>Simulated business apps</Chip>
             <Chip>
               {ready === 3 ? "Gmail, Slack and Calendar ready" : `${ready} of the three apps ready`}
             </Chip>
@@ -73,18 +60,18 @@ export function FirstRun({ twins, onTwinsChanged }: FirstRunProps) {
           // its two exits be middle-clicked and copied like any other link.
           <>
             <a
-              href={ROUTES.scenarios}
-              onClick={(e) => go(e, ROUTES.scenarios)}
+              href="/scenarios/new"
+              onClick={(e) => go(e, "/scenarios/new")}
               className={buttonClasses("ghost", "lg")}
             >
-              See the five scenarios
+              Describe your own
             </a>
             <a
-              href={ROUTES.guidedDemo}
-              onClick={(e) => go(e, ROUTES.guidedDemo)}
+              href={ROUTES.scenarios}
+              onClick={(e) => go(e, ROUTES.scenarios)}
               className={buttonClasses("primary", "lg")}
             >
-              Run the demo day
+              Choose an example scenario
               <IconArrowRight size="md" />
             </a>
           </>
@@ -93,10 +80,10 @@ export function FirstRun({ twins, onTwinsChanged }: FirstRunProps) {
 
       <section>
         <h2 className="font-display text-sn-3xl text-sn-ink">
-          What happens when you press the button
+          Your work, turned into a benchmark
         </h2>
         <p className="mt-2 max-w-[62ch] text-sn-md text-sn-muted">
-          Three steps, and the demo day does all of them for you the first time.
+          Start with an example or describe your own. You can review the expectations before running it.
         </p>
 
         <ol className="mt-6 grid gap-4 md:grid-cols-3">
@@ -108,7 +95,7 @@ export function FirstRun({ twins, onTwinsChanged }: FirstRunProps) {
                   data-numeric
                   className="font-display-upright grid h-9 min-w-9 place-items-center self-start rounded-full bg-sn-gold-soft px-2.5 text-sn-md text-sn-gold-ink"
                 >
-                  {step.stamp}
+                  {step.n}
                 </span>
                 <h3 className="mt-4 text-sn-md font-medium text-sn-ink">{step.title}</h3>
                 <p className="mt-2 flex-1 text-sn-base text-sn-muted">{step.body}</p>
@@ -136,8 +123,8 @@ export function FirstRun({ twins, onTwinsChanged }: FirstRunProps) {
               The three apps you&apos;ll be watching
             </h2>
             <p className="mt-2 max-w-[62ch] text-sn-md text-sn-muted">
-              Each one speaks its real API closely enough that the official SDKs work against it.
-              The demo day starts whichever it needs, or you can start them here.
+              The agent works in simulated apps with the same people across them.
+              Your run starts the apps it needs, or you can start them here to explore.
             </p>
           </div>
           <a

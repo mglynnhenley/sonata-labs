@@ -1,3 +1,4 @@
+import { requireSandboxToken } from "@/lib/sandbox/auth";
 import { NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { insertMessage, getMessageRow } from "@/lib/store/messages";
@@ -15,7 +16,7 @@ export const dynamic = "force-dynamic";
 // table. Deliberately NOT audit-logged — injection is test setup, not agent
 // behavior, and the grader reads the audit log to judge the agent.
 //
-// Internal route (no bearer auth), like /api/sandbox/reset.
+// Internal route requiring control authentication.
 
 interface InboundMessage {
   slotId?: string;
@@ -32,6 +33,8 @@ interface InboundMessage {
 }
 
 export async function POST(req: Request) {
+  const authErr = requireSandboxToken(req);
+  if (authErr) return authErr;
   try {
     const body = (await req.json().catch(() => ({}))) as { messages?: InboundMessage[] };
     const inbound = body.messages ?? [];

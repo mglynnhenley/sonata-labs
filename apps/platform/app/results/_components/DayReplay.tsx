@@ -24,6 +24,14 @@ import {
   IconFeed,
   IconInfo,
   IconMail,
+  LogoAttio,
+  LogoGmail,
+  LogoGoogleAds,
+  LogoGoogleCalendar,
+  LogoGoogleDocs,
+  LogoLinkedIn,
+  LogoExcel,
+  LogoSlack,
   IconTrend,
   IconUsers,
   IconMessage,
@@ -60,16 +68,18 @@ const TWIN_MARKER: Record<TwinName, string> = {
   "google-docs": "border-sn-google-docs-line bg-sn-google-docs-soft text-sn-google-docs-ink",
   "google-ads": "border-sn-google-ads-line bg-sn-google-ads-soft text-sn-google-ads-ink",
   linkedin: "border-sn-linkedin-line bg-sn-linkedin-soft text-sn-linkedin-ink",
+  excel: "border-sn-excel-line bg-sn-excel-soft text-sn-excel-ink",
 };
 
-const TWIN_ICON: Record<TwinName, typeof IconMail> = {
-  gmail: IconMail,
-  slack: IconMessage,
-  calendar: IconCalendar,
-  attio: IconUsers,
-  "google-docs": IconDoc,
-  "google-ads": IconTrend,
-  linkedin: IconFeed,
+const TWIN_ICON: Record<TwinName, typeof LogoGmail> = {
+  gmail: LogoGmail,
+  slack: LogoSlack,
+  calendar: LogoGoogleCalendar,
+  attio: LogoAttio,
+  "google-docs": LogoGoogleDocs,
+  "google-ads": LogoGoogleAds,
+  linkedin: LogoLinkedIn,
+  excel: LogoExcel,
 };
 
 const SOURCE_LABEL: Record<Moment["source"], string> = {

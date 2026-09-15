@@ -11,6 +11,25 @@ export function getMeta(db: Database, key: string): string | null {
   return row?.value ?? null;
 }
 
+/**
+ * Version writes must follow the seeded history, even when its date is ahead
+ * of the host clock. Include imported notes so a memo sorts after the transcript
+ * it responds to, and tasks so completion cannot predate creation.
+ * This is an ordering floor, not the episode's tick clock;
+ * audit rows retain wall time so the harness can attribute actions to ticks.
+ */
+export function crmWriteTime(db: Database, wallNow = Date.now()): number {
+  const latest = db.prepare(`SELECT MAX(at) AS at FROM (
+    SELECT MAX(active_from_ms) AS at FROM attribute_values
+    UNION ALL SELECT MAX(created_at_ms) FROM records
+    UNION ALL SELECT MAX(created_at_ms) FROM notes
+    UNION ALL SELECT MAX(created_at_ms) FROM tasks
+    UNION ALL SELECT MAX(completed_at_ms) FROM tasks
+  )`).get() as { at: number | null };
+  const seeded = Number(getMeta(db, "seeded_at")) || 0;
+  return Math.max(wallNow, seeded, latest.at === null ? 0 : latest.at + 1);
+}
+
 export function setMeta(db: Database, key: string, value: string): void {
   db.prepare(
     "INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",

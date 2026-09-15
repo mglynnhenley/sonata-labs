@@ -11,7 +11,8 @@ cast, one backlog and one clock. Your agent works a simulated day inside the
 clone, and Sonata scores how much of the job it finished without handing
 anything back to a human.
 
-Nothing leaves your machine. Each clone is a local Next app over SQLite that
+The apps and saved runs live on your machine; configured model providers receive
+the model requests. Each clone is a local Next app over SQLite that
 speaks the real vendor API, so the agent you already have — the official
 `googleapis` and `@slack/web-api` SDKs, or an MCP client — works against them
 with nothing changed but a base URL. Seven clones ship — Gmail, Slack,
@@ -24,7 +25,12 @@ not yet scored days).
 
 ## The loop
 
-**1. Connect your agent.** One stdio MCP server fronts all three clones: 28
+**1. Choose a model, or connect your own agent.** Normal dashboard and CLI
+evaluations use Inspect to run the tested AI and the judge. Sonata owns the workplace,
+clock, colleagues and grading rules. The [Inspect adapter guide](integrations/inspect/README.md)
+describes setup, saved transcripts and current measurement limits.
+
+For an agent you run separately, one stdio MCP server fronts all three clones: 28
 tools, `gmail_*` / `slack_*` / `calendar_*` plus `sonata_whats_new`, which
 answers "what changed since I last looked" across all three surfaces.
 
@@ -57,9 +63,9 @@ catalogued failure modes.
 npm run sonata -- run client-escalation --model anthropic/claude-haiku-4.5 --ticks 4
 ```
 
-The same three steps are the dashboard's three pages; the `run` command calls
-the function the Start button calls, so a terminal and a browser cannot
-disagree.
+The `run` command submits to the same platform endpoint as the Start button.
+Keep the platform running for CLI evaluations. Inspect advances against the
+workplace's compressed clock: by default, one simulated hour per real minute.
 
 ## Quickstart
 
@@ -67,6 +73,8 @@ From a clean clone. Node >= 22 (see [Requirements](#requirements)).
 
 ```bash
 npm install                  # workspaces, native modules, the CLI
+uv venv .context/inspect-venv --python 3.12
+uv pip install --python .context/inspect-venv/bin/python -e "integrations/inspect[test]"
 npm run sonata -- init       # writes .env, applies each clone's schema
 npm run sonata -- up         # dashboard :3000, and the three clones
 ```
@@ -81,8 +89,21 @@ clone needs: `data/*.db` is gitignored, so a fresh checkout arrives with three
 `db/schema.sql` files and no tables. Every statement is
 `CREATE TABLE IF NOT EXISTS`, so `init` is safe to re-run.
 
-Open <http://localhost:3000>, pick a day, press Start. Your key goes in Settings
-or in `.env`; Settings wins.
+Open <http://localhost:3000>, pick a day and model, and press Start. Your key goes
+in Settings or in `.env`; Settings wins. The optional Spending limit field
+overrides the scenario's agent-and-colleague budget for that run; final judging
+is additional. A finished run has a Download Inspect log link. Rejudging preserves
+earlier reports in Assessment history, with a separate Inspect log for each pass.
+New runs use private Docker app containers, ports, SQLite files and separate
+agent/control credentials. Inspect executes app tools inside a restricted container;
+its live app links open that workplace for human review. Docker must be running;
+the first launch builds the runtime images. See the [runtime guide](integrations/runtime/README.md)
+for setup, boundary checks and retained evidence. App links close when a run ends;
+its report, databases, logs and workspace archive remain available.
+
+The commands above use `uv` to install Inspect's Python environment. If you
+already have a compatible environment, set `SONATA_INSPECT_PYTHON` to its Python
+executable. Missing Inspect prerequisites produce a setup error before a day starts.
 
 When something is off — a clone answering 500 after a merge, a key nothing reads,
 a port already taken — ask rather than guess:
@@ -236,10 +257,16 @@ one value cannot bind five services.
 
 ### Two credentials, and when they are interchangeable
 
-`SANDBOX_TOKEN` (default `sandbox-token`) is the **control-plane admin** token.
-It opens `/api/sandbox/*` on all three clones — seed, inject, snapshot, reset,
-mint — and it is Slack's and Calendar's API token as well. It is a seatbelt, not
-a lock.
+`SANDBOX_TOKEN` (default `sandbox-token`) is the provider API token for local
+developer apps. `SANDBOX_CONTROL_TOKEN` opens operator routes such as seed,
+inject, snapshot, reset and token minting. Shared developer apps fall back to
+`SANDBOX_TOKEN` when no separate control token is set, so the examples below
+remain valid for those apps.
+
+Product runs always generate distinct credentials for their private workplace.
+Inspect receives only the agent credential and a Gmail OAuth grant; ordinary
+Gmail refresh does not require admin access. Run-local operator actions remain
+under Sonata's control; inspect the run through the Sonata dashboard.
 
 Gmail also carries its own OAuth2 server, and `SANDBOX_AUTH` decides whether it
 gates `/gmail/v1/*`. The default is `token`: the admin token works there too,
@@ -304,9 +331,20 @@ the run starts, the world seeds, and then every model call fails with
 "OPENROUTER_API_KEY is not set" while everything else looks healthy. That one
 has already cost an afternoon.
 
+Product analytics is off unless `NEXT_PUBLIC_POSTHOG_KEY` is set. With it, the
+dashboard sends page views and six funnel events (scenario previewed, saved,
+started from a template, run started, report opened, settings saved) to PostHog,
+with element text masked and no session replay. What each event carries is
+typed in [`apps/platform/src/lib/analytics.ts`](apps/platform/src/lib/analytics.ts);
+credentials, briefs and message bodies are stripped there before anything is
+sent.
+
 ## Requirements
 
-Node **>= 22**, and npm workspaces.
+Node **>= 22**, and npm workspaces. Evaluations also need the Inspect Python
+environment described above and a running Docker engine supporting isolated
+bridge networks (verified with Docker 29.4 on OrbStack). Shared developer apps
+can still run directly with npm.
 
 The floor is 22 because the OpenAI client (v7, which is how Sonata talks to
 OpenRouter) requires it. The repo's own code would run on 20.12 — that is where

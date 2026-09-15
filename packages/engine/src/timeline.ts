@@ -227,6 +227,8 @@ function digestPhrase(twin: TwinName, kind: string): string {
       return "a change in a document";
     case "google-ads":
       return "a change in the ads account";
+    case "excel":
+      return "a change in a workbook";
     case "linkedin":
       return kind === "reaction" ? "a new reaction on LinkedIn" : "new activity on LinkedIn";
   }
@@ -236,4 +238,20 @@ function digestPhrase(twin: TwinName, kind: string): string {
 export function recentHistory(ticks: TickRecord[], max: number): TimelineEntry[] {
   const all = runTimeline(ticks);
   return max >= all.length ? all : all.slice(all.length - max);
+}
+
+/** Colleague context never falls back to the unrestricted report timeline. */
+export function colleagueHistory(ticks: TickRecord[], limit: number): TimelineEntry[] {
+  const rows: TimelineEntry[] = [];
+  for (const tick of ticks) {
+    for (const row of tick.observedActions ?? []) {
+      if (row.observation) rows.push({ tick: tick.tick, simTimeISO: tick.simTimeISO,
+        source: "agent", twin: row.twin, text: `[from ${row.observation.actor ?? "unknown sender"}${row.observation.channelId ? ` in ${row.observation.channelId}` : ""}] ${row.observation.text}`, observation: row.observation });
+    }
+    for (const event of [...tick.beatsFired, ...tick.directorEvents]) {
+      if (event.observation && !event.error) rows.push({ tick: tick.tick, simTimeISO: tick.simTimeISO,
+        source: "world", twin: event.twin, text: `[from ${event.observation.actor ?? "unknown sender"}${event.observation.channelId ? ` in ${event.observation.channelId}` : ""}] ${event.observation.text}`, observation: event.observation });
+    }
+  }
+  return limit > 0 ? rows.slice(-limit) : [];
 }

@@ -1,3 +1,4 @@
+import { requireSandboxToken } from "@/lib/sandbox/auth";
 import { NextResponse } from "next/server";
 import { resetWorking } from "@/lib/reset";
 
@@ -6,6 +7,8 @@ export const dynamic = "force-dynamic";
 
 // Reset must happen in-process: the server owns the working SQLite handle.
 export async function POST(req: Request) {
+  const authErr = requireSandboxToken(req);
+  if (authErr) return authErr;
   try {
     let note = "reset to snapshot";
     try {

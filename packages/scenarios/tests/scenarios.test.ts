@@ -52,7 +52,7 @@ function refsOf(spec: EpisodeSpec): string[] {
 /**
  * What a beat points backwards at: a thread, a parent message, an event.
  *
- * The five scenarios in this package are a mailbox, a workspace and a diary, so
+ * The six scenarios in this package are a mailbox, a workspace and a diary, so
  * anything on the four later surfaces is `undefined` here rather than reached
  * for — a ref this function invented for a twin no scenario uses would be
  * asserted against a registry that never held it.
@@ -67,13 +67,19 @@ function backReference(beat: Beat): string | undefined {
 }
 
 describe("the registry", () => {
-  it("holds the five article scenarios, addressable by id", () => {
+  it("holds the shipped scenarios, addressable by id", () => {
     expect(scenarioIds()).toEqual([
       "client-escalation",
       "invoice-chase",
       "candidate-scheduling",
       "outage-comms",
       "travel-day",
+      "meridian-excursion",
+      "vc-investment-day",
+      "vc-busy-investment-day",
+      "vc-ai-assistant-day",
+      "tax-reporting-workflow-day",
+      "tax-reporting-workbook-day",
     ]);
     for (const id of scenarioIds()) expect(getScenario(id)?.id).toBe(id);
     expect(getScenario("no-such-day")).toBeUndefined();
@@ -204,10 +210,10 @@ describe.each(SPECS.map((s) => [s.id, s] as const))("%s", (_id, spec) => {
     expect(beatTwins.size, "surfaces the day happens on").toBeGreaterThanOrEqual(2);
   });
 
-  it("scores against 4–8 criteria a checker can actually decide", () => {
+  it("routes the checklist to supported automatic or explicitly judged criteria", () => {
     const checklist = spec.success.checklist;
     expect(checklist.length).toBeGreaterThanOrEqual(4);
-    expect(checklist.length).toBeLessThanOrEqual(8);
+    expect(checklist.length).toBeLessThanOrEqual(12);
     expect(checklist.some((c) => c.severity === "must")).toBe(true);
     expect(checklist.some((c) => c.severity === "should")).toBe(true);
     expect(new Set(checklist.map((c) => c.twin)).size).toBeGreaterThanOrEqual(2);

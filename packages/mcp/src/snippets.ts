@@ -97,6 +97,7 @@ export function restSnippet(input: SnippetInput): string {
     // link it was sent; a human poking at it reads the sandbox's own projection.
     "google-docs": "Google Docs v1      e.g. GET /api/sandbox/snapshot (no list method exists)",
     "google-ads": "Google Ads v17      e.g. GET /v17/customers:listAccessibleCustomers",
+    excel: "Excel-style replica e.g. GET /api/workbooks",
     linkedin: "LinkedIn /rest      e.g. GET /v2/userinfo",
   };
   const lines = [
@@ -170,6 +171,8 @@ function sample(twin: ServedTwin): string {
       return "/api/sandbox/snapshot";
     case "google-ads":
       return "/v17/customers:listAccessibleCustomers";
+    case "excel":
+      return "/api/workbooks";
     case "linkedin":
       return "/v2/userinfo";
   }

@@ -3,12 +3,8 @@ import { unauthorizedResponse } from "./errors";
 
 // The provider gate, and the only home for the provider credential.
 //
-// Attio authenticates with a Bearer API key and nothing else, so unlike the
-// Gmail twin there is no OAuth mode, no token endpoint and no authorization
-// server: the control-plane token and the API key are the same string, and the
-// only difference between the two surfaces is the shape of the failure. The
-// control-plane gate lives in src/lib/sandbox/auth.ts and imports the token
-// from here, so there is one credential per twin.
+// Attio's provider API uses SANDBOX_TOKEN. The harness control plane resolves
+// its independent credential in src/lib/sandbox/auth.ts.
 export const SANDBOX_TOKEN = process.env.SANDBOX_TOKEN || "sandbox-token";
 
 /**

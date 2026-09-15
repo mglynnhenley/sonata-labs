@@ -43,6 +43,7 @@ const TWIN_LABEL: Record<MissedMoment["twin"], string> = {
   "google-docs": "Docs",
   "google-ads": "Ads",
   linkedin: "LinkedIn",
+  excel: "Excel",
 };
 
 export function HarnessFaults({ report }: { report: HarnessReport }) {
@@ -57,8 +58,8 @@ export function HarnessFaults({ report }: { report: HarnessReport }) {
             Ours, not the agent&rsquo;s
           </h2>
           <p className="mt-0.5 max-w-[80ch] text-sn-base text-sn-muted">
-            Defects in this harness, separated from the model&rsquo;s record and counted nowhere in
-            it. Everything else on this page is the agent&rsquo;s.
+            Execution and evidence gaps are separated from task outcomes. A missing observation
+            or interrupted day cannot establish that the agent failed the affected work.
           </p>
         </div>
         {day ? (
@@ -69,6 +70,16 @@ export function HarnessFaults({ report }: { report: HarnessReport }) {
       </div>
 
       <div className="divide-y divide-sn-gold/30 border-t border-sn-gold/30">
+        {report.worldErrors?.length ? (
+          <Section title="Some simulated colleague responses failed"
+            lead="These are simulation failures. This run is unmeasured because later work may depend on the missing responses.">
+            <ul className="mt-3 space-y-2 text-sn-sm text-sn-muted">
+              {report.worldErrors.map((error, index) => (
+                <li key={`${error.tick}-${index}`} className="break-words"><strong>{error.clock}</strong> — {error.message}</li>
+              ))}
+            </ul>
+          </Section>
+        ) : null}
         {day ? <ShortDay day={day} /> : null}
         {capture ? <Capture summary={capture} /> : null}
         {sight?.kind === "partial" ? <PartialSight sight={sight} /> : null}
@@ -114,8 +125,8 @@ function ShortDay({ day }: { day: NonNullable<HarnessReport["day"]> }) {
           <>
             This run played <strong className="font-medium text-sn-ink">{day.ran} of the {day.declared} ticks</strong>{" "}
             the scenario declares — {day.from} to {day.to} of a day written through to {day.endOfDay}.
-            The agent worked {share}% of the day its brief and its criteria were written for, and was
-            then scored against the whole of it.
+            This is {share}% of the scheduled ticks, not the percentage of work completed.
+            The partial record does not support a full-day conclusion.
           </>
         ) : (
           <>

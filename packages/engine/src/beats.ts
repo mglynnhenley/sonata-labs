@@ -1,3 +1,4 @@
+import { bodyObservation } from "./observations";
 import {
   agentToolCalls,
   resolvePerson,
@@ -711,6 +712,7 @@ async function adaptOne(
     saw: check.evidence,
     sawOn: adapt.when.twin,
     wrote: writtenFromTicks(deps.ticks),
+    observations: deps.audit.flatMap(row => row.observation ? [{ twin: row.twin, observation: row.observation }] : []),
     tick: deps.tick,
     simTimeLabel: deps.simTimeLabel,
   });
@@ -774,6 +776,7 @@ export async function fireBeats(
     if (outcome.handle) deps.refs.record(beat.ref, outcome.handle);
     const assessment = assessments?.get(beat.id);
     fired.push({
+      observation: outcome.error ? undefined : bodyObservation(beat, deps.world),
       beatId: beat.id,
       ...(beat.ref ? { ref: beat.ref } : {}),
       twin: beat.twin,

@@ -15,69 +15,20 @@ import {
   type TwinName,
   type WorldAssessment,
   type WorldSeed,
+  type WorldObservation,
 } from "@sonata/core";
 import type { WrittenText } from "@sonata/judge/checklist";
 import { completeJSON, type CompleteJSON, type Effort } from "./llm";
 import { auditKey, withRole, withTick } from "./trace";
 import { errorMessage } from "./http";
 
-// THE LIVING WORLD.
-//
-// Scripted beats make two runs comparable; this is what makes the day a day.
-// Once per tick the world gets the chance to answer the agent — and it takes
-// that chance ONE PERSON AT A TIME. Code works out who has a reason to speak
-// (`castTick`), and each of those people then gets their own model call, in
-// parallel, from a prompt about them alone containing only what they could
-// plausibly have seen.
-//
-// It used to be one call for everybody: one prompt holding the whole cast and
-// the whole day, answering with everyone's moves at once. Two things were wrong
-// with that, and the split fixes both structurally rather than by asking harder:
-//
-//   - VOICES BLURRED. One model writing six people in one response reads like
-//     one person doing impressions, however good each persona's `brief` is.
-//   - WHO-KNOWS-WHAT WAS A REQUEST. The whole day went into one prompt and the
-//     model was asked, in `offLimits`, not to leak it. Clive, who exists only on
-//     Gmail, was written by something that had read #ops. Everywhere else in this
-//     repo correctness lives in code for exactly this reason — ids, threading,
-//     channel membership, the cast check in `boundEvents` — and this was the last
-//     place that hoped. A character cannot leak what was never in their prompt.
-//
-// WHAT IS AND IS NOT FILTERED, because half a guarantee stated as a whole one is
-// worse than none. The TRAFFIC is filtered, person by person, in `personPrompt`:
-// the history, this tick's beats, the agent's deltas and the schedule ahead all
-// pass through `persona.surfaces` first. The SETTING is not: the company, the
-// roster and `spec.story` are common knowledge and go to everybody whole. A
-// roster is genuinely common knowledge in a company; a story is only mostly so,
-// and `client-escalation`'s names `#launch-kestrel` in its second paragraph — so
-// its Gmail-only client does know that channel exists, and always did. What he
-// cannot learn is a single line anyone said in it. Narrowing that further is a
-// scenario-authoring change, not a code one: nothing here can safely rewrite
-// prose, and `personPrompt` is where the boundary is asserted.
-//
-// Four properties are load-bearing, and all four are enforced here rather than
-// asked for in the prompt:
-//
-//   - BOUNDED. `boundEvents` stays the single final gate over the merged result:
-//     at most `maxEventsPerTick` events, at most one per person, only the
-//     policy's cast, only on their own surfaces. Casting is bounded by the same
-//     number, so the calls per tick can never exceed the events per tick.
-//   - IN CHARACTER. A cast member's prompt carries their own brief and their own
-//     surfaces, and their response schema only admits the surfaces they are on —
-//     so a client cannot emit a Slack message even if it wanted to.
-//   - DETERMINISTIC WHERE IT CAN BE. `responsiveness` and `replyDelayTicks` are
-//     now read BY CODE — they decide who is due and who answers a room — and
-//     still never rolled as dice: a random draw would mean two runs of the same
-//     spec faced different worlds, and the benchmark table would be measuring the
-//     coin. Deterministic casting is neither ignored nor random, and that is the
-//     whole point.
-//   - CHEAP IN PROPORTION TO THE DAY. `reactionDecision` still skips the model
-//     entirely on a quiet tick, and casting then calls only the people with a
-//     reason to speak. See the cost note on `castTick`.
-//
-// Every call is recorded in the trace under the role 'director', so the cost of
-// running the world stays separable from the cost of the agent being tested —
-// N calls in a tick, all attributed, all countable as the world's spend.
+// Each colleague receives a separate model call. Delivered observations carry
+// explicit audiences; app access alone never grants conversation access. Upcoming
+// events, the scenario narrative, other personas' briefs and global off-limit
+// facts are not model context. Persona briefs and business metadata must contain
+// only appropriate initial knowledge; they are still authored inputs.
+// Code controls casting, reply delays, meeting blocks and event caps. This is a
+// communication boundary, not a business approval/state machine.
 
 /**
  * What the harness knows about one of the agent's actions that its audit row does
@@ -125,7 +76,8 @@ export interface DirectorContext {
   /** Scripted beats that landed this tick, before the agent has seen them. */
   beatsThisTick: BeatFired[];
   /** Beats still to come — so the world does not pre-empt the script. */
-  upcoming: UpcomingBeat[];
+  /** Legacy caller field; never included in colleague prompts. */
+  upcoming?: UpcomingBeat[];
 }
 
 export interface Director {
@@ -150,6 +102,7 @@ export interface Director {
 
 /** One beat that needs saying differently, and everything it may be said from. */
 export interface BeatRewrite {
+  observations?: Array<{ twin: TwinName; observation: WorldObservation }>;
   /** `Beat.id`, so a note and the trace can name what was reworded. */
   beatId: string;
   /** Whose words these are — the beat's own `payload.from`. */
@@ -164,7 +117,7 @@ export interface BeatRewrite {
   saw: string;
   /** The surface that evidence is about, so it can be withheld from someone off it. */
   sawOn: TwinName | "any";
-  /** Everything the agent has written today; filtered to this person's surfaces here. */
+  /** Legacy report evidence; not used for colleague context without an observation audience. */
   wrote: WrittenText[];
   tick: number;
   simTimeLabel: string;
@@ -398,7 +351,7 @@ function assessmentOf(
  * had to drop. Cheaper, and one fewer thing that depends on a model reading a
  * rule and agreeing with it.
  */
-function personPlanSchema(persona: DirectorPersona): Record<string, unknown> {
+function personPlanSchema(persona: DirectorPersona, routing: DeliveryRoutes): Record<string, unknown> {
   const surfaces = surfacesOf(persona);
   const kinds = KINDS.filter((k) => surfaces.some((s) => kindFitsSurface(k, s)));
   const event: Record<string, unknown> = {
@@ -435,8 +388,46 @@ function personPlanSchema(persona: DirectorPersona): Record<string, unknown> {
     type: "object",
     additionalProperties: false,
     required: ["events", ...ASSESSMENT_REQUIRED],
-    properties: { events: { type: "array", items: event }, ...ASSESSMENT_SCHEMA_PROPERTIES },
+    properties: { events: { type: "array", items: { anyOf: surfaces.map(surface => ({
+      ...event,
+      properties: {
+        ...(event.properties as Record<string, unknown>),
+        surface: { type: "string", enum: [surface] },
+        kind: { type: "string", enum: kinds.filter(k => kindFitsSurface(k, surface)) },
+        channel: { type: "string", enum: surface === "slack" ? ["", ...routing.channels] : [""] },
+        replyToRef: { type: "string", enum: ["", ...[...routing.refs].filter(([, twin]) => twin === surface).map(([ref]) => ref)] },
+        eventRef: { type: "string", enum: surface === "calendar" ? ["", ...[...routing.refs].filter(([, twin]) => twin === "calendar").map(([ref]) => ref)] : [""] },
+      },
+    })) } }, ...ASSESSMENT_SCHEMA_PROPERTIES },
   };
+}
+
+interface DeliveryRoutes {
+  channels: string[];
+  refs: Map<string, TwinName>;
+}
+
+/** Only destinations already visible to this colleague can be generated. */
+function deliveryRoutes(world: WorldSeed, ctx: DirectorContext, member: CastMember): DeliveryRoutes {
+  const refs = new Map<string, TwinName>();
+  if (member.heard.ref) refs.set(member.heard.ref, member.heard.twin);
+  for (const row of ctx.deltas) {
+    if (row.observation?.audience.includes(member.person.id) && auditRefName(row)) refs.set(auditRefName(row), row.twin);
+  }
+  for (const beat of ctx.beatsThisTick) {
+    if (!beat.error && beat.ref && beat.observation?.audience.includes(member.person.id)) refs.set(beat.ref, beat.twin);
+  }
+  return { refs, channels: world.channels.filter(c => c.members.includes(member.person.id)).map(c => c.name) };
+}
+
+/** Providers may ignore schemas; reject an invalid destination before any app write. */
+function validateDelivery(event: Omit<RawDirectorEvent, "personId">, routes: DeliveryRoutes): void {
+  const ref = event.kind === "rsvp" ? event.eventRef.trim() || event.replyToRef.trim() : event.replyToRef.trim();
+  if (ref && routes.refs.get(ref) !== event.surface) throw new Error(`reply ref "${ref}" is not a visible ${event.surface} conversation`);
+  if (event.surface === "slack" && event.kind === "message" && !ref &&
+      !routes.channels.includes(event.channel.replace(/^#/, "").trim())) {
+    throw new Error(`Slack channel "${event.channel}" is not in this colleague's workplace`);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -506,7 +497,7 @@ function toBody(
     };
   }
   if (surface === "slack" && kind === "message") {
-    if (!raw.body.trim() || !raw.channel.trim()) return null;
+    if (!raw.body.trim() || (!raw.channel.trim() && !raw.replyToRef.trim())) return null;
     return {
       ...base,
       id: "",
@@ -680,7 +671,7 @@ export interface Heard {
  */
 function heardOf(row: TwinAuditRow, tick: number, detail?: ReadonlyMap<string, DeltaDetail>): Heard {
   const found = detail?.get(auditKey(row));
-  const prose = found?.prose ?? "";
+  const prose = row.observation?.text ?? "";
   return {
     at: tick,
     twin: row.twin,
@@ -772,23 +763,7 @@ interface Named {
   at: number;
 }
 
-/**
- * Everyone in the cast the text names, earliest mention first.
- *
- * An audit row is a SUMMARY — `Sent “Re: SLA” to dana@acme.test` — and a beat's
- * line is prose, so identity has to be recovered from words. Matching is on the
- * handles a person actually has: their address, their Slack id, their full name,
- * and finally their first name, all word-bounded so "Sam" does not match
- * "Sample".
- *
- * It errs towards matching. Over-matching casts one person too many, which the
- * tick's cap absorbs; under-matching leaves a client's direct question with
- * nobody assigned to answer it for the rest of the day, which is the failure this
- * whole file exists to remove.
- *
- * The POSITION is carried out with the person, and not as decoration: it is how a
- * beat's own author is identified — see `authorOf`.
- */
+/** Mentions can select a responder only after membership has established access. */
 function namedIn(world: WorldSeed, text: string): Named[] {
   const found: Named[] = [];
   for (const person of world.cast) {
@@ -804,39 +779,6 @@ function namedIn(world: WorldSeed, text: string): Named[] {
     if (at >= 0) found.push({ person, at });
   }
   return found.sort((a, b) => a.at - b.at || a.person.id.localeCompare(b.person.id));
-}
-
-/**
- * Who wrote the line, so that nobody is cast to react to their own message.
- * `BeatFired` carries no author field, so it has to be read back out of the
- * summary.
- *
- * At index 0 and nowhere else. `summarizeBody` opens with the actor's name for
- * every shape that HAS one — emailed, posted, reacted, invited, RSVP'd — and a
- * calendar `move` or `cancel` opens with the event's title instead, naming people
- * only inside the reason. Taking "the first name on the line" as the author read
- * `"walkthrough" moved to 11:00 (Gerald added the access review control)` as a
- * line by Gerald and excluded the one person the change was about, so the beat
- * pulled in nobody at all.
- */
-function authorOf(people: readonly Named[]): Person | undefined {
-  return people[0]?.at === 0 ? people[0].person : undefined;
-}
-
-/**
- * Channels the text names as `#name` — the form every twin's summary uses
- * (`channelLabel` in each Slack method).
- *
- * Bounded by the characters a channel name is made of, and not by `\b`, because
- * a plain substring makes `#ops` a mention of a channel called "op" and `\b`
- * makes `#launch-kestrel` a mention of one called "launch" — a hyphen is a word
- * boundary and half the channels in this repo have one. Either way the room that
- * then answers is the wrong room.
- */
-function channelsIn(world: WorldSeed, text: string): ChannelSeed[] {
-  return world.channels.filter(
-    (c) => c.name.trim() && new RegExp(`#${escapeRegExp(c.name)}(?![\\w-])`, "i").test(text),
-  );
 }
 
 /**
@@ -857,7 +799,7 @@ function channelsIn(world: WorldSeed, text: string): ChannelSeed[] {
  *      is addressed to the room, and exactly one member answers it: the most
  *      responsive. Four people answering one Slack question is not a workday.
  *   3. INVOLVED — someone a beat just named, other than the beat's own author
- *      where the line has one (`authorOf`). Gated by `CHIMES_IN_ABOVE`, because
+ *      from its released observation metadata. Gated by `CHIMES_IN_ABOVE`, because
  *      nobody asked them.
  *
  * THE PARALLEL-WRITER HAZARD. The people cast here are written at the same
@@ -915,12 +857,20 @@ export function castTick(
     const responsiveness = responsivenessOf(persona);
     if (!(responsiveness > 0) || responsiveness < (opts.floor ?? 0)) return;
 
-    if (opts.delayed && delayOf(persona) > 0) {
+    let availableAt = ctx.tick + (opts.delayed ? delayOf(persona) : 0);
+    // Fixed meeting blocks constrain replies as well as calendar invitations.
+    // Advance across touching/overlapping blocks; preserve the original request.
+    for (;;) {
+      const block = persona.unavailableTicks?.find(b => b.from <= availableAt && availableAt < b.to);
+      if (!block) break;
+      availableAt = block.to;
+    }
+    if (availableAt > ctx.tick) {
       // Not now: they sit on it for as long as their persona says. First claim
       // wins — the older thing is the one they owe you.
       if (!next.has(person.id)) {
         next.set(person.id, {
-          dueAt: ctx.tick + delayOf(persona),
+          dueAt: availableAt,
           because: opts.because,
           heard: opts.heard,
         });
@@ -963,13 +913,15 @@ export function castTick(
 
   // 2. ADDRESSED BY THE AGENT THIS TICK.
   for (const row of ctx.deltas) {
+    if (!row.observation) continue;
     const heard = heardOf(row, ctx.tick, ctx.deltaDetail);
     // The prose is read as well as the summary, which is the whole reason this
     // could not be built before the world could see what the agent wrote: an
     // email addressed to the team but asking Dana by name in its second line is
     // a question TO DANA, and the audit row alone never says so.
-    const text = `${row.summary} ${heard.prose ?? ""}`;
-    for (const { person } of namedIn(world, text)) {
+    const text = row.observation.text;
+    for (const person of world.cast.filter(p => row.observation!.audience.includes(p.id) && p.id !== row.observation!.actor &&
+      (row.twin !== "slack" || !row.observation!.channelId || namedIn(world, text).some(n => n.person.id === p.id)))) {
       const entry = roster.get(person.id);
       // Named on a surface they are not on is somebody else's business.
       if (!entry || !entry.persona.surfaces.includes(row.twin)) continue;
@@ -981,9 +933,9 @@ export function castTick(
       });
     }
     if (row.twin !== "slack") continue;
-    for (const channel of channelsIn(world, text)) {
+    for (const channel of world.channels.filter(c => c.id === row.observation?.channelId)) {
       const answerer = answererIn(channel, taken);
-      if (!answerer) continue;
+      if (!answerer || !row.observation.audience.includes(answerer.person.id)) continue;
       consider(answerer, {
         rank: REASON.addressed,
         because: `the assistant posted in #${channel.name} and you are the one who picks that up`,
@@ -996,16 +948,17 @@ export function castTick(
   // 3. INVOLVED BY A BEAT THAT JUST LANDED.
   for (const beat of ctx.beatsThisTick) {
     // A beat that did not land did not happen, so nobody saw it.
-    if (beat.error) continue;
+    if (beat.error || !beat.observation) continue;
     const heard: Heard = {
       at: ctx.tick,
       twin: beat.twin,
       summary: beat.summary,
+      prose: beat.observation.text,
       ref: beat.ref ?? "",
       byAgent: false,
     };
-    const people = namedIn(world, beat.summary);
-    const author = authorOf(people);
+    const people = world.cast.filter(p => beat.observation!.audience.includes(p.id)).map(person => ({ person }));
+    const author = world.cast.find(p => p.id === beat.observation?.actor);
     const exclude = new Set(author ? [author.id] : []);
     for (const { person } of people) {
       if (exclude.has(person.id)) continue;
@@ -1020,7 +973,7 @@ export function castTick(
       });
     }
     if (beat.twin !== "slack") continue;
-    for (const channel of channelsIn(world, beat.summary)) {
+    for (const channel of world.channels.filter(c => c.id === beat.observation?.channelId)) {
       const answerer = answererIn(channel, new Set([...exclude, ...taken]));
       if (!answerer) continue;
       consider(answerer, {
@@ -1068,37 +1021,6 @@ export function castTick(
 // Prompt
 // ---------------------------------------------------------------------------
 
-function personLine(person: Person, persona: DirectorPersona): string {
-  const bits = [
-    `${person.id} — ${person.name}, ${person.role} (${person.relationship} to the owner)`,
-    `  voice: ${person.voice}`,
-    `  answers on: ${persona.surfaces.join(", ")}`,
-    `  responsiveness: ${persona.responsiveness} · usually replies ${persona.replyDelayTicks} tick(s) later`,
-  ];
-  if (persona.brief) bits.push(`  standing instruction: ${persona.brief}`);
-  return bits.join("\n");
-}
-
-function castBlock(spec: EpisodeSpec): string {
-  const lines: string[] = [];
-  for (const persona of spec.director.personas) {
-    const person = resolvePerson(spec.world, persona.personId);
-    if (person) lines.push(personLine(person, persona));
-  }
-  return lines.join("\n");
-}
-
-/**
- * The half of a character's system prompt that is the same for all of them: the
- * company, the story, who works there, and the standing prohibitions.
- *
- * The cast stays whole here rather than being filtered per person, and that is
- * deliberate: who exists, what they do and how they talk is common knowledge in a
- * company — a client knows the account manager's name and manner. What is NOT
- * common knowledge is what was SAID today, and that is filtered person by person
- * in `personPrompt`. The structural guarantee this change is for is about
- * traffic, not about the roster.
- */
 export function directorSystemPrompt(spec: EpisodeSpec): string {
   const ownerPerson = owner(spec.world);
   return [
@@ -1107,23 +1029,11 @@ export function directorSystemPrompt(spec: EpisodeSpec): string {
     `The company: ${spec.world.business.name} — ${spec.world.business.description}`,
     `The assistant operates ${ownerPerson.name}'s accounts (${ownerPerson.email}).`,
     "",
-    "THE STORY",
-    spec.story,
-    "",
+
     "THE PEOPLE WHO WORK HERE — you will be asked to be exactly one of them:",
-    castBlock(spec),
+    spec.world.cast.map(p => `${p.id}: ${p.name} — ${p.role}`).join("\n"),
     "",
     `STYLE: ${spec.director.style}`,
-    // Omitted entirely when the policy has no prohibitions: an empty "OFF LIMITS"
-    // heading reads to a model as a section it failed to receive, and models fill
-    // in blanks.
-    ...(spec.director.offLimits.length
-      ? [
-          "",
-          "OFF LIMITS — never volunteer any of this, and never make any of these moves:",
-          ...spec.director.offLimits.map((o) => `- ${o}`),
-        ]
-      : []),
     "",
     "RULES",
     "- Silence is the common case. Return an empty list unless this person has a real reason to act now.",
@@ -1133,8 +1043,9 @@ export function directorSystemPrompt(spec: EpisodeSpec): string {
     // when the day has been handled — see `quietLine`.
     "- Never claim the assistant failed to do something the history shows it did. If it replied, " +
       "chased or booked, the people in this world have seen that and react to THAT, not to silence.",
-    "- Never do what a scripted upcoming beat is going to do, and never contradict or pre-empt one.",
-    "- Nobody in this world knows they are simulated, and nobody mentions the assistant being an AI.",
+    "- Only discuss released evidence in your context. Do not invent documents, decisions or approvals.",
+    "- Evidence marked truncated or omitted is incomplete. Do not claim a detail was never supplied merely because it is not shown.",
+    "- Stay in the business setting. The assistant is an AI working alongside people; do not invent human attendance or authority for it.",
     "- People write short. An email is a few sentences; a Slack message is a line or two.",
   ].join("\n");
 }
@@ -1336,9 +1247,10 @@ export function personPrompt(ctx: DirectorContext, member: CastMember): string {
   const surfaces = surfacesOf(member.persona);
   const mine = (twin: TwinName | null): boolean => twin !== null && surfaces.includes(twin);
 
-  const history = ctx.history.filter((h) => mine(h.twin));
-  const beats = ctx.beatsThisTick.filter((b) => mine(b.twin));
-  const upcoming = ctx.upcoming.filter((u) => mine(u.twin));
+  const visible = (o: { audience: string[] } | undefined) => o?.audience.includes(member.person.id) === true;
+  const history = ctx.history.filter((h) => mine(h.twin) && visible(h.observation));
+  const beats = ctx.beatsThisTick.filter((b) => !b.error && mine(b.twin) && visible(b.observation));
+
   // Something they were told about on an earlier tick and have been sitting on
   // since. It is not in `ctx` any more — deltas only ever hold the current tick —
   // so it comes off the casting ledger, at the head of the list, where it reads
@@ -1346,9 +1258,11 @@ export function personPrompt(ctx: DirectorContext, member: CastMember): string {
   const owed = member.heard.byAgent && member.heard.at < ctx.tick ? [member.heard] : [];
   const heard = [
     ...owed,
-    ...ctx.deltas.filter((d) => mine(d.twin)).map((d) => heardOf(d, ctx.tick, ctx.deltaDetail)),
+    ...ctx.deltas.filter((d) => mine(d.twin) && visible(d.observation)).map((d) => heardOf(d, ctx.tick, ctx.deltaDetail)),
   ];
 
+  const historyBudget = { left: 12000 };
+  const beatBudget = { left: 6000 };
   const sections: string[] = [
     `IT IS ${ctx.simTimeLabel} (tick ${ctx.tick}). You are ${member.person.name}.`,
     "",
@@ -1356,7 +1270,7 @@ export function personPrompt(ctx: DirectorContext, member: CastMember): string {
     ...(history.length
       ? history.map(
           (h) =>
-            `- ${h.simTimeISO.slice(11, 16)} [${h.source === "agent" ? "the assistant" : "the people here"}] ${h.text}`,
+            `- ${h.simTimeISO.slice(11, 16)} [${h.source === "agent" ? "the assistant" : "the people here"}] ${excerpt(h.text, historyBudget) ?? "[earlier evidence omitted: context budget]"}`,
         )
       : ["- nothing yet; the day is just starting"]),
   ];
@@ -1365,23 +1279,15 @@ export function personPrompt(ctx: DirectorContext, member: CastMember): string {
     sections.push(
       "",
       "JUST NOW, WHERE YOU COULD SEE IT",
-      ...beats.map((b) => `- ${b.summary}${b.error ? " (failed to land)" : ""}`),
+      ...beats.map((b) => `- [${b.twin} from ${b.observation!.actor ?? "unknown sender"}] ${excerpt(b.observation!.text, beatBudget) ?? "[evidence omitted: context budget]"}`),
     );
   }
 
   sections.push(
     "",
     "WHAT THE ASSISTANT DID, AND WHAT YOU HAVE NOT ANSWERED",
-    ...(heard.length ? heardLines(heard, ctx.tick) : [quietLine(history, ctx.history)]),
+    ...(heard.length ? heardLines(heard, ctx.tick) : [quietLine(history, history)]),
   );
-
-  if (upcoming.length) {
-    sections.push(
-      "",
-      "ALREADY SCHEDULED TO HAPPEN LATER — do not pre-empt, contradict or reveal any of it",
-      ...upcoming.map((u) => `- ${u.line}`),
-    );
-  }
 
   // The reason, then the wait, composed here and only here — see `CastMember`.
   const waited = ctx.tick - member.heard.at;
@@ -1454,7 +1360,7 @@ const REWRITE_SCHEMA: Record<string, unknown> = {
  * order they are drawn in is the order they matter in, and a quiet re-sort would
  * put the budget's own reasoning back out of sight.
  */
-function wroteLines(items: readonly WrittenText[]): string[] {
+function wroteLines(items: readonly Pick<WrittenText, "twin" | "text">[]): string[] {
   const budget = { left: PROSE_CHARS_PER_TICK };
   const lines: string[] = [];
   for (const item of [...items].reverse()) {
@@ -1479,20 +1385,18 @@ function wroteLines(items: readonly WrittenText[]): string[] {
  *     survive loses it far less often than one that has to guess, and a discarded
  *     rewrite is a model call paid for and thrown away.
  *
- * WHAT THIS PERSON IS SHOWN. Their own surfaces and nothing else, the same filter
- * `personPrompt` applies: the agent's prose is filtered to `persona.surfaces`, and
- * the checker's evidence is withheld unless the condition is about a surface they
- * are on. An `any`-twin condition counts as "not necessarily theirs" and is
- * withheld too — its evidence can quote any surface's audit row, and a client with
- * no Slack account must not learn what is in #ops from a checker's proof.
+ * Only recipient-scoped observations are quotable. Legacy tool text and checker
+ * explanations may include private evidence, so neither enters this prompt.
  */
 export function rewritePrompt(
   req: BeatRewrite,
   member: Pick<CastMember, "person" | "persona">,
 ): string {
   const surfaces = surfacesOf(member.persona);
-  const visible = req.sawOn !== "any" && surfaces.includes(req.sawOn);
-  const wrote = wroteLines(req.wrote.filter((w) => surfaces.includes(w.twin)));
+  const wrote = wroteLines((req.observations ?? []).filter(o =>
+    surfaces.includes(o.twin) && o.observation.audience.includes(member.person.id)
+  ).map(o => ({ twin: o.twin, text: o.observation.text })));
+
 
   return [
     `IT IS ${req.simTimeLabel} (tick ${req.tick}). You are ${member.person.name}.`,
@@ -1503,7 +1407,7 @@ export function rewritePrompt(
     "---",
     "",
     "SINCE YOU WROTE THAT, THE ASSISTANT HAS ACTED — which that message does not account for:",
-    ...(visible ? [`- ${req.saw}`] : ["- it has already done what you were about to complain it had not."]),
+    "Only the recipient-scoped communications below are available evidence; do not infer hidden actions.",
     ...wrote,
     "",
     "REWRITE IT.",
@@ -1652,12 +1556,13 @@ export function createDirector(opts: DirectorOptions): Director {
     ctx: DirectorContext,
   ): Promise<{ raw: RawDirectorEvent[]; error?: string }> {
     try {
+      const routes = deliveryRoutes(spec.world, ctx, member);
       const plan = await withTick(ctx.tick, () =>
         withRole("director", () =>
           complete<PersonPlan>({
             system: personSystemPrompt(spec, member),
             prompt: personPrompt(ctx, member),
-            schema: personPlanSchema(member.persona),
+            schema: personPlanSchema(member.persona, routes),
             schemaName: "director_person",
             model: opts.model,
             effort: opts.effort,
@@ -1668,6 +1573,7 @@ export function createDirector(opts: DirectorOptions): Director {
         ),
       );
       const events = Array.isArray(plan?.events) ? plan.events : [];
+      for (const event of events) validateDelivery(event, routes);
       // One view per person per call, stamped onto every move they offered. Only
       // one of those moves can survive `boundEvents` anyway — one move per person
       // per tick — so this is one opinion reaching the artifact, attached to the

@@ -1,3 +1,4 @@
+import { controlToken } from "@sonata/core/controlAuth";
 import { google, type gmail_v1 } from "googleapis";
 import type { ActionRow, SessionRow } from "../audit";
 import type { FixtureMessage, InjectedMessage } from "./types";
@@ -33,7 +34,7 @@ export function connectGmail(rootUrl = defaultRootUrl(), token = defaultToken())
  */
 export async function obtainAccessToken(
   rootUrl = defaultRootUrl(),
-  adminToken = defaultToken(),
+  adminToken = controlToken(),
 ): Promise<string> {
   const res = await fetch(`${rootUrl}/api/sandbox/token`, {
     method: "POST",
@@ -47,7 +48,7 @@ export async function obtainAccessToken(
 /** Connect the SDK using a freshly-minted OAuth token (the common post-cutover path). */
 export async function connectGmailOAuth(
   rootUrl = defaultRootUrl(),
-  adminToken = defaultToken(),
+  adminToken = controlToken(),
 ): Promise<gmail_v1.Gmail> {
   return connectGmail(rootUrl, await obtainAccessToken(rootUrl, adminToken));
 }
@@ -55,7 +56,7 @@ export async function connectGmailOAuth(
 async function postJson<T>(url: string, body: unknown): Promise<T> {
   const res = await fetch(url, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", authorization: `Bearer ${controlToken()}` },
     body: JSON.stringify(body),
   });
   if (!res.ok) {
@@ -107,7 +108,7 @@ export async function fetchActivity(
     if (beforeId != null) url.searchParams.set("beforeId", String(beforeId));
     url.searchParams.set("limit", String(ACTIVITY_PAGE));
 
-    const res = await fetch(url);
+    const res = await fetch(url, { headers: { authorization: `Bearer ${controlToken()}` } });
     if (!res.ok) throw new Error(`GET /api/activity failed (${res.status})`);
     const body = (await res.json()) as ActivitySnapshot;
     snapshot ??= body;

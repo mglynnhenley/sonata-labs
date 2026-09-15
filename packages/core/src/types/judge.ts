@@ -1,3 +1,4 @@
+import type { ExcelWorkbook, ExcelChange } from "../excel";
 import type { CriterionResult, TimelineEntry } from "./run";
 import type { ByTwin, TwinName } from "./world";
 
@@ -147,6 +148,13 @@ export interface LinkedInSnapshot {
   comments: Array<{ commentUrn: string; postUrn: string; actor: string; text: string; isReply: boolean }>;
 }
 
+export interface ExcelSnapshot {
+  twin: "excel";
+  capturedAt: number;
+  workbooks: ExcelWorkbook[];
+  changes: ExcelChange[];
+}
+
 export type TwinSnapshot =
   | GmailSnapshot
   | SlackSnapshot
@@ -154,7 +162,8 @@ export type TwinSnapshot =
   | AttioSnapshot
   | GoogleDocsSnapshot
   | GoogleAdsSnapshot
-  | LinkedInSnapshot;
+  | LinkedInSnapshot
+  | ExcelSnapshot;
 
 // ---------------------------------------------------------------------------
 // Diffs. Derived from two snapshots by the twin's adapter, and pure — old
@@ -307,6 +316,14 @@ export interface LinkedInDiff {
   unchangedCount: number;
 }
 
+/** Complete changed workbook versions and history; nothing is excerpted. */
+export interface ExcelDiff {
+  twin: "excel";
+  workbooks: Array<{ id: string; before?: ExcelWorkbook; after?: ExcelWorkbook }>;
+  changes: ExcelChange[];
+  unchangedCount: number;
+}
+
 export type TwinDiff =
   | GmailDiff
   | SlackDiff
@@ -314,7 +331,8 @@ export type TwinDiff =
   | AttioDiff
   | GoogleDocsDiff
   | GoogleAdsDiff
-  | LinkedInDiff;
+  | LinkedInDiff
+  | ExcelDiff;
 
 // ---------------------------------------------------------------------------
 // Final state. The after-snapshot, narrowed — where each twin ENDED UP, as
@@ -391,6 +409,8 @@ export interface JudgeTrace {
 
 /** Everything the judge is given. All of it comes off disk. */
 export interface EpisodeJudgeInput {
+  /** Communications the simulator could not observe; not evidence of agent inaction. */
+  observationGaps?: Array<{ tick: number; twin: TwinName; actionId: number; reason: string }>;
   runId: string;
   specId: string;
   /** The agent's standing brief, verbatim — the judge restates it before assessing. */
@@ -495,8 +515,27 @@ export interface EpisodeJudgeReport {
   /**
    * The judge restates the task BEFORE assessing anything. If the restatement is
    * wrong, the brief is ambiguous — and that is itself the finding.
+   *
+   * One sentence now: what the day was for. The jobs it breaks into are
+   * `taskPoints`, because a reader checking whether we understood their brief is
+   * comparing a list against a list, and a paragraph makes them do that in their
+   * head.
    */
   taskUnderstanding: string;
+  /**
+   * The specific jobs the brief asked for, one per line. Absent on reports written
+   * before the restatement was broken up, where the whole task is in
+   * `taskUnderstanding` as prose.
+   */
+  taskPoints?: string[];
+  /**
+   * What the brief left unclear, one per line. Empty when it was unambiguous.
+   *
+   * Its own field rather than a closing clause of the restatement: an ambiguous
+   * brief is a finding about US, it changes how harshly everything below should be
+   * read, and buried at the end of a paragraph it was being read by nobody.
+   */
+  taskAmbiguities?: string[];
   /**
    * 0..1 — how much of the job got done without a human stepping in. The headline
    * number. `autonomyScore` in ../score derives the same figure deterministically
@@ -504,7 +543,24 @@ export interface EpisodeJudgeReport {
    * wide gap is a sign the catalog is missing a mode.
    */
   autonomyScore: number;
+  /**
+   * The verdict in one sentence. Older reports carry a 3-5 sentence paragraph
+   * here instead, which is why nothing may assume this is short.
+   */
   summary: string;
+  /**
+   * What the agent actually did, one job per line, and what it was asked for and
+   * did not do. The two together are the answer to the only question a reader of
+   * this page has, and they were previously a paragraph the reader had to take
+   * apart themselves — the "however" in the middle of it was doing the work of a
+   * heading.
+   *
+   * Both absent on reports written before the split. A UI falls back to `summary`,
+   * which on those reports still holds the whole account.
+   */
+  did?: string[];
+  /** See `did`. Empty is a real answer: it means nothing was left. */
+  didNot?: string[];
   /** Only catalog modes the judge actually found — absence is the default. */
   findings: Finding[];
   otherFindings: OtherFinding[];

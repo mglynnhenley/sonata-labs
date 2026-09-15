@@ -1,8 +1,9 @@
+import { listAssessments } from "@/lib/engine/assessments";
+import { AssessmentHistory } from "../../results/_components/AssessmentHistory";
 import { notFound } from "next/navigation";
 import type { EpisodeSpec, RunStatus } from "@sonata/core";
 import { getEpisode } from "../../api/_lib/records";
 import { getRun, resumeInterruptedRuns, toDetail } from "../../api/_lib/runner";
-import { twinUrls } from "../../api/_lib/twins";
 import { readBrief, readRun, readTrace, type SavedRun } from "../../results/_lib/artifacts";
 import { costBreakdown } from "../../results/_lib/cost";
 import { RunDetail } from "../../results/[runId]/RunDetail";
@@ -40,7 +41,7 @@ export default async function RunPage({ params }: { params: Promise<{ runId: str
 
   const doc = getRun(runId);
   if (doc && LIVE.includes(doc.status)) {
-    return <LiveEpisode initial={toDetail(doc)} twinLinks={twinUrls(doc.twins)} />;
+    return <LiveEpisode initial={toDetail(doc)} />;
   }
 
   const run = readRun(runId);
@@ -77,6 +78,7 @@ export default async function RunPage({ params }: { params: Promise<{ runId: str
       <div className="flex flex-col gap-6">
         {hasFaults(report) ? <HarnessFaults report={report} /> : null}
         <RunDetail run={withFindings(run, judge)} brief={brief} cost={cost} />
+        <AssessmentHistory assessments={listAssessments(runId)} />
         {hasEndState(closing) ? <EndOfDay report={closing} /> : null}
       </div>
     );
@@ -84,7 +86,7 @@ export default async function RunPage({ params }: { params: Promise<{ runId: str
 
   // Finished in memory but the artifact never landed — show the day we have
   // rather than a 404 over a run that visibly just played.
-  if (doc) return <LiveEpisode initial={toDetail(doc)} twinLinks={twinUrls(doc.twins)} />;
+  if (doc) return <LiveEpisode initial={toDetail(doc)} />;
   notFound();
 }
 

@@ -40,15 +40,16 @@ PORT=3800 npm run smoke -w apps/linkedin   # the acceptance gate, needs the serv
 tables and every route answers `no such table`. `db:init` is safe to re-run —
 every statement in `db/schema.sql` is `CREATE TABLE IF NOT EXISTS`.
 
-## One credential, two surfaces
+## Provider and control credentials
 
-`SANDBOX_TOKEN` (default `sandbox-token`) gates both halves, so the orchestrator
-carries one credential per twin.
+`SANDBOX_TOKEN` (default `sandbox-token`) gates the provider API. The harness
+uses `SANDBOX_CONTROL_TOKEN`, falling back to `SANDBOX_TOKEN` and then
+`sandbox-token` for development. `/api/health` stays public.
 
 - The **provider API** (`/v2/*`, `/rest/*`) takes it as `Authorization: Bearer`.
   A missing header is LinkedIn's `401 Empty oauth2_access_token`; a wrong one is
   `401 INVALID_ACCESS_TOKEN`.
-- The **control plane** (`/api/sandbox/*`) takes the same token via
+- The **control plane** (`/api/sandbox/*` and `/api/activity`) takes the control token via
   `X-Sandbox-Token`, a bearer, or `?access_token=`, and answers in plain
   `{ok:false,error}` JSON — never the LinkedIn envelope. Those routes are
   machinery; dressing them as LinkedIn would teach an agent that stumbled onto
@@ -140,7 +141,7 @@ curl -s -X POST -H "$T" -H "$V" -H 'content-type: application/json' \
   "localhost:3800/rest/reactions?actor=$ME"
 
 curl -s localhost:3800/api/health
-curl -s localhost:3800/api/activity
+curl -s -H "X-Sandbox-Token: sandbox-token" localhost:3800/api/activity
 ```
 
 ## What the seed contains

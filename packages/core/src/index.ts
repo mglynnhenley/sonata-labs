@@ -13,5 +13,8 @@ export * from "./ports";
 export * from "./clock";
 export * from "./score";
 export * from "./executed";
+export * from "./worldFailures";
 export * from "./cast";
 export * from "./spec";
+export * from "./timing";
+export * from "./excel";

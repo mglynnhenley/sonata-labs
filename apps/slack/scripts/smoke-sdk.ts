@@ -1,3 +1,4 @@
+import { controlToken } from "@sonata/core/controlAuth";
 // Acceptance harness: drive the sandbox with the OFFICIAL @slack/web-api SDK,
 // the same way a real agent would — only slackApiUrl is overridden. If this
 // passes, an agent using @slack/web-api works against the sandbox unchanged.
@@ -255,7 +256,7 @@ async function main() {
   // `npm run smoke` repeatable, which is the whole point of having a snapshot.
   const reset = await fetch(`${ROOT_URL}/api/sandbox/reset`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "x-sandbox-token": controlToken(), "content-type": "application/json" },
     body: JSON.stringify({ note: "smoke harness precondition" }),
   }).then((r) => r.json() as Promise<{ ok: boolean; messages?: number }>);
   if (!reset.ok) {

@@ -144,7 +144,10 @@ function world(over: Partial<SessionOptions> = {}): World {
     timer,
     director,
     sessionId: "sess-1",
-    onTick: (t) => ticks.push(t),
+    onTick: (t) => {
+      const index = ticks.findIndex((existing) => existing.tick === t.tick);
+      if (index < 0) ticks.push(t); else ticks[index] = t;
+    },
     ...over,
   });
   return { gmail, director, timer, session, ticks };
@@ -219,7 +222,7 @@ describe("the world runs on the wall clock", () => {
   it("ends the day of its own accord once the clock runs out", async () => {
     const w = world();
     await w.session.start();
-    for (let i = 0; i < 3; i++) await step(w.session, w.timer, TICK_MS);
+    for (let i = 0; i < 4; i++) await step(w.session, w.timer, TICK_MS);
 
     const record = await w.session.finished();
     expect(record.run.status).toBe("done");
@@ -265,7 +268,7 @@ describe("the director reacts to an agent it never called", () => {
     // never reached us. So the world here reads a subject line and reacts to that
     // — the asymmetry `SessionRecord.caveats` puts on the record.
     expect(seen.deltaDetail?.get("gmail:10")?.prose).toBeUndefined();
-    expect(personPrompt(seen, dana(seen.deltas[0].summary))).not.toContain("it wrote");
+    expect(personPrompt(seen, dana(seen.deltas[0].summary))).toContain("it wrote");
     await w.session.stop();
   });
 
@@ -411,7 +414,7 @@ describe("the director reacts to an agent it never called", () => {
     expect(asked[0]).toContain("You are Dana Reyes");
     expect(asked[0]).toContain("Re: SLA");
     // Still metadata only: nothing here invents a body the session never had.
-    expect(asked[0]).not.toContain("it wrote");
+    expect(asked[0]).toContain("it wrote");
     await session.stop();
   });
 });
@@ -460,7 +463,10 @@ describe("an adaptive beat, with the agent on the outside", () => {
       timer,
       director: createDirector({ spec: s, complete }),
       sessionId: "sess-adapt",
-      onTick: (t) => ticks.push(t),
+      onTick: (t) => {
+      const index = ticks.findIndex((existing) => existing.tick === t.tick);
+      if (index < 0) ticks.push(t); else ticks[index] = t;
+    },
     });
     return { gmail, timer, session, rewrites, ticks };
   }
@@ -507,7 +513,7 @@ describe("an adaptive beat, with the agent on the outside", () => {
 
     expect(w.rewrites[0].prompt).not.toContain("it wrote:");
     const record = await w.session.stop();
-    expect(record.caveats.join(" ")).toContain("An adaptive beat still adapts here");
+    expect(record.caveats.join(" ")).toContain("recipient-scoped observations");
   });
 
   it("fires the authored words when the agent has done nothing", async () => {
@@ -529,7 +535,7 @@ describe("the record the judge already knows how to read", () => {
     await w.session.start();
     externalAction(w, { id: 10, ts: 5_000, method: "POST", actionType: "send", targetId: "m-10" });
     await step(w.session, w.timer, TICK_MS);
-    for (let i = 0; i < 2; i++) await step(w.session, w.timer, TICK_MS);
+    for (let i = 0; i < 3; i++) await step(w.session, w.timer, TICK_MS);
     const record = await w.session.finished();
 
     expect(record.run).toMatchObject({
@@ -546,6 +552,7 @@ describe("the record the judge already knows how to read", () => {
       "directorEvents",
       "endedAt",
       "notes",
+      "observedActions",
       "simTimeISO",
       "startedAt",
       "tick",
@@ -574,11 +581,11 @@ describe("the record the judge already knows how to read", () => {
     const kinds = record.run.ticks.flatMap((t) => t.agentSteps.map((s) => s.kind));
     expect(kinds).not.toContain("thought");
     expect(record.caveats.join(" ")).toMatch(/reasoning/);
-    expect(record.caveats.join(" ")).toMatch(/request body/);
+    expect(record.caveats.join(" ")).toMatch(/Tool arguments/);
     // And that the world therefore judged the agent on metadata alone. A scored
     // episode's director reads the reply itself; a session's cannot, and the gap
     // has to be the harness's on the record rather than the agent's in the score.
-    expect(record.caveats.join(" ")).toMatch(/metadata alone/);
+    expect(record.caveats.join(" ")).toMatch(/recipient-scoped observations/);
   });
 
   it("counts the world's own audit rows as nobody's work", async () => {
@@ -684,7 +691,7 @@ describe("idleness is signal, not an error", () => {
   it("records a silent stretch and keeps the day running", async () => {
     const w = world({ idleTicks: 2 });
     await w.session.start();
-    for (let i = 0; i < 3; i++) await step(w.session, w.timer, TICK_MS);
+    for (let i = 0; i < 4; i++) await step(w.session, w.timer, TICK_MS);
     const record = await w.session.finished();
 
     // Recorded once, when the streak crosses the line — not on every tick after.
@@ -711,19 +718,183 @@ describe("idleness is signal, not an error", () => {
     expect(w.ticks[3].notes).toContain("the agent acted again after 3 silent interval(s)");
     expect(w.session.status().idleStreak).toBe(0);
     expect(w.session.status().longestIdleStreak).toBe(3);
+    await step(w.session, w.timer, TICK_MS);
     await w.session.finished();
   });
 
   it("says nothing about idleness when the spec did not ask", async () => {
     const w = world();
     await w.session.start();
-    for (let i = 0; i < 3; i++) await step(w.session, w.timer, TICK_MS);
+    for (let i = 0; i < 4; i++) await step(w.session, w.timer, TICK_MS);
     const record = await w.session.finished();
     expect(record.run.ticks.flatMap((t) => t.notes)).toEqual([]);
   });
 });
 
 describe("lifecycle", () => {
+  it("keeps the final interval open and captures its last action without another world turn", async () => {
+    const w = world();
+    await w.session.start();
+    for (let i = 0; i < 3; i++) await step(w.session, w.timer, TICK_MS);
+    expect(w.session.status()).toMatchObject({ status: "running", tick: 3, nextTickAt: 1_000 + 4 * TICK_MS });
+    expect(w.director.seen.map((ctx) => ctx.tick)).toEqual([0, 1, 2, 3]);
+
+    w.timer.advance(TICK_MS - 1);
+    externalAction(w, { id: 10, ts: w.timer.now(), targetId: "last-message", summary: "last reply to Dana" });
+    await step(w.session, w.timer, 1);
+    const record = await w.session.finished();
+    expect(record.run.endedAt! - record.run.startedAt).toBe(sessionDurationMs(spec(), COMPRESSION));
+    expect(record.audit.map((row) => row.id)).toEqual([10]);
+    expect(record.run.ticks[3].agentSteps).toMatchObject([{ kind: "tool", seq: 0, at: 1_000 + 4 * TICK_MS - 1 }]);
+    expect(record.run.ticks[3].endedAt).toBe(record.run.endedAt);
+    expect(record.refs["act:gmail:10"]).toBe("last-message");
+    expect(record.run.ticks[3].notes.join(" ")).toContain("no further world response");
+    expect(w.director.seen).toHaveLength(4);
+    expect(w.timer.pending).toBe(0);
+  });
+
+  it("captures between-tick work exactly once and republishes the updated tick", async () => {
+    const saved: TickRecord[] = [];
+    const w = world({ onTick: (t) => saved.push(structuredClone(t)) });
+    await w.session.start();
+    w.timer.advance(5_000);
+    externalAction(w, { id: 11, ts: w.timer.now(), summary: "draft saved for Marta" });
+    const record = await w.session.stop();
+    expect(record.audit.map((row) => row.id)).toEqual([11]);
+    expect(record.run.ticks[0].agentSteps).toHaveLength(1);
+    expect(saved).toHaveLength(2);
+    expect(saved[0].agentSteps).toEqual([]);
+    expect(saved[1].agentSteps).toHaveLength(1);
+    expect(await w.session.finalize()).toBe(record);
+    expect(saved).toHaveLength(2);
+  });
+
+  it("preserves partial agent actions and delivered beats when the world provider fails", async () => {
+    const director = stubDirector();
+    director.react = async (ctx) => {
+      if (ctx.tick === 1) throw new Error("Provider returned 400");
+      return [];
+    };
+    const w = world({ director, spec: spec({ beats: [beat({ id: "review", tick: 1 })] }) });
+    await w.session.start();
+    externalAction(w, { id: 12, ts: 5_000, summary: "sent evidence to Dana" });
+    await step(w.session, w.timer, TICK_MS);
+    expect(w.ticks[1]).toMatchObject({
+      harnessError: "Provider returned 400",
+      beatsFired: [{ beatId: "review", handle: { id: "gmail-1" } }],
+      observedActions: [{ id: 12 }],
+      agentSteps: [{ kind: "tool", seq: 0 }],
+    });
+    await step(w.session, w.timer, TICK_MS);
+    expect(w.ticks[2].agentSteps).toEqual([]);
+    const record = await w.session.stop();
+    expect(record.audit.map((row) => row.id)).toEqual([12]);
+  });
+
+  it("finalises an external provider failure with its partial evidence and no invented reasoning", async () => {
+    const w = world();
+    await w.session.start();
+    externalAction(w, { id: 13, ts: w.timer.now(), summary: "workbook updated" });
+    const first = w.session.finalize({ status: "failed", reason: "Inspect solver failed", error: "Provider returned 400" });
+    const second = w.session.stop("cleanup");
+    expect(second).toBe(first);
+    const record = await first;
+    expect(record.run).toMatchObject({ status: "failed", error: "Provider returned 400" });
+    expect(record.endedBecause).toBe("Inspect solver failed");
+    expect(record.run.ticks[0].harnessError).toBe("Provider returned 400");
+    expect(record.run.ticks.flatMap((t) => t.agentSteps).map((s) => s.kind)).toEqual(["tool"]);
+    expect(record.audit.map((row) => row.id)).toEqual([13]);
+    expect(await w.session.finished()).toBe(record);
+  });
+
+  it("cancels a due wake before its queued tick can start", async () => {
+    const w = world();
+    await w.session.start();
+    w.timer.advance(TICK_MS);
+    const record = await w.session.stop();
+    expect(record.run.ticks.map((t) => t.tick)).toEqual([0]);
+    expect(w.director.seen).toHaveLength(1);
+    expect(w.timer.pending).toBe(0);
+  });
+
+  it("waits for tick zero during cancellation and never schedules another wake", async () => {
+    let entered!: () => void;
+    const enteredTick = new Promise<void>((resolve) => { entered = resolve; });
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => { release = resolve; });
+    const director = stubDirector();
+    director.react = async () => { entered(); await held; return []; };
+    const w = world({ director });
+    const started = w.session.start();
+    await enteredTick;
+    const stopped = w.session.stop();
+    externalAction(w, { id: 14, ts: w.timer.now(), summary: "last in-flight action" });
+    release();
+    await started;
+    const record = await stopped;
+    expect(record.run.status).toBe("aborted");
+    expect(record.run.ticks).toHaveLength(1);
+    expect(record.audit.map((row) => row.id)).toEqual([14]);
+    expect(w.timer.pending).toBe(0);
+  });
+
+  it("coalesces concurrent starts and cancels setup before resetting or seeding", async () => {
+    const gmail = fakeAdapter("gmail");
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => { release = resolve; });
+    let healthCalls = 0;
+    let resets = 0;
+    let seeds = 0;
+    gmail.health = async () => { healthCalls++; await held; return { name: "gmail", ok: true }; };
+    gmail.reset = async () => { resets++; };
+    gmail.seed = async () => { seeds++; };
+    const w = world({ adapters: [gmail], resetTwins: true, seedWorld: true });
+    const first = w.session.start();
+    const second = w.session.start();
+    expect(first).toBe(second);
+    const stopped = w.session.stop();
+    release();
+    await first;
+    const record = await stopped;
+    expect({ healthCalls, resets, seeds }).toEqual({ healthCalls: 1, resets: 0, seeds: 0 });
+    expect(record.run.ticks).toEqual([]);
+    expect(record.run.status).toBe("aborted");
+    expect(w.timer.pending).toBe(0);
+  });
+
+  it("records unreadable audit and final snapshots as harness gaps", async () => {
+    const w = world();
+    await w.session.start();
+    w.gmail.auditSince = async () => { throw new Error("audit unavailable"); };
+    w.gmail.snapshot = async () => { throw new Error("snapshot unavailable"); };
+    const record = await w.session.stop();
+    expect(record.run.ticks[0].notes.join(" ")).toContain("Harness observation gap: gmail audit could not be read");
+    expect(record.run.ticks[0].notes.join(" ")).toContain("Harness capture gap: gmail snapshot could not be taken");
+    expect(record.run.snapshots.gmail).toBeUndefined();
+  });
+
+  it("refuses an unreadable audit baseline instead of later attributing setup rows to the agent", async () => {
+    const gmail = fakeAdapter("gmail");
+    gmail.auditSince = async () => { throw new Error("audit unavailable"); };
+    const w = world({ adapters: [gmail] });
+    await w.session.start();
+    const record = await w.session.finished();
+    expect(record.run.status).toBe("failed");
+    expect(record.run.error).toContain("gmail audit baseline could not be read");
+    expect(record.audit).toEqual([]);
+    expect(w.director.seen).toEqual([]);
+  });
+
+  it("never starts after cancellation while queued", async () => {
+    const w = world();
+    const record = await w.session.stop();
+    await w.session.start();
+    expect(record.run.status).toBe("aborted");
+    expect(w.session.status().tick).toBe(-1);
+    expect(w.gmail.injected).toEqual([]);
+    expect(w.timer.pending).toBe(0);
+  });
+
   it("reports where the day has got to", async () => {
     const w = world();
     expect(w.session.status()).toMatchObject({
@@ -803,10 +974,8 @@ describe("lifecycle", () => {
   });
 
   it("says on the record that a tick failed, whichever tick it was", async () => {
-    // A tick that throws pushes no record of its own, so the day carries on around
-    // a hole. The message used to be parked on a list that only tick 0 ever read,
-    // so a failure at any later tick left no trace at all — a report claiming a
-    // whole day it did not have.
+    // A failed world reaction keeps its tick and evidence. The following tick
+    // can continue, without silently erasing what the agent already did.
     const failing = stubDirector();
     const realReact = failing.react.bind(failing);
     failing.react = (ctx) => {
@@ -818,11 +987,12 @@ describe("lifecycle", () => {
     await step(w.session, w.timer, TICK_MS);
     await step(w.session, w.timer, TICK_MS);
 
-    expect(w.ticks.map((t) => t.tick)).toEqual([0, 2]);
+    expect(w.ticks.map((t) => t.tick)).toEqual([0, 1, 2]);
+    expect(w.ticks[1].harnessError).toBe("the world fell over");
     expect(w.ticks[1].notes[0]).toBe("tick 1 failed: the world fell over");
     // And it is said once, not re-printed on every tick from then on.
     await step(w.session, w.timer, TICK_MS);
-    expect(w.ticks[2].notes.filter((n) => n.includes("tick 1 failed"))).toEqual([]);
+    expect(w.ticks[3].notes.filter((n) => n.includes("tick 1 failed"))).toEqual([]);
     await w.session.stop();
   });
 
@@ -858,7 +1028,7 @@ describe("the registry", () => {
     const w = world();
     registry.add(w.session);
     await w.session.start();
-    for (let i = 0; i < 3; i++) await step(w.session, w.timer, TICK_MS);
+    for (let i = 0; i < 4; i++) await step(w.session, w.timer, TICK_MS);
     await w.session.finished();
     // The `finished` handler runs on a microtask after the record is handed out.
     await Promise.resolve();

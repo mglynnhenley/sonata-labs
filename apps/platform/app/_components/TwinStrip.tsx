@@ -17,6 +17,7 @@ const BLURBS: Record<TwinName, string> = {
   "google-docs": "Documents and revisions",
   "google-ads": "Campaigns, budgets and spend",
   linkedin: "Posts, comments and reactions",
+  excel: "Workbooks, formulas and review history",
 };
 
 type Action = "start" | "stop" | "auth-token" | "auth-oauth";
@@ -94,7 +95,10 @@ export function TwinStrip({ twins, onChanged }: TwinStripProps) {
               {twin.ok ? (
                 <>
                   <a
-                    href={twin.url}
+                    // The mailbox, not the API: gmail's UI is its own service,
+                    // and :3101 has no inbox in it. Falls back to the API when
+                    // the UI is down — that page signposts where the UI is.
+                    href={twin.ui?.ok ? twin.ui.url : twin.url}
                     target="_blank"
                     rel="noreferrer"
                     className="inline-flex h-7 items-center gap-1 rounded-sn-md px-2 text-sn-sm font-medium text-sn-primary-ink transition-colors duration-150 ease-sn hover:bg-sn-primary-soft"

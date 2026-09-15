@@ -1,3 +1,4 @@
+import { controlToken } from "@sonata/core/controlAuth";
 // Reset the working DB to the pristine snapshot.
 //
 //   npm run reset
@@ -11,7 +12,7 @@ import { SNAPSHOT_PATH, WORKING_PATH } from "../lib/db.js";
 // This clone's REAL port, not a placeholder. A wrong PORT does not fail loudly:
 // reset will happily reset a different server and report success.
 const PORT = process.env.PORT || "3800";
-const TOKEN = process.env.SANDBOX_TOKEN || "sandbox-token";
+const TOKEN = controlToken();
 // 127.0.0.1, not localhost: Node's fetch tries ::1 first and the Next dev server
 // listens on IPv4 only, so `localhost` here silently falls through to the file
 // copy while the server that owns the handle is sitting right there.

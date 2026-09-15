@@ -20,8 +20,8 @@ export interface JudgeCopy {
 
 /** The deterministic half is a fact whatever the judge did. Said every time. */
 const CHECKLIST_STANDS =
-  "The checklist and the verdict above are untouched by this — they ran in code against the " +
-  "clones, and no model was asked for them.";
+  "The checklist and the score above are unaffected: they ran in code against the clones, with " +
+  "no model involved.";
 
 export function judgeCopy(state: JudgeState | null): JudgeCopy {
   if (!state) {
@@ -39,8 +39,8 @@ export function judgeCopy(state: JudgeState | null): JudgeCopy {
       headline: "A judge is reading this day now",
       detail:
         `${state.model ?? "The judge model"} started ${state.at ? formatWhen(state.at) : "just now"}. ` +
-        "Nothing is being re-run — it is reading the saved day start to finish, which takes a minute " +
-        "or two. The findings appear here as soon as it answers.",
+        "It is reading the saved day start to finish, not re-running it. That takes a minute or " +
+        "two, and the findings appear here as soon as it answers.",
       footnote: null,
     };
   }
@@ -56,7 +56,7 @@ export function judgeCopy(state: JudgeState | null): JudgeCopy {
           : "The last judge pass failed: ") +
         (state.reason ?? "no reason was recorded.") +
         paid,
-      footnote: `${CHECKLIST_STANDS} Judging it again is one press, and costs one model call.`,
+      footnote: `${CHECKLIST_STANDS} Judging it again is one press and one model call.`,
     };
   }
 
@@ -78,7 +78,7 @@ export function judgeCopy(state: JudgeState | null): JudgeCopy {
     return {
       tone: "quiet",
       headline: "There was nothing here for a judge to read",
-      detail: `${state.reason} So no diagnosis was attempted, and a diagnosis of a day that did not happen would be worth nothing.`,
+      detail: `${state.reason} Nothing was judged: a diagnosis of a day that never happened is worth nothing.`,
       footnote: null,
     };
   }
@@ -87,9 +87,9 @@ export function judgeCopy(state: JudgeState | null): JudgeCopy {
     tone: "quiet",
     headline: "No judge has read this day",
     detail:
-      "Runs judge themselves the moment they finish. This one either predates that or was told " +
-      "not to, so its diagnosis was never written.",
-    footnote: "Judging it now reads the saved day back — nothing is re-run.",
+      "Runs judge themselves the moment they finish. This one predates that, or was told not to, " +
+      "so its diagnosis was never written.",
+    footnote: "Judging it now re-reads the saved day. Nothing is re-run.",
   };
 }
 

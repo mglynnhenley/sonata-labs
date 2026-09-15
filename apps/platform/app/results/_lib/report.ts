@@ -1,6 +1,5 @@
 import {
   getFailureMode,
-  runExecution,
   scoreChecklist,
   type CriterionResult,
   type EpisodeJudgeReport,
@@ -10,25 +9,12 @@ import {
 } from "@sonata/core";
 import type { RunBrief } from "./artifacts";
 import { buildMoments, type Moment } from "./moments";
-import { formatDuration, formatPercent, formatSimTime, formatUsd, UNKNOWN } from "./summary";
+import { formatDuration, formatPercent, formatSimTime, formatUsd, summarizeRun, UNKNOWN } from "./summary";
+import { judgeSight, sliceSentence } from "../_components/harness";
+import { headlineUsd, type CostReport } from "./cost";
 
-// The one artifact a run makes that a person outside the room can read.
-//
-// Every other projection in this folder feeds a screen. This feeds a document,
-// and the document answers one question: **how capable is this AI coworker?**
-// Not "what did our harness score" — a prospect deciding whether to let an agent
-// into their inbox is really asking what they would ask about a new hire. Can it
-// do the job. How much supervising does it need. What would I have had to catch.
-// What did it cost me. What access does it actually want.
-//
-// So the sections here are a performance review, not a test log, and the words
-// are the ones a manager would use. Our own vocabulary — criteria, ticks, beats,
-// failure-mode ids, step numbers — is machinery. It is deliberately scrubbed on
-// the way out (`readable`), because the moment a partner reads "per deterministic
-// check c1" the document stops being about their agent and starts being about us.
-//
-// It invents nothing. Every number, action and scope is read straight off the
-// artifact — that is what lets this read as diligence rather than as a pitch.
+// The portable assessment. Keep evidence anchors, task boundaries and measurement
+// limits readable in the exported document as well as the interactive report.
 
 const TWIN_ORDER: readonly TwinName[] = [
   "gmail",
@@ -38,6 +24,7 @@ const TWIN_ORDER: readonly TwinName[] = [
   "google-docs",
   "google-ads",
   "linkedin",
+  "excel",
 ];
 const TWIN_LABEL: Record<TwinName, string> = {
   gmail: "Gmail",
@@ -47,6 +34,7 @@ const TWIN_LABEL: Record<TwinName, string> = {
   "google-docs": "Google Docs",
   "google-ads": "Google Ads",
   linkedin: "LinkedIn",
+  excel: "Excel",
 };
 
 // ---------------------------------------------------------------------------
@@ -58,31 +46,10 @@ function flat(text: string): string {
   return text.replace(/\s+/g, " ").trim();
 }
 
-/**
- * Strip our machinery out of prose written by the judge or a checker.
- *
- * The judge cites its evidence as step and tick numbers — rigour that is real,
- * and unreadable to anyone outside this tool. The document says once, at the
- * end, that every claim is traceable in the replay; here the references come out
- * so the sentences can be read as sentences.
- */
 function readable(text: string): string {
-  return flat(text)
-    // "(step 55)", "(steps 4-6, 20-21)", "(tick 3)", "(t5 scripted beat)"
-    .replace(/\s*\((?:at\s+)?(?:steps?|ticks?|t\d)\b[^)]*\)/gi, "")
-    // "(per deterministic check c1)", "(check c3)"
-    .replace(/\s*\((?:per\s+)?(?:deterministic\s+)?checks?\s+c\d+[^)]*\)/gi, "")
-    // Authored criteria set deadlines in ticks — "…a written summary by tick 16".
-    // The deadline is real; the unit is ours, and it means nothing to a reader.
-    .replace(/\s*\b(?:by|at|before|within|after|on)\s+ticks?\s+\d+/gi, "")
-    // A "tick" is our unit for a slice of the simulated day. The judge writes in
-    // it fluently; nobody outside this tool has ever heard of it.
-    .replace(/\b(?:each|every)\s+tick\b/gi, "each time it checked in")
-    .replace(/\bper\s+tick\b/gi, "each time it checked in")
-    .replace(/\bticks?\b/gi, "check-in")
-    .replace(/\s+([,.;:])/g, "$1")
-    .replace(/\s{2,}/g, " ")
-    .trim();
+  // Deadlines and evidence anchors are part of the claim. Removing "by tick
+  // 16" made an on-time criterion indistinguishable from eventual completion.
+  return flat(text);
 }
 
 /** As `readable`, but capped — for one-line evidence under a bullet. */
@@ -195,7 +162,7 @@ function decisions(moments: Moment[]): Moment[] {
 const TOOL_PHRASE: Record<string, string> = {
   send_reply: "replied to an email",
   send_email: "sent an email",
-  create_draft: "left an email drafted but unsent",
+  create_draft: "prepared an email draft",
   update_draft: "revised a draft",
   reply_in_thread: "replied in a Slack thread",
   send_message: "posted in Slack",
@@ -209,7 +176,7 @@ const TOOL_PHRASE: Record<string, string> = {
 };
 
 function phraseOf(m: Moment): string {
-  if (m.step?.kind === "escalation") return "handed the job back to a human";
+  if (m.step?.kind === "escalation") return "recorded a request for human help";
   const name = m.step?.kind === "tool" ? m.step.name : m.title;
   return TOOL_PHRASE[name] ?? name.replace(/_/g, " ");
 }
@@ -264,7 +231,8 @@ function capability(run: EpisodeRun, judge: EpisodeJudgeReport | null): Capabili
   let escalations = 0;
 
   for (const tick of run.ticks) {
-    inbound += tick.beatsFired.length + tick.directorEvents.length;
+    inbound += tick.beatsFired.filter((event) => !event.error).length +
+      tick.directorEvents.filter((event) => !event.error).length;
     for (const step of tick.agentSteps) {
       if (step.kind === "escalation") escalations++;
       else if (step.kind === "tool") step.isMutation ? writes++ : reads++;
@@ -274,17 +242,14 @@ function capability(run: EpisodeRun, judge: EpisodeJudgeReport | null): Capabili
   const all = [...(judge?.findings ?? []), ...(judge?.otherFindings ?? [])];
   const needsCorrection = all.filter((f) => f.severity === "critical" || f.severity === "major").length;
 
-  // The simulated day's span, from its own clock: the first tick to one tick
-  // past the last, so a six-tick day reads as its full length and not as the
-  // gap between its endpoints.
+  // Observed clock span only. Do not invent a final work interval: an event-
+  // driven run can have uneven gaps and the last interval may be unfinished.
   const first = run.ticks[0]?.simTimeISO;
   const last = run.ticks[run.ticks.length - 1]?.simTimeISO;
-  const second = run.ticks[1]?.simTimeISO;
   let simMinutes: number | null = null;
   if (first && last) {
-    const perTick = second ? (Date.parse(second) - Date.parse(first)) / 60_000 : 0;
-    const span = (Date.parse(last) - Date.parse(first)) / 60_000 + perTick;
-    if (Number.isFinite(span) && span > 0) simMinutes = span;
+    const span = (Date.parse(last) - Date.parse(first)) / 60_000;
+    if (Number.isFinite(span) && span >= 0) simMinutes = span;
   }
 
   return {
@@ -340,20 +305,17 @@ function bottomLine(
       `and decide for yourself.`
     );
   }
-  const supervision =
-    cap.needsCorrection === 0
-      ? "Nothing it did would have needed correcting."
-      : `${count(cap.needsCorrection, "decision")} would have needed a manager to catch ${
-          cap.needsCorrection === 1 ? "it" : "them"
-        }.`;
+  const supervision = cap.needsCorrection > 0
+    ? ` The assessor reported ${count(cap.needsCorrection, "major or critical finding")}; inspect the evidence below.`
+    : "";
 
   if (outcome === "pass") {
-    return `**It did the job.** ${supervision}`;
+    return `**The run passed its checked requirements.**${supervision}`;
   }
   if (outcome === "partial") {
-    return `**It did much of the job, but not all of it.** ${supervision}`;
+    return `**The run met some, but not all, checked requirements.**${supervision}`;
   }
-  return `**It could not be left to run this workflow alone.** ${supervision}`;
+  return `**The run failed its declared requirements.**${supervision}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -361,7 +323,7 @@ function bottomLine(
 function criterionLine(c: CriterionResult): string {
   const evidence = usableEvidence(c.evidence ? [c.evidence] : []);
   const weight = c.severity === "must" ? "" : " _(nice to have)_";
-  return `- ${sentenceCase(readable(c.description))}${weight}${evidence ? ` — ${evidence}` : ""}`;
+  return `- **${c.id}:** ${sentenceCase(readable(c.description))}${weight}${evidence ? ` — ${evidence}` : ""}${c.tick !== undefined ? ` _(tick ${c.tick})_` : ""}`;
 }
 
 /**
@@ -369,14 +331,16 @@ function criterionLine(c: CriterionResult): string {
  * a document ready to hand to a design partner — or to turn into a PDF. Safe on
  * an unfinished run: sections without evidence are dropped, never faked.
  */
-export function buildRunReport(run: EpisodeRun, brief: RunBrief): string {
-  const v = run.verdict;
+export function buildRunReport(run: EpisodeRun, brief: RunBrief, cost?: CostReport): string {
+  const summary = summarizeRun(run);
+  const v = summary.noResult ? null : run.verdict;
   const judge = v?.judge ?? null;
   const offset = brief.offsetMinutes;
   const moments = buildMoments(run, brief.people);
   const acts = decisions(moments);
   const access = accessMap(run);
   const cap = capability(run, judge);
+  const recordedUsd = cost ? headlineUsd(cost) : v?.cost.usd ?? null;
   const durationMs = run.endedAt && run.startedAt ? run.endedAt - run.startedAt : null;
 
   const first = run.ticks[0]?.simTimeISO;
@@ -390,13 +354,14 @@ export function buildRunReport(run: EpisodeRun, brief: RunBrief): string {
   // --- Title and bottom line -------------------------------------------------
   p(`# How the AI coworker performed — ${run.specTitle}`);
   p();
-  p(
-    `An independent test of **${run.model}** doing a real workday's work, inside a ` +
-      `working clone of ${andList(access.map((a) => TWIN_LABEL[a.twin]))} seeded with realistic ` +
-      `history. No production system was connected and no access was granted to run this.`,
-  );
+  p(`A recorded business simulation using **${run.model}**. Run: \`${run.runId}\`. ` +
+    `The assessment below is limited to the scenario requirements and evidence saved with this run.`);
   p();
-  p(bottomLine(v?.outcome ?? null, cap, v?.checklist ?? [], runExecution(run).reason));
+  p(bottomLine(v?.outcome ?? null, cap, v?.checklist ?? [], summary.noResult));
+  if (run.error) {
+    p();
+    p(`**Run interruption:** ${flat(run.error)}. This is not an agent task-failure finding.`);
+  }
 
   // --- Scorecard -------------------------------------------------------------
   if (v) {
@@ -405,25 +370,43 @@ export function buildRunReport(run: EpisodeRun, brief: RunBrief): string {
     p();
     p(`| | |`);
     p(`|---|---|`);
-    p(`| **Got the job done** | ${formatPercent(v.score)} of what the day required |`);
-    p(`| **Worked unsupervised** | ${formatPercent(v.autonomy)} of the way through |`);
+    const coverage = scoreChecklist(v.checklist);
+    p(`| **Checklist score** | ${coverage.decided > 0 ? formatPercent(coverage.score) : "Unmeasured"} by weight; ${coverage.decided} of ${coverage.total} criteria decided |`);
     p(
-      `| **Judgement calls to correct** | ${
-        cap.needsCorrection === 0 ? "none" : count(cap.needsCorrection, "call")
+      `| **Assessor findings** | ${
+        !judge ? "Not assessed" : cap.needsCorrection === 0 ? "No major or critical findings recorded" : count(cap.needsCorrection, "major or critical finding")
       }${cap.minorNotes > 0 ? `, plus ${count(cap.minorNotes, "minor note")}` : ""} |`,
     );
     p(
-      `| **Workload handled** | ${count(cap.inbound, "incoming demand")}, ${count(
+      `| **Recorded activity** | ${count(cap.inbound, "world event")}, ${count(
         cap.writes,
-        "action",
-      )} taken across ${count(access.length, "system")} |`,
+        "mutation attempt",
+      )} across ${count(access.length, "system")} |`,
     );
     p(
-      `| **Speed** | ${
-        cap.simMinutes ? `${hoursMinutes(cap.simMinutes)} of work` : "the day"
-      } in ${formatDuration(durationMs)} of real time |`,
+      `| **Observed simulated clock span** | ${cap.simMinutes !== null ? hoursMinutes(cap.simMinutes) : UNKNOWN} between first and last recorded tick |`,
     );
-    p(`| **Cost** | ${formatUsd(v.cost.usd)} |`);
+    p(`| **Recorded elapsed time** | ${formatDuration(durationMs)} |`);
+    p(`| **Recorded run cost** | ${formatUsd(recordedUsd)}; scope described below |`);
+  }
+
+  p();
+  p(`**How to interpret this result.** Simulated clock time is not measured human working time. ` +
+    `Required human review, an approved draft, or a case correctly held pending evidence can satisfy the task. ` +
+    `An open item alone is not a failure or proof of a justified hold; the criterion and supporting evidence determine the outcome.`);
+  const sight = judgeSight(judge);
+  if (sight) {
+    p();
+    p(sight.kind === "partial"
+      ? `**Assessor coverage is partial:** ${sight.missing.map(sliceSentence).join("; ")}. Its narrative describes that sample.`
+      : `**Assessor coverage was not recorded.** We cannot confirm how much of the saved evidence its narrative considered.`);
+  }
+  const observationGaps = run.ticks.flatMap(t => (t.observedActions ?? []).filter(a => a.observationError).map(a => ({ tick: t.tick, why: a.observationError! })));
+  if (observationGaps.length > 0) {
+    p();
+    p(`**Colleague observation gaps:** some agent communications could not be supplied to the simulated colleagues. Missing responses cannot establish an agent failure without independent evidence.`);
+    p();
+    for (const gap of observationGaps) p(`- Tick ${gap.tick}: ${flat(gap.why)}`);
   }
 
   // --- The job ---------------------------------------------------------------
@@ -434,6 +417,21 @@ export function buildRunReport(run: EpisodeRun, brief: RunBrief): string {
       p();
       p(readable(brief.task));
     }
+    // The brief as a list of jobs, so the reader can check it against their own
+    // idea of the day before they read a word about the agent. Absent on reports
+    // written before the restatement was broken up.
+    if (judge?.taskPoints?.length) {
+      p();
+      p(`**What that came down to**`);
+      p();
+      for (const point of judge.taskPoints) p(`- ${readable(point)}`);
+    }
+    if (judge?.taskAmbiguities?.length) {
+      p();
+      p(`**What the brief left unclear** — ours, not the agent's:`);
+      p();
+      for (const point of judge.taskAmbiguities) p(`- ${readable(point)}`);
+    }
     if (brief.story) {
       p();
       p(`**The day it walked into.** ${readable(brief.story)}`);
@@ -441,11 +439,25 @@ export function buildRunReport(run: EpisodeRun, brief: RunBrief): string {
   }
 
   // --- How it performed ------------------------------------------------------
-  if (judge?.summary) {
+  if (judge?.summary || judge?.did?.length || judge?.didNot?.length) {
     p();
     p(`## How it performed`);
-    p();
-    p(readable(judge.summary));
+    if (judge?.summary) {
+      p();
+      p(readable(judge.summary));
+    }
+    if (judge?.did?.length) {
+      p();
+      p(`**What it did**`);
+      p();
+      for (const item of judge.did) p(`- ${readable(item)}`);
+    }
+    if (judge?.didNot?.length) {
+      p();
+      p(`**What it left**`);
+      p();
+      for (const item of judge.didNot) p(`- ${readable(item)}`);
+    }
   }
 
   // --- Strengths -------------------------------------------------------------
@@ -470,16 +482,16 @@ export function buildRunReport(run: EpisodeRun, brief: RunBrief): string {
   const findings = judge ? [...judge.findings, ...judge.otherFindings] : [];
   if (failed.length > 0 || findings.length > 0) {
     p();
-    p(`## Where a human would have had to step in`);
+    p(`## Requirements missed and assessor findings`);
     p();
     p(
-      `This is the supervision cost of putting this coworker on this workflow today — ` +
-        `and all of it surfaced here, in the clone, rather than in a customer's inbox.`,
+      `Failed checks and assessor findings describe different evidence. Required reviews and ` +
+        `legitimate pending work are assessed against the task, not treated as mistakes simply because a human is involved.`,
     );
 
     if (findings.length > 0) {
       p();
-      p(`**Judgement calls that went wrong**`);
+      p(`**Assessor findings**`);
       p();
       for (const f of judge?.findings ?? []) {
         const label = getFailureMode(f.mode)?.label ?? f.mode;
@@ -494,7 +506,7 @@ export function buildRunReport(run: EpisodeRun, brief: RunBrief): string {
 
     if (failed.length > 0) {
       p();
-      p(`**Work the day needed that never landed**`);
+      p(`**Requirements not met**`);
       p();
       for (const c of failed) p(criterionLine(c));
     }
@@ -506,27 +518,26 @@ export function buildRunReport(run: EpisodeRun, brief: RunBrief): string {
   p();
   p(
     `Between ${dayRange} it checked the systems ${count(cap.reads, "time")} and acted ` +
-      `${count(cap.writes, "time")}, ${
+      `${count(cap.writes, "time")} (mutation attempts), ${
         cap.escalations > 0
-          ? `and asked a human for help ${count(cap.escalations, "time")}`
-          : `and never asked a human for help`
+          ? `and recorded ${count(cap.escalations, "explicit escalation")}`
+          : `with no explicit escalation recorded`
       }.`,
   );
   p();
   if (acts.length === 0) {
-    p(`- It changed nothing anywhere — the day went by without an action.`);
+    p(`- No mutation attempts or explicit escalations were recorded.`);
   } else {
     for (const line of cadence(acts, offset)) p(line);
   }
 
   // --- Access ----------------------------------------------------------------
   p();
-  p(`## The access it actually needed`);
+  p(`## Recorded tool access`);
   p();
   p(
-    `Rather than asking for everything up front, this is what the workflow used when it ran: ` +
-      `${accessSentence(access)} That is the ask to start with — and it can widen later, ` +
-      `against evidence like this rather than ahead of it.`,
+    `The saved tool calls show ${accessSentence(access)} ` +
+      `This records access used or attempted; it does not establish the minimum permissions needed for the job.`,
   );
   for (const a of access) {
     p();
@@ -540,18 +551,21 @@ export function buildRunReport(run: EpisodeRun, brief: RunBrief): string {
   }
 
   // --- Cost ------------------------------------------------------------------
-  if (v) {
+  if (v || cost) {
     p();
     p(`## What it cost`);
     p();
     p(
-      `${formatUsd(v.cost.usd)} to work through ${
-        cap.simMinutes ? hoursMinutes(cap.simMinutes) : "the day"
-      } of this job${
-        cap.writes > 0 ? `, across ${count(cap.writes, "action")} taken` : ""
-      }. Set against what the same hours cost in salary, that is the number to put ` +
-        `next to the price — and it is measured here per workflow, not estimated.`,
+      `${formatUsd(recordedUsd)} is the recorded model cost${cost?.complete ? " across all priced calls in the saved trace" : "; the available record may not cover every call"}. It is not a total operating-cost ` +
+        `or salary-saving estimate. The run's cost breakdown shows any separately recorded colleague, ` +
+        `agent and judge calls; calls outside the recorder are not measured here.`,
     );
+    if (cost?.roles.length) {
+      p();
+      p(`| Role | Recorded calls | Priced calls | Recorded cost |`);
+      p(`|---|---:|---:|---:|`);
+      for (const role of cost.roles) p(`| ${role.role} | ${role.calls} | ${role.pricedCalls} | ${formatUsd(role.costUsd)} |`);
+    }
   }
 
   // --- Diligence Q&A ---------------------------------------------------------
@@ -579,7 +593,7 @@ export function buildRunReport(run: EpisodeRun, brief: RunBrief): string {
         `as one would overstate what this test actually measured:`,
     );
     p();
-    for (const c of undecided) p(`- ${sentenceCase(readable(c.description))}`);
+    for (const c of undecided) p(criterionLine(c));
   }
 
   // --- Method ----------------------------------------------------------------
@@ -587,17 +601,35 @@ export function buildRunReport(run: EpisodeRun, brief: RunBrief): string {
   p(`## How this was tested`);
   p();
   p(
-    `The coworker worked a simulated day inside clones of ` +
-      `${andList(access.map((a) => TWIN_LABEL[a.twin]))}, seeded with a company, its people and ` +
-      `their history. The people in it answer back: colleagues reply, escalate and change their ` +
-      `minds in response to what the agent does, so this measures judgement under a day that ` +
-      `pushes back — not a scripted demo. Nothing touched a live account.`,
+    `The record contains ${count(run.ticks.length, "tick")} of simulated business time. A tick is ` +
+      `an engine work interval; step and tick references link claims to the replay. ` +
+      `Scripted events and recorded colleague responses supply the world context. ` +
+      `The artifact does not establish realistic human work durations or real-duration reliability.`,
   );
   p();
+  // Which clock, in the run's own words. Two runs on different policies are
+  // different experiments, and a reader comparing them needs to be told before
+  // they start rather than after they have drawn a conclusion.
+  if (run.timing?.policy === "provider-operations-v1") {
+    p(
+      `Business time advanced on the experimental provider-operations-v1 clock, at ` +
+        `${count(run.timing.workUnitsPerTick, "work unit")} per interval: the agent's own app ` +
+        `requests moved the clock, and model latency did not. Those charges are a declared ` +
+        `parameter, not a measured conversion from requests to human effort, and results here ` +
+        `cannot be compared with a run on the default compressed clock.`,
+    );
+    p();
+  } else if (run.timing?.policy === "compressed-wall-time") {
+    p(
+      `Business time advanced on the default compressed clock, so model latency, retries and ` +
+        `host contention consumed simulated business time along with the agent's own work.`,
+    );
+    p();
+  }
   p(
-    `Every claim above is traceable to the moment it happened in the run replay. The same day ` +
-      `can be re-run against any model, and becomes a regression test: proof that a new version ` +
-      `still handles this workflow before it goes anywhere near a real inbox.`,
+    `Use the criterion evidence, saved app state and replay to review individual conclusions. ` +
+      `A model comparison also requires consistent scenario versions, harness settings, memory policy, ` +
+      `budgets and repeated runs. A single simulated episode does not establish production readiness.`,
   );
 
   return `${out.join("\n")}\n`;

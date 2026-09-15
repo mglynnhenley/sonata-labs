@@ -1,3 +1,4 @@
+import { controlToken } from "@sonata/core/controlAuth";
 import type { gmail_v1 } from "googleapis";
 import { b64urlEncode } from "../src/lib/gmail/base64.js";
 
@@ -84,7 +85,7 @@ export async function part2Writes({ gmail, check, expectError, reauth }: Ctx): P
   const sentId = sent.data.id!;
   check("send returns a message id", !!sentId);
   check("sent message has SENT label", (sent.data.labelIds ?? []).includes("SENT"));
-  const outbox1 = await fetch(`${ROOT}/api/activity`).then((r) => r.json());
+  const outbox1 = await fetch(`${ROOT}/api/activity`, { headers: { "x-sandbox-token": controlToken() } }).then((r) => r.json());
   check(
     "sent message appears in outbox",
     (outbox1.outbox ?? []).some((o: { messageId: string }) => o.messageId === sentId),
@@ -161,14 +162,14 @@ export async function part2Writes({ gmail, check, expectError, reauth }: Ctx): P
 
   // --- reset restores snapshot; audit survives -------------------------------
   const beforeReset = await gmail.users.getProfile({ userId });
-  const preResetActivity = await fetch(`${ROOT}/api/activity`).then((r) => r.json());
+  const preResetActivity = await fetch(`${ROOT}/api/activity`, { headers: { "x-sandbox-token": controlToken() } }).then((r) => r.json());
   const preResetActionCount = (preResetActivity.sessions ?? []).reduce(
     (n: number, s: { action_count: number }) => n + s.action_count,
     0,
   );
   check("audit recorded actions before reset", preResetActionCount > 0, preResetActionCount);
 
-  const resetRes = await fetch(`${ROOT}/api/sandbox/reset`, { method: "POST" }).then((r) => r.json());
+  const resetRes = await fetch(`${ROOT}/api/sandbox/reset`, { headers: { "x-sandbox-token": controlToken() }, method: "POST" }).then((r) => r.json());
   check("reset endpoint returns ok", resetRes.status === "ok", resetRes);
   // A reset copies the pristine snapshot over working.db, which wipes minted
   // OAuth tokens — re-establish a session before continuing, exactly as a client
@@ -183,7 +184,7 @@ export async function part2Writes({ gmail, check, expectError, reauth }: Ctx): P
   await expectError("previously-sent message gone after reset → 404", () =>
     gmail.users.messages.get({ userId, id: reply.data.id! }), 404);
 
-  const postResetActivity = await fetch(`${ROOT}/api/activity`).then((r) => r.json());
+  const postResetActivity = await fetch(`${ROOT}/api/activity`, { headers: { "x-sandbox-token": controlToken() } }).then((r) => r.json());
   const postResetActionCount = (postResetActivity.sessions ?? []).reduce(
     (n: number, s: { action_count: number }) => n + s.action_count,
     0,

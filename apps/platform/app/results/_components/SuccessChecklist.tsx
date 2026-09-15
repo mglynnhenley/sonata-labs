@@ -55,6 +55,16 @@ export function SuccessChecklist({
         </p>
       ) : (
         <>
+          {/* Where the rubric came from, before the first row. A reader who does
+              not know these were fixed in advance reads them as things a model
+              decided after the fact, which is the one thing they are not. */}
+          {agent.length > 0 ? (
+            <p className="max-w-[76ch] border-t border-sn-line px-5 py-3 text-sn-sm text-sn-muted">
+              Set in the scenario before the run, then checked in code against the world the
+              agent left behind. No model votes on these.
+            </p>
+          ) : null}
+
           {agent.length > 0 ? (
             <ul className="border-t border-sn-line">
               {agent.map((criterion) => (

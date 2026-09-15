@@ -14,7 +14,6 @@ import {
 import {
   badgeStatus,
   CHECKLIST_HINT,
-  CHECKLIST_LABEL,
   formatDuration,
   formatPercent,
   formatUsd,
@@ -27,13 +26,12 @@ import type { ReplayStats } from "../_lib/moments";
 import { judgeCopy, judgeStateLabel } from "./judgeCopy";
 import { useJudgeState } from "./judgeState";
 
-// The verdict, at the top, big. Autonomy is the number the benchmark is about,
-// so it gets the display face and the whole left column; everything beside it is
-// a door into the section that proves it.
+// Lead with the declared task requirements. Legacy activity/autonomy heuristics
+// remain inspectable, but cannot establish that human review was inappropriate.
 
 export type Section = "checklist" | "failures" | "replay" | "cost";
 
-function autonomyTone(value: number | null): "success" | "gold" | "danger" {
+function scoreTone(value: number | null): "success" | "gold" | "danger" {
   if (value === null) return "gold";
   return value >= 0.75 ? "success" : value >= 0.4 ? "gold" : "danger";
 }
@@ -50,12 +48,12 @@ function coverageHint(
   const undecided = coverage.total - coverage.decided;
   const musts =
     coverage.undecidedMusts > 0
-      ? ` ${coverage.undecidedMusts} of them ${coverage.undecidedMusts === 1 ? "is a" : "are"} must-do${coverage.undecidedMusts === 1 ? "" : "s"}, so this run has not been graded — the percentage is what the harness could see, not what happened.`
+      ? ` ${coverage.undecidedMusts} of those ${coverage.undecidedMusts === 1 ? "is a" : "are"} must-do${coverage.undecidedMusts === 1 ? "" : "s"}, so this run is not graded: the percentage is what the harness could see, not what happened.`
       : "";
   return (
     `Weighted share of the ${coverage.decided} criteria this run settled. ` +
-    `${undecided} of ${coverage.total} could not be checked at all and are in neither half of ` +
-    `the fraction.${musts}`
+    `The other ${undecided} of ${coverage.total} could not be checked at all, and count neither ` +
+    `way.${musts}`
   );
 }
 
@@ -79,21 +77,10 @@ export function VerdictHeader({
   error?: string;
   onOpen: (section: Section) => void;
 }) {
-  const autonomy = summary.autonomy;
+  const score = summary.score;
   const coverage = summary.coverage;
   const judgeState = useJudgeState();
   const criticalCount = summary.failures.filter((f) => f.severity === "critical").length;
-  // Two DIFFERENT measures of the same day, not two attempts at one: arithmetic
-  // over what the run did, and a model's opinion of it. Both are kept on purpose
-  // — a wide gap means the catalog is missing the mode the judge is reacting to.
-  //
-  // Stated in whole points, always, and never as agreement. This card used to
-  // call anything inside 20 points "they agree", which printed 63% and 45% under
-  // the word "agree"; the reader's own eyes were the counter-evidence.
-  const gapPoints =
-    autonomy !== null && judgeAutonomy !== null
-      ? Math.abs(Math.round(autonomy * 100) - Math.round(judgeAutonomy * 100))
-      : null;
 
   return (
     <div className="flex flex-col gap-4">
@@ -101,7 +88,7 @@ export function VerdictHeader({
         <div className="flex items-start gap-2.5 rounded-sn-xl border border-sn-failed-line bg-sn-failed-soft px-4 py-3 text-sn-base text-sn-failed-ink">
           <IconAlert size="md" className="mt-0.5 shrink-0" />
           <div>
-            <span className="font-medium">The run ended badly.</span> {error}
+            <span className="font-medium">Execution interrupted.</span> {error}
           </div>
         </div>
       ) : null}
@@ -115,7 +102,7 @@ export function VerdictHeader({
             <div>
               <div className="flex items-center justify-between gap-3">
                 <span className="text-sn-xs font-medium tracking-[0.08em] text-sn-subtle uppercase">
-                  Autonomy
+                  Run validity
                 </span>
                 <Badge status="neutral" size="sm">
                   {summary.simulated ? SIMULATED_LABEL : NO_RESULT}
@@ -146,7 +133,7 @@ export function VerdictHeader({
           <div>
             <div className="flex items-center justify-between gap-3">
               <span className="text-sn-xs font-medium tracking-[0.08em] text-sn-subtle uppercase">
-                Autonomy
+                Checklist score
               </span>
               <Badge status={badgeStatus(summary)} size="sm">
                 {outcomeLabel(summary)}
@@ -163,22 +150,22 @@ export function VerdictHeader({
                 data-numeric
                 className="font-display-upright text-sn-6xl leading-[0.85] text-sn-ink"
               >
-                {autonomy === null ? "—" : Math.round(autonomy * 100)}
+                {score === null ? "—" : Math.round(score * 100)}
               </span>
-              {autonomy === null ? null : (
+              {score === null ? null : (
                 <span className="pb-2 text-sn-2xl leading-none text-sn-muted">%</span>
               )}
             </button>
 
             <ProgressBar
               className="mt-4"
-              value={(autonomy ?? 0) * 100}
-              tone={autonomyTone(autonomy)}
+              value={(score ?? 0) * 100}
+              tone={scoreTone(score)}
               size="md"
             />
             <p className="mt-3 text-sn-sm leading-[19px] text-sn-muted">
-              How much of the job got done without a human stepping in, counted off the day
-              itself.{" "}
+              Weighted success on the criteria this run could check. Required human review
+              and justified pending work are assessed against the task.{" "}
               <button
                 type="button"
                 onClick={() => onOpen("checklist")}
@@ -195,36 +182,29 @@ export function VerdictHeader({
                 this notice — without it the reader reads the number as a grade. */}
             {summary.outcome === "inconclusive" ? (
               <p className="mt-3 rounded-sn-lg border border-sn-line bg-sn-bg-subtle px-3 py-2.5 text-sn-sm text-sn-muted">
-                <span className="font-medium text-sn-ink">This run has no verdict.</span>{" "}
+                <span className="font-medium text-sn-ink">
+                  This run has no verdict. Read the findings below, not the number above.
+                </span>{" "}
                 {coverage && coverage.undecidedMusts > 0
-                  ? `${coverage.undecidedMusts} of the day's must-dos could not be checked at all, so nothing here shows whether the job was done. `
-                  : "Nothing on this day's checklist could be settled either way, so nothing here shows whether the job was done. "}
-                The percentage above is a reading over the part of the day the harness could see.
-                Read the findings below instead.
+                  ? `${coverage.undecidedMusts} of the day's must-dos could not be checked at all.`
+                  : "Nothing on this day's checklist could be settled either way."}{" "}
+                The percentage covers only the part of the day the harness could see.
               </p>
             ) : null}
           </div>
 
-          {judgeAutonomy === null ? null : (
-            <div className="mt-5 border-t border-sn-line pt-3.5">
-              <div className="flex items-baseline justify-between gap-2">
-                <span className="text-sn-sm text-sn-muted">The judge&rsquo;s own reading</span>
-                <span data-numeric className="text-sn-md font-medium text-sn-ink">
-                  {formatPercent(judgeAutonomy)}
-                </span>
-              </div>
-              <p className="mt-1 text-sn-xs text-sn-subtle">
-                {gapPoints === null
-                  ? null
-                  : gapPoints === 0
-                    ? "A different measure, at the same number: the figure above is arithmetic over the day's shape, this one is a model's opinion after reading it."
-                    : `A different measure, ${gapPoints} point${gapPoints === 1 ? "" : "s"} apart. The figure above is arithmetic over the day's shape — what got done, how often it acted rather than asked, how much of the day it spent silent. This one is a model's opinion after reading the same day.`}
-                {gapPoints !== null && gapPoints >= 20
-                  ? " A gap this wide usually means the judge saw something the catalog has no name for yet."
-                  : null}
-              </p>
-            </div>
-          )}
+          <details className="mt-5 border-t border-sn-line pt-3.5 text-sn-sm text-sn-muted">
+            <summary className="cursor-pointer">Legacy activity measures</summary>
+            <p className="mt-2">
+              Autonomy heuristic: {formatPercent(summary.autonomy)}.
+              {judgeAutonomy !== null ? ` Assessor autonomy opinion: ${formatPercent(judgeAutonomy)}.` : ""}
+            </p>
+            <p className="mt-1 text-sn-xs text-sn-subtle">
+              These measures mix completion, activity and escalation signals. They do not
+              establish whether waiting or asking for required review was appropriate.
+              Use the task criteria and evidence to assess that.
+            </p>
+          </details>
         </Card>
         )}
 
@@ -234,14 +214,14 @@ export function VerdictHeader({
               reader can see it is a reading over part of the day before they can
               read it as a grade. */}
           <StatCard
-            label={CHECKLIST_LABEL}
-            value={formatPercent(summary.score)}
-            unit={coverage ? `of ${coverage.decided} decided, ${coverage.total} asked` : undefined}
+            label="Criteria checked"
+            value={coverage?.decided ?? "—"}
+            unit={coverage ? `of ${coverage.total} declared` : undefined}
             hint={
               summary.simulated
                 ? "No criterion was checked. The day this checklist was scored against was scripted, so a pass here would have been a reading of the script."
                 : summary.noResult
-                  ? "No criterion was checked: a checklist run against a day the agent never worked scores its negative criteria for free."
+                  ? "A complete-run score is withheld. Inspect the recorded actions and the interruption before drawing conclusions about the model."
                   : coverageHint(coverage) ?? CHECKLIST_HINT
             }
             icon={<IconLayers size="md" />}
@@ -254,9 +234,11 @@ export function VerdictHeader({
           <StatCard
             label="Failure modes"
             value={summary.judged ? summary.failures.length : "—"}
-            unit={summary.judged ? undefined : judgeStateLabel(judgeState)}
+            unit={summary.noResult ? "Not scored" : summary.judged ? undefined : judgeStateLabel(judgeState)}
             hint={
-              summary.judged
+              summary.noResult
+                ? "This run does not support a complete benchmark verdict. Its recorded actions remain available in the replay."
+                : summary.judged
                 ? criticalCount > 0
                   ? `${criticalCount} critical. Open one to jump to the moment.`
                   : "Open one to jump to the moment it happened."
@@ -279,7 +261,7 @@ export function VerdictHeader({
             onClick={() => onOpen("cost")}
           />
           <StatCard
-            label="The day"
+            label="Recorded elapsed time"
             value={formatDuration(summary.durationMs)}
             hint={`${stats.ticks} tick${stats.ticks === 1 ? "" : "s"} · ${stats.toolCalls} tool call${stats.toolCalls === 1 ? "" : "s"} · ${stats.mutations} change${stats.mutations === 1 ? "" : "s"}`}
             icon={<IconClock size="md" />}

@@ -1,23 +1,10 @@
 import { NextResponse } from "next/server";
-import { SANDBOX_TOKEN } from "../attio/auth";
+import { authorizedControlRequest } from "@sonata/core/controlAuth";
 
-// Token gate for /api/sandbox/*. The same static token as /v2/*, so the engine
-// carries one credential per twin — but the failure is a plain sandbox error and
-// not an Attio API error: these routes are machinery, and dressing them up as
-// Attio would teach an agent that stumbled onto them the wrong thing.
-
+// Control routes use the harness credential; provider API auth stays separate.
 /** Returns null when authorized, or a 401 to return as-is. */
 export function requireSandboxToken(req: Request): NextResponse | null {
-  // All three spellings, and not out of caution: the engine sends both headers
-  // on every control-plane call, so accepting only one works with some callers
-  // and 401s with others.
-  const header = req.headers.get("authorization") || "";
-  const m = header.match(/^Bearer\s+(.+)$/i);
-  const token =
-    req.headers.get("x-sandbox-token") ||
-    m?.[1] ||
-    new URL(req.url).searchParams.get("access_token");
-  if (token !== SANDBOX_TOKEN) {
+  if (!authorizedControlRequest(req)) {
     return NextResponse.json(
       { ok: false, error: "unauthorized", detail: "send X-Sandbox-Token or a bearer token" },
       { status: 401 },

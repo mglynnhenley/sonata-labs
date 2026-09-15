@@ -80,7 +80,7 @@ export function POST(req: Request) {
     }
     const linkedRecords = resolveLinkedRecords(db, data.linked_records);
     const assignees = resolveAssignees(db, data.assignees);
-    const now = Date.now();
+    const now = ctx.writeTimeMs;
     const isCompleted = data.is_completed === true;
     const endpoint = new URL(req.url).pathname;
     const content = data.content;

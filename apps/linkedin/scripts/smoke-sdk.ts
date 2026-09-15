@@ -1,3 +1,4 @@
+import { controlToken } from "@sonata/core/controlAuth";
 // Acceptance harness: drive the running sandbox the way a real agent would.
 //
 //   PORT=3800 npm run smoke
@@ -21,6 +22,7 @@ const PORT = process.env.PORT || "3800";
 // as "the twin is down" when it is running fine.
 const ROOT_URL = process.env.SANDBOX_ROOT_URL || `http://127.0.0.1:${PORT}`;
 const TOKEN = process.env.SANDBOX_TOKEN || "sandbox-token";
+const CONTROL_TOKEN = controlToken();
 const VERSION = "202506";
 
 let passed = 0;
@@ -148,7 +150,7 @@ async function control(
 ): Promise<{ status: number; body: Record<string, unknown> }> {
   const res = await fetch(`${ROOT_URL}${path}`, {
     method: "POST",
-    headers: { "content-type": "application/json", "x-sandbox-token": TOKEN },
+    headers: { "content-type": "application/json", "x-sandbox-token": CONTROL_TOKEN },
     body: JSON.stringify(body),
   });
   return { status: res.status, body: (await res.json().catch(() => ({}))) as Record<string, unknown> };
@@ -170,17 +172,40 @@ async function inject(body: unknown): Promise<Record<string, unknown>> {
  * `logAction` is only ever reached from `runMutation` in the first place.
  */
 async function maxActionId(): Promise<number> {
-  const res = await fetch(`${ROOT_URL}/api/activity?limit=1`);
+  const res = await fetch(`${ROOT_URL}/api/activity?limit=1`, { headers: { "x-sandbox-token": CONTROL_TOKEN } });
   const body = (await res.json()) as { actions: Array<{ id: number }> };
   return body.actions[0]?.id ?? 0;
 }
 
 async function main(): Promise<void> {
+  // Prove the control boundary over HTTP before the harness mutates this world.
+  const controlRoutes = [
+    ["GET", "/api/activity"],
+    ["POST", "/api/sandbox/reset"],
+    ["POST", "/api/sandbox/seed"],
+    ["POST", "/api/sandbox/inject"],
+    ["POST", "/api/sandbox/snapshot"],
+  ];
+  for (const [method, path] of controlRoutes) {
+    const denied = await fetch(`${ROOT_URL}${path}`, { method });
+    check(`${method} ${path} rejects missing control credential`, denied.status === 401);
+    if (CONTROL_TOKEN !== TOKEN) {
+      const providerDenied = await fetch(`${ROOT_URL}${path}`, {
+        method, headers: { authorization: `Bearer ${TOKEN}` },
+      });
+      check(`${method} ${path} rejects provider credential`, providerDenied.status === 401);
+    }
+  }
+  const evidence = await fetch(`${ROOT_URL}/api/activity`, {
+    headers: { "x-sandbox-token": CONTROL_TOKEN },
+  });
+  check("control credential can read audit evidence", evidence.status === 200);
+
   console.log(`\n\x1b[1mLinkedIn sandbox smoke — ${ROOT_URL}\x1b[0m`);
 
   const reset = await fetch(`${ROOT_URL}/api/sandbox/reset`, {
     method: "POST",
-    headers: { "content-type": "application/json", "x-sandbox-token": TOKEN },
+    headers: { "content-type": "application/json", "x-sandbox-token": CONTROL_TOKEN },
     body: JSON.stringify({ note: "smoke" }),
   });
   check("reset to snapshot", reset.status === 200, await reset.text().catch(() => ""));
@@ -701,7 +726,7 @@ async function main(): Promise<void> {
 
   // --- the audit trail the judge reads --------------------------------------
 
-  const activity = await fetch(`${ROOT_URL}/api/activity`);
+  const activity = await fetch(`${ROOT_URL}/api/activity`, { headers: { "x-sandbox-token": CONTROL_TOKEN } });
   const trail = (await activity.json()) as {
     actions: Array<{ id: number; action_type: string; target_id: string | null }>;
   };

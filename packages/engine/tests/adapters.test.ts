@@ -155,6 +155,26 @@ describe("the slack adapter", () => {
     });
   });
 
+  it("uses a thread's saved channel even when the generated channel is wrong", async () => {
+    const fake = fetchFake({ "/api/sandbox/inject": { injected: { id: "1720.02", containerId: "C01OPS" } } });
+    const adapter = createSlackAdapter({ baseUrl: "http://slack.test", fetchImpl: fake.fetch });
+    await adapter.inject({ twin: "slack", kind: "message", payload: {
+      channel: "invented-channel", from: "sam", text: "Reply", threadRef: "root",
+    } }, ctx({ root: { twin: "slack", id: "C01OPS/1720.01" } }));
+    expect(fake.find("/api/sandbox/inject")?.body).toMatchObject({ channel: "C01OPS", threadTs: "1720.01" });
+  });
+
+  it("refuses an email ref or a missing ref instead of posting in the wrong conversation", async () => {
+    const fake = fetchFake({});
+    const adapter = createSlackAdapter({ baseUrl: "http://slack.test", fetchImpl: fake.fetch });
+    const body = { twin: "slack", kind: "message", payload: {
+      channel: "ops", from: "sam", text: "Reply", threadRef: "root",
+    } } as const;
+    await expect(adapter.inject(body, ctx({ root: { twin: "gmail", id: "email-id" } }))).rejects.toThrow("belongs to gmail");
+    await expect(adapter.inject(body, ctx({}))).rejects.toThrow("was not created");
+    expect(fake.find("/api/sandbox/inject")).toBeUndefined();
+  });
+
   it("reacts on the message the ref names, in that message's own channel", async () => {
     const fake = fetchFake({ "/api/sandbox/inject": { injected: { id: "1720.01", containerId: "C01OPS" } } });
     const adapter = createSlackAdapter({ baseUrl: "http://slack.test", fetchImpl: fake.fetch });

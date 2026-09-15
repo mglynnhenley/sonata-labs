@@ -1,4 +1,4 @@
-import type { RunStatus, TickRecord, TwinName, VerdictOutcome } from "@sonata/core";
+import type { SessionTimingPolicy, RunStatus, TickRecord, TwinName, VerdictOutcome, Termination } from "@sonata/core";
 
 // The wire shapes between the sessions pages and the routes that serve them.
 //
@@ -29,6 +29,7 @@ export type AgentPulse =
   | "ended";
 
 export interface SessionView {
+  twinLinks?: Array<{ twin: TwinName; url: string }>;
   sessionId: string;
   episodeId: string;
   title: string;
@@ -46,6 +47,7 @@ export interface SessionView {
   simMinutesPerTick: number;
   /** Simulated seconds per real second. */
   compression: number;
+  timing?: SessionTimingPolicy;
   /** Real milliseconds one tick occupies at that compression. */
   realMsPerTick: number;
   lastEvent: string | null;
@@ -53,6 +55,7 @@ export interface SessionView {
   endedAt: number | null;
   /** Wall clock the next tick is due. Null when nothing is scheduled. */
   nextTickAt: number | null;
+  notificationSequence?: number;
   /** Scripted arrivals so far. */
   beats: number;
   /** Replies the director wrote back. */
@@ -103,6 +106,7 @@ export interface StartSessionInput {
   episodeId: string;
   /** Simulated seconds per real second. See `COMPRESSIONS`. */
   compression: number;
+  timing?: SessionTimingPolicy;
   agentLabel?: string;
   twins?: TwinName[];
   ticks?: number;
@@ -110,6 +114,38 @@ export interface StartSessionInput {
   seedWorld?: boolean;
   /** Read the finished day back with the judge. On by default. */
   judge?: boolean;
+  /** False runs authored events only: a wiring fixture, not a reactive company. */
+  director?: boolean;
+  /** Internal product-launch overrides; not accepted by the public session route. */
+  runId?: string;
+  model?: string;
+  directorModel?: string;
+  judgeModel?: string;
+  termination?: Partial<Termination>;
+}
+
+/** Public task material and harness configuration. No future events or grading keys. */
+export interface SessionLaunch {
+  session: SessionView;
+  agentBrief: string;
+  connection: {
+    twins: TwinName[];
+    urls: Partial<Record<TwinName, string>>;
+    token: string;
+    /** Read after setup; requires this run's agent token, returns no control credential. */
+    credentialsPath: string;
+    execution: { kind: "docker"; container: string };
+    gmailOAuth?: { accessToken: string; refreshToken?: string; clientId: string };
+  };
+  timing: {
+    policy: SessionTimingPolicy["policy"];
+    workUnitsPerTick?: number;
+    compression: number;
+    simMinutesPerTick: number;
+    plannedTicks: number;
+    worldMode: "scripted" | "reactive";
+  };
+  isolation: "docker-per-run-v1";
 }
 
 // ---------------------------------------------------------------------------

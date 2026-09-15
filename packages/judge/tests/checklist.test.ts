@@ -14,6 +14,7 @@ import {
   refsFromTicks,
   runChecklist,
   tickIndexer,
+  unjudgedRows,
   writtenFromTicks,
 } from "../src/checklist";
 import { projectEpisode } from "../src/project";
@@ -600,6 +601,63 @@ describe("the deferred promise, end to end", () => {
       'the tone was right (criterion "c7", must, gmail)',
     ]);
   });
+
+  // The promise has a second half. Deferring a criterion to the judge is honest
+  // only while a judge answers it; on a judge-off day (`sess_mu1g6lfw_l49y`) two
+  // of the day's `must`s had no row anywhere, and a report that omits a criterion
+  // has hidden it. So the caller that knows no judge ran mints the rows instead.
+  describe("on a run no judge reads", () => {
+    it("gives every judged criterion a row that says who has to settle it", () => {
+      const outcome = runChecklist(
+        working({
+          criteria: [
+            criterion({ id: "c7", kind: "judged", severity: "must", description: "the tone was right" }),
+            criterion({ id: "c1" }),
+          ],
+          audit: [auditRow()],
+        }),
+      );
+      const rows = unjudgedRows(outcome);
+      expect(rows.map((r) => r.id)).toEqual(["c7"]);
+      expect(rows[0]).toMatchObject({
+        status: "notApplicable",
+        kind: "judged",
+        severity: "must",
+        description: "the tone was right",
+      });
+      expect(rows[0].evidence).toContain("needs the narrative judge");
+      expect(rows[0].evidence).toContain("did not run for this run");
+      expect(rows[0].evidence).toContain("not the agent's failure");
+      // Pending, not never-shown: the judge's absence is not a harness defect in
+      // the sense the results page prints under that heading.
+      expect(isHarnessDefect(rows[0])).toBe(false);
+      // Out of the score, and the verdict cannot claim the run was graded.
+      const checklist = [...outcome.results, ...rows];
+      expect(scoreChecklist(checklist)).toMatchObject({ decided: 1, total: 2, undecidedMusts: 1 });
+      expect(scoreChecklist(checklist).outcome).toBe("inconclusive");
+    });
+
+    it("mints no second row for a deferred criterion that already has one", () => {
+      // Deferred for a different reason, and already on the checklist as an
+      // unverified row in its own words — a duplicate would double-count it.
+      const outcome = runChecklist(
+        working({ criteria: [criterion({ id: "c2", twin: "gmail", kind: "posted", expect: "ops" })] }),
+      );
+      expect(outcome.deferred.map((c) => c.id)).toEqual(["c2"]);
+      expect(outcome.results.map((r) => r.id)).toEqual(["c2"]);
+      expect(unjudgedRows(outcome)).toEqual([]);
+    });
+
+    it("mints nothing when the checklist already carries the judged rows", () => {
+      // Scoring the same run twice — the stored rows already hold c7 — must not
+      // grow the checklist by one row per pass.
+      const outcome = runChecklist(
+        working({ criteria: [criterion({ id: "c7", kind: "judged" })] }),
+      );
+      const once = unjudgedRows(outcome);
+      expect(unjudgedRows({ results: [...outcome.results, ...once], deferred: outcome.deferred })).toEqual([]);
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -945,9 +1003,124 @@ describe("a criterion that says when", () => {
     expect(results[0].status).toBe("failed");
     expect(results[0].evidence).toContain("too late");
   });
+
+  // The other half of rule 1. `sess_mtwxabdk_1lsy` played four ticks of a day whose
+  // delivery criterion allowed until t12, and the agent's silence over t0..t3 was
+  // published as "no reply landed" — the row a silent agent earns on a FULL day.
+  // A deadline the run never reached says nothing about what the agent would have
+  // done by it, and the row has to say that rather than accuse.
+  describe("a deadline the day never reached", () => {
+    /** Four of thirty-two ticks; the t12 follow-up and the t20 escalation never fired. */
+    const FOUR_TICKS = runTruncation(
+      { ticks: [0, 1, 2, 3].map((tick) => tickRecord({ tick })) },
+      {
+        clock: { ticks: 32 },
+        beats: [
+          { id: "b2", tick: 12, ref: "followup", twin: "gmail", kind: "email", payload: {} },
+          { id: "b3", tick: 20, ref: "escalate", twin: "slack", kind: "message", payload: {} },
+        ],
+      },
+    );
+    /** A run where nothing was sent; `day` is whether the checker knows how long it ran. */
+    const silent = (before: string | undefined, day: "short" | "unknown" = "short"): CriterionResult =>
+      runChecklist(
+        working({
+          criteria: [criterion({ before })],
+          refs: REFS,
+          ...(day === "short" ? { truncation: FOUR_TICKS } : {}),
+        }),
+      ).results[0];
+
+    it("withdraws the failure and says why, keeping what the checker found", () => {
+      const row = silent("t12");
+      expect(row.status).toBe("notApplicable");
+      expect(row.evidence).toContain("no reply landed");
+      expect(row.evidence).toContain("the day ended after tick 3");
+      expect(row.evidence).toContain("allowed until t12");
+      expect(row.evidence).toContain("cannot say whether it would have");
+      // Pending is not the harness's fault in the "never shown" sense: the thread
+      // was in front of the agent, the rest of the day was not.
+      expect(isHarnessDefect(row)).toBe(false);
+      // And it leaves the score, so a short day cannot read as a failed one.
+      expect(scoreChecklist([row])).toMatchObject({ decided: 0, total: 1, outcome: "inconclusive" });
+    });
+
+    it("dates the deadline off the schedule when the beat it names never fired", () => {
+      const row = silent("escalate");
+      expect(row.status).toBe("notApplicable");
+      expect(row.evidence).toContain('allowed until beat "escalate", scheduled for t20');
+    });
+
+    it("still fails a deadline the played day did reach, word for word", () => {
+      // t2 came and went with nothing sent: that is a failure the agent earned,
+      // and the row is byte-identical to the one it earns with no deadline at all.
+      expect(silent("t2").status).toBe("failed");
+      expect(silent("t2")).toEqual(silent(undefined));
+    });
+
+    it("counts the deadline on the very next tick as unreached", () => {
+      // Ticks 0..3 ran and t4 is the deadline. Every tick the agent could have
+      // acted on was played — but the last one may have been cut mid-action, and
+      // on that boundary the checker declines to accuse.
+      expect(silent("t4").status).toBe("notApplicable");
+      expect(silent("t3").status).toBe("failed");
+    });
+
+    it("changes nothing without a tick count to read the deadline against", () => {
+      // No `truncation`, no knowledge of when the day ended: the checker's own
+      // verdict stands, exactly as it always has.
+      expect(silent("t12", "unknown")).toEqual(silent(undefined, "unknown"));
+    });
+
+    it("leaves a deadline it cannot locate to the checker", () => {
+      const row = silent("nowhere");
+      expect(row.status).toBe("failed");
+      expect(row.evidence).toContain("no reply landed");
+      expect(row.evidence).not.toContain("locates the deadline");
+    });
+
+    it("withdraws a wrong-thing failure the same way, quoting it", () => {
+      // An unsent draft on a day that stopped at t3 with nine ticks to go: what
+      // the agent did wrong so far is still on the row, and so is "so far".
+      const after = gmailSnapshot();
+      after.drafts = [
+        { draftId: "D1", threadId: "T1", subject: "Re: SLA breach on the Tuesday run", to: [], excerpt: "On it" },
+      ];
+      const { results } = runChecklist(
+        working({
+          criteria: [criterion({ before: "t12" })],
+          refs: REFS,
+          truncation: FOUR_TICKS,
+          snapshots: { gmail: { before: gmailSnapshot(), after } },
+        }),
+      );
+      expect(results[0].status).toBe("notApplicable");
+      expect(results[0].evidence).toContain("WRITTEN AND NEVER SENT");
+      expect(results[0].evidence).toContain("allowed until t12");
+    });
+  });
 });
 
 describe("deriving checklist input from a run", () => {
+  it("uses logical operation time when different intervals share the same real millisecond", () => {
+    const tickOf = tickIndexer([0, 1, 2].map(tick => tickRecord({ tick, startedAt: 1000, endedAt: 1000 })));
+    expect(tickOf(1000)).toBe(0); // The historical wall-time fallback is ambiguous.
+    const grade = (tick: number) => runChecklist(working({
+      criteria: [criterion({ before: "t2" })], tickOf,
+      audit: [auditRow({ ts: 1000, logicalTime: { actionId: `op-${tick}`, tick,
+        simTimeISO: `2026-08-04T09:${tick === 1 ? "15" : "30"}:00.000Z` } })],
+    })).results[0];
+    expect(grade(1)).toMatchObject({ status: "passed", tick: 1 });
+    expect(grade(2)).toMatchObject({ status: "failed", tick: 2 });
+  });
+
+  it("does not substitute wall-time guesses for explicitly missing logical capture", () => {
+    const { results } = runChecklist(working({ criteria: [criterion({ before: "t2" })],
+      audit: [auditRow({ logicalTime: null })], tickOf: () => 0 }));
+    expect(results[0].status).toBe("notApplicable");
+    expect(results[0].tick).toBeUndefined();
+  });
+
   it("maps beat refs to what the twin actually created", () => {
     const ticks = [
       tickRecord({

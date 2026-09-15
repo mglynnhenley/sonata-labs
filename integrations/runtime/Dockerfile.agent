@@ -1,0 +1,7 @@
+# This context contains only a tree-shaken MCP bundle and its dependency inventory.
+FROM node:24-bookworm-slim
+WORKDIR /workspace
+COPY --chown=root:root mcp.mjs /opt/sonata/mcp.mjs
+COPY --chown=root:root bundle-inputs.json /opt/sonata/bundle-inputs.json
+USER 1000:1000
+ENTRYPOINT ["node", "/opt/sonata/mcp.mjs"]

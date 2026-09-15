@@ -3,7 +3,7 @@ import Database from "better-sqlite3";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { AUDIT_DDL } from "@/lib/db";
-import { setMeta } from "@/lib/store/meta";
+import { crmWriteTime, setMeta } from "@/lib/store/meta";
 import { insertMember } from "@/lib/store/members";
 import { insertRecord } from "@/lib/store/records";
 import { compileQuery } from "@/lib/attio/filter";
@@ -94,6 +94,7 @@ export function newRecord(db: Database.Database, objectSlug: string, id: string)
 export function testCtx(db: Database.Database): AttioCtx {
   return {
     db,
+    get writeTimeMs() { return crmWriteTime(db); },
     workspaceId: SEED_WORKSPACE_ID,
     workspaceSlug: SEED_WORKSPACE_SLUG,
     workspaceName: SEED_WORKSPACE_NAME,

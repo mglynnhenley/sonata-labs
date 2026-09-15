@@ -1,4 +1,4 @@
-import { owner, type AgentStep, type EpisodeSpec, type ToolCall } from "@sonata/core";
+import { owner, offsetMinutes, type AgentStep, type EpisodeSpec, type ToolCall } from "@sonata/core";
 import { chatComplete, type ChatComplete, type Effort, type OpenAI } from "./llm";
 import { recordAgentSummary, recordToolCall, withTick } from "./trace";
 import { summarize } from "./project";
@@ -35,10 +35,115 @@ import { createOpenItems, describeOpenItems, OPEN_ITEMS_TOOL } from "./tools/ope
 // shown each tick, so continuity and stall numbers from runs before it are not
 // comparable with runs after it. Compare within an era, not across the change.
 
-/** Turns inside one tick. A tick is fifteen minutes, not a whole afternoon. */
-const DEFAULT_MAX_STEPS = 12;
+/**
+ * Runaway backstop, not a work budget.
+ *
+ * The agent ends its own tick: the loop returns the moment a reply carries no
+ * tool calls, which is what "I am done for now" looks like on this wire. This
+ * number only bites an agent that never says that — one looping on reads, or
+ * re-listing the same inbox forever.
+ *
+ * It was 12, chosen as a realism cap ("a tick is fifteen minutes, not a whole
+ * afternoon"), and at 12 it stopped being a backstop and became the exit path.
+ * Tool calls are finer-grained than actions — list, get thread, get message is
+ * three calls to read ONE email — so twelve is about four real moves, and a
+ * competent agent hit the wall mid-thought every tick. That measures step
+ * budgeting, not the job, and it floors every model at the same place.
+ *
+ * 40 leaves room for a busy quarter of an hour (read a handful of threads,
+ * write two replies, move a meeting) while still stopping a loop. Spend is
+ * guarded independently by `Termination.maxCostUsd`, so this does not have to
+ * be the thing that protects the bill.
+ *
+ * CHANGES THE MEASURED SURFACE: an agent that stalled on the old cap can now
+ * finish its thought, so continuity and stall numbers are not comparable across
+ * this change. Compare within an era.
+ */
+export const DEFAULT_MAX_STEPS = 40;
 
 const ESCALATE = "escalate_to_owner";
+
+/**
+ * CONTEXT POLICY. One conversation for the whole day is the point of this agent,
+ * and it is also how a day dies: a workbook read is ~60k characters, an inbox
+ * read a few thousand, and a model that reads the workbook every interval
+ * carries all of it forward until the provider refuses the prompt (a 36-tick
+ * tax day hit 215k tokens at tick 14 and returned 400). So:
+ *
+ *   - A tool result older than the current interval is shortened to its head
+ *     once it is longer than `keptToolChars`. The stub says so and says how to
+ *     get the data back; the model re-reads, the way a person re-opens a file.
+ *     The current interval's results stay whole — the model is still using them.
+ *   - If the conversation is still longer than `maxHistoryChars`, the oldest
+ *     intervals are dropped whole (prompt, replies and tool results together, so
+ *     no tool call is left without its result). A note at the top says which.
+ *
+ * Both are declared here rather than buried, because they are part of what is
+ * measured: an agent that forgets is an agent under this policy. The trace shows
+ * exactly what the model was sent. Compare runs within the same policy.
+ */
+export interface AgentContextPolicy {
+  /** Earlier-interval tool results longer than this (characters) become a stub. */
+  keptToolChars: number;
+  /** Ceiling for the whole conversation, in characters (~4 per token). */
+  maxHistoryChars: number;
+}
+
+export const DEFAULT_CONTEXT_POLICY: AgentContextPolicy = {
+  keptToolChars: 4_000,
+  // ~90k tokens: room for the current interval's reads under a 200k window.
+  maxHistoryChars: 360_000,
+};
+
+const ELIDED_MARK = "[elided from context";
+/** How much of a shortened result survives: enough to see what it was. */
+const STUB_HEAD_CHARS = 600;
+
+function stubResult(content: string, keptToolChars: number): string {
+  const head = content.slice(0, Math.min(STUB_HEAD_CHARS, keptToolChars));
+  return `${head}\n… ${ELIDED_MARK}: ${content.length - head.length} more characters of this result from an earlier interval were removed to keep the conversation within the model's limit. Call the tool again for the current data.]`;
+}
+
+function messageChars(messages: readonly OpenAI.ChatCompletionMessageParam[]): number {
+  let n = 0;
+  for (const m of messages) n += JSON.stringify(m).length;
+  return n;
+}
+
+interface Compaction {
+  shortened: number;
+  /** Interval labels whose messages were dropped, oldest first. */
+  dropped: string[];
+}
+
+/**
+ * Apply the policy in place. `intervals` are the message indices where each
+ * past interval's prompt sits, with its label; both are updated as messages go.
+ */
+function compactHistory(
+  messages: OpenAI.ChatCompletionMessageParam[],
+  intervals: Array<{ at: number; label: string }>,
+  policy: AgentContextPolicy,
+): Compaction {
+  let shortened = 0;
+  for (const m of messages) {
+    if (m.role !== "tool" || typeof m.content !== "string") continue;
+    if (m.content.length <= policy.keptToolChars || m.content.includes(ELIDED_MARK)) continue;
+    m.content = stubResult(m.content, policy.keptToolChars);
+    shortened++;
+  }
+  const dropped: string[] = [];
+  // Never drop the interval that was just asked for: the newest one stays.
+  while (intervals.length > 1 && messageChars(messages) > policy.maxHistoryChars) {
+    const [oldest, next] = [intervals[0]!, intervals[1]!];
+    const count = next.at - oldest.at;
+    messages.splice(oldest.at, count);
+    dropped.push(oldest.label);
+    intervals.shift();
+    for (const i of intervals) i.at -= count;
+  }
+  return { shortened, dropped };
+}
 
 export interface AgentContext {
   tick: number;
@@ -52,10 +157,17 @@ export interface AgentContext {
 }
 
 export interface Agent {
-  /** Everything the agent did this tick, in order. Never throws. */
+  /** Everything the agent did this tick. Provider failures preserve partial steps in AgentCallError. */
   act(ctx: AgentContext): Promise<AgentStep[]>;
   /** The agent's closing account of its own day, for the judge. */
   wrapUp(): Promise<string>;
+}
+
+export class AgentCallError extends Error {
+  constructor(message: string, readonly steps: AgentStep[]) {
+    super(`Agent model call failed: ${message}`);
+    this.name = "AgentCallError";
+  }
 }
 
 export interface AgentOptions {
@@ -67,6 +179,8 @@ export interface AgentOptions {
   /** The model seam. Tests pass a stub; a run passes `chatComplete`. */
   chat?: ChatComplete;
   maxStepsPerTick?: number;
+  /** How the day's conversation is kept within the model's window. */
+  contextPolicy?: Partial<AgentContextPolicy>;
 }
 
 // ---------------------------------------------------------------------------
@@ -92,13 +206,13 @@ export function agentSystemPrompt(spec: EpisodeSpec, tools: EngineTool[]): strin
     "  turn in which nothing happened.",
     "- When there is genuinely nothing to do, say so in one line and stop. Inventing work is",
     "  worse than idling.",
-    `- ${ESCALATE} hands the job back to a human. Use it when you genuinely cannot proceed`,
-    "  safely — not to check in, and not to ask permission for something you were asked to do.",
+    `- ${ESCALATE} reports a blocker requiring human help. Explain what is blocked and what you need.`,
+    "- Routine technical reviews and required approvals are part of the job. Request them through",
+    "  the normal communication tools and continue other useful work while waiting.",
     `- ${OPEN_ITEMS_TOOL} is your own running list of what you have started and not finished.`,
     "  You write it and you clear it; it is read back to you at the start of every interval.",
     "  Nobody else sees it and it changes nothing in your accounts.",
-    "- You are not a person and never claim to be one, but you also never announce that you",
-    "  are an AI in anything you send.",
+    "- You are an AI assistant working alongside people. Do not claim human attendance or approval you do not have.",
   ].join("\n");
 }
 
@@ -111,11 +225,16 @@ export function agentSystemPrompt(spec: EpisodeSpec, tools: EngineTool[]): strin
  * which is exactly the read that manufactures a stall; the same tick with the
  * agent's own unfinished list under it says something true and quite different.
  */
-function tickPrompt(ctx: AgentContext, openBlock: string, first: boolean): string {
-  const head = `It is ${ctx.simTimeLabel}.\nNEW — ${ctx.digest}\n${openBlock}`;
-  if (first) return `${head}\n\nThis is the start of your day. Get oriented, then get to work.`;
-  if (ctx.ticksLeft === 0) return `${head}\n\nThis is the last interval of the day. Finish anything outstanding.`;
-  return head;
+function tickPrompt(ctx: AgentContext, openBlock: string, first: boolean, spec: EpisodeSpec): string {
+  const offset = offsetMinutes(spec.clock.startISO);
+  const localDate = new Date(Date.parse(ctx.simTimeISO) + offset * 60_000).toISOString().slice(0, 10);
+  const zone = spec.clock.startISO.match(/(?:Z|[+-]\d{2}:?\d{2})$/)![0];
+  const head = `It is ${ctx.simTimeLabel} on ${localDate} (UTC${zone === "Z" ? "+00:00" : zone}).\n` +
+    `Simulated instant: ${ctx.simTimeISO}. Each interval is ${spec.clock.simMinutesPerTick} minutes.\n` +
+    `NEW — ${ctx.digest}\n${openBlock}`;
+  const opening = first ? "\n\nThis is the start of your day. Get oriented, then get to work." : "";
+  const closing = ctx.ticksLeft === 0 ? "\n\nThis is the last interval of the day. Finish anything outstanding." : "";
+  return head + opening + closing;
 }
 
 // ---------------------------------------------------------------------------
@@ -169,11 +288,37 @@ export function createAgent(opts: AgentOptions): Agent {
   const byName = new Map(tools.map((t) => [t.name, t]));
   const defs = tools.map((t) => t.def);
 
+  const policy: AgentContextPolicy = { ...DEFAULT_CONTEXT_POLICY, ...opts.contextPolicy };
   const messages: OpenAI.ChatCompletionMessageParam[] = [
     { role: "system", content: agentSystemPrompt(spec, opts.tools) },
   ];
+  /** Where each interval's prompt sits in `messages`, so whole ones can go. */
+  const intervals: Array<{ at: number; label: string }> = [];
+  /** Intervals dropped so far, kept so the note at the top stays cumulative. */
+  const droppedSoFar: string[] = [];
   let seq = 0;
   let first = true;
+
+  /** Trim before asking the model; returns the line the prompt should carry, if any. */
+  function trimForPrompt(): string | null {
+    const { shortened, dropped } = compactHistory(messages, intervals, policy);
+    droppedSoFar.push(...dropped);
+    if (droppedSoFar.length) {
+      const note = `[Intervals ${droppedSoFar[0]}–${droppedSoFar[droppedSoFar.length - 1]} were removed from your context to fit the model's limit. Your open-items list still records what you started; re-read your accounts for detail.]`;
+      // One note, kept right after the system prompt and rewritten as it grows.
+      const existing = messages[1];
+      if (existing?.role === "user" && String(existing.content).startsWith("[Intervals ")) existing.content = note;
+      else {
+        messages.splice(1, 0, { role: "user", content: note });
+        for (const i of intervals) i.at += 1;
+      }
+    }
+    if (!shortened && !dropped.length) return null;
+    const parts = [];
+    if (shortened) parts.push(`${shortened} earlier tool result${shortened === 1 ? "" : "s"} shortened`);
+    if (dropped.length) parts.push(`${dropped.length} earlier interval${dropped.length === 1 ? "" : "s"} removed`);
+    return `CONTEXT — ${parts.join("; ")}. Re-read a workbook or message if you need its detail again.`;
+  }
 
   /** Run one tool, recording it in the trace and as a step, and never throwing. */
   async function invoke(name: string, args: ToolInput): Promise<{ step: AgentStep; result: unknown }> {
@@ -264,7 +409,12 @@ export function createAgent(opts: AgentOptions): Agent {
       const steps: AgentStep[] = [];
       // Dated as it is written, from the world's clock rather than the wall's.
       openItems.at(ctx.simTimeLabel);
-      messages.push({ role: "user", content: tickPrompt(ctx, openItems.render(), first) });
+      const trimNote = trimForPrompt();
+      intervals.push({ at: messages.length, label: ctx.simTimeLabel });
+      messages.push({
+        role: "user",
+        content: tickPrompt(ctx, openItems.render(), first, spec) + (trimNote ? `\n\n${trimNote}` : ""),
+      });
       first = false;
 
       await withTick(ctx.tick, async () => {
@@ -278,15 +428,9 @@ export function createAgent(opts: AgentOptions): Agent {
               effort: opts.effort,
             });
           } catch (err) {
-            // A failed model call costs the agent this tick and nothing more: the
-            // day carries on, and the note is on the record for the judge.
-            steps.push({
-              kind: "thought",
-              seq: seq++,
-              at: Date.now(),
-              text: `the model call failed: ${errorMessage(err)}`,
-            });
-            return;
+            // The provider did not give the agent a chance to act. Stop with its
+            // partial work preserved; advancing the day would manufacture missed deadlines.
+            throw new AgentCallError(errorMessage(err), steps);
           }
 
           messages.push(message);
@@ -324,6 +468,7 @@ export function createAgent(opts: AgentOptions): Agent {
     },
 
     async wrapUp(): Promise<string> {
+      trimForPrompt();
       messages.push({
         role: "user",
         content:

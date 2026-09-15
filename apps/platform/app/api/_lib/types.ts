@@ -34,6 +34,8 @@ import type { GeneratedWorld } from "@sonata/world";
  * anything reading one off a stored `WorldCounts` has to treat absent as none.
  */
 export interface WorldCounts {
+  /** Absent for saved worlds created before workbook support. */
+  workbooks?: number;
   people: number;
   threads: number;
   messages: number;
@@ -197,6 +199,7 @@ export interface TemplateSummary {
 // ---------------------------------------------------------------------------
 
 export interface RunSummary {
+  twinLinks?: Array<{ twin: TwinName; url: string }>;
   runId: string;
   specId: string;
   specTitle: string;
@@ -240,6 +243,16 @@ export interface StartRunInput {
   twins: TwinName[];
   /** Length of the simulated day, in ticks. */
   ticks: number;
+  compression?: number;
+  timing?: import("@sonata/core").SessionTimingPolicy;
+  platformUrl?: string;
+  judge?: boolean;
+  director?: boolean;
+  judgeModel?: string;
+  directorModel?: string;
+  seedWorld?: boolean;
+  runId?: string;
+  termination?: Partial<import("@sonata/core").Termination>;
 }
 
 export type RunCommand = "pause" | "resume" | "abort";

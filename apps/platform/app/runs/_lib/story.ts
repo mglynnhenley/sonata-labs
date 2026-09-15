@@ -85,6 +85,10 @@ const BEAT_LABEL: Record<TwinName, { kinds: Record<string, string>; whateverElse
     },
     whateverElse: "Something happened in the ads account",
   },
+  excel: {
+    kinds: {},
+    whateverElse: "Something happened in a workbook",
+  },
   linkedin: {
     kinds: {
       post: "Something was posted on LinkedIn",

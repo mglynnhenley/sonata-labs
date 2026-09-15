@@ -9,11 +9,10 @@ import { SearchResults } from "./SearchResults";
 import type { ActivityData, ChannelData, SearchData, SidebarData, ThreadData } from "./types";
 
 const POLL_MS = 3000;
-const TOKEN = "sandbox-token";
 
-async function getJson<T>(url: string): Promise<T | null> {
+async function getJson<T>(url: string, token?: string): Promise<T | null> {
   try {
-    const res = await fetch(url, { cache: "no-store" });
+    const res = await fetch(url, { cache: "no-store", headers: token ? { authorization: `Bearer ${token}` } : undefined });
     if (!res.ok) return null;
     return (await res.json()) as T;
   } catch {
@@ -22,12 +21,12 @@ async function getJson<T>(url: string): Promise<T | null> {
 }
 
 /** Call the sandbox's own Slack-compatible API, exactly as an agent would. */
-async function callApi(method: string, args: Record<string, string>): Promise<void> {
+async function callApi(token: string, method: string, args: Record<string, string>): Promise<void> {
   await fetch(`/api/${method}`, {
     method: "POST",
     headers: {
       "content-type": "application/x-www-form-urlencoded",
-      authorization: `Bearer ${TOKEN}`,
+      authorization: `Bearer ${token}`,
     },
     body: new URLSearchParams(args).toString(),
   });
@@ -35,7 +34,7 @@ async function callApi(method: string, args: Record<string, string>): Promise<vo
 
 type View = { kind: "channel"; id: string } | { kind: "activity" } | { kind: "search"; q: string };
 
-export function SlackApp() {
+export function SlackApp({ providerToken, controlsAvailable }: { providerToken: string; controlsAvailable: boolean }) {
   const [sidebar, setSidebar] = useState<SidebarData | null>(null);
   const [view, setView] = useState<View>({ kind: "activity" });
   const [channel, setChannel] = useState<ChannelData | null>(null);
@@ -72,9 +71,9 @@ export function SlackApp() {
         getJson<ChannelData>(`/api/ui/channel/${view.id}`).then((c) => setChannel(c)),
       );
     }
-    if (view.kind === "activity") {
+    if (view.kind === "activity" && controlsAvailable) {
       const qs = activitySession ? `?session=${activitySession}` : "";
-      tasks.push(getJson<ActivityData>(`/api/activity${qs}`).then((a) => setActivity(a)));
+      tasks.push(getJson<ActivityData>(`/api/activity${qs}`, providerToken).then((a) => setActivity(a)));
     }
     if (thread) {
       tasks.push(
@@ -85,7 +84,7 @@ export function SlackApp() {
       );
     }
     await Promise.all(tasks);
-  }, [view, thread, activitySession]);
+  }, [view, thread, activitySession, controlsAvailable, providerToken]);
 
   // Poll so agent writes appear live.
   useEffect(() => {
@@ -112,7 +111,7 @@ export function SlackApp() {
 
   const toggleReaction = async (channelId: string, ts: string, name: string, reacted: boolean) => {
     setBusy(true);
-    await callApi(reacted ? "reactions.remove" : "reactions.add", {
+    await callApi(providerToken, reacted ? "reactions.remove" : "reactions.add", {
       channel: channelId,
       timestamp: ts,
       name,
@@ -123,7 +122,7 @@ export function SlackApp() {
 
   const send = async (channelId: string, text: string, threadTs?: string) => {
     setBusy(true);
-    await callApi("chat.postMessage", {
+    await callApi(providerToken, "chat.postMessage", {
       channel: channelId,
       text,
       ...(threadTs ? { thread_ts: threadTs } : {}),
@@ -136,7 +135,7 @@ export function SlackApp() {
     setResetting(true);
     await fetch("/api/sandbox/reset", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", authorization: `Bearer ${providerToken}` },
       body: JSON.stringify({ note: "reset from activity panel" }),
     });
     setActivitySession(null);
@@ -205,9 +204,13 @@ export function SlackApp() {
             </div>
           ))}
 
-        {view.kind === "activity" &&
+        {view.kind === "activity" && !controlsAvailable && (
+          <div className="flex-1 bg-white p-5 text-sm">Activity and workplace controls are available in the Sonata dashboard.</div>
+        )}
+        {view.kind === "activity" && controlsAvailable &&
           (activity ? (
             <ActivityPanel
+              token={providerToken}
               data={activity}
               onSelectSession={(id) => setActivitySession(id)}
               onReset={() => void doReset()}

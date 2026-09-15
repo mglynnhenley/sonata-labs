@@ -121,14 +121,14 @@ export function CompaniesClient({ initial }: { initial: CompaniesData }) {
   return (
     <div className="sn-stack-section">
       <PageHeader
-        eyebrow="Companies"
-        title="The companies you've cloned"
-        subtitle="Each one is a cast of people with an inbox, Slack channels, a calendar, a CRM, shared documents, an ad account and a company page — the same people on every one. Put one into the clones, then go and read their mail."
+        eyebrow="Workspace"
+        title="Environments"
+        subtitle="An environment is the company your agent works in: its people, history and apps. A scenario adds a situation to handle and defines what success looks like."
         actions={
           // The Link IS the button. Wrapping one around a `<button>` is invalid
           // markup and leaves the page's main exit deaf to Cmd-click.
           <Link href="/scenarios/new" className={buttonClasses("primary", "md")}>
-            Clone a company
+            New environment & scenario
             <IconArrowRight size="sm" />
           </Link>
         }
@@ -160,15 +160,15 @@ export function CompaniesClient({ initial }: { initial: CompaniesData }) {
       {companies.length === 0 ? (
         <EmptyState
           icon={<IconInbox size="lg" />}
-          title="Nothing cloned yet"
-          description="Describe a company in one line — “a 12-person fintech, the week before an audit” — and Sonata writes the people, their threads, their channels and their meetings."
+          title="Create your first environment"
+          description="Describe a business and a situation you want to test. Sonata proposes the company, the scenario and what the agent should achieve."
           hints={[
-            "Seed it into the clones, then open Gmail and read what they were up to before nine",
-            "Everything stays on this machine; no real account is ever touched",
+            "Review the scenario and its success criteria before choosing an agent",
+            "Load the environment to explore its simulated inbox, messages and calendar",
           ]}
           action={
             <Link href="/scenarios/new" className={buttonClasses("primary", "md")}>
-              Clone a company
+              New environment & scenario
               <IconArrowRight size="sm" />
             </Link>
           }
@@ -294,7 +294,9 @@ function CompanyTile({ company, clones, now, busy, busyLine, disabled, onSeed }:
                   {clone.label} · {clone.ok ? clone.detail : "not running"}
                 </span>
                 <a
-                  href={clone.url}
+                  // The mailbox, not the API — a person clicking "Open" wants
+                  // the inbox, and gmail serves that from its own UI service.
+                  href={clone.ui?.ok ? clone.ui.url : clone.url}
                   target="_blank"
                   rel="noreferrer"
                   className="inline-flex items-center gap-1 text-[12px] font-medium text-sn-primary-ink hover:underline"
@@ -309,14 +311,22 @@ function CompanyTile({ company, clones, now, busy, busyLine, disabled, onSeed }:
       ) : null}
 
       <div className="mt-auto flex flex-wrap items-center gap-3 pt-5">
+        <Link
+          href={`/scenarios?environment=${encodeURIComponent(company.id)}`}
+          className={buttonClasses("primary", "sm")}
+        >
+          View scenarios
+          <IconArrowRight size="sm" />
+        </Link>
         <Button
-          variant={company.state === "seeded" ? "secondary" : "primary"}
+          variant="secondary"
+          size="sm"
           icon={<IconSpark size={14} />}
           loading={busy}
           disabled={disabled && !busy}
           onClick={onSeed}
         >
-          {company.state === "seeded" ? "Load it again" : "Put this company in the clones"}
+          {company.state === "seeded" ? "Reload apps" : "Load apps to explore"}
         </Button>
         {busy ? (
           <span className="flex items-center gap-2 text-[12px] text-sn-muted">

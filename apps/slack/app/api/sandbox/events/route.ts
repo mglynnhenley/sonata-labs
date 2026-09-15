@@ -1,3 +1,4 @@
+import { requireSandboxToken } from "@/lib/sandbox/auth";
 import { NextResponse } from "next/server";
 import {
   addSubscription,
@@ -18,7 +19,9 @@ export const dynamic = "force-dynamic";
 //   POST {url, events?}             → subscribe (runs url_verification first)
 //   DELETE ?id=S123 | ?deliveries=1 → unsubscribe / clear the delivery log
 
-export async function GET() {
+export async function GET(req: Request) {
+  const authErr = requireSandboxToken(req);
+  if (authErr) return authErr;
   return NextResponse.json({
     subscriptions: listSubscriptions(),
     deliveries: recentDeliveries(),
@@ -28,6 +31,8 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
+  const authErr = requireSandboxToken(req);
+  if (authErr) return authErr;
   let body: { url?: string; events?: string[] };
   try {
     body = (await req.json()) as { url?: string; events?: string[] };
@@ -53,6 +58,8 @@ export async function POST(req: Request) {
 }
 
 export async function DELETE(req: Request) {
+  const authErr = requireSandboxToken(req);
+  if (authErr) return authErr;
   const url = new URL(req.url);
   if (url.searchParams.get("deliveries") === "1") {
     clearDeliveries();

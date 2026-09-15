@@ -58,7 +58,7 @@ export async function auditViaActivity(
 export async function healthViaApi(http: TwinHttp, twin: TwinName): Promise<TwinHealth> {
   try {
     const res = await http.get<Record<string, unknown>>("/api/health");
-    const ok = res.status === "ok";
+    const ok = res.status === "ok" || (res.status === undefined && res.ok === true);
     const counts = Object.entries(res)
       .filter(([k, v]) => typeof v === "number" && k !== "time")
       .map(([k, v]) => `${v} ${k}`)

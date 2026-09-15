@@ -4,13 +4,14 @@ import { forwardRef, type HTMLAttributes, type ReactNode, type Ref } from "react
 import { cn } from "../cn";
 import { SERVICE_LABELS, type ServiceId } from "../tokens";
 import {
-  IconCalendar,
-  IconDoc,
-  IconFeed,
-  IconMail,
-  IconMessage,
-  IconTrend,
-  IconUsers,
+  LogoAttio,
+  LogoExcel,
+  LogoGmail,
+  LogoGoogleAds,
+  LogoGoogleCalendar,
+  LogoGoogleDocs,
+  LogoLinkedIn,
+  LogoSlack,
   type IconProps,
 } from "./icons";
 
@@ -26,6 +27,7 @@ const TONES: Record<ChipTone, string> = {
   attio: "border-sn-attio-line bg-sn-attio-soft text-sn-attio-ink",
   "google-docs": "border-sn-google-docs-line bg-sn-google-docs-soft text-sn-google-docs-ink",
   "google-ads": "border-sn-google-ads-line bg-sn-google-ads-soft text-sn-google-ads-ink",
+  excel: "border-sn-excel-line bg-sn-excel-soft text-sn-excel-ink",
   linkedin: "border-sn-linkedin-line bg-sn-linkedin-soft text-sn-linkedin-ink",
 };
 
@@ -35,13 +37,14 @@ const SIZES: Record<ChipSize, string> = {
 };
 
 const SERVICE_ICONS: Record<ServiceId, (props: IconProps) => ReactNode> = {
-  gmail: IconMail,
-  slack: IconMessage,
-  calendar: IconCalendar,
-  attio: IconUsers,
-  "google-docs": IconDoc,
-  "google-ads": IconTrend,
-  linkedin: IconFeed,
+  gmail: LogoGmail,
+  slack: LogoSlack,
+  calendar: LogoGoogleCalendar,
+  attio: LogoAttio,
+  "google-docs": LogoGoogleDocs,
+  "google-ads": LogoGoogleAds,
+  linkedin: LogoLinkedIn,
+  excel: LogoExcel,
 };
 
 export type ChipProps = HTMLAttributes<HTMLElement> & {

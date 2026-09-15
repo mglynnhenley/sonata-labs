@@ -3,9 +3,10 @@
 // (apps/gmail/src/lib/oauth/clients.ts) so the bundled experience works with no
 // manual setup. Everything is overridable by env for a real deployment.
 
-/** Base URL of the API service — used both for browser redirects (authorize)
- *  and server-side calls (token exchange, BFF). */
+/** Internal service URL for token exchange and BFF calls. */
 export const API_URL = (process.env.GMAIL_API_URL || "http://localhost:3101").replace(/\/+$/, "");
+/** Browser-reachable address when the two services run in separate containers. */
+export const API_PUBLIC_URL = (process.env.GMAIL_API_PUBLIC_URL || API_URL).replace(/\/+$/, "");
 
 export const UI_CLIENT_ID = process.env.GMAIL_UI_CLIENT_ID || "sonata-gmail-ui";
 export const UI_CLIENT_SECRET =
@@ -21,11 +22,11 @@ export const UI_SCOPES = [
   "https://www.googleapis.com/auth/gmail.compose",
 ];
 
-/** Admin token for the control-plane proxy routes (activity / eval / reset). */
-export const ADMIN_TOKEN = process.env.SANDBOX_TOKEN || "sandbox-token";
-
 /** Secret used to seal the session + in-flight cookies (AES-256-GCM). */
 export const COOKIE_SECRET =
   process.env.GMAIL_UI_COOKIE_SECRET || "dev-cookie-secret-change-me-please";
 
 export const IS_PROD = process.env.NODE_ENV === "production";
+
+/** Provider token used only when the Gmail API is in local token mode. */
+export const PROVIDER_TOKEN = process.env.SANDBOX_TOKEN || "sandbox-token";

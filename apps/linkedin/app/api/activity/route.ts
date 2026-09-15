@@ -1,3 +1,4 @@
+import { requireSandboxToken } from "@/lib/sandbox/auth";
 import { NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { listActions, listSessions } from "@/lib/audit";
@@ -5,10 +6,11 @@ import { listActions, listSessions } from "@/lib/audit";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// The audit trail, for the run replay and the judge. Read-only, so no token gate
-// — it is the evidence, not a lever. `beforeId` pages backwards, which grading
-// needs so a long run is never silently truncated at the newest 200 rows.
+// Harness evidence is private to the control credential. `beforeId` pages
+// backwards so grading never silently truncates to the newest 200 actions.
 export function GET(req: Request) {
+  const denied = requireSandboxToken(req);
+  if (denied) return denied;
   const db = getDb();
   const sp = new URL(req.url).searchParams;
   const num = (key: string): number | undefined => {

@@ -1,0 +1,17 @@
+# The build context is allowlisted by build.mjs. Never build this from the repository root.
+FROM node:24-bookworm-slim AS dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /opt/sonata
+COPY manifests/ ./
+RUN npm ci --no-audit --no-fund
+
+FROM node:24-bookworm-slim
+ENV NEXT_TELEMETRY_DISABLED=1 PORT=3000
+WORKDIR /opt/sonata
+COPY --from=dependencies /opt/sonata/node_modules ./node_modules
+COPY --chown=node:node source/ ./
+COPY --chown=node:node apps-entrypoint.mjs ./runtime/apps-entrypoint.mjs
+USER 1000:1000
+EXPOSE 3000
+ENTRYPOINT ["node", "/opt/sonata/runtime/apps-entrypoint.mjs"]

@@ -165,7 +165,7 @@ export function RejudgeButton({
                 ? "This run judged itself when the day ended and that pass did not come back. This is the same reading, attempted again — nothing is re-run, and the checklist is untouched either way."
                 : first
                   ? "A model reads the saved day and names what went wrong, with evidence for each finding. Nothing is re-run — the deterministic checklist stays exactly as it is."
-                  : "The saved day is read again by a different model. Nothing is re-run: the checklist and the autonomy score are counted off the day itself and stay put — only the diagnosis changes."
+                  : "The saved day is read again by a different model. Each assessment is saved separately so you can compare it with earlier judgements. The checklist and autonomy score stay the same."
         }
         footer={
           phase.kind === "done" ? (
@@ -224,7 +224,7 @@ export function RejudgeButton({
               ))}
             </div>
             <p className="mt-3 text-sn-sm text-sn-muted">
-              Any OpenRouter slug works. The key comes from OPENROUTER_API_KEY on this machine.
+              Any OpenRouter slug works. The key comes from Settings.
               Reading a whole day back takes a minute or two.
             </p>
             {error ? (
@@ -254,8 +254,8 @@ function Waiting({ model, seconds }: { model: string; seconds: number }) {
         </span>
       </div>
       <p className="mt-2.5">
-        It sees every beat, every step the agent took and every answer the world gave — the whole
-        artifact, not a summary. Leave this open; closing it would not stop the call.
+        It reads the saved workplace evidence through Inspect. The report records how much evidence
+        reached the judge. Leave this open; closing it would not stop the call.
       </p>
     </div>
   );

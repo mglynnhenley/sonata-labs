@@ -25,7 +25,7 @@ interface Delivery {
   detail: string;
 }
 
-export function EventsPanel() {
+export function EventsPanel({ token }: { token: string }) {
   const [subs, setSubs] = useState<Subscription[]>([]);
   const [deliveries, setDeliveries] = useState<Delivery[]>([]);
   const [secret, setSecret] = useState("");
@@ -35,7 +35,7 @@ export function EventsPanel() {
 
   const load = async () => {
     try {
-      const d = (await fetch("/api/sandbox/events", { cache: "no-store" }).then((r) =>
+      const d = (await fetch("/api/sandbox/events", { cache: "no-store", headers: { authorization: `Bearer ${token}` } }).then((r) =>
         r.json(),
       )) as { subscriptions: Subscription[]; deliveries: Delivery[]; signing_secret: string };
       setSubs(d.subscriptions);
@@ -50,7 +50,7 @@ export function EventsPanel() {
     void load();
     const t = setInterval(() => void load(), 3000);
     return () => clearInterval(t);
-  }, []);
+  }, [token]);
 
   const subscribe = async () => {
     if (!url.trim()) return;
@@ -58,7 +58,7 @@ export function EventsPanel() {
     setError(null);
     const res = (await fetch("/api/sandbox/events", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
       body: JSON.stringify({ url: url.trim() }),
     }).then((r) => r.json())) as {
       ok: boolean;
@@ -73,7 +73,7 @@ export function EventsPanel() {
 
   const unsubscribe = async (id: string) => {
     setBusy(true);
-    await fetch(`/api/sandbox/events?id=${id}`, { method: "DELETE" });
+    await fetch(`/api/sandbox/events?id=${id}`, { method: "DELETE", headers: { authorization: `Bearer ${token}` } });
     await load();
     setBusy(false);
   };

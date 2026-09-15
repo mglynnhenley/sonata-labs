@@ -1,10 +1,13 @@
+import { requireSandboxToken } from "@/lib/sandbox/auth";
 import { NextResponse } from "next/server";
 import { getReport } from "@/lib/eval/runs";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function GET(_req: Request, { params }: { params: Promise<{ runId: string }> }) {
+export async function GET(req: Request, { params }: { params: Promise<{ runId: string }> }) {
+  const authErr = requireSandboxToken(req);
+  if (authErr) return authErr;
   try {
     const { runId } = await params;
     const report = getReport(runId);

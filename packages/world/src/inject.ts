@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { Person, TwinName, WorldSeed } from "@sonata/core";
+import type { Person, TwinName, WorldSeed, ExcelWorkbook } from "@sonata/core";
 import { allTwinApiUrls, owner as ownerOf, resolvePerson, resolveTwinApiUrl } from "@sonata/core";
 import type { GeneratedWorld } from "./generate";
 import type {
@@ -335,7 +335,10 @@ export interface LinkedInWireSeed extends WireBase {
   posts: LinkedInWirePost[];
 }
 
+export interface ExcelWireSeed extends WireBase { workbooks: ExcelWorkbook[]; }
+
 export type WireSeed =
+  | ExcelWireSeed
   | GmailWireSeed
   | SlackWireSeed
   | CalendarWireSeed
@@ -539,11 +542,16 @@ export function resolveCalendarSeed(
     const calOwner = resolvePerson(world, calendar.ownerPersonId) ?? me;
     const primary = i === 0;
     const shared = `${calendar.name.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}@group.calendar.local`;
+    const firstPersonal = calendar.name === calOwner.name && !seed.calendars.slice(0, i).some(
+      (c, index) => c.ownerPersonId === calendar.ownerPersonId && (index === 0 || c.name === calOwner.name),
+    );
     return {
       // A person's primary calendar is addressed by their email in the Google
       // API, so keeping that identity here means an agent's "calendarId: me"
       // resolves to the same thing the seed created.
-      id: primary ? calOwner.email : shared,
+      // A colleague's personal calendar must also be reachable by email:
+      // freeBusy accepts attendee addresses, not invented group-calendar ids.
+      id: primary || firstPersonal ? calOwner.email : shared,
       summary: calendar.name,
       description: calendar.description,
       ownerEmail: calOwner.email,
@@ -1032,6 +1040,7 @@ const SOURCE_SEED: Record<TwinName, keyof GeneratedWorld> = {
   "google-docs": "googleDocs",
   "google-ads": "googleAds",
   linkedin: "linkedin",
+  excel: "excel",
 };
 
 /**
@@ -1061,6 +1070,8 @@ export function buildSeedRequest(
     );
   }
   switch (twin) {
+    case "excel":
+      return { twin, seed: { world, nowISO: new Date(nowMs).toISOString(), promoteToSnapshot, workbooks: generated.excel!.workbooks } };
     case "gmail":
       return { twin, seed: resolveGmailSeed(world, generated.gmail, nowMs, promoteToSnapshot) };
     case "slack":

@@ -1,3 +1,4 @@
+import { controlToken } from "@sonata/core/controlAuth";
 // Acceptance harness: drive the running sandbox over plain HTTP, exactly the way
 // an agent's HTTP client would — only the base URL differs from api.attio.com.
 //
@@ -17,6 +18,7 @@
 const PORT = process.env.PORT || "3500";
 const ROOT_URL = process.env.SANDBOX_ROOT_URL || `http://localhost:${PORT}`;
 const TOKEN = process.env.SANDBOX_TOKEN || "sandbox-token";
+const CONTROL_TOKEN = controlToken();
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 let passed = 0;
@@ -89,11 +91,34 @@ function dataArray(res: Call): Record_[] {
 }
 
 async function main(): Promise<void> {
+  // Prove the control boundary over HTTP before the harness mutates this world.
+  const controlRoutes = [
+    ["GET", "/api/activity"],
+    ["POST", "/api/sandbox/reset"],
+    ["POST", "/api/sandbox/seed"],
+    ["POST", "/api/sandbox/inject"],
+    ["POST", "/api/sandbox/snapshot"],
+  ];
+  for (const [method, path] of controlRoutes) {
+    const denied = await fetch(`${ROOT_URL}${path}`, { method });
+    check(`${method} ${path} rejects missing control credential`, denied.status === 401);
+    if (CONTROL_TOKEN !== TOKEN) {
+      const providerDenied = await fetch(`${ROOT_URL}${path}`, {
+        method, headers: { authorization: `Bearer ${TOKEN}` },
+      });
+      check(`${method} ${path} rejects provider credential`, providerDenied.status === 401);
+    }
+  }
+  const evidence = await fetch(`${ROOT_URL}/api/activity`, {
+    headers: { "x-sandbox-token": CONTROL_TOKEN },
+  });
+  check("control credential can read audit evidence", evidence.status === 200);
+
   console.log(`\n\x1b[1mAttio sandbox smoke — ${ROOT_URL}\x1b[0m`);
 
   const reset = await fetch(`${ROOT_URL}/api/sandbox/reset`, {
     method: "POST",
-    headers: { "content-type": "application/json", "x-sandbox-token": TOKEN },
+    headers: { "content-type": "application/json", "x-sandbox-token": CONTROL_TOKEN },
     body: JSON.stringify({ note: "smoke" }),
   });
   check("reset to snapshot", reset.ok, reset.status);
@@ -288,7 +313,7 @@ async function main(): Promise<void> {
     (completed.body.data as Value)?.completed_at,
   );
 
-  const activity = await fetch(`${ROOT_URL}/api/activity`).then(
+  const activity = await fetch(`${ROOT_URL}/api/activity`, { headers: { "x-sandbox-token": CONTROL_TOKEN } }).then(
     (r) => r.json() as Promise<{ actions: Array<{ summary: string }> }>,
   );
   check(

@@ -43,7 +43,7 @@ const whole: JudgeCoverage = {
   complete: true,
 };
 
-function report(coverage?: unknown): Record<string, unknown> {
+function report(coverage?: unknown, extra?: Record<string, unknown>): Record<string, unknown> {
   return {
     runId: "r",
     judgedAt: 1_700_000_000_000,
@@ -55,6 +55,7 @@ function report(coverage?: unknown): Record<string, unknown> {
     findings: [],
     otherFindings: [],
     answers: [],
+    ...extra,
   };
 }
 
@@ -90,7 +91,7 @@ function tick(i: number): TickRecord {
 }
 
 /** File a finished, judged run and read it back the way the page does. */
-function fileAndRead(coverage?: unknown): EpisodeJudgeReport | null {
+function fileAndRead(coverage?: unknown, extra?: Record<string, unknown>): EpisodeJudgeReport | null {
   const runId = `run_cov_${++n}`;
   const run: EpisodeRun = {
     runId,
@@ -107,7 +108,7 @@ function fileAndRead(coverage?: unknown): EpisodeJudgeReport | null {
       score: 0.5,
       autonomy: 0.62,
       checklist: [],
-      judge: report(coverage) as unknown as EpisodeJudgeReport,
+      judge: report(coverage, extra) as unknown as EpisodeJudgeReport,
       cost: { usd: 0.12, promptTokens: 10, completionTokens: 2, llmCalls: 3 },
     },
   };
@@ -175,5 +176,42 @@ describe("a judge report from before the counting", () => {
     });
     expect(judged?.coverage?.complete).toBe(true);
     expect(judgeSight(judged)).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The same trap as `coverage`, one field family later. `normalizeJudge` rebuilds
+// the report out of the file property by property, so a field it has no line for
+// is silently dropped — which is how the coverage note above came to print on
+// every judged run. The bulleted account is now four more fields through that
+// gate, and the page renders nothing at all when they vanish.
+
+describe("the bulleted account", () => {
+  const bullets = {
+    taskPoints: ["Answer Dana.", "Keep the diary honest."],
+    taskAmbiguities: ["The brief never says who signs off."],
+    did: ["Replied to Dana. [4]"],
+    didNot: ["Never told the team. [9]"],
+  };
+
+  it("survives a round trip through the artifact", () => {
+    expect(fileAndRead(whole, bullets)).toMatchObject(bullets);
+  });
+
+  it("comes back empty, not missing, on a report written before it existed", () => {
+    // Every judge artifact on disk today predates these fields. They must read as
+    // "this report has no list" rather than crash the card that renders them.
+    const old = fileAndRead(whole);
+    expect(old?.taskPoints).toEqual([]);
+    expect(old?.taskAmbiguities).toEqual([]);
+    expect(old?.did).toEqual([]);
+    expect(old?.didNot).toEqual([]);
+    // And the account those reports DO carry is untouched.
+    expect(old?.summary).toBe("It answered the client and stopped.");
+  });
+
+  it("drops blank entries rather than filing an empty bullet", () => {
+    const read = fileAndRead(whole, { did: ["Replied.", "", "  ", 7, null] });
+    expect(read?.did).toEqual(["Replied."]);
   });
 });

@@ -1,3 +1,4 @@
+import { controlToken } from "@sonata/core/controlAuth";
 // Part 4 of the acceptance harness: the Events API. Stands up a real receiver
 // that verifies signatures the way Slack's docs prescribe, and checks that
 // mutations produce correctly-shaped, correctly-signed deliveries.
@@ -39,7 +40,7 @@ export async function part4Events({ client, check }: Harness): Promise<void> {
   console.log("\n\x1b[1mPart 4 — Events API\x1b[0m");
 
   const secret = (
-    (await fetch(`${ROOT_URL}/api/sandbox/events`).then((r) => r.json())) as {
+    (await fetch(`${ROOT_URL}/api/sandbox/events`, { headers: { "x-sandbox-token": controlToken() } }).then((r) => r.json())) as {
       signing_secret: string;
     }
   ).signing_secret;
@@ -95,7 +96,7 @@ export async function part4Events({ client, check }: Harness): Promise<void> {
     // --- subscription + handshake ---
     const sub = (await fetch(`${ROOT_URL}/api/sandbox/events`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "x-sandbox-token": controlToken(), "content-type": "application/json" },
       body: JSON.stringify({ url }),
     }).then((r) => r.json())) as {
       ok: boolean;
@@ -232,7 +233,7 @@ export async function part4Events({ client, check }: Harness): Promise<void> {
     await new Promise<void>((r) => filterServer.listen(LISTEN_PORT + 1, r));
     const fSub = (await fetch(`${ROOT_URL}/api/sandbox/events`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "x-sandbox-token": controlToken(), "content-type": "application/json" },
       body: JSON.stringify({
         url: `http://localhost:${LISTEN_PORT + 1}/e`,
         events: ["reaction_added"],
@@ -251,7 +252,7 @@ export async function part4Events({ client, check }: Harness): Promise<void> {
       filtered.includes("reaction_added") && !filtered.includes("message"),
       filtered,
     );
-    await fetch(`${ROOT_URL}/api/sandbox/events?id=${fSub.subscription.id}`, { method: "DELETE" });
+    await fetch(`${ROOT_URL}/api/sandbox/events?id=${fSub.subscription.id}`, { headers: { "x-sandbox-token": controlToken() }, method: "DELETE" });
     await new Promise<void>((r) => filterServer.close(() => r()));
 
     // --- forged deliveries are rejected by the receiver ---
@@ -267,7 +268,7 @@ export async function part4Events({ client, check }: Harness): Promise<void> {
     const deadUrl = "http://127.0.0.1:9/dead"; // discard port: always refuses
     await fetch(`${ROOT_URL}/api/sandbox/events`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "x-sandbox-token": controlToken(), "content-type": "application/json" },
       body: JSON.stringify({ url: deadUrl }),
     });
     const t0 = Date.now();
@@ -280,16 +281,16 @@ export async function part4Events({ client, check }: Harness): Promise<void> {
     check("unreachable subscriber does not block the API call", elapsed < 2000, `${elapsed}ms`);
   } finally {
     if (subId) {
-      await fetch(`${ROOT_URL}/api/sandbox/events?id=${subId}`, { method: "DELETE" });
+      await fetch(`${ROOT_URL}/api/sandbox/events?id=${subId}`, { headers: { "x-sandbox-token": controlToken() }, method: "DELETE" });
     }
     // Drop every subscription so later runs start clean.
-    const all = (await fetch(`${ROOT_URL}/api/sandbox/events`).then((r) => r.json())) as {
+    const all = (await fetch(`${ROOT_URL}/api/sandbox/events`, { headers: { "x-sandbox-token": controlToken() } }).then((r) => r.json())) as {
       subscriptions: Array<{ id: string }>;
     };
     for (const s of all.subscriptions) {
-      await fetch(`${ROOT_URL}/api/sandbox/events?id=${s.id}`, { method: "DELETE" });
+      await fetch(`${ROOT_URL}/api/sandbox/events?id=${s.id}`, { headers: { "x-sandbox-token": controlToken() }, method: "DELETE" });
     }
-    await fetch(`${ROOT_URL}/api/sandbox/events?deliveries=1`, { method: "DELETE" });
+    await fetch(`${ROOT_URL}/api/sandbox/events?deliveries=1`, { headers: { "x-sandbox-token": controlToken() }, method: "DELETE" });
     await new Promise<void>((r) => server.close(() => r()));
   }
 }

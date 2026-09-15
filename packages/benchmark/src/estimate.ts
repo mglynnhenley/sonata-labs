@@ -102,6 +102,15 @@ export function cachesPrompts(model: string): boolean {
  * ~1.7k a tick as the transcript accumulates. The director speaks under once a
  * tick. The judge reads the finished day once.
  *
+ * STALE IN ONE DIRECTION, and knowingly: this fit was measured while the agent
+ * loop capped at 12 steps a tick, which it hit constantly — so `callsPerTick`
+ * is partly a measurement of that ceiling. The cap is 40 now (see
+ * `DEFAULT_MAX_STEPS`), and a model that uses the extra room will cost more
+ * than this says. The number is left alone rather than guessed upward: it came
+ * from real runs, and replacing it with a number nobody measured would quote a
+ * confidence that does not exist. Re-fit it from the first days played under
+ * the new cap, and until then read the agent line as a floor.
+ *
  * ACCURACY, stated because a number quoted before someone spends money has to
  * say how much to trust it: the fit lands within about 25% of all four, and the
  * residual is not noise to be tuned away. Two 3-4 tick days on different

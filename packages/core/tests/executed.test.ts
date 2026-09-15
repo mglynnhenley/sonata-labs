@@ -48,6 +48,17 @@ function run(status: RunStatus, ticks: TickRecord[]) {
 }
 
 describe("runExecution", () => {
+  it("excludes legacy done artifacts interrupted by idle guards, budgets or provider errors", () => {
+    for (const why of ["the agent did nothing for 6 consecutive interval(s)", "the spend budget of $3 ran out", "the wall-clock budget of 1800000ms ran out"]) {
+      const r = runExecution(run("done", [tick({ agentSteps: [tool(1)], notes: [`run stopped early: ${why}`] })]));
+      expect(r.executed).toBe(false);
+      expect(r.reason).toContain("not a complete benchmark result");
+    }
+    const r = runExecution(run("done", [tick({ agentSteps: [tool(1), { kind: "thought", seq: 2, at: 0, text: "the model call failed: provider unavailable" }] })]));
+    expect(r.executed).toBe(false);
+    expect(r.reason).toContain("model-provider error");
+  });
+
   it("passes a finished day the agent worked", () => {
     const r = runExecution(run("done", [tick({ agentSteps: [tool(1)] })]));
     expect(r).toMatchObject({ executed: true, ticks: 1, toolCalls: 1, reason: null });
@@ -249,5 +260,17 @@ describe("isHarnessDefect", () => {
   it("is never true of a decided criterion, whatever the evidence says", () => {
     const failed = { status: "failed" as const, evidence: harnessDefectEvidence("t20 never fired") };
     expect(isHarnessDefect(failed)).toBe(false);
+  });
+});
+
+
+describe("failed simulated colleagues", () => {
+  it("withholds a numeric result even when the agent completed real work", () => {
+    const result = runExecution(run("done", [tick({ agentSteps: [tool(1)], notes: ["director call failed for sam: invalid destination"] })]));
+    expect(result.executed).toBe(false);
+    expect(result.reason).toContain("simulated colleague response failed");
+  });
+  it("does not count agent mistakes as environment failures", () => {
+    expect(runExecution(run("done", [tick({ agentSteps: [tool(1)], notes: ["agent tool failed: bad argument"] })]))).toMatchObject({ executed: true });
   });
 });

@@ -927,3 +927,32 @@ describe("EPISODE_JUDGE_SCHEMA", () => {
     expect(items.properties.mode.enum).toContain("cross-surface-inconsistency");
   });
 });
+
+
+it("preserves every Excel workbook and full reasons beyond the final-state budget", () => {
+  const workbooks = Array.from({ length: 40 }, (_, i) => ({
+    id: `w${i}`, title: `Workbook ${i}`, revision: 2,
+    sheets: [{ id: "proposed", name: "Proposed", columns: [{ key: "status", label: "Status", type: "text" as const }], rows: [{ id: "r1", values: { status: "X".repeat(1000) + `END-WORKBOOK-${i}` } }] }],
+  }));
+  const change = { id: 1, workbookId: "w0", revision: 2, actor: "agent", at: "2026-09-11T09:00:00Z", sheetId: "proposed", rowId: "r1", column: "status", before: "Original classification", after: "Proposed classification", reason: "R".repeat(12000) + "END-REASON", evidence: "source message" };
+  const { prompt } = buildEpisodePrompt(input({
+    diffs: { excel: { twin: "excel", workbooks: [{ id: "w0", after: workbooks[0] }], changes: [change], unchangedCount: 0 } },
+    finalState: { excel: { state: { twin: "excel", capturedAt: 0, workbooks, changes: [change] }, coverage: { shown: 40, total: 40 }, kept: "all workbooks" } },
+  }));
+  for (let i = 0; i < 40; i++) expect(prompt).toContain(`END-WORKBOOK-${i}`);
+  expect(prompt).toContain("Original classification");
+  expect(prompt).toContain("Proposed classification");
+  expect(prompt).toContain("END-REASON");
+});
+
+
+describe("colleague observation gaps", () => {
+  it("distinguishes unavailable world evidence from agent failure and respects required review", () => {
+    const result = buildEpisodePrompt(input({ observationGaps: [{ tick: 3, twin: "gmail", actionId: 8, reason: "Message unavailable" }] }));
+    expect(result.prompt).toContain("SIMULATOR OBSERVATION GAPS");
+    expect(result.prompt).toContain("t3 gmail action 8");
+    expect(result.prompt).toContain("unmeasured");
+    expect(result.system).toContain("when review is required");
+    expect(result.system).not.toContain("it never sent is work it left for a human");
+  });
+});

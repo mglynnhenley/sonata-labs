@@ -90,6 +90,9 @@ const MUTATION_VERB: Record<string, string> = {
   create_post: "published post",
   update_post: "edited post",
   create_comment: "commented on",
+  // excel
+  update_cells: "updated workbook cells in",
+  add_row: "added workbook row to",
   // harness-local
   escalate_to_owner: "escalated to the owner",
 };
@@ -131,7 +134,7 @@ function idIn(r: Record<string, unknown>): string {
     const value = text(r[field]);
     if (value) return value;
   }
-  return "";
+  return text(obj(r.workbook).id);
 }
 
 function confirmation(name: string, r: Record<string, unknown>): string {

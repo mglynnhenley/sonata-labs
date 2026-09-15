@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { EpisodeRun, Person, TickRecord, TwinSnapshot } from "@sonata/core";
-import { endOfDay, type EndStateInput } from "../app/results/_components/endstate";
+import { endOfDay, endStateMarkdown, type EndStateInput } from "../app/results/_components/endstate";
 
 // WHERE THE DAY ENDED UP, on the four surfaces that landed after the first three.
 //
@@ -59,6 +59,47 @@ function report(after: TwinSnapshot) {
   if (!twin) throw new Error(`no end state for ${after.twin}`);
   return twin;
 }
+
+describe("workbooks at close", () => {
+  it("reports revisions and complete attributed history without classifying changes as outstanding work", () => {
+    const change = {
+      id: 1, workbookId: "report", revision: 4, actor: "human reviewer", at: "2026-08-06T10:00:00Z",
+      sheetId: "review", rowId: "row-1", column: "amount", before: 50, after: 65,
+      reason: "Corrected the source amount", evidence: "Signed statement, line 7",
+    };
+    const end = report({
+      twin: "excel", capturedAt: 2000,
+      workbooks: [{ id: "report", title: "Quarterly reporting", revision: 4, sheets: [] }],
+      changes: [change],
+    });
+    expect(end.counts).toEqual([
+      { label: "workbook", value: 1, flag: false },
+      { label: "recorded change", value: 1, flag: false },
+    ]);
+    expect(end.workbooks).toEqual([{ id: "report", title: "Quarterly reporting", revision: 4, sheets: 0 }]);
+    expect(end.reviewHistory).toEqual([change]);
+    expect(end.open).toEqual([]);
+    expect(end.settled).toBe("");
+    expect(end.scope).toContain("not a count of the agent's actions");
+    expect(end.scope).toContain("do not establish");
+
+    const markdown = endStateMarkdown({ closedAt: "10:00", twins: [end], unseen: [], sight: null });
+    expect(markdown).toContain("Quarterly reporting — revision 4");
+    expect(markdown).toContain("human reviewer");
+    expect(markdown).toContain("50 → 65");
+    expect(markdown).toContain(change.reason);
+    expect(markdown).toContain(change.evidence);
+  });
+
+  it("does not turn an empty workbook capture into a clean verdict", () => {
+    const end = report({ twin: "excel", capturedAt: 2000, workbooks: [], changes: [] });
+    expect(end.counts.every((count) => count.value === 0 && !count.flag)).toBe(true);
+    expect(end.settled).toBe("");
+    const markdown = endStateMarkdown({ closedAt: "10:00", twins: [end], unseen: [], sight: null });
+    expect(markdown).toContain("No changes are recorded in the closing snapshot.");
+    expect(markdown).toContain("do not establish");
+  });
+});
 
 describe("the CRM at close", () => {
   it("counts the follow-ups nobody closed, and never calls a record itself open", () => {

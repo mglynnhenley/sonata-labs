@@ -95,6 +95,7 @@ const REPLY_TOOLS: Record<TwinName, string[]> = {
   // The empty list falls through to the mutating-verb search below, which is the
   // right behaviour — this control's job is to make the agent act, not to insist
   // the action is a reply.
+  excel: [],
   attio: [],
   "google-docs": [],
   "google-ads": [],
@@ -106,6 +107,7 @@ const BODY_ARG: Record<TwinName, string> = {
   slack: "text",
   calendar: "comment",
   linkedin: "text",
+  excel: "reason",
   attio: "content",
   "google-docs": "text",
   "google-ads": "text",

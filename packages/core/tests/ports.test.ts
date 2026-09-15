@@ -25,19 +25,20 @@ describe("port allocation", () => {
       "google-docs": 3600,
       "google-ads": 3700,
       linkedin: 3800,
+      excel: 3950,
     });
   });
 
-  it("puts each UI 800 above its API, so the pairing is guessable", () => {
+  it("reserves UI ports 800 above the API except Excel with its embedded UI", () => {
     for (const twin of TWIN_NAMES) {
-      expect(TWIN_UI_PORTS[twin] - TWIN_API_PORTS[twin]).toBe(800);
+      expect(TWIN_UI_PORTS[twin] - TWIN_API_PORTS[twin]).toBe(twin === "excel" ? 0 : 800);
     }
   });
 
-  it("assigns every twin a port, and never the same one twice", () => {
+  it("assigns distinct service ports with Excel sharing its embedded UI port", () => {
     const all = [...Object.values(TWIN_API_PORTS), ...Object.values(TWIN_UI_PORTS)];
     expect(all).toHaveLength(TWIN_NAMES.length * 2);
-    expect(new Set(all).size).toBe(all.length);
+    expect(new Set(all).size).toBe(all.length - 1); // Excel embeds its UI on the API port.
   });
 
   it("only claims a UI for twins that actually ship one", () => {
@@ -103,6 +104,7 @@ describe("resolution precedence", () => {
       "google-docs": "http://localhost:3600",
       "google-ads": "http://localhost:3700",
       linkedin: "http://localhost:3800",
+      excel: "http://localhost:3950",
     });
   });
 });

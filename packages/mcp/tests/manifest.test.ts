@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { TwinHttp } from "@sonata/engine/http";
 import {
   attioTools,
+  excelTools,
   calendarTools,
   gmailTools,
   googleAdsTools,
@@ -35,6 +36,7 @@ function engineNames(): string[] {
     ...googleDocsTools(http).map((t) => `google-docs_${t.name}`),
     ...googleAdsTools(http).map((t) => `google-ads_${t.name}`),
     ...linkedInTools(http).map((t) => `linkedin_${t.name}`),
+    ...excelTools(http).map((t) => `excel_${t.name}`),
   ];
 }
 

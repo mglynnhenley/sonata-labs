@@ -1,3 +1,4 @@
+import { worldFailures } from "@sonata/core";
 import {
   getFailureMode,
   HARNESS_DEFECT_MARK,
@@ -37,12 +38,15 @@ export type FaultKind =
   | "never-shown"
   /** The clone's state was never captured, so nothing could be checked either way. */
   | "not-captured"
+  /** The checker identified a harness gap without a more specific cause. */
+  | "unmeasured"
   /** It points at no moment of the part of the day that ran. */
   | "unlocatable";
 
 export const FAULT_LABEL: Record<FaultKind, string> = {
   "never-shown": "never put to the agent",
   "not-captured": "never captured",
+  unmeasured: "harness gap — unmeasured",
   unlocatable: "not in the day that ran",
 };
 
@@ -72,7 +76,8 @@ export interface Fault {
  * criterion the agent genuinely failed never produces any of them.
  */
 const NOT_CAPTURED = [
-  /\bno (?:gmail|slack|calendar) snapshot in this run\b/i,
+  /\bno [\w-]+ snapshot in this run\b/i,
+  /\b(?:snapshot|audit|evidence).*(?:missing|unavailable|not captured|not saved)\b/i,
   /\bsnapshot was captured for\b/i,
   /\bno audit rows were saved\b/i,
   /\baudit log was not saved\b/i,
@@ -107,7 +112,13 @@ export function sentence(text: string): string {
  */
 export function criterionFault(c: CriterionResult): Fault | null {
   if (isHarnessDefect(c)) {
-    return { kind: "never-shown", why: unmarked(c.evidence ?? ""), fromChecker: true };
+    const why = unmarked(c.evidence ?? "");
+    const kind = NEVER_SHOWN.some((p) => p.test(why))
+      ? "never-shown"
+      : NOT_CAPTURED.some((p) => p.test(why))
+        ? "not-captured"
+        : "unmeasured";
+    return { kind, why, fromChecker: true };
   }
   if (c.status !== "notApplicable") return null;
   const evidence = c.evidence ?? "";
@@ -142,9 +153,9 @@ export interface FaultedCriterion {
  * the kind this whole module exists to stop.
  */
 export function faultPhrase(rows: readonly { fault: Fault }[]): string {
-  return rows.every((r) => r.fault.kind === "not-captured")
-    ? "we could not check"
-    : "we never put to the agent";
+  return rows.length > 0 && rows.every((r) => r.fault.kind === "never-shown")
+    ? "we never put to the agent"
+    : "we could not check";
 }
 
 export interface ChecklistSplit {
@@ -352,10 +363,11 @@ export function portionWords(share: number): string {
   return near ? near.words : `${Math.round(share * 100)}%`;
 }
 
-const SLICE_WORDS: Record<"steps" | "timeline" | "narration", string> = {
+const SLICE_WORDS: Record<"steps" | "timeline" | "narration" | "finalState", string> = {
   steps: "things the agent did",
   timeline: "things the day and the people in it did",
   narration: "the agent's own notes to itself",
+  finalState: "saved app-state records",
 };
 
 /** A count off disk is a claim, not a fact — a malformed one must not print. */
@@ -383,6 +395,7 @@ export function judgeSight(judge: EpisodeJudgeReport | null): JudgeSight | null 
     sliceOf(SLICE_WORDS.steps, c.steps),
     sliceOf(SLICE_WORDS.timeline, c.timeline),
     sliceOf(SLICE_WORDS.narration, c.narration),
+    sliceOf(SLICE_WORDS.finalState, c.finalState),
   ]
     .filter((s): s is SightSlice => s !== null)
     .sort((a, b) => a.shown / a.total - b.shown / b.total);
@@ -414,6 +427,8 @@ export interface MissedMoment {
 }
 
 export interface HarnessReport {
+  /** Failed world responses are harness evidence, never agent actions. */
+  worldErrors?: Array<{ tick: number; clock: string; message: string }>;
   /** How much of the day ran. Null when all of it did and every beat landed. */
   day: {
     ran: number;
@@ -446,7 +461,8 @@ export function hasFaults(r: HarnessReport): boolean {
     r.capture !== null ||
     r.sight?.kind === "partial" ||
     r.criteria.length > 0 ||
-    r.findings.length > 0
+    r.findings.length > 0 ||
+    (r.worldErrors?.length ?? 0) > 0
   );
 }
 
@@ -490,6 +506,9 @@ export function harnessReport(input: {
   const notes = new Map((spec?.beats ?? []).map((b) => [b.id, b.note]));
   const checklist = splitChecklist(run.verdict?.checklist ?? []);
   const findings = splitFindings(run.verdict?.judge ?? null, truncation);
+  const worldErrors = worldFailures(input.run.ticks).map(error => ({
+    tick: error.tick, clock: formatSimTime(error.simTimeISO, input.offsetMinutes), message: error.message,
+  }));
 
   let day: HarnessReport["day"] = null;
   if (spec && truncation && (truncation.truncated || truncation.unfired.length > 0)) {
@@ -514,6 +533,7 @@ export function harnessReport(input: {
 
   return {
     report: {
+      worldErrors,
       day,
       capture: input.capture.complete ? null : input.capture.summary,
       // Off the report the page will show, not the one on disk: the findings we
@@ -539,6 +559,7 @@ const TWIN_WORD: Record<TwinName, string> = {
   "google-docs": "Docs",
   "google-ads": "Ads",
   linkedin: "LinkedIn",
+  excel: "Excel",
 };
 
 /**
@@ -559,18 +580,27 @@ export function harnessMarkdown(r: HarnessReport): string {
   p(`## What this test did not do properly`);
   p();
   p(
-    `Read this first. Part of this test did not run and part of it was not recorded, and none of ` +
-      `that is anything to do with the coworker. It is separated out here and counted nowhere in ` +
-      `the assessment below — for or against.`,
+    `Read this first. These execution and evidence gaps belong to the test environment. ` +
+      `They limit what can be concluded about the coworker. Affected work needs review before ` +
+      `attributing a failure to the agent.`,
   );
+
+  if (r.worldErrors?.length) {
+    p();
+    p("**Some simulated colleague responses failed.** These are simulation failures, not actions taken by the agent. Missing responses may affect dependent work and must be considered when reading the assessment.");
+    p();
+    for (const error of r.worldErrors) p(`- **${error.clock}**: ${error.message}`);
+  }
 
   if (r.day) {
     const share = Math.round((r.day.ran / Math.max(r.day.declared, 1)) * 100);
     p();
-    p(
-      `**We stopped the day early.** It worked from ${r.day.from} to ${r.day.to} of a day written ` +
-        `through to ${r.day.endOfDay} — ${share}% of the job it was then scored against.`,
-    );
+    p(r.day.ran < r.day.declared
+      ? `**The day ended early.** The record covers ${r.day.from} to ${r.day.to} of a scenario scheduled ` +
+        `through ${r.day.endOfDay} — ${r.day.ran} of ${r.day.declared} ticks (${share}%). ` +
+        `That is clock coverage, not the percentage of work completed. A full-day conclusion is unavailable.`
+      : `**Not every scheduled event reached the agent.** All ${r.day.declared} ticks ran, but ` +
+        `${r.day.missed.length} scripted events were not delivered. Affected requirements are unmeasured.`);
     if (r.day.missed.length > 0) {
       p();
       p(

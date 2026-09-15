@@ -1,3 +1,4 @@
+import { requireSandboxToken } from "@/lib/sandbox/auth";
 import { NextResponse } from "next/server";
 import { SCENARIOS } from "@/lib/eval/scenarios";
 import { toScenarioView } from "@/lib/eval/runs";
@@ -7,7 +8,9 @@ export const dynamic = "force-dynamic";
 
 // The catalog, minus the assertion closures that make StressScenario
 // unserializable.
-export function GET() {
+export function GET(req: Request) {
+  const authErr = requireSandboxToken(req);
+  if (authErr) return authErr;
   try {
     return NextResponse.json({ scenarios: SCENARIOS.map(toScenarioView) });
   } catch (err) {

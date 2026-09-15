@@ -96,6 +96,38 @@ function Surface({ end }: { end: TwinEnd }) {
         </p>
       </div>
 
+      {end.workbooks ? (
+        <div className="mt-3 space-y-3">
+          {end.workbooks.map((workbook) => (
+            <p key={workbook.id} className="text-sn-base text-sn-muted">
+              <span className="font-medium text-sn-ink">{workbook.title}</span>
+              {` · revision ${workbook.revision} · ${workbook.sheets} ${workbook.sheets === 1 ? "worksheet" : "worksheets"}`}
+            </p>
+          ))}
+          <details className="rounded-sn-lg border border-sn-line p-3">
+            <summary className="cursor-pointer text-sn-base font-medium text-sn-ink">
+              Recorded review history ({end.reviewHistory?.length ?? 0})
+            </summary>
+            {end.reviewHistory?.length ? (
+              <ol className="mt-3 space-y-4">
+                {end.reviewHistory.map((change) => (
+                  <li key={change.id} className="space-y-1 break-words border-t border-sn-line pt-3 text-sn-base text-sn-muted">
+                    <p className="font-medium text-sn-ink">
+                      {end.workbooks?.find((workbook) => workbook.id === change.workbookId)?.title ?? change.workbookId}
+                      {` · revision ${change.revision} · ${change.actor}`}
+                    </p>
+                    <p>{change.at} · {change.sheetId} / {change.rowId} / {change.column}</p>
+                    <p className="whitespace-pre-wrap">{JSON.stringify(change.before)} → {JSON.stringify(change.after)}</p>
+                    <p className="whitespace-pre-wrap">Reason: {change.reason}</p>
+                    <p className="whitespace-pre-wrap">Evidence: {change.evidence}</p>
+                  </li>
+                ))}
+              </ol>
+            ) : <p className="mt-2 text-sn-base text-sn-muted">No changes are recorded in the closing snapshot.</p>}
+          </details>
+        </div>
+      ) : null}
+
       {end.open.length === 0 ? (
         end.settled ? (
           <p className="mt-2 text-sn-base text-sn-muted">{end.settled}</p>

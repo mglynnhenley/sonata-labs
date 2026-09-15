@@ -1,6 +1,5 @@
 import type { gmail_v1 } from "googleapis";
-import { connectGmail, obtainAccessToken } from "../eval/client";
-import { SANDBOX_TOKEN } from "../gmail/auth";
+import { connectGmailOAuth } from "../eval/client";
 import { headerMap } from "../sync/transform";
 import { captureSnapshot } from "../eval/judge/snapshot";
 import type { MailboxSnapshot } from "../eval/judge/types";
@@ -72,7 +71,7 @@ async function captureDrafts(
 export async function captureTwinSnapshot(origin: string): Promise<GmailTwinSnapshot> {
   // /gmail/v1/* requires OAuth now; mint a provider token (admin-gated) and
   // capture over HTTP exactly as the judge's SDK would.
-  const gmail = connectGmail(origin, await obtainAccessToken(origin, SANDBOX_TOKEN));
+  const gmail = await connectGmailOAuth(origin);
   const mailbox = await captureSnapshot(gmail, "me");
   const drafts = await captureDrafts(gmail, "me");
   return { twin: "gmail", ...mailbox, drafts };

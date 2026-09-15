@@ -1,26 +1,18 @@
 "use client";
 
-import { Badge, Card, Chip, IconCalendar, IconDoc, IconFeed, IconInfo, IconMail, IconMessage, IconTrend, IconUsers, SERVICE_LABELS, Timeline, TimelineItem } from "@sonata/ui";
+import { LogoExcel, Badge, Card, Chip, IconInfo, LogoAttio, LogoGmail, LogoGoogleAds, LogoGoogleCalendar, LogoGoogleDocs, LogoLinkedIn, LogoSlack, SERVICE_LABELS, Timeline, TimelineItem } from "@sonata/ui";
 import type { ReactNode } from "react";
 import type { TwinName } from "@sonata/core";
 import { dayRange } from "@/lib/format";
 import type { ScenarioDraft, WorldCounts } from "../../api/_lib/types";
 
-// What will be generated, before anything is written. This is the moment the
-// product either feels effortless or does not, so it shows the whole thing: the
-// company, the people, the channels, every beat of the day and the criteria it
-// will be scored against.
-//
-// Every number below is counted off this draft — the cast and channels were
-// assembled in code, the rest are the day's own beats — so none of them can come
-// apart from what gets built. The company's HISTORY is not here and must not be:
-// it is written by a model when the company is seeded, and its counts come back
-// from the clones then. This screen used to forecast it and print the forecast
-// as fact, promising 20 threads where the seeder wrote 6.
+// Expectations stay in the main reading path. Cast and event details are
+// available on demand; all counts come from the draft rather than forecasts.
 
 const WORLD_COUNTS: readonly { key: keyof WorldCounts; label: string; twin: TwinName | null }[] = [
   { key: "people", label: "People", twin: null },
   { key: "channels", label: "Slack channels", twin: "slack" },
+  { key: "workbooks", label: "Workbooks", twin: "excel" },
 ];
 
 const DAY_COUNTS: readonly { key: keyof WorldCounts; label: string; twin: TwinName }[] = [
@@ -30,13 +22,14 @@ const DAY_COUNTS: readonly { key: keyof WorldCounts; label: string; twin: TwinNa
 ];
 
 const TWIN_ICON: Record<TwinName, ReactNode> = {
-  gmail: <IconMail size={11} />,
-  slack: <IconMessage size={11} />,
-  calendar: <IconCalendar size={11} />,
-  attio: <IconUsers size={11} />,
-  "google-docs": <IconDoc size={11} />,
-  "google-ads": <IconTrend size={11} />,
-  linkedin: <IconFeed size={11} />,
+  gmail: <LogoGmail size={11} />,
+  slack: <LogoSlack size={11} />,
+  calendar: <LogoGoogleCalendar size={11} />,
+  attio: <LogoAttio size={11} />,
+  "google-docs": <LogoGoogleDocs size={11} />,
+  "google-ads": <LogoGoogleAds size={11} />,
+  linkedin: <LogoLinkedIn size={11} />,
+  excel: <LogoExcel size={11} />,
 };
 
 export type ScenarioPreviewProps = {
@@ -69,7 +62,7 @@ export function ScenarioPreview({ draft }: ScenarioPreviewProps) {
     <div className="animate-sn-rise flex flex-col gap-6">
       <Card padding="lg">
         <p className="text-sn-xs font-medium tracking-[0.08em] text-sn-subtle uppercase">
-          The business
+          Environment · where the agent works
         </p>
         <h2 className="font-display mt-1.5 text-sn-3xl text-sn-ink">{business.name}</h2>
         <p className="mt-1 text-sn-base text-sn-subtle">
@@ -90,7 +83,7 @@ export function ScenarioPreview({ draft }: ScenarioPreviewProps) {
               <p className="mt-1 text-sn-base text-sn-gold-ink">{standIn}</p>
               <p className="mt-2 text-sn-sm leading-[19px] text-sn-gold-ink/85">
                 You described: “{draft.brief}”. Everything below belongs to the example — the
-                people, the day and what it is scored on. Create it only if running that company is
+                people, the day and what it is scored on. Save it only if running that company is
                 what you want.
               </p>
             </div>
@@ -101,14 +94,77 @@ export function ScenarioPreview({ draft }: ScenarioPreviewProps) {
           {business.description}
         </p>
 
-        <div className="mt-7 grid gap-x-10 gap-y-6 border-t border-sn-line pt-6 sm:grid-cols-[minmax(0,auto)_minmax(0,1fr)]">
+      </Card>
+
+      <Card padding="lg">
+        <p className="text-sn-xs font-medium tracking-[0.08em] text-sn-subtle uppercase">Scenario · what happens</p>
+        <h3 className="font-display mt-1.5 text-sn-3xl text-sn-ink">{episode.title}</h3>
+        <div className="mt-3 flex flex-wrap items-center gap-1.5">
+          {episode.twins.map((twin) => (
+            <Chip key={twin} service={twin} size="sm">
+              {SERVICE_LABELS[twin]}
+            </Chip>
+          ))}
+          <Chip size="sm">
+            {dayRange(episode.startISO, episode.simMinutesPerTick, episode.ticks)}
+          </Chip>
+        </div>
+        <p className="mt-4 max-w-[68ch] text-sn-md text-sn-muted">{episode.story}</p>
+
+        <div className="mt-5 rounded-sn-lg bg-sn-bg-subtle px-4 py-3.5">
+          <p className="text-sn-xs font-medium tracking-[0.08em] text-sn-subtle uppercase">
+            The agent’s task
+          </p>
+          <p className="mt-1.5 text-sn-base text-sn-ink">{episode.task}</p>
+        </div>
+      </Card>
+
+        <Card
+          padding="lg"
+          title="Rubric · what success looks like"
+          subtitle="These are the proposed expectations for grading. Review and edit their checks after saving."
+        >
+          <p className="mb-4 text-sn-sm text-sn-subtle">
+            A failed required expectation fails the run. Scored expectations affect the score.
+          </p>
+          {episode.criteria.length === 0 ? (
+            <p className="text-sn-base text-sn-muted">No rubric items were proposed. Add expectations after saving before running this scenario.</p>
+          ) : null}
+          <ul className="flex flex-col divide-y divide-sn-line">
+            {episode.criteria.map((criterion, index) => (
+              <li key={index} className="flex items-start gap-3 py-3 first:pt-0 last:pb-0">
+                <Badge
+                  status={criterion.severity === "must" ? "warning" : "neutral"}
+                  size="sm"
+                  className="mt-0.5 shrink-0"
+                >
+                  {criterion.severity === "must" ? "Required" : "Scored"}
+                </Badge>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sn-base text-sn-ink">
+                    {criterion.description}
+                  </span>
+                  <span className="mt-0.5 block text-sn-xs text-sn-subtle">
+                    {criterion.twin === "any" ? "across the whole day" : SERVICE_LABELS[criterion.twin]}
+                  </span>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </Card>
+
+      <details className="rounded-sn-xl border border-sn-line bg-sn-surface p-5">
+        <summary className="cursor-pointer text-sn-base font-medium text-sn-ink">
+          Explore the environment · {cast.length} people, {channels.length} Slack channels
+        </summary>
+        <div className="mt-5 grid gap-x-10 gap-y-6 border-t border-sn-line pt-6 sm:grid-cols-[minmax(0,auto)_minmax(0,1fr)]">
           <section>
             <p className="text-sn-xs font-medium tracking-[0.08em] text-sn-subtle uppercase">
               Who is in it
             </p>
             <dl className="mt-3 grid grid-cols-2 gap-x-8 gap-y-5">
               {WORLD_COUNTS.map((row) => (
-                <Stat key={row.key} label={row.label} twin={row.twin} value={counts[row.key]} />
+                <Stat key={row.key} label={row.label} twin={row.twin} value={counts[row.key] ?? 0} />
               ))}
             </dl>
           </section>
@@ -119,22 +175,19 @@ export function ScenarioPreview({ draft }: ScenarioPreviewProps) {
             </p>
             <dl className="mt-3 grid grid-cols-2 gap-x-8 gap-y-5 sm:grid-cols-3">
               {DAY_COUNTS.map((row) => (
-                <Stat key={row.key} label={row.label} twin={row.twin} value={counts[row.key]} />
+                <Stat key={row.key} label={row.label} twin={row.twin} value={counts[row.key] ?? 0} />
               ))}
             </dl>
           </section>
         </div>
 
         <p className="mt-6 max-w-[76ch] text-sn-sm leading-[19px] text-sn-subtle">
-          The clones are loaded with the days behind this one as well — the inbox already sitting
-          there, the Slack backlog, the meetings already booked. That history is written when you
-          seed the company, and how much of it there is comes back from the clones themselves.
-          Nothing on this screen estimates it.
+          Background emails, messages and meetings are created when the environment is prepared
+          for a run. Their counts are not included in this draft.
         </p>
-      </Card>
-
+        <div className="mt-5">
       <div className="grid gap-6 lg:grid-cols-2">
-        <Card padding="lg" title="The cast" subtitle="The same people appear in all three clones.">
+        <Card padding="lg" title="People" subtitle="The people the agent will work with across the environment.">
           <ul className="flex flex-col divide-y divide-sn-line">
             {cast.map((person) => (
               <li key={person.id} className="flex items-baseline gap-3 py-2.5 first:pt-0 last:pb-0">
@@ -155,7 +208,7 @@ export function ScenarioPreview({ draft }: ScenarioPreviewProps) {
 
         <Card
           padding="lg"
-          title="The channels"
+          title="Slack channels"
           subtitle="Where the company talks when it is not writing email."
         >
           <ul className="flex flex-col divide-y divide-sn-line">
@@ -174,42 +227,24 @@ export function ScenarioPreview({ draft }: ScenarioPreviewProps) {
         </Card>
       </div>
 
-      <Card padding="lg">
-        <p className="text-sn-xs font-medium tracking-[0.08em] text-sn-subtle uppercase">The day</p>
-        <h3 className="font-display mt-1.5 text-sn-3xl text-sn-ink">{episode.title}</h3>
-        <div className="mt-3 flex flex-wrap items-center gap-1.5">
-          {episode.twins.map((twin) => (
-            <Chip key={twin} service={twin} size="sm">
-              {SERVICE_LABELS[twin]}
-            </Chip>
-          ))}
-          <Chip size="sm">
-            {dayRange(episode.startISO, episode.simMinutesPerTick, episode.ticks)}
-          </Chip>
-          <Chip size="sm">{episode.ticks} ticks</Chip>
         </div>
-        <p className="mt-4 max-w-[68ch] text-sn-md text-sn-muted">{episode.story}</p>
+      </details>
 
-        <div className="mt-5 rounded-sn-lg bg-sn-bg-subtle px-4 py-3.5">
-          <p className="text-sn-xs font-medium tracking-[0.08em] text-sn-subtle uppercase">
-            What the agent will be told
-          </p>
-          <p className="mt-1.5 text-sn-base text-sn-ink">{episode.task}</p>
-        </div>
-      </Card>
-
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
+      <details className="rounded-sn-xl border border-sn-line bg-sn-surface p-5">
+        <summary className="cursor-pointer text-sn-base font-medium text-sn-ink">
+          See scheduled events · {episode.beats.length} events
+        </summary>
+        <div className="mt-5">
         <Card
           padding="lg"
           title="What will happen, and when"
-          subtitle="Scripted in advance, so two models get the same day. Everything people say back is improvised as it happens."
+          subtitle="These scheduled events are shared across runs. Responses during a run may vary."
         >
           <Timeline aria-label="Scheduled beats">
             {episode.beats.map((beat, index) => (
               <TimelineItem
                 key={`${beat.tick}-${index}`}
                 time={beat.timeLabel}
-                timeMeta={`Tick ${beat.tick}`}
                 tone={beat.twin}
                 icon={TWIN_ICON[beat.twin]}
                 title={beat.summary}
@@ -223,34 +258,8 @@ export function ScenarioPreview({ draft }: ScenarioPreviewProps) {
           </Timeline>
         </Card>
 
-        <Card
-          padding="lg"
-          title="What counts as done"
-          subtitle="A must that fails, fails the run. A should only costs score."
-        >
-          <ul className="flex flex-col divide-y divide-sn-line">
-            {episode.criteria.map((criterion, index) => (
-              <li key={index} className="flex items-start gap-3 py-3 first:pt-0 last:pb-0">
-                <Badge
-                  status={criterion.severity === "must" ? "warning" : "neutral"}
-                  size="sm"
-                  className="mt-0.5 shrink-0"
-                >
-                  {criterion.severity}
-                </Badge>
-                <span className="min-w-0 flex-1">
-                  <span className="block text-sn-base text-sn-ink">
-                    {criterion.description}
-                  </span>
-                  <span className="mt-0.5 block text-sn-xs text-sn-subtle">
-                    {criterion.twin === "any" ? "across the whole day" : SERVICE_LABELS[criterion.twin]}
-                  </span>
-                </span>
-              </li>
-            ))}
-          </ul>
-        </Card>
-      </div>
+        </div>
+      </details>
     </div>
   );
 }

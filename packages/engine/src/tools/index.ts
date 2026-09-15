@@ -1,5 +1,6 @@
 import type { ByTwin, TwinName } from "@sonata/core";
 import type { TwinHttp } from "../http";
+import { excelTools } from "./excel";
 import { attioTools } from "./attio";
 import { gmailTools } from "./gmail";
 import { googleAdsTools } from "./google-ads";
@@ -10,6 +11,7 @@ import { calendarTools } from "./calendar";
 import type { EngineTool } from "./types";
 
 export * from "./types";
+export { excelTools } from "./excel";
 export { gmailTools } from "./gmail";
 export { slackTools } from "./slack";
 export { calendarTools, freeWindows } from "./calendar";
@@ -65,6 +67,8 @@ function toolsForTwin(twin: TwinName, http: TwinHttp): EngineTool[] {
       return googleDocsTools(http);
     case "google-ads":
       return googleAdsTools(http);
+    case "excel":
+      return excelTools(http);
     case "linkedin":
       return linkedInTools(http);
   }

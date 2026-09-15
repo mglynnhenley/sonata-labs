@@ -2,7 +2,7 @@ import { TWIN_NAMES, type TwinName } from "./types/world";
 
 // Where every service lives, in one place.
 //
-// Each twin is two deployables: an API service (the provider-shaped surface an
+// Most twins reserve two deployables: an API service (the provider-shaped surface an
 // agent calls, behind OAuth) and a UI service (a web client that authenticates
 // to that API as a real third-party OAuth client). The API ports are the ones
 // that have always been used, so every existing env fallback keeps working.
@@ -20,9 +20,10 @@ export const TWIN_API_PORTS: Record<TwinName, number> = {
   "google-docs": 3600,
   "google-ads": 3700,
   linkedin: 3800,
+  excel: 3950,
 };
 
-/** The web UI for each twin: API port + 800, so the pairing is guessable. */
+/** Reserved UI ports are API + 800; Excel embeds its UI on its API port. */
 export const TWIN_UI_PORTS: Record<TwinName, number> = {
   gmail: 3901,
   slack: 4000,
@@ -31,6 +32,7 @@ export const TWIN_UI_PORTS: Record<TwinName, number> = {
   "google-docs": 4400,
   "google-ads": 4500,
   linkedin: 4600,
+  excel: 3950, // Embedded UI served by the Excel API process.
 };
 
 /**
@@ -65,6 +67,7 @@ export const TWIN_API_URL_ENV: Record<TwinName, readonly string[]> = {
   "google-docs": ["SONATA_GOOGLE_DOCS_URL", "GOOGLE_DOCS_TWIN_URL"],
   "google-ads": ["SONATA_GOOGLE_ADS_URL", "GOOGLE_ADS_TWIN_URL"],
   linkedin: ["SONATA_LINKEDIN_URL", "LINKEDIN_TWIN_URL"],
+  excel: ["SONATA_EXCEL_URL", "EXCEL_TWIN_URL"],
 };
 
 export const TWIN_UI_URL_ENV: Record<TwinName, readonly string[]> = {
@@ -75,6 +78,7 @@ export const TWIN_UI_URL_ENV: Record<TwinName, readonly string[]> = {
   "google-docs": ["SONATA_GOOGLE_DOCS_UI_URL", "GOOGLE_DOCS_UI_URL"],
   "google-ads": ["SONATA_GOOGLE_ADS_UI_URL", "GOOGLE_ADS_UI_URL"],
   linkedin: ["SONATA_LINKEDIN_UI_URL", "LINKEDIN_UI_URL"],
+  excel: ["SONATA_EXCEL_UI_URL", "EXCEL_UI_URL"],
 };
 
 /**

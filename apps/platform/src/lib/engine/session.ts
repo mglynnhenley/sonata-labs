@@ -1,6 +1,9 @@
+import { normalizeSessionTiming, type SessionTimingPolicy } from "@sonata/core";
+import { startTimingController } from "./timingController";
 import {
   asVerdictOutcome,
   episodeTwins,
+  owner,
   plannedTicks,
   runExecution,
   tickToISO,
@@ -21,20 +24,29 @@ import { realTimer } from "@sonata/engine/live";
 import { mirrorRunFinish } from "../../../app/api/_lib/mirror";
 import { getEpisode, getWorld } from "../../../app/api/_lib/records";
 import { newId } from "../../../app/api/_lib/store";
+import { readRun, runsDir, writeTrace } from "../../../app/results/_lib/artifacts";
 import type {
   SessionPoll,
+  SessionLaunch,
   SessionScenario,
   SessionView,
   StartSessionInput,
 } from "../../../app/api/sessions/_lib/types";
 import { COMPRESSIONS } from "../../../app/api/sessions/_lib/types";
 import { lastEventLine } from "../../../app/runs/_lib/story";
-import { getDb, markWorldSeeded } from "../db";
+import { respellInOffsetOf } from "@/lib/format";
+import { finishRun, getDb, markWorldSeeded } from "../db";
 import { getSettings } from "../settings";
 import { applyStoredApiKey } from "./apiKey";
-import { ensureTwins, loadClone, twinUrlMap } from "./preflight";
+import { loadClone } from "./preflight";
+import { prepareWorkplace, bindWorkplaceUrls, type Workplace } from "./workplace";
+import { createTwinHttp, type OAuthCredentials } from "@sonata/engine/http";
+import { timingSafeEqual } from "node:crypto";
+import { readFileSync, renameSync, writeFileSync } from "node:fs";
+import path from "node:path";
 import { listScenarios, resolveScenario, specForRun } from "./scenarios";
 import { judgeRun, scoreRun } from "./verdict";
+import { explainUnpaired, type Capture } from "./capture";
 
 // PLUGGING AN AGENT IN, FROM THE DASHBOARD.
 //
@@ -105,6 +117,8 @@ export interface SessionArtifact extends EpisodeRun {
     endedBecause: string;
     longestIdleStreak: number;
     caveats: string[];
+    worldMode?: "scripted" | "reactive";
+    timingPolicy?: SessionTimingPolicy["policy"];
   };
 }
 
@@ -127,6 +141,7 @@ CREATE TABLE IF NOT EXISTS sessions (
   status               TEXT NOT NULL,
   twins                TEXT NOT NULL,
   compression          REAL NOT NULL,
+  timing               TEXT,
   sim_minutes_per_tick INTEGER NOT NULL,
   real_ms_per_tick     INTEGER NOT NULL,
   tick                 INTEGER NOT NULL DEFAULT 0,
@@ -170,6 +185,9 @@ function db(): ReturnType<typeof getDb> {
   const handle = getDb();
   if (!schemaReady) {
     handle.exec(DDL);
+    if (!(handle.prepare("PRAGMA table_info(sessions)").all() as Array<{ name: string }>).some(c => c.name === "timing")) {
+      handle.exec("ALTER TABLE sessions ADD COLUMN timing TEXT");
+    }
     schemaReady = true;
   }
   return handle;
@@ -184,6 +202,7 @@ interface SessionRow {
   status: string;
   twins: string;
   compression: number;
+  timing: string | null;
   sim_minutes_per_tick: number;
   real_ms_per_tick: number;
   tick: number;
@@ -209,7 +228,7 @@ interface SessionRow {
 }
 
 const COLUMNS =
-  "id, episode_id, title, agent_label, model, status, twins, compression, sim_minutes_per_tick, " +
+  "id, episode_id, title, agent_label, model, status, twins, compression, timing, sim_minutes_per_tick, " +
   "real_ms_per_tick, tick, total_ticks, sim_time, last_event, beats, director_events, " +
   "agent_actions, last_agent_at, idle_streak, longest_idle_streak, outcome, score, autonomy, " +
   "cost_usd, started_at, ended_at, ended_because, no_result, caveats, error";
@@ -237,6 +256,7 @@ function toView(row: SessionRow, live: boolean, nextTickAt: number | null): Sess
   const status = RUN_STATUSES.find((s) => s === row.status) ?? "running";
   return {
     sessionId: row.id,
+    twinLinks: sessionTwinLinks(row.id),
     episodeId: row.episode_id,
     title: row.title,
     agentLabel: row.agent_label,
@@ -248,6 +268,7 @@ function toView(row: SessionRow, live: boolean, nextTickAt: number | null): Sess
     simTimeISO: row.sim_time ?? "",
     simMinutesPerTick: row.sim_minutes_per_tick,
     compression: row.compression,
+    timing: normalizeSessionTiming(row.timing ? JSON.parse(row.timing) : undefined),
     realMsPerTick: row.real_ms_per_tick,
     lastEvent: row.last_event,
     startedAt: row.started_at,
@@ -299,6 +320,12 @@ function readTicks(sessionId: string, from: number): TickRecord[] {
 // ---------------------------------------------------------------------------
 
 interface LiveSession {
+  workplace: Promise<Workplace>;
+  clone?: NonNullable<ReturnType<typeof getWorld>>["clone"];
+  agentGrant?: Promise<OAuthCredentials>;
+  humanUrls?: Partial<Record<TwinName, string>>;
+  preparation: AbortController;
+  snapshotHashes?: Partial<Record<TwinName, string>>;
   sessionId: string;
   episodeId: string;
   worldId: string;
@@ -306,8 +333,14 @@ interface LiveSession {
   twins: TwinName[];
   agentLabel: string;
   compression: number;
+  timing: SessionTimingPolicy;
+  timingController?: ReturnType<typeof startTimingController>;
   seedWorld: boolean;
   judge: boolean;
+  director: boolean;
+  model?: string;
+  directorModel?: string;
+  judgeModel?: string;
   /** Null until the world is up and tick 0 has fired. */
   session: Session | null;
   /**
@@ -317,6 +350,7 @@ interface LiveSession {
    * an operator is most likely to press it.
    */
   stopRequested: string | null;
+  stopStatus: "aborted" | "failed";
   /**
    * Resolves once the day has been scored and filed — before the judge, which
    * costs a model call. `stopSession` waits on this so the response to a stop
@@ -333,6 +367,11 @@ const g = globalThis as unknown as { __sonataLiveSessions?: Map<string, LiveSess
 function registry(): Map<string, LiveSession> {
   if (!g.__sonataLiveSessions) g.__sonataLiveSessions = new Map();
   return g.__sonataLiveSessions;
+}
+
+/** Internal budget accounting for the Inspect product launcher. */
+export function sessionModelCalls(sessionId: string) {
+  return registry().get(sessionId)?.session?.modelCalls() ?? [];
 }
 
 function nextTickAtOf(entry: LiveSession | undefined): number | null {
@@ -364,24 +403,8 @@ function clampCompression(value: number | undefined): number {
  * `entry.done`.
  */
 export function startSession(input: StartSessionInput): SessionView {
-  // One world at a time. The three clones are shared and a session resets and
-  // reloads them, so a second day started now would wipe the first one's
-  // evidence out from under it — and the two sets of beats would land in one
-  // inbox, which is not a scenario anybody wrote.
-  // Judging is not "running": the world is over and the twins are free by then,
-  // so a day being read back must not hold the next one up for a model call.
-  const busy = [...registry().values()].find((live) => {
-    const status = readRow(live.sessionId)?.status;
-    return status === "queued" || status === "running";
-  });
-  if (busy) {
-    throw new Error(
-      `A session is already running: ${busy.spec.title}. Stop it before starting another — all three clones are shared, and a second day would reset the world out from under the first.`,
-    );
-  }
-
   const episode = resolveScenario(input.episodeId);
-  const spec = specForRun(episode.spec, input.ticks);
+  const spec = specForRun(episode.spec, input.ticks, input.termination);
 
   // The request can only narrow the surfaces the scenario actually uses:
   // attaching a twin the day never touches costs a boot and teaches nothing.
@@ -390,87 +413,278 @@ export function startSession(input: StartSessionInput): SessionView {
   const twins = needed.length > 0 ? needed : episodeTwins(spec);
 
   const compression = clampCompression(input.compression);
+  const timing = normalizeSessionTiming(input.timing);
   const agentLabel = input.agentLabel?.trim() || "an external agent";
-  const sessionId = newId("sess");
+  const sessionId = input.runId ?? newId("sess");
   const total = plannedTicks(spec);
   const now = Date.now();
 
-  db()
-    .prepare(
-      `INSERT INTO sessions (id, episode_id, title, agent_label, model, status, twins, compression,
-                             sim_minutes_per_tick, real_ms_per_tick, tick, total_ticks, sim_time,
-                             started_at)
-       VALUES (@id, @episode_id, @title, @agent_label, @model, 'queued', @twins, @compression,
-               @sim_minutes_per_tick, @real_ms_per_tick, 0, @total_ticks, @sim_time, @started_at)`,
-    )
-    .run({
-      id: sessionId,
-      episode_id: episode.id,
-      title: episode.title,
-      agent_label: agentLabel,
-      model: sessionModel(agentLabel),
-      twins: JSON.stringify(twins),
-      compression,
-      sim_minutes_per_tick: spec.clock.simMinutesPerTick,
-      real_ms_per_tick: Math.round(realMsPerTick(spec.clock, compression)),
-      total_ticks: total,
-      sim_time: tickToISO(spec.clock, 0),
-      started_at: now,
+  const preparation = new AbortController();
+  const clone = input.seedWorld === false ? undefined : getWorld(episode.worldId)?.clone;
+  const workplace = prepareWorkplace(sessionId, twins, input.seedWorld === false, {
+    signal: preparation.signal, maxWallClockMs: spec.termination.maxWallClockMs, scenario: { spec, seed: clone ?? null, timing },
+    ...(timing.policy === "provider-operations-v1" ? { timing } : {}),
+  });
+  workplace.catch(() => undefined);
+  try {
+
+    db()
+      .prepare(
+        `INSERT INTO sessions (id, episode_id, title, agent_label, model, status, twins, compression, timing,
+                               sim_minutes_per_tick, real_ms_per_tick, tick, total_ticks, sim_time,
+                               started_at)
+         VALUES (@id, @episode_id, @title, @agent_label, @model, 'queued', @twins, @compression, @timing,
+                 @sim_minutes_per_tick, @real_ms_per_tick, 0, @total_ticks, @sim_time, @started_at)`,
+      )
+      .run({
+        id: sessionId,
+        episode_id: episode.id,
+        title: episode.title,
+        agent_label: agentLabel,
+        model: input.model ?? sessionModel(agentLabel),
+        twins: JSON.stringify(twins),
+        compression,
+        timing: JSON.stringify(timing),
+        sim_minutes_per_tick: spec.clock.simMinutesPerTick,
+        real_ms_per_tick: timing.policy === "compressed-wall-time" ? Math.round(realMsPerTick(spec.clock, compression)) : 0,
+        total_ticks: total,
+        sim_time: respellInOffsetOf(tickToISO(spec.clock, 0), spec.clock.startISO),
+        started_at: now,
+      });
+
+    let markScored: () => void = () => undefined;
+    const scored = new Promise<void>((resolve) => {
+      markScored = resolve;
     });
 
-  let markScored: () => void = () => undefined;
-  const scored = new Promise<void>((resolve) => {
-    markScored = resolve;
-  });
+    const base: Omit<LiveSession, "done"> = {
+      sessionId,
+      workplace, preparation, clone,
+      episodeId: episode.id,
+      worldId: episode.worldId,
+      spec,
+      twins,
+      agentLabel,
+      compression,
+      timing,
+      seedWorld: input.seedWorld ?? true,
+      judge: input.judge !== false,
+      director: input.director !== false,
+      model: input.model,
+      directorModel: input.directorModel,
+      judgeModel: input.judgeModel,
+      session: null,
+      stopRequested: null,
+      stopStatus: "aborted",
+      scored,
+      markScored,
+    };
+    // The driver mutates the entry as the day plays, so it has to exist before the
+    // promise that fills it in — hence the two steps.
+    const entry = base as LiveSession;
+    registry().set(sessionId, entry);
+    entry.done = drive(entry).finally(async () => {
+      const owned = await workplace.catch(() => null);
+      const failures: string[] = [];
+      try {
+        if (!owned) return;
+        try { markCleanupPending(entry.sessionId, owned.directory); }
+        catch (error) { failures.push(message(error)); }
+        try { await owned.stop(); }
+        catch (error) { failures.push(message(error)); }
+        if (failures.length) recordCleanupFailure(entry.sessionId, new Error(failures.join(" ")));
+        else {
+          try { completeCleanup(entry.sessionId); }
+          catch (error) { recordCleanupFailure(entry.sessionId, error); }
+        }
+      }
+      finally {
+        // Results remain live until workspace capture and teardown have settled.
+        // A complete day whose export failed must not escape as a scored result.
+        registry().delete(entry.sessionId);
+      }
+    });
+    // The driver and finalizer write failures to the row; this only stops an
+    // unhandled rejection from taking the dev server down with it.
+    entry.done.catch(() => undefined);
 
-  const base: Omit<LiveSession, "done"> = {
-    sessionId,
-    episodeId: episode.id,
-    worldId: episode.worldId,
-    spec,
-    twins,
-    agentLabel,
-    compression,
-    seedWorld: input.seedWorld ?? true,
-    judge: input.judge !== false,
-    session: null,
-    stopRequested: null,
-    scored,
-    markScored,
-  };
-  // The driver mutates the entry as the day plays, so it has to exist before the
-  // promise that fills it in — hence the two steps.
-  const entry = base as LiveSession;
-  registry().set(sessionId, entry);
-  entry.done = drive(entry);
-  // The driver owns every failure and writes it to the row; this only stops an
-  // unhandled rejection from taking the dev server down with it.
-  entry.done.catch(() => undefined);
+    const row = readRow(sessionId);
+    if (!row) throw new Error(`session ${sessionId} vanished immediately after being started`);
+    return toView(row, true, null);
+  } catch (err) {
+    void workplace.then(w => w.stop()).catch(() => undefined);
+    throw err;
+  }
+}
 
+/** Keep completed app evidence when final workspace capture or cleanup fails. */
+const CAPTURE_PENDING = "The workplace's final capture and cleanup are still pending.";
+
+interface CaptureDocument {
+  status: RunStatus;
+  error?: string;
+  verdict: unknown;
+  session?: { endedBecause?: string; caveats?: string[]; [key: string]: unknown };
+  workplace?: { directory?: string; cleanup?: { status: "pending" | "complete" | "failed";
+    runStatus?: RunStatus; noResult?: string | null; completedAt?: number; error?: string }; [key: string]: unknown };
+  [key: string]: unknown;
+}
+function updateSavedArtifact(sessionId: string, update: (saved: CaptureDocument) => void): void {
+  const file = path.join(runsDir(), `${sessionId}.json`);
+  const saved = JSON.parse(readFileSync(file, "utf8"));
+  update(saved);
+  const temporary = `${file}.cleanup.tmp`;
+  writeFileSync(temporary, `${JSON.stringify(saved, null, 2)}\n`);
+  renameSync(temporary, file);
+}
+
+/** A restart can locate unfinished capture without scanning every old artifact. */
+function markCleanupPending(sessionId: string, directory: string): void {
   const row = readRow(sessionId);
-  if (!row) throw new Error(`session ${sessionId} vanished immediately after being started`);
-  return toView(row, true, null);
+  db().prepare("UPDATE sessions SET no_result = ? WHERE id = ?").run(CAPTURE_PENDING, sessionId);
+  updateSavedArtifact(sessionId, saved => {
+    saved.workplace = { ...saved.workplace, directory, cleanup: { status: "pending", runStatus: saved.status,
+      noResult: row?.no_result ?? null } };
+    // Direct artifact readers must also withhold a complete-looking result.
+    saved.status = "judging";
+  });
+}
+
+function completeCleanup(sessionId: string): void {
+  let noResult: string | null = null;
+  updateSavedArtifact(sessionId, saved => {
+    const cleanup = saved.workplace?.cleanup;
+    if (cleanup?.status !== "pending" || !cleanup.runStatus) throw new Error("The run's pending workspace capture record is missing.");
+    saved.status = cleanup.runStatus;
+    noResult = cleanup.noResult ?? null;
+    saved.workplace = { ...saved.workplace, cleanup: { ...cleanup, status: "complete", completedAt: Date.now() } };
+  });
+  db().prepare("UPDATE sessions SET no_result = ? WHERE id = ?").run(noResult, sessionId);
+}
+
+function recordCleanupFailure(sessionId: string, error: unknown): void {
+  const row = readRow(sessionId);
+  const note = `Workplace capture or cleanup failed: ${message(error)} This evaluation is unmeasured; available evidence was retained.`;
+  const caveats = [...new Set([...(row ? parseList(row.caveats) : []), note])];
+  let reason = [...new Set([row?.error, note].filter(Boolean))].join(" ");
+  const endedBecause = [row?.ended_because, "workplace capture or cleanup failed"].filter(Boolean).join("; ");
+  let saveFailure: unknown;
+  try {
+    // Preserve the raw artifact's evidence and metadata, including fields the
+    // report normalizer does not currently display.
+    updateSavedArtifact(sessionId, saved => {
+      reason = [...new Set([saved.error, row?.error, note].filter(Boolean))].join(" ");
+      saved.status = "failed";
+      saved.error = reason;
+      saved.verdict = null;
+      saved.workplace = { ...saved.workplace, cleanup: { status: "failed", error: note } };
+      if (saved.session) saved.session = { ...saved.session, endedBecause,
+        caveats: [...new Set([...(saved.session.caveats ?? []), ...caveats])] };
+    });
+  } catch (error) {
+    saveFailure = error;
+    reason += ` The saved artifact could not be updated: ${message(error)}`;
+  }
+  finishRow(sessionId, { status: "failed", endedAt: row?.ended_at ?? Date.now(), endedBecause,
+    noResult: note, caveats, error: reason });
+  finishRun({ id: sessionId, status: "failed", error: reason, endedAt: row?.ended_at ?? Date.now() });
+  if (saveFailure) throw saveFailure;
+}
+
+/** The tested agent receives its assigned task, never the scenario's answer keys. */
+export function sessionTwinLinks(sessionId: string): Array<{ twin: TwinName; url: string }> {
+  const entry = registry().get(sessionId);
+  if (!entry?.humanUrls) return [];
+  return entry.twins.flatMap(twin => entry.humanUrls?.[twin] ? [{ twin, url: entry.humanUrls[twin]! }] : []);
+}
+
+export async function sessionLaunch(view: SessionView): Promise<SessionLaunch> {
+  const entry = registry().get(view.sessionId);
+  if (!entry) throw new Error("The session is no longer available for setup.");
+  const workplace = await entry.workplace;
+  const spec = bindWorkplaceUrls(entry.spec, workplace);
+  const me = owner(spec.world);
+  return {
+    session: view,
+    agentBrief: `You are an AI assistant working alongside ${me.name} at ${entry.spec.world.business.name}. ` +
+      `You use ${me.name}'s accounts (${me.email}).\n\n${spec.task}`,
+    connection: { twins: entry.twins, urls: workplace.agentUrls, token: workplace.agentToken,
+      credentialsPath: `/api/sessions/${entry.sessionId}/connection`, execution: { kind: "docker", container: workplace.agentContainer } },
+    timing: {
+      ...entry.timing,
+      compression: entry.compression,
+      simMinutesPerTick: entry.spec.clock.simMinutesPerTick,
+      plannedTicks: plannedTicks(entry.spec),
+      worldMode: entry.director ? "reactive" : "scripted",
+    },
+    isolation: "docker-per-run-v1",
+  };
+}
+
+/** Hand off provider access after seeding/reset, never the operator credential. */
+export async function sessionConnection(id: string, token: string): Promise<SessionLaunch["connection"] | null> {
+  const entry = registry().get(id);
+  if (!entry || !entry.session || !entry.snapshotHashes) return null;
+  const workplace = await entry.workplace;
+  const supplied = Buffer.from(token);
+  const expected = Buffer.from(workplace.agentToken);
+  if (supplied.length !== expected.length || !timingSafeEqual(supplied, expected)) return null;
+  if (entry.twins.includes("gmail")) {
+    entry.agentGrant ??= createTwinHttp("gmail", {
+      baseUrl: workplace.urls.gmail!, token: workplace.agentToken, controlToken: workplace.controlToken,
+    }).providerCredentials();
+  }
+  return { twins: entry.twins, urls: workplace.agentUrls, token: workplace.agentToken,
+    credentialsPath: `/api/sessions/${entry.sessionId}/connection`, execution: { kind: "docker", container: workplace.agentContainer },
+    ...(entry.agentGrant ? { gmailOAuth: await entry.agentGrant } : {}),
+  };
+}
+
+/** Clock control contains no future events or grading keys. The caller gets
+ * the same run-scoped agent credential as the provider connection. */
+export async function advanceSessionClock(id: string, token: string, input:
+  { action: "wait"; afterNotification: number; untilTick?: number } | { action: "finish" }) {
+  const entry = registry().get(id);
+  if (!entry?.session || entry.timing.policy !== "provider-operations-v1") return null;
+  const workplace = await entry.workplace;
+  const supplied = Buffer.from(token);
+  const expected = Buffer.from(workplace.agentToken);
+  if (supplied.length !== expected.length || !timingSafeEqual(supplied, expected)) return null;
+  const wake = input.action === "wait" ? await entry.session.waitForUpdate(input) : undefined;
+  if (input.action === "finish") await entry.session.finishWork();
+  return { session: sessionStatus(id)?.session, ...(wake ? { wake } : {}) };
 }
 
 // ---------------------------------------------------------------------------
 // The day itself
 // ---------------------------------------------------------------------------
 
-function saveTick(entry: LiveSession, record: TickRecord): void {
+function saveTick(entry: LiveSession, raw: TickRecord): void {
+  // Screens read these strings as-is; re-spell the engine's UTC instants in the
+  // spec's own offset once, on the way into the store.
+  const record = { ...raw, simTimeISO: respellInOffsetOf(raw.simTimeISO, entry.spec.clock.startISO) };
   // Two different questions, so two different numbers. `changes` is what the
   // twins can prove — the audit rows, and nothing else. `acted` includes a
   // hand-back reported by the harness, which changes nothing in the world but is
   // emphatically not silence, and counting it as a change would put a mutation
   // on the record that never happened.
-  const changes = record.agentSteps.filter((step) => step.kind === "tool").length;
-  const acted = record.agentSteps.length > 0;
   const line = lastEventLine(record);
-  const now = Date.now();
 
   const write = db().transaction(() => {
     db()
       .prepare("INSERT OR REPLACE INTO session_ticks (session_id, tick, json) VALUES (?, ?, ?)")
       .run(entry.sessionId, record.tick, JSON.stringify(record));
+    // Final capture may update the last tick. Derive counters from persisted
+    // records, so an upsert cannot count the same events or idle interval twice.
+    const ticks = readTicks(entry.sessionId, 0);
+    let idle = 0;
+    let longestIdle = 0;
+    let lastAgentAt: number | null = null;
+    for (const tick of ticks) {
+      idle = tick.agentSteps.length ? 0 : idle + 1;
+      longestIdle = Math.max(longestIdle, idle);
+      for (const step of tick.agentSteps) lastAgentAt = Math.max(lastAgentAt ?? 0, step.at);
+    }
     db()
       .prepare(
         `UPDATE sessions SET
@@ -478,13 +692,12 @@ function saveTick(entry: LiveSession, record: TickRecord): void {
            tick = @tick,
            sim_time = @sim_time,
            last_event = COALESCE(@last_event, last_event),
-           beats = beats + @beats,
-           director_events = director_events + @director_events,
-           agent_actions = agent_actions + @agent_actions,
-           last_agent_at = CASE WHEN @acted = 1 THEN @now ELSE last_agent_at END,
-           idle_streak = CASE WHEN @acted = 1 THEN 0 ELSE idle_streak + 1 END,
-           longest_idle_streak =
-             MAX(longest_idle_streak, CASE WHEN @acted = 1 THEN 0 ELSE idle_streak + 1 END)
+           beats = @beats,
+           director_events = @director_events,
+           agent_actions = @agent_actions,
+           last_agent_at = @last_agent_at,
+           idle_streak = @idle_streak,
+           longest_idle_streak = @longest_idle_streak
          WHERE id = @id`,
       )
       .run({
@@ -492,11 +705,12 @@ function saveTick(entry: LiveSession, record: TickRecord): void {
         tick: record.tick + 1,
         sim_time: record.simTimeISO,
         last_event: line,
-        beats: record.beatsFired.length,
-        director_events: record.directorEvents.length,
-        agent_actions: changes,
-        acted: acted ? 1 : 0,
-        now,
+        beats: ticks.reduce((n, t) => n + t.beatsFired.length, 0),
+        director_events: ticks.reduce((n, t) => n + t.directorEvents.length, 0),
+        agent_actions: ticks.reduce((n, t) => n + t.agentSteps.filter(s => s.kind === "tool").length, 0),
+        last_agent_at: lastAgentAt,
+        idle_streak: idle,
+        longest_idle_streak: longestIdle,
       });
   });
 
@@ -510,13 +724,16 @@ function saveTick(entry: LiveSession, record: TickRecord): void {
 }
 
 async function drive(entry: LiveSession): Promise<void> {
-  const settings = getSettings();
   // Before the first director tick, not after: a world whose director cannot
   // reach a model still fires its beats, so the failure hides as a day that
   // simply never answers the agent.
-  applyStoredApiKey();
   try {
-    await ensureTwins(entry.twins);
+    const settings = getSettings();
+    if (entry.director || entry.judge) applyStoredApiKey();
+    const workplace = await entry.workplace;
+    entry.spec = bindWorkplaceUrls(entry.spec, workplace);
+    await workplace.start(entry.preparation.signal);
+    entry.humanUrls = workplace.humanUrls;
     if (entry.stopRequested !== null) return abortBeforeStart(entry, entry.stopRequested);
 
     // The cloned business, whole, exactly as `./episode` loads it: an
@@ -524,31 +741,33 @@ async function drive(entry: LiveSession): Promise<void> {
     // alone leaves the agent opening an empty inbox in a company that is
     // supposed to have been running for weeks. `injectWorld` resets each twin as
     // part of loading, so the session must not then reset back over it.
-    const clone = entry.seedWorld ? getWorld(entry.worldId)?.clone : undefined;
+    const clone = entry.clone;
     if (clone) {
       note(entry.sessionId, "loading the cloned business into the twins");
-      await loadClone(clone, entry.twins);
+      await loadClone(bindWorkplaceUrls(clone, workplace), entry.twins, undefined, Date.parse(entry.spec.clock.startISO), workplace.urls, workplace.controlToken);
       if (entry.stopRequested !== null) return abortBeforeStart(entry, entry.stopRequested);
     }
 
-    const urls = twinUrlMap(entry.twins);
-    const adapters = createAdapters({
-      ...(urls.gmail ? { gmail: { baseUrl: urls.gmail } } : {}),
-      ...(urls.slack ? { slack: { baseUrl: urls.slack } } : {}),
-      ...(urls.calendar ? { calendar: { baseUrl: urls.calendar } } : {}),
-    }).filter((adapter) => entry.twins.includes(adapter.name));
+    const urls = workplace.urls;
+    const adapters = createAdapters(Object.fromEntries(
+      Object.entries(urls).map(([twin, baseUrl]) => [twin, { baseUrl, token: workplace.agentToken, controlToken: workplace.controlToken }]),
+    )).filter((adapter) => entry.twins.includes(adapter.name));
 
     const session = createSession({
       spec: entry.spec,
       adapters,
       compression: entry.compression,
+      timing: entry.timing,
+      beforeCapture: async () => { await entry.timingController?.close(); },
       timer: realTimer(),
       sessionId: entry.sessionId,
       // The world's own voice, on the harness's model — never the agent's. The
       // director does not know and does not need to know that the mutations it
       // is reacting to came from someone else's process.
-      director: createDirector({ spec: entry.spec, model: settings.models.director }),
-      agentLabel: sessionModel(entry.agentLabel),
+      director: entry.director
+        ? createDirector({ spec: entry.spec, model: entry.directorModel ?? settings.models.director })
+        : { react: async () => [], lastNote: () => "Scripted-only wiring run: reactive colleagues are disabled." },
+      agentLabel: entry.model ?? sessionModel(entry.agentLabel),
       seedWorld: clone ? false : entry.seedWorld,
       resetTwins: clone ? false : entry.seedWorld,
       onTick: (record) => saveTick(entry, record),
@@ -557,12 +776,24 @@ async function drive(entry: LiveSession): Promise<void> {
 
     if (entry.stopRequested === null) {
       await session.start();
+      entry.snapshotHashes = workplace.snapshotHashes();
+      if (workplace.timingControl) {
+        entry.timingController = startTimingController({
+          control: workplace.timingControl, session,
+          ledgerPath: path.join(workplace.directory, "provider-operations.jsonl"),
+          onFailure: (error) => { void session.finalize({ status: "failed", reason: "Timing gateway failed", error: error.message }); },
+        });
+      }
       if (entry.seedWorld) markWorldSeeded(entry.worldId);
     }
     // Stopped while the world was being stood up, or during tick 0. `stop` is
     // idempotent and a session that never started ends `aborted` either way, so
     // this is the same path as a stop an hour in.
-    if (entry.stopRequested !== null) await session.stop(entry.stopRequested);
+    if (entry.stopRequested !== null) await session.finalize({
+      reason: entry.stopRequested,
+      status: entry.stopStatus,
+      ...(entry.stopStatus === "failed" ? { error: entry.stopRequested } : {}),
+    });
 
     await settle(entry, await session.finished());
   } catch (err) {
@@ -570,8 +801,8 @@ async function drive(entry: LiveSession): Promise<void> {
   } finally {
     // Always, however the day ended: a caller waiting on the score must never be
     // left waiting by a path that failed on its way there.
+    await entry.timingController?.stop();
     entry.markScored();
-    registry().delete(entry.sessionId);
   }
 }
 
@@ -581,13 +812,7 @@ async function drive(entry: LiveSession): Promise<void> {
  * artifact in Results is a run that looks like it happened.
  */
 function abortBeforeStart(entry: LiveSession, reason: string): void {
-  finishRow(entry.sessionId, {
-    status: "aborted",
-    endedAt: Date.now(),
-    endedBecause: reason,
-    noResult: "The day never started — the agent never ran, so there is no result.",
-    caveats: [],
-  });
+  fail(entry, new Error(reason));
 }
 
 function note(sessionId: string, line: string): void {
@@ -617,13 +842,14 @@ function unpairedNotes(
   twins: readonly TwinName[],
   snapshots: EpisodeRun["snapshots"],
 ): Partial<Record<TwinName, string>> {
-  const notes: Partial<Record<TwinName, string>> = {};
+  const capture: Capture = { before: {}, after: {}, audit: [], notes: {} };
   for (const twin of twins) {
     const pair = snapshots[twin];
-    if (pair?.before && pair.after) continue;
-    notes[twin] = `no snapshot pair came back from the ${twin} clone while the session ran, so its criteria cannot be decided from this file`;
+    if (pair?.before) capture.before[twin] = pair.before;
+    if (pair?.after) capture.after[twin] = pair.after;
   }
-  return notes;
+  explainUnpaired(capture, twins);
+  return capture.notes;
 }
 
 // ---------------------------------------------------------------------------
@@ -636,12 +862,26 @@ async function settle(entry: LiveSession, record: SessionRecord): Promise<void> 
   // a stop, `failed` for a world that never came up.
   const status = run.status;
   const cost = traceCost(record.trace);
+  const traceError = writeTrace(entry.sessionId, record.trace);
   const { checklist, verdict, execution } = scoreRun(run, entry.spec, {
     audit: record.audit,
     cost,
   });
+  const caveats = [...record.caveats,
+    ...(traceError ? [`${traceError}. Per-call model evidence is unavailable; only the aggregate cost was retained.`] : []),
+    entry.timing.policy === "compressed-wall-time"
+      ? "Timing policy: compressed wall time. Model latency and tool startup consume business time; this is not an event-driven capability comparison."
+      : `Experimental provider-operation timing: ${entry.timing.workUnitsPerTick} work units per interval. Read/write charges and batch weights are not calibrated to human working time. World events retain the scenario interval resolution; notification coverage is Gmail, Slack and Calendar only.`,
+    "Agent-side model usage and reasoning are external; consult the linked harness transcript. Session cost covers world calls only.",
+    ...(!entry.director ? ["Scripted-only wiring run: reactive colleague behaviour was not measured."] : []),
+    ...(!entry.judge ? ["The narrative judge was disabled; only deterministic criteria were assessed."] : []),
+  ];
 
+  const workplace = await entry.workplace;
   const scored: SessionArtifact = {
+    workplace: { isolation: "docker-per-run-v1", directory: workplace.directory, urls: workplace.urls, agentUrls: workplace.agentUrls,
+      snapshotHashes: entry.snapshotHashes ?? {}, images: workplace.images,
+      scenarioSha256: workplace.scenarioSha256, scriptHashes: workplace.scriptHashes },
     ...run,
     endedAt: run.endedAt ?? Date.now(),
     // The log the checklist above just read, filed beside the score it produced.
@@ -656,7 +896,9 @@ async function settle(entry: LiveSession, record: SessionRecord): Promise<void> 
       compression: entry.compression,
       endedBecause: record.endedBecause,
       longestIdleStreak: readRow(entry.sessionId)?.longest_idle_streak ?? 0,
-      caveats: record.caveats,
+      caveats,
+      worldMode: entry.director ? "reactive" : "scripted",
+      timingPolicy: entry.timing.policy,
     },
   };
 
@@ -680,7 +922,7 @@ async function settle(entry: LiveSession, record: SessionRecord): Promise<void> 
     endedAt: scored.endedAt ?? Date.now(),
     endedBecause: record.endedBecause,
     noResult: execution.reason,
-    caveats: record.caveats,
+    caveats,
     costUsd: cost.usd,
     ...(verdict
       ? { outcome: verdict.outcome, score: verdict.score, autonomy: verdict.autonomy }
@@ -698,7 +940,7 @@ async function settle(entry: LiveSession, record: SessionRecord): Promise<void> 
 
   db().prepare("UPDATE sessions SET status = 'judging' WHERE id = ?").run(entry.sessionId);
   try {
-    const judged = await judgeRun(scored, entry.spec);
+    const judged = await judgeRun(scored, entry.spec, { model: entry.judgeModel });
     db()
       .prepare("UPDATE sessions SET status = ?, autonomy = ? WHERE id = ?")
       .run(status, judged.autonomy, entry.sessionId);
@@ -712,10 +954,10 @@ async function settle(entry: LiveSession, record: SessionRecord): Promise<void> 
 }
 
 function fail(entry: LiveSession, err: unknown): void {
-  const reason = message(err);
+  const reason = entry.stopRequested ?? message(err);
   const ticks = readTicks(entry.sessionId, 0);
   const row = readRow(entry.sessionId);
-  const status: RunStatus = "failed";
+  const status: RunStatus = entry.stopRequested !== null ? entry.stopStatus : "failed";
 
   // Even a session that fell over standing the twins up is worth writing down:
   // the ticks it did record are usually the reason. It is not worth SCORING —
@@ -724,7 +966,7 @@ function fail(entry: LiveSession, err: unknown): void {
     runId: entry.sessionId,
     specId: entry.spec.id,
     specTitle: entry.spec.title,
-    model: sessionModel(entry.agentLabel),
+    model: entry.model ?? sessionModel(entry.agentLabel),
     status,
     startedAt: row?.started_at ?? Date.now(),
     endedAt: Date.now(),
@@ -816,12 +1058,42 @@ function finishRow(
 export function sweepOrphanSessions(): void {
   const rows = db()
     .prepare(
-      `SELECT ${COLUMNS} FROM sessions WHERE status IN ('queued','running','judging')`,
+      `SELECT ${COLUMNS} FROM sessions WHERE status IN ('queued','running','judging') OR no_result = ?`,
     )
-    .all() as SessionRow[];
+    .all(CAPTURE_PENDING) as SessionRow[];
 
   for (const row of rows) {
     if (registry().has(row.id)) continue;
+    if (row.no_result === CAPTURE_PENDING) {
+      try {
+        const saved = JSON.parse(readFileSync(path.join(runsDir(), `${row.id}.json`), "utf8")) as CaptureDocument;
+        const guardian = JSON.parse(readFileSync(path.join(saved.workplace?.directory ?? "", "workplace.json"), "utf8"));
+        if (guardian.status !== "stopped" || guardian.cleanupErrors?.length ||
+            (guardian.agentStarted && guardian.workspaceArchive?.status !== "captured")) {
+          throw new Error("The dashboard restarted before complete workspace capture and cleanup could be confirmed.");
+        }
+        completeCleanup(row.id);
+      } catch (error) { recordCleanupFailure(row.id, error); }
+      continue;
+    }
+    // Capture finishes before assessment starts. A restart during judging must
+    // recover that completed day, never replace its evidence with an empty one.
+    const saved = readRun(row.id);
+    if (saved && ["done", "failed", "aborted"].includes(saved.status)) {
+      finishRow(row.id, {
+        status: saved.status,
+        endedAt: saved.endedAt ?? row.ended_at ?? Date.now(),
+        endedBecause: row.ended_because ?? "the day finished before the dashboard restarted",
+        noResult: runExecution(saved).reason,
+        caveats: parseList(row.caveats),
+        ...(saved.verdict ? { outcome: saved.verdict.outcome, score: saved.verdict.score,
+          autonomy: saved.verdict.autonomy } : {}),
+        ...(row.status === "judging" ? {
+          error: "The day finished, but the dashboard restarted before its assessment status was saved. Check the retained assessment history.",
+        } : {}),
+      });
+      continue;
+    }
     const reason = "the dashboard restarted while the day was running";
     const ticks = readTicks(row.id, 0);
     const spec = specSnapshot(row);
@@ -840,10 +1112,9 @@ export function sweepOrphanSessions(): void {
     if (spec) {
       const { checklist } = scoreRun(run, spec);
       const twins = parseList(row.twins) as TwinName[];
-      // Deliberately NOT captured here, late as it is: the three clones are
-      // shared, a restart is exactly when the next day resets them, and an
-      // after-snapshot taken now could file someone else's morning as this
-      // session's evidence. Saying so is the honest record.
+      // The workplace supervisor stops its processes when the dashboard dies.
+      // Retained databases are diagnostic evidence, not a closing capture made
+      // by the live engine, so no after-snapshot is invented during recovery.
       mirrorRunFinish({
         run,
         spec,
@@ -883,7 +1154,11 @@ export function sessionStatus(sessionId: string, sinceTick = 0): SessionPoll | n
   const ticks = readTicks(sessionId, from);
   const last = ticks[ticks.length - 1];
   return {
-    session: toView(row, Boolean(entry), nextTickAtOf(entry)),
+    session: {
+      ...toView(row, Boolean(entry), nextTickAtOf(entry)),
+      ...(entry?.session ? { simTimeISO: entry.session.status().simTimeISO,
+        notificationSequence: entry.session.status().notificationSequence } : {}),
+    },
     ticks,
     // The watermark comes from the ticks actually handed over, never from the
     // row's counter: a tick whose write failed would otherwise advance the
@@ -894,6 +1169,23 @@ export function sessionStatus(sessionId: string, sinceTick = 0): SessionPoll | n
 }
 
 /** Every session, newest first. */
+/**
+ * The newest session still playing one scenario, if any. A query rather than a
+ * scan of the recent list: the answer guards a rubric edit, so it must not
+ * depend on how many other sessions were started since.
+ */
+export function liveSessionFor(episodeId: string): SessionView | undefined {
+  sweepOrphanSessions();
+  const row = db()
+    .prepare(
+      `SELECT ${COLUMNS} FROM sessions WHERE episode_id = ? AND status IN ('queued','running','judging') ORDER BY started_at DESC LIMIT 1`,
+    )
+    .get(episodeId) as SessionRow | undefined;
+  if (!row) return undefined;
+  const entry = registry().get(row.id);
+  return toView(row, Boolean(entry), nextTickAtOf(entry));
+}
+
 export function listSessions(limit = 40): SessionView[] {
   const rows = db()
     .prepare(`SELECT ${COLUMNS} FROM sessions ORDER BY started_at DESC LIMIT ?`)
@@ -927,6 +1219,8 @@ export async function stopSession(sessionId: string, reason?: string): Promise<S
   }
 
   entry.stopRequested = stopped;
+  entry.preparation.abort();
+  entry.stopStatus = "aborted";
   // No session yet means the twins are still being stood up. The driver picks
   // the request up the moment there is something to stop, and this returns now
   // rather than holding the request open for a ninety-second `next dev` boot.
@@ -937,6 +1231,37 @@ export async function stopSession(sessionId: string, reason?: string): Promise<S
     // after this returns.
     await entry.scored;
   }
+  return sessionStatus(sessionId)?.session ?? null;
+}
+
+/** Harness finalisation waits for artifact capture and scoring, not just stop acknowledgement. */
+export async function finalizeSession(
+  sessionId: string,
+  input: { status: "aborted" | "failed"; reason?: string },
+): Promise<SessionView | null> {
+  const row = readRow(sessionId);
+  if (!row) return null;
+  const entry = registry().get(sessionId);
+  if (!entry) {
+    if (["queued", "running", "judging"].includes(row.status)) sweepOrphanSessions();
+    return sessionStatus(sessionId)?.session ?? null;
+  }
+  // A naturally completed day being judged keeps its status. Retrying cleanup
+  // cannot turn that day into an aborted run or start a second assessment.
+  if (row.status === "queued" || row.status === "running") {
+    if (entry.stopRequested === null) {
+      entry.preparation.abort();
+      entry.stopRequested = input.reason ?? (input.status === "failed"
+        ? "the external harness failed" : "the external harness stopped the session");
+      entry.stopStatus = input.status;
+    }
+    if (entry.session) await entry.session.finalize({
+      reason: entry.stopRequested,
+      status: entry.stopStatus,
+      ...(entry.stopStatus === "failed" ? { error: entry.stopRequested } : {}),
+    });
+  }
+  await entry.done;
   return sessionStatus(sessionId)?.session ?? null;
 }
 

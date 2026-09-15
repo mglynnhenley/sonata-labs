@@ -45,6 +45,13 @@ export function saveEpisode(
   spec: EpisodeSpec,
   world: { id: string; name: string },
   templateId: string | null,
+  /**
+   * Keep the original creation time when this is an EDIT rather than a create.
+   * Both stores upsert on `spec.id`, so re-saving is a genuine update — but
+   * `listDocs` orders by `created_at DESC`, and stamping "now" on every edit
+   * would reshuffle the Scenarios page each time somebody fixed a typo.
+   */
+  createdAt?: number,
 ): EpisodeRecord {
   const record: EpisodeRecord = {
     id: spec.id,
@@ -60,7 +67,7 @@ export function saveEpisode(
       criteria: spec.success.checklist.length,
       ticks: plannedTicks(spec),
     },
-    createdAt: Date.now(),
+    createdAt: createdAt ?? Date.now(),
     lastRun: null,
     spec,
   };

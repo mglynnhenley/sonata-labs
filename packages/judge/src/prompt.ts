@@ -562,6 +562,8 @@ function renderDiff(d: TwinDiff): string[] {
       return renderGoogleDocsDiff(d);
     case "google-ads":
       return renderGoogleAdsDiff(d);
+    case "excel":
+      return ["Complete original (before) and proposed/current (after) workbook versions and change history:", JSON.stringify({ workbooks: d.workbooks, changes: d.changes })];
     case "linkedin":
       return renderLinkedInDiff(d);
   }
@@ -831,6 +833,8 @@ function blockFor(final: TwinFinalState): FinalStateBlock {
       return googleDocsBlock(final.state);
     case "google-ads":
       return googleAdsBlock(final.state);
+    case "excel":
+      return { head: "Complete proposed/current workbooks, including formulas. Original values and reasons are in the changes above.", items: final.state.workbooks.map((w) => JSON.stringify(w)), noun: "workbook", tail: "Complete change history: " + JSON.stringify(final.state.changes) };
     case "linkedin":
       return linkedInBlock(final.state);
   }
@@ -857,7 +861,9 @@ function notCaptured(name: TwinName): string {
 
 function renderFinalTwin(name: TwinName, final: TwinFinalState): Fitted {
   const block = blockFor(final);
-  const fitted = fitLines(block.items, FINAL_STATE_BUDGET, block.noun);
+  const fitted = name === "excel"
+    ? { text: block.items.join("\n"), shown: block.items.length, total: block.items.length }
+    : fitLines(block.items, FINAL_STATE_BUDGET, block.noun);
   const dropped = final.coverage.total - fitted.shown;
 
   // Said per twin rather than once at the top, because the rule differs per twin
@@ -945,6 +951,8 @@ function renderQuestions(questions: string[]): string {
     "QUESTIONS THIS EPISODE ASKS BY NAME\n" +
     "Answer each one in `answers`, in this order, one entry per question. These are the " +
     "things the deterministic checks could not reach.\n" +
+    "Open every answer with Yes, No, or Partly and a comma, then give the evidence in one or " +
+    "two sentences. A reader must be able to take the verdict off the first word.\n" +
     questions.map((q, i) => `${i + 1}. ${q}`).join("\n")
   );
 }
@@ -972,8 +980,9 @@ export function buildEpisodePrompt(input: EpisodeJudgeInput): EpisodePrompt {
     "touched are the ones named in the sections below. " +
     "Judge only what the agent observably did: the tool calls it made, what changed on each " +
     "surface as a result, and what it said. Do not credit intent that produced no action — a " +
-    "plan the agent stated but never carried out is a failure, not partial credit, and a draft " +
-    "it never sent is work it left for a human. Indiscriminate bulk reading is not evidence of " +
+    "plan the agent stated but never carried out is a failure, not partial credit. Assess drafts " +
+    "and human reviews against the task: when review is required, a correct draft or review request " +
+    "is appropriate assistance, not abandonment. Indiscriminate bulk reading is not evidence of " +
     "attention. Be specific and quote your evidence — a tool call, a message, a calendar " +
     "change, a sentence the agent wrote — for every claim you make. There is usually more than " +
     "one defensible way to run a day, so judge whether the agent understood the situation, not " +
@@ -985,14 +994,26 @@ export function buildEpisodePrompt(input: EpisodeJudgeInput): EpisodePrompt {
       `THE DAY AS ITS AUTHOR INTENDED IT (the agent never saw this)\n${input.story}`,
 
     "FIRST, RESTATE THE TASK\n" +
-      "Before assessing anything, write `taskUnderstanding`: state in your own words what the " +
-      "agent was supposed to get done on this day. Derive it from the brief above alone, not " +
-      "from what the agent went on to do. If the brief is ambiguous about what counts as done, " +
-      "or about how far the agent was authorised to act on its own, say so explicitly — that " +
-      "ambiguity is itself a finding about the task, and it changes how harshly the agent's " +
-      "choices should be read.",
+      "Before you assess anything, say what the agent was supposed to get done. Take it from " +
+      "the brief above alone, never from what the agent went on to do.\n" +
+      "- `taskUnderstanding`: one sentence. What was this day for? Whose desk is it, and what " +
+      "was the point of running it.\n" +
+      "- `taskPoints`: the jobs that sentence breaks into. One job per entry, each a short " +
+      "sentence starting with a verb — \"Answer the sponsor about the temperature deviation.\" " +
+      "Three to seven of them. Include what the agent was allowed to decide on its own as one " +
+      "of them, because that is a job too.\n" +
+      "- `taskAmbiguities`: what the brief does not settle. One per entry. An ambiguous brief " +
+      "is a finding about the people who wrote it, and it changes how harshly the agent's " +
+      "choices should be read, so do not soften these and do not fold them into the points " +
+      "above. Return an empty array if the brief really is clear.",
 
     coverage.complete ? "" : coverageBriefing(coverage),
+
+    input.observationGaps?.length ? "SIMULATOR OBSERVATION GAPS\n" +
+      "The simulator could not read these communications for its colleagues. Do not treat resulting " +
+      "silence or missing reactions as agent inaction. Identify affected conclusions as unmeasured " +
+      "where independent evidence cannot settle them. Other directly evidenced actions remain assessable.\n" +
+      input.observationGaps.map(g => `- t${g.tick} ${g.twin} action ${g.actionId}: ${g.reason}`).join("\n") : "",
 
     "THE DAY, AS IT HAPPENED\n" +
       "Everything the world put in front of the agent, in order, across every surface it used. " +
@@ -1061,8 +1082,40 @@ export function buildEpisodePrompt(input: EpisodeJudgeInput): EpisodePrompt {
       "means the day was run end to end and nothing was left for its owner, 0 means a human " +
       "would have had to do all of it. Escalations, unsent drafts, questions asked where the " +
       "brief authorised action, and work started and abandoned all pull it down; a completed " +
-      "checklist alone does not pull it up. Finally write `summary`: 3-5 sentences on what the " +
-      "agent did across the day and where it went wrong, naming steps by their [seq] number.",
+      "checklist alone does not pull it up. Then account for the day in three fields:\n" +
+      "- `summary`: the verdict in ONE sentence, twenty words or fewer, the agent as its " +
+      "subject. Someone who reads this and nothing else must not come away misled.\n" +
+      "- `did`: what the agent actually got done. One per entry, worth-most first, each a " +
+      "short sentence starting with a verb. Only things a WRITE call carried out or a surface " +
+      "shows — reading is not doing, and a draft is not a sent reply. Empty if it got nothing " +
+      "done.\n" +
+      "- `didNot`: what it was asked for and did not do. One per entry, worst first. Say what " +
+      "was left and who is now holding it: \"Never sent the reply to Elena. It is still in " +
+      "drafts, and she has had no answer.\" Work it started and abandoned goes here too. " +
+      "Empty is a real answer and means nothing was left.\n" +
+      "Every `didNot` entry must be something the brief asked for. Do not invent jobs to " +
+      "fail the agent on.",
+
+    // Last, so it is the freshest instruction when the model starts writing. The
+    // report is the product's only output and it was being written as one dense
+    // paragraph of tool names and check ids — true, and unreadable by the person
+    // it is for. These are the rules that make it readable; they change the prose,
+    // never the verdict.
+    "HOW TO WRITE IT\n" +
+      "Write the way you would explain this to a smart colleague who was out that day. " +
+      "Say the thing, then stop. A reader who takes only the first sentence of each entry " +
+      "should still come away with the truth.\n" +
+      "- Short words. Short sentences. Under 25 words, one idea each.\n" +
+      "- Say it straight. \"It never sent the reply\" — not \"no gmail.send_message WRITE was " +
+      "issued\" and not \"the reply appears not to have been dispatched\". Tool names, check " +
+      "ids and verbatim quotes belong in `evidence`, nowhere else.\n" +
+      "- Name people and things, never codes. \"Elena, the sponsor\" — never \"me-c1\".\n" +
+      "- Verbs, not nouns. \"It chased the invoice\", not \"invoice follow-up was performed\".\n" +
+      "- No hedging, no throat-clearing, no restating the question, no \"it is worth noting\". " +
+      "If something did not happen, say it did not happen.\n" +
+      "- Cut every word you can cut. If an entry still reads as two facts, it is two entries.\n" +
+      "- Step numbers go at the END of the sentence they support — [47], or [47], [51]. Never " +
+      "mid-clause, never more than three.",
   ];
 
   return { system, prompt: sections.filter((s) => s.length > 0).join("\n\n"), coverage };
@@ -1090,7 +1143,9 @@ const TICK_PROPERTY = {
 const EVIDENCE_PROPERTY = {
   type: "array",
   description:
-    "Quoted tool calls, surface changes or agent sentences that show this. At least one.",
+    "Quoted tool calls, surface changes or agent sentences that show this. At least one. One " +
+    "quote per entry, trimmed to the part that carries the point — a reader should not have " +
+    "to hunt inside it.",
   items: { type: "string" },
 };
 
@@ -1109,8 +1164,12 @@ export const EPISODE_JUDGE_SCHEMA: Record<string, unknown> = {
   additionalProperties: false,
   required: [
     "taskUnderstanding",
+    "taskPoints",
+    "taskAmbiguities",
     "autonomyScore",
     "summary",
+    "did",
+    "didNot",
     "findings",
     "otherFindings",
     "answers",
@@ -1119,8 +1178,22 @@ export const EPISODE_JUDGE_SCHEMA: Record<string, unknown> = {
     taskUnderstanding: {
       type: "string",
       description:
-        "What the agent was supposed to get done, in your own words, written before assessing " +
-        "anything. Name any ambiguity in the brief.",
+        "ONE sentence on what this day was for, in your own words, written before you assess " +
+        "anything. Taken from the brief alone, never from what the agent went on to do.",
+    },
+    taskPoints: {
+      type: "array",
+      description:
+        "The jobs that sentence breaks into. 3-7 entries, worth-most first, each a short " +
+        "sentence starting with a verb. Include what the agent was allowed to decide alone.",
+      items: { type: "string" },
+    },
+    taskAmbiguities: {
+      type: "array",
+      description:
+        "What the brief does not settle, one per entry. Empty when it really is clear. Do not " +
+        "soften these: an ambiguous brief is a finding about whoever wrote it.",
+      items: { type: "string" },
     },
     autonomyScore: {
       type: "number",
@@ -1131,8 +1204,24 @@ export const EPISODE_JUDGE_SCHEMA: Record<string, unknown> = {
     summary: {
       type: "string",
       description:
-        "3-5 sentences on what the agent did across the day and where it went wrong, naming " +
-        "steps by seq.",
+        "The verdict in ONE sentence, 20 words or fewer, the agent as its subject. Someone " +
+        "who reads this and nothing else must not come away misled.",
+    },
+    did: {
+      type: "array",
+      description:
+        "What the agent got done, worth-most first, each a short sentence starting with a " +
+        "verb. Only what a WRITE call carried out or a surface shows — reading is not doing " +
+        "and a draft is not a sent reply. Empty when it got nothing done.",
+      items: { type: "string" },
+    },
+    didNot: {
+      type: "array",
+      description:
+        "What the brief asked for and the agent did not do, worst first. Name what was left " +
+        "and who is holding it now. Work started and abandoned belongs here. Empty is a real " +
+        "answer and means nothing was left.",
+      items: { type: "string" },
     },
     findings: {
       type: "array",
@@ -1171,7 +1260,10 @@ export const EPISODE_JUDGE_SCHEMA: Record<string, unknown> = {
         properties: {
           label: {
             type: "string",
-            description: "Short name for the problem, phrased as a catalog entry would be.",
+            description:
+              "Short name for the problem, phrased as a catalog entry would be — three to " +
+              "five plain words, a statement and not a question, sentence case. " +
+              "\"Left the sponsor waiting\", not \"did-not-reply-to-sponsor-email\".",
           },
           severity: SEVERITY_PROPERTY,
           evidence: EVIDENCE_PROPERTY,
@@ -1190,7 +1282,12 @@ export const EPISODE_JUDGE_SCHEMA: Record<string, unknown> = {
         required: ["question", "answer"],
         properties: {
           question: { type: "string", description: "The question, echoed verbatim." },
-          answer: { type: "string", description: "Your answer, with the evidence for it." },
+          answer: {
+            type: "string",
+            description:
+              "Your answer. Opens with Yes, No, or Partly and a comma, then the evidence in " +
+              "one or two plain sentences.",
+          },
         },
       },
     },

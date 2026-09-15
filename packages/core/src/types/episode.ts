@@ -448,6 +448,8 @@ export interface DirectorPersona {
   responsiveness: number;
   /** Ticks between being addressed and answering. 0 means same tick. */
   replyDelayTicks: number;
+  /** Fixed reply blackouts, [from, to) in scenario ticks. Pending replies wait until free. */
+  unavailableTicks?: Array<{ from: number; to: number }>;
   /** Surfaces this persona will answer on; a client never appears in Slack. */
   surfaces: TwinName[];
   /** Extra standing instruction beyond `Person.voice`, e.g. "will not commit to a date". */
@@ -645,7 +647,7 @@ export interface Termination {
   stopWhenAllMustPass: boolean;
   /** Hard tick cap. Absent means `clock.ticks`; present, the lower of the two wins. */
   maxTicks?: number;
-  /** Consecutive ticks with no agent tool call that end the run. */
+  /** Consecutive quiet ticks that trigger a diagnostic note; silence never ends the day. */
   idleTicks: number;
   /** Wall-clock guard, independent of simulated time. */
   maxWallClockMs: number;

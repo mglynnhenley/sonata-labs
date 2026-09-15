@@ -748,6 +748,7 @@ const UNITS: Record<
   "google-docs": { unit: "documents", of: (c) => c.documents },
   "google-ads": null,
   linkedin: { unit: "posts", of: (c) => c.posts },
+  excel: { unit: "workbooks", of: (c) => c.workbooks ?? 0 },
 };
 
 /**

@@ -231,7 +231,7 @@ export function calendarTools(http: TwinHttp): EngineTool[] {
         const calendarId = await calendarFor(input);
         const ids = [calendarId, ...strList(input.attendees)];
         const res = await http.post<{
-          calendars?: Record<string, { busy?: Array<{ start?: string; end?: string }> }>;
+          calendars?: Record<string, { busy?: Array<{ start?: string; end?: string }>; errors?: Array<{ reason?: string }> }>;
         }>(`${api}/freeBusy`, {
           timeMin: str(input.timeMin),
           timeMax: str(input.timeMax),
@@ -239,7 +239,11 @@ export function calendarTools(http: TwinHttp): EngineTool[] {
         });
 
         const busy: Block[] = [];
-        for (const entry of Object.values(res.calendars ?? {})) {
+        for (const id of new Set(ids)) {
+          const entry = res.calendars?.[id];
+          if (!entry || entry.errors?.length || !Array.isArray(entry.busy)) {
+            throw new Error(`Availability is unknown for ${id}; no free slots can be confirmed. Read the available calendars or ask for availability.`);
+          }
           for (const b of entry.busy ?? []) {
             const start = Date.parse(str(b.start));
             const end = Date.parse(str(b.end));

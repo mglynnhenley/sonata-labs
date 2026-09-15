@@ -3,6 +3,8 @@ import type {
   CalendarSnapshot,
   EpisodeJudgeReport,
   EpisodeRun,
+  ExcelSnapshot,
+  ExcelChange,
   GmailSnapshot,
   GoogleAdsSnapshot,
   GoogleDocsSnapshot,
@@ -57,6 +59,7 @@ export const TWIN_WORD: Record<TwinName, string> = {
   "google-docs": "Docs",
   "google-ads": "Ads",
   linkedin: "LinkedIn",
+  excel: "Excel",
 };
 
 /** One number about the state at close. */
@@ -83,6 +86,9 @@ export interface OpenItem {
 export interface TwinEnd {
   twin: TwinName;
   counts: EndCount[];
+  /** Workbook versions and their recorded history, never classified as loose ends. */
+  workbooks?: Array<{ id: string; title: string; revision: number; sheets: number }>;
+  reviewHistory?: ExcelChange[];
   open: OpenItem[];
   /** Open items past the cap, so a short list never reads as a short problem. */
   more: number;
@@ -580,6 +586,28 @@ function linkedInEnd(after: LinkedInSnapshot): TwinEnd {
   };
 }
 
+/** A revision is an observed state, not evidence that a workbook is correct. */
+function excelEnd(after: ExcelSnapshot): TwinEnd {
+  return {
+    twin: "excel",
+    counts: [
+      { label: agree(after.workbooks.length, "workbook"), value: after.workbooks.length, flag: false },
+      { label: agree(after.changes.length, "recorded change"), value: after.changes.length, flag: false },
+    ],
+    workbooks: after.workbooks.map((workbook) => ({
+      id: workbook.id,
+      title: workbook.title,
+      revision: workbook.revision,
+      sheets: workbook.sheets.length,
+    })),
+    reviewHistory: after.changes,
+    open: [],
+    more: 0,
+    settled: "",
+    scope: "Workbook revisions and review history are read from the closing snapshot. History can include changes made before this run or by a human reviewer; it is not a count of the agent's actions. These records do not establish that values, formulas or reporting conclusions are correct.",
+  };
+}
+
 // ---------------------------------------------------------------------------
 // What the assessor was shown of it
 // ---------------------------------------------------------------------------
@@ -622,6 +650,7 @@ const TWIN_ORDER: readonly TwinName[] = [
   "google-docs",
   "google-ads",
   "linkedin",
+  "excel",
 ];
 
 function endOf(after: TwinSnapshot, ctx: Ctx): TwinEnd {
@@ -640,6 +669,8 @@ function endOf(after: TwinSnapshot, ctx: Ctx): TwinEnd {
       return googleAdsEnd(after);
     case "linkedin":
       return linkedInEnd(after);
+    case "excel":
+      return excelEnd(after);
   }
 }
 
@@ -737,6 +768,23 @@ export function endStateMarkdown(report: EndOfDayReport): string {
   for (const twin of report.twins) {
     p();
     p(`**${TWIN_WORD[twin.twin]}** — ${countLine(twin)}.`);
+    if (twin.workbooks) {
+      p();
+      for (const workbook of twin.workbooks) {
+        p(`- ${workbook.title} — revision ${workbook.revision}, ${workbook.sheets} ${agree(workbook.sheets, "worksheet")}.`);
+      }
+      p();
+      p("**Recorded review history**");
+      p();
+      if (!twin.reviewHistory?.length) p("No changes are recorded in the closing snapshot.");
+      for (const change of twin.reviewHistory ?? []) {
+        const title = twin.workbooks.find((workbook) => workbook.id === change.workbookId)?.title ?? change.workbookId;
+        p(`- ${title}, revision ${change.revision} · ${change.actor} · ${change.at}`);
+        p(`  ${change.sheetId} / ${change.rowId} / ${change.column}: ${JSON.stringify(change.before)} → ${JSON.stringify(change.after)}.`);
+        p(`  Reason: ${change.reason}`);
+        p(`  Evidence: ${change.evidence}`);
+      }
+    }
     if (twin.open.length === 0) {
       if (twin.settled) {
         p();

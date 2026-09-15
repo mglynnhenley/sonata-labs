@@ -1,3 +1,4 @@
+import { bodyObservation, observeActions } from "./observations";
 import {
   episodeTwins,
   plannedTicks,
@@ -26,7 +27,6 @@ import {
   injectBody,
   missingFacts,
   scheduleBeats,
-  summarizeBody,
   unreachableBeats,
   type RefRegistry,
 } from "./beats";
@@ -35,13 +35,12 @@ import {
   createDirector,
   type DeltaDetail,
   type Director,
-  type UpcomingBeat,
 } from "./director";
-import { recentHistory, tickDigest } from "./timeline";
+import { colleagueHistory, tickDigest } from "./timeline";
 import { attributeActions, newTrace, pairRowsToSteps, traceCost, withTrace } from "./trace";
 import { errorMessage } from "./http";
 import { byTwin } from "./adapters";
-import type { Agent, AgentContext } from "./agent";
+import { AgentCallError, type Agent, type AgentContext } from "./agent";
 
 // THE TICK LOOP.
 //
@@ -258,28 +257,12 @@ async function playEvents(
     if (outcome.handle) deps.refs.record(event.id, outcome.handle);
     played.push({
       ...event,
+      observation: outcome.error ? undefined : bodyObservation(event, deps.spec.world),
       ...(outcome.handle ? { handle: outcome.handle } : {}),
       ...(outcome.error ? { error: outcome.error } : {}),
     });
   }
   return played;
-}
-
-/**
- * One line per beat still to come, so the world does not pre-empt the script.
- *
- * Carries the twin as well as the line, because each character is only shown the
- * surfaces they are on: a client with no Slack account must not be handed the
- * text of a Slack beat, not even as something to avoid pre-empting.
- */
-function upcomingLines(deps: TickDeps, after: number): UpcomingBeat[] {
-  return deps.spec.beats
-    .filter((b) => b.tick > after && b.tick < deps.clock.ticks)
-    .sort((a, b) => a.tick - b.tick)
-    .map((b) => ({
-      twin: b.twin,
-      line: `${deps.clock.labelAt(b.tick)} — ${summarizeBody(b, deps.spec.world)}`,
-    }));
 }
 
 export interface TickInput {
@@ -305,7 +288,7 @@ async function readDeltas(deps: TickDeps, cursors: Map<TwinName, number>): Promi
   for (const [name, adapter] of Object.entries(deps.used) as [TwinName, TwinAdapter][]) {
     try {
       const since = cursors.get(name) ?? 0;
-      const fresh = await adapter.auditSince(since);
+      const fresh = await observeActions(adapter, await adapter.auditSince(since), deps.spec.world);
       for (const row of fresh) {
         rows.push(row);
         if (row.id > (cursors.get(name) ?? 0)) cursors.set(name, row.id);
@@ -423,11 +406,10 @@ export async function runTick(deps: TickDeps, input: TickInput): Promise<TickRec
     tick,
     simTimeISO,
     simTimeLabel: deps.clock.labelAt(tick),
-    history: recentHistory(input.ticks, deps.historyLimit),
+    history: colleagueHistory(input.ticks, deps.historyLimit),
     deltas,
     deltaDetail: detailFor(input.ticks[input.ticks.length - 1], deltas),
     beatsThisTick: beatsFired,
-    upcoming: upcomingLines(deps, tick),
   });
   const directorEvents = await playEvents(events, simTimeISO, deps);
   const note = deps.director.lastNote();
@@ -441,8 +423,18 @@ export async function runTick(deps: TickDeps, input: TickInput): Promise<TickRec
     digest: tickDigest(beatsFired, directorEvents),
     ticksLeft: Math.max(0, deps.clock.last() - tick),
   };
-  const agentSteps = await deps.agent.act(ctx);
+  let agentSteps: AgentStep[];
+  let harnessError: string | undefined;
+  try {
+    agentSteps = await deps.agent.act(ctx);
+  } catch (err) {
+    if (!(err instanceof AgentCallError)) throw err;
+    agentSteps = err.steps;
+    harnessError = err.message;
+    notes.push(`Harness error: ${harnessError}`);
+  }
 
+  for (const row of deltas) if (row.observationError) notes.push(row.observationError);
   for (const beat of beatsFired) if (beat.error) notes.push(`beat ${beat.beatId}: ${beat.error}`);
   for (const event of directorEvents) if (event.error) notes.push(`event ${event.id}: ${event.error}`);
 
@@ -451,10 +443,12 @@ export async function runTick(deps: TickDeps, input: TickInput): Promise<TickRec
     simTimeISO,
     startedAt,
     endedAt: deps.now(),
+    observedActions: deltas,
     beatsFired,
     directorEvents,
     agentSteps,
     notes,
+    ...(harnessError ? { harnessError } : {}),
   };
 }
 
@@ -477,9 +471,6 @@ export interface StopState {
 export function stopReason(spec: EpisodeSpec, state: StopState, allMustPass: boolean): string | undefined {
   const t = spec.termination;
   if (t.stopWhenAllMustPass && allMustPass) return "every must-pass criterion was met";
-  if (state.idle >= t.idleTicks && t.idleTicks > 0) {
-    return `the agent did nothing for ${state.idle} consecutive interval(s)`;
-  }
   if (t.maxWallClockMs > 0 && state.elapsedMs >= t.maxWallClockMs) {
     return `the wall-clock budget of ${t.maxWallClockMs}ms ran out`;
   }
@@ -523,6 +514,7 @@ export async function runEpisode(opts: RunOptions): Promise<RunResult> {
   const startedAt = now();
 
   const run: EpisodeRun = {
+    worldContextVersion: "recipient-observations-v1",
     runId,
     specId: spec.id,
     specTitle: spec.title,
@@ -599,9 +591,16 @@ export async function runEpisode(opts: RunOptions): Promise<RunResult> {
         // the artifact is guaranteed to look at.
         if (tick === 0) record.notes.unshift(...warnings);
         run.ticks.push(record);
-        opts.onTick?.(record);
-
         idle = didSomething(record) ? 0 : idle + 1;
+        if (spec.termination.idleTicks > 0 && idle === spec.termination.idleTicks) {
+          record.notes.push(`No tool activity for ${idle} consecutive intervals; the scheduled day continues.`);
+        }
+        if (record.harnessError) {
+          run.status = "failed";
+          run.error = record.harnessError;
+          opts.onTick?.(record);
+          break;
+        }
         const reason = stopReason(
           spec,
           {
@@ -612,13 +611,16 @@ export async function runEpisode(opts: RunOptions): Promise<RunResult> {
           },
           opts.allMustPass?.(run.ticks) ?? false,
         );
-        if (reason) {
+        if (reason && tick + 1 < total) {
           record.notes.push(`run stopped early: ${reason}`);
+          if (!reason.includes("must-pass")) run.status = "aborted";
+          opts.onTick?.(record);
           break;
         }
+        opts.onTick?.(record);
       }
 
-      await opts.agent.wrapUp();
+      if (run.status === "running") await opts.agent.wrapUp();
     });
 
     const after = await snapshotAll(used);
@@ -641,7 +643,7 @@ export async function runEpisode(opts: RunOptions): Promise<RunResult> {
       }
     }
 
-    run.status = "done";
+    if (run.status === "running") run.status = "done";
     run.endedAt = now();
     return result();
   } catch (err) {

@@ -125,14 +125,24 @@ export function setApiKey(key: string | null): void {
   client = null;
 }
 
-/** The key that will be used, from the host first and the environment second. */
+/** The key that will be used, from the host first and the environment second.
+ *  A blank value is no value: `.env` templates ship `OPENROUTER_API_KEY=`, and
+ *  an empty string that survives here reads as "key present" everywhere. */
 export function apiKey(): string | null {
-  return configuredKey ?? process.env.OPENROUTER_API_KEY ?? null;
+  const key = configuredKey ?? process.env.OPENROUTER_API_KEY ?? null;
+  return key && key.trim() ? key : null;
+}
+
+/** True when OPENROUTER_BASE_URL points somewhere other than OpenRouter — a
+ *  local server (Ollama, LM Studio, vLLM) that ignores the Authorization
+ *  header and needs no key. */
+export function isLocalBaseUrl(): boolean {
+  return !OPENROUTER_BASE_URL.includes("openrouter.ai");
 }
 
 export function getClient(): OpenAI {
   if (!client) {
-    const key = apiKey();
+    const key = apiKey() ?? (isLocalBaseUrl() ? "local" : null);
     if (!key) {
       throw new Error(
         "No OpenRouter key is set. Add one on the Settings page, or export OPENROUTER_API_KEY " +

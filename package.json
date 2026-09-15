@@ -30,7 +30,8 @@
     "test:calendar": "npm run test -w apps/calendar",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "check:twin": "tsx packages/engine/scripts/twin-contract-check.ts",
-    "check:seed": "tsx packages/world/scripts/seed-contract-check.ts"
+    "check:seed": "tsx packages/world/scripts/seed-contract-check.ts",
+    "dev:excel": "PORT=${PORT:-3950} npm run dev -w apps/excel"
   },
   "devDependencies": {
     "concurrently": "^10.0.4"

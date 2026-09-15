@@ -63,7 +63,7 @@ export async function PATCH(
       throw badRequestError("Request body must carry data.values as an object of attributes.");
     }
     const endpoint = new URL(req.url).pathname;
-    const now = Date.now();
+    const now = ctx.writeTimeMs;
     // Read before the write: the summary quotes the name the record had when the
     // agent acted on it.
     const displayName = recordDisplayName(db, obj.id, recordId);

@@ -17,7 +17,7 @@ import {
   type BadgeStatus,
   type Column,
 } from "@sonata/ui";
-import type { RunStatus, TwinName } from "@sonata/core";
+import type { RunStatus } from "@sonata/core";
 import { ago, elapsed, percent, simClock } from "@/lib/format";
 import { StaleNotice } from "../../_components/StaleNotice";
 import { useGo } from "../../_components/useGo";
@@ -60,10 +60,10 @@ const LABEL: Record<RunStatus, string> = {
 export type SessionsClientProps = {
   initial: SessionsFeed;
   scenarios: readonly SessionScenario[];
-  twins: readonly { twin: TwinName; url: string; ok: boolean; detail: string }[];
+  initialEpisodeId?: string;
 };
 
-export function SessionsClient({ initial, scenarios, twins }: SessionsClientProps) {
+export function SessionsClient({ initial, scenarios, initialEpisodeId }: SessionsClientProps) {
   const router = useRouter();
   const go = useGo();
   const { toast } = useToast();
@@ -95,7 +95,7 @@ export function SessionsClient({ initial, scenarios, twins }: SessionsClientProp
     <div className="sn-stack-section">
       <PageHeader
         title="Sessions"
-        subtitle="A session is a simulated workday running at an agent Sonata never calls. Emails land, people answer, the calendar moves — on a wall clock, at whatever speed you choose. Your agent notices by checking its own inbox, and everything it does is scored the same way a benchmark run is."
+        subtitle="Try a private simulated workday yourself. Scripted emails and events arrive at the speed you choose, and your saved work appears in the session report."
         actions={
           live[0] ? (
             // A real anchor, so the live session can be opened in its own tab.
@@ -122,11 +122,12 @@ export function SessionsClient({ initial, scenarios, twins }: SessionsClientProp
         />
       ))}
 
-      <ConnectPanel twins={twins} />
+      <ConnectPanel />
 
       <StartSessionPanel
         scenarios={scenarios}
         starting={starting}
+        initialEpisodeId={initialEpisodeId}
         onStart={(input) => void start(input)}
       />
 

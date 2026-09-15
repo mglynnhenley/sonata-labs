@@ -88,6 +88,19 @@ describe("resolveSlackSeed", () => {
 describe("resolveCalendarSeed", () => {
   const wire = resolveCalendarSeed(built.world, built.calendar, NOW);
 
+  it("addresses shared personal calendars by colleague email without duplicating the owner's primary id", () => {
+    const [me, colleague] = built.world.cast;
+    const seeded = resolveCalendarSeed(built.world, { calendars: [
+      { name: "Main", ownerPersonId: me.id, description: "" },
+      { name: me.name, ownerPersonId: me.id, description: "Extra" },
+      { name: colleague.name, ownerPersonId: colleague.id, description: "Personal" },
+      { name: "Hiring", ownerPersonId: colleague.id, description: "Shared" },
+    ], events: [] }, NOW);
+    expect(seeded.calendars[0].id).toBe(me.email);
+    expect(seeded.calendars[2].id).toBe(colleague.email);
+    expect(new Set(seeded.calendars.map(c => c.id)).size).toBe(4);
+  });
+
   it("addresses the owner's primary calendar by their email, as Google does", () => {
     expect(wire.ownerEmail).toBe("priya.raman@northwindledger.com");
     expect(wire.calendars[0].primary).toBe(true);
@@ -253,12 +266,20 @@ describe("resolveLinkedInSeed", () => {
 });
 
 describe("buildSeedRequest", () => {
+  it("requires an explicit workbook seed and preserves its records", () => {
+    expect(() => buildSeedRequest(built, "excel", NOW)).toThrow(/no excel history/);
+    const workbook = { id: "review", title: "Institution workbook", revision: 1, sheets: [{ id: "investors", name: "Investors", columns: [{ key: "id", label: "Investor ID", type: "text" as const }], rows: [{ id: "00101", values: { id: "00101" } }] }] };
+    const request = buildSeedRequest({ ...built, excel: { workbooks: [workbook] } }, "excel", NOW);
+    expect(request.twin).toBe("excel");
+    expect(request.seed).toMatchObject({ world: built.world, workbooks: [workbook], promoteToSnapshot: true });
+  });
+
   it("is pure: the same world and instant build the same body", () => {
     expect(buildSeedRequest(built, "gmail", NOW)).toEqual(buildSeedRequest(built, "gmail", NOW));
   });
 
   it("labels the body with the twin it is for, so a mis-route is a 400", () => {
-    for (const twin of TWIN_NAMES) {
+    for (const twin of TWIN_NAMES.filter(t => t !== "excel")) {
       const request = buildSeedRequest(built, twin, NOW);
       expect(request.twin).toBe(twin);
       // Every twin gets the whole shared world — that is what stops three twins
@@ -274,7 +295,7 @@ describe("buildSeedRequest", () => {
   // therefore resolves something, and every one of them resolves it from the
   // same cast.
   it("builds a real seed for every twin, out of the one world", () => {
-    for (const twin of TWIN_NAMES) {
+    for (const twin of TWIN_NAMES.filter(t => t !== "excel")) {
       const seed = buildSeedRequest(built, twin, NOW).seed;
       expect(seed.nowISO).toBe(new Date(NOW).toISOString());
       expect(seed.world.cast.map((p) => p.id)).toEqual(["priya", "marcus", "gerald"]);

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { createAgent, agentSystemPrompt, type AgentContext } from "../src/agent";
+import { createAgent, agentSystemPrompt, AgentCallError, type AgentContext } from "../src/agent";
 import type { ChatOptions, OpenAI } from "../src/llm";
 import { fn, type EngineTool, type ToolInput } from "../src/tools/types";
 import { newTrace, withTrace } from "../src/trace";
@@ -106,9 +106,74 @@ describe("createAgent", () => {
     // The tick prompt says a surface changed and never what it says — and says
     // what the agent has left open, which on a day it has written nothing is
     // still said, rather than left to read as "nothing to do".
-    expect(String(second[3].content)).toBe(
-      "It is 09:15.\nNEW — new mail in the inbox\nSTILL OPEN — your list is empty.",
-    );
+    expect(String(second[3].content)).toContain("on 2026-08-04 (UTC+00:00)");
+    expect(String(second[3].content)).toContain("NEW — new mail in the inbox\nSTILL OPEN — your list is empty.");
+  });
+
+  it("shortens a long tool result once its interval is over, and keeps the current one whole", async () => {
+    const big = { rows: "x".repeat(20_000) };
+    const tool: EngineTool = {
+      name: "read_workbook",
+      twin: "excel",
+      isMutation: false,
+      def: fn("read_workbook", "read", { type: "object", properties: {} }),
+      run: () => Promise.resolve(big),
+    };
+    const { chat, asked } = scriptedChat([
+      { tool_calls: [toolCall("c1", "read_workbook", {})] },
+      { content: "read it" },
+      { content: "afternoon" },
+    ]);
+    const agent = createAgent({ spec: spec(), tools: [tool], chat });
+
+    await agent.act(ctx({ tick: 0 }));
+    // Within the interval the model saw the whole result.
+    const sameInterval = asked[1].messages.find((m) => m.role === "tool");
+    expect(String(sameInterval?.content).length).toBeGreaterThan(20_000);
+
+    await agent.act(ctx({ tick: 1, simTimeLabel: "09:15" }));
+    const later = asked[2].messages;
+    const stub = later.find((m) => m.role === "tool");
+    expect(String(stub?.content).length).toBeLessThan(1_000);
+    expect(String(stub?.content)).toContain("removed to keep the conversation within the model's limit");
+    expect(String(stub?.content)).toContain("Call the tool again");
+    // The prompt says it happened; the tool call and its result are still paired.
+    expect(String(later[later.length - 1]!.content)).toContain("CONTEXT — 1 earlier tool result shortened");
+    expect(later.map((m) => m.role)).toEqual(["system", "user", "assistant", "tool", "assistant", "user"]);
+  });
+
+  it("drops the oldest intervals whole when the day outgrows the ceiling, and says which", async () => {
+    const { tool } = recordingTool("list_messages");
+    const { chat, asked } = scriptedChat([
+      { tool_calls: [toolCall("c1", "list_messages", {})] },
+      { content: "nine" },
+      { tool_calls: [toolCall("c2", "list_messages", {})] },
+      { content: "quarter past" },
+      { content: "half past" },
+    ]);
+    const agent = createAgent({
+      spec: spec(),
+      tools: [tool],
+      chat,
+      // Small enough that two intervals cannot both fit beside the system prompt.
+      contextPolicy: { keptToolChars: 100, maxHistoryChars: JSON.stringify(agentSystemPrompt(spec(), [tool])).length + 400 },
+    });
+
+    await agent.act(ctx({ tick: 0 }));
+    await agent.act(ctx({ tick: 1, simTimeLabel: "09:15" }));
+    await agent.act(ctx({ tick: 2, simTimeLabel: "09:30" }));
+
+    const third = asked[asked.length - 1].messages;
+    expect(third[0].role).toBe("system");
+    expect(String(third[1].content)).toMatch(/^\[Intervals 09:00–09:00 were removed from your context/);
+    expect(third.map((m) => String(m.content)).join("\n")).not.toContain("It is 09:00");
+    expect(third.map((m) => String(m.content)).join("\n")).toContain("It is 09:15");
+    // Dropping whole intervals never orphans a tool call: every assistant tool
+    // call still has its tool message right after it.
+    third.forEach((m, i) => {
+      if (m.role === "assistant" && "tool_calls" in m && m.tool_calls?.length) expect(third[i + 1]?.role).toBe("tool");
+    });
+    expect(String(third[third.length - 1]!.content)).toContain("1 earlier interval removed");
   });
 
   it("counts an escalation as its own kind, not as a tool call", async () => {
@@ -182,12 +247,37 @@ describe("createAgent", () => {
     expect(last.text).toBe("stopped after 3 steps in one interval");
   });
 
-  it("loses the tick, not the day, when the model call fails", async () => {
+  it("identifies a provider failure without fabricating an agent thought", async () => {
     const { tool } = recordingTool("list_messages");
     const chat = () => Promise.reject(new Error("provider timed out"));
-    const steps = await createAgent({ spec: spec(), tools: [tool], chat }).act(ctx());
-    expect(steps).toHaveLength(1);
-    expect(steps[0]).toMatchObject({ kind: "thought", text: "the model call failed: provider timed out" });
+    await expect(createAgent({ spec: spec(), tools: [tool], chat }).act(ctx()))
+      .rejects.toMatchObject({ name: "AgentCallError", message: "Agent model call failed: provider timed out", steps: [] });
+  });
+
+  it("preserves successful actions when a later model call fails", async () => {
+    const { tool } = recordingTool("send_reply", true);
+    let turn = 0;
+    const chat = async () => {
+      if (turn++) throw new Error("provider unavailable");
+      return { role: "assistant", content: null, tool_calls: [toolCall("c1", "send_reply", {})] } as OpenAI.ChatCompletionMessage;
+    };
+    const error = await createAgent({ spec: spec(), tools: [tool], chat }).act(ctx()).catch(e => e);
+    expect(error).toBeInstanceOf(AgentCallError);
+    expect(error.steps).toHaveLength(1);
+    expect(error.steps[0]).toMatchObject({ kind: "tool", name: "send_reply", isMutation: true });
+  });
+
+  it("provides the local date across midnight and the final-interval notice on a one-tick day", async () => {
+    const { chat, asked } = scriptedChat([{ content: "waiting" }, { content: "done" }]);
+    const day = spec({ clock: { startISO: "2026-09-02T23:45:00-04:00", ticks: 2, simMinutesPerTick: 15 } });
+    const agent = createAgent({ spec: day, tools: [], chat });
+    await agent.act(ctx({ simTimeISO: "2026-09-03T03:45:00.000Z", simTimeLabel: "23:45" }));
+    await agent.act(ctx({ tick: 1, simTimeISO: "2026-09-03T04:00:00.000Z", simTimeLabel: "00:00", ticksLeft: 0 }));
+    expect(String(asked[0].messages.at(-1)?.content)).toContain("23:45 on 2026-09-02 (UTC-04:00)");
+    expect(String(asked[1].messages.at(-1)?.content)).toContain("00:00 on 2026-09-03 (UTC-04:00)");
+    const one = scriptedChat([{ content: "done" }]);
+    await createAgent({ spec: spec(), tools: [], chat: one.chat }).act(ctx({ ticksLeft: 0 }));
+    expect(String(one.asked[0].messages.at(-1)?.content)).toContain("last interval of the day");
   });
 
   it("numbers steps monotonically across the whole day", async () => {
@@ -237,9 +327,8 @@ describe("createAgent", () => {
     await agent.act(ctx({ tick: 1, simTimeLabel: "09:15", digest: "Nothing new has arrived since the last check." }));
 
     const second = String(asked[2].messages[asked[2].messages.length - 1].content);
-    expect(second).toBe(
+    expect(second).toContain(
       [
-        "It is 09:15.",
         "NEW — Nothing new has arrived since the last check.",
         "STILL OPEN — your own list, oldest first:",
         "  [o1] waiting on Dana's answer about the refund (noted 09:00)",

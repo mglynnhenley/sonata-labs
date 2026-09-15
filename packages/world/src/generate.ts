@@ -1,4 +1,4 @@
-import type { ChannelSeed, Person, WorldSeed } from "@sonata/core";
+import type { ChannelSeed, Person, WorldSeed, ExcelWorkbook } from "@sonata/core";
 import { completeJSON, type CompleteJSON, type Effort } from "./llm";
 import {
   asSchema,
@@ -101,6 +101,8 @@ export interface GeneratedWorld {
   googleDocs: GoogleDocsSeed;
   googleAds: GoogleAdsSeed;
   linkedin: LinkedInSeed;
+  /** Explicit workbook fixtures; absent on older worlds, never invented during loading. */
+  excel?: { workbooks: ExcelWorkbook[] };
 }
 
 /**
@@ -707,13 +709,16 @@ export function normalizeLinkedInSeed(
 }
 
 /** Channels are authored once, in the Slack seed; the world reads them back. */
-function channelsFromSlack(slack: SlackSeed): ChannelSeed[] {
+function channelsFromSlack(slack: SlackSeed, declared: ChannelSeed[] = []): ChannelSeed[] {
+  // Privacy lives on WorldSeed, not SlackSeed. Rebuilding membership must not
+  // silently make an authored private diligence channel public.
+  const privacy = new Map(declared.map(c => [c.name, c.isPrivate]));
   return slack.channels.map((c, i) => ({
     id: channelId(c.name, i),
     name: c.name,
     purpose: c.purpose,
     members: c.members,
-    isPrivate: false,
+    isPrivate: privacy.get(c.name) ?? false,
   }));
 }
 
@@ -738,7 +743,7 @@ export function canonicalize(generated: GeneratedWorld): GeneratedWorld {
   const slack = normalizeSlackSeed(generated.slack, cast, mailboxOwner);
   return {
     ...generated,
-    world: { ...generated.world, channels: channelsFromSlack(slack) },
+    world: { ...generated.world, channels: channelsFromSlack(slack, generated.world.channels) },
     gmail: normalizeGmailSeed(generated.gmail, cast, mailboxOwner),
     slack,
     calendar: normalizeCalendarSeed(generated.calendar, cast, mailboxOwner),
