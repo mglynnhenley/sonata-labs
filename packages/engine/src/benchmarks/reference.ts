@@ -2,7 +2,7 @@ import type { AgentStep } from '@sonata/core';
 import type { Agent } from '../agent';
 import type { EngineTool } from '../tools/types';
 import { recordAgentSummary, recordToolCall, withTick } from '../trace';
-import type { ReferenceAction } from './types';
+import type { ReferenceAction } from '@sonata/desks';
 
 /** Deterministic reference policy, driven by runEpisode exactly like a model agent.
  * This verifies the environment. It is never represented as a model result. */

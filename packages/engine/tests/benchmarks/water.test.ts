@@ -5,9 +5,9 @@ import { join } from 'node:path';
 import { runEpisode } from '../../src/run';
 import { createDeskEnvironment } from '../../src/benchmarks/runtime';
 import { createReferenceAgent } from '../../src/benchmarks/reference';
-import { SqliteDeskStore } from '../../src/benchmarks/store';
-import { waterCase, waterDomain } from '../../src/benchmarks/water';
-import type { DeskCase } from '../../src/benchmarks/types';
+import { SqliteDeskStore } from '@sonata/desks';
+import { waterCase, waterDomain } from '@sonata/desks';
+import type { DeskCase } from '@sonata/desks';
 
 const dirs: string[] = [];
 const directory = () => { const d = mkdtempSync(join(tmpdir(), 'sonata-w01-')); dirs.push(d); return d; };

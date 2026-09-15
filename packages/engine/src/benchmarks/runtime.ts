@@ -5,8 +5,7 @@ import { validateClock, type BenchmarkReport, type EpisodeSpec } from '@sonata/c
 import { aggregateBenchmark } from '@sonata/judge/benchmark';
 import type { AgentContext } from '../agent';
 import { fn, type EngineTool } from '../tools/types';
-import { SqliteDeskStore } from './store';
-import type { DeskCase } from './types';
+import { SqliteDeskStore, type DeskCase } from '@sonata/desks';
 
 export interface EpisodeEnvironment {
   caseId: string;
