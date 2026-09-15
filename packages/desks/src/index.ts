@@ -10,18 +10,11 @@
 //
 // Nothing here knows about agents, ticks or the engine's clock. A domain is told
 // the simulated instant; it never decides one.
+//
+// Import from `./cases` rather than this barrel where a SQLite driver would be
+// unwelcome — the agent's tool bundle is built with an allowlist that says so.
 export type * from "./types";
 export { SqliteDeskStore } from "./store";
 export { waterCase, waterDomain } from "./water";
 export { electricityCase, electricityDomain } from "./electricity";
-
-import { waterCase } from "./water";
-import { electricityCase } from "./electricity";
-import type { DeskCase } from "./types";
-
-export const CONTINUITY_CASES: readonly DeskCase[] = [waterCase, electricityCase];
-
-/** By scenario id or case id — callers hold one or the other. */
-export function continuityCase(id: string): DeskCase | undefined {
-  return CONTINUITY_CASES.find((desk) => desk.spec.id === id || desk.domain.id === id);
-}
+export { CONTINUITY_CASES, continuityCase } from "./cases";

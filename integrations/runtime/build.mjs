@@ -7,8 +7,8 @@ import { assertCaptureUnchanged, captureSources, writeCaptured } from "./source.
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const output = path.join(root, ".context/runtime");
-const apps = ["gmail", "gmail-ui", "slack", "calendar", "attio", "google-docs", "google-ads", "linkedin", "excel"];
-const sourceDirectories = ["integrations/runtime", "packages/mcp/src", "packages/engine/src", "packages/core", "packages/ui", ...apps.map((app) => `apps/${app}`)];
+const apps = ["gmail", "gmail-ui", "slack", "calendar", "attio", "google-docs", "google-ads", "linkedin", "excel", "desk"];
+const sourceDirectories = ["integrations/runtime", "packages/mcp/src", "packages/engine/src", "packages/core", "packages/ui", "packages/desks/src", "packages/scenarios/src", ...apps.map((app) => `apps/${app}`)];
 function capture() {
   const manifests = ["package.json", "package-lock.json"];
   for (const area of ["apps", "packages"]) {
@@ -53,7 +53,7 @@ try {
   }
   // A workspace's source is copied separately, so package installation cannot accidentally
   // include the dashboard database, authored worlds, hidden files, or host native modules.
-  for (const dir of ["packages/core", "packages/ui", ...apps.map((app) => `apps/${app}`)]) {
+  for (const dir of ["packages/core", "packages/ui", "packages/desks", "packages/scenarios", ...apps.map((app) => `apps/${app}`)]) {
     for (const file of files.filter((file) => file.startsWith(`${dir}/`))) {
       writeCaptured(source, file, path.join(appsContext, "source", file));
     }
@@ -86,8 +86,9 @@ try {
     .filter(([, value]) => value.bytesInOutput > 0).map(([file]) => file).sort();
   const allowedSource = (file) => file.startsWith("node_modules/") || file.startsWith("packages/mcp/src/") ||
     file.startsWith("packages/engine/src/tools/") ||
+    file.startsWith("packages/desks/src/") || file.startsWith("packages/scenarios/src/") ||
     ["http.ts", "gmailMime.ts", "slackClient.ts", "adapters/shared.ts", "adapters/attio.ts"].some((name) => file === `packages/engine/src/${name}`) ||
-    ["ports.ts", "twin.ts", "excel.ts", "types/world.ts", "types/episode.ts"].some((name) => file === `packages/core/src/${name}`) ||
+    ["ports.ts", "twin.ts", "excel.ts", "clock.ts", "spec.ts", "cast.ts", "types/world.ts", "types/episode.ts"].some((name) => file === `packages/core/src/${name}`) ||
     file === "integrations/runtime/agent-entrypoint.ts";
   const unexpected = inputs.filter((file) => !allowedSource(file));
   if (unexpected.length) throw new Error(`The agent bundle includes unexpected source: ${unexpected.join(", ")}`);

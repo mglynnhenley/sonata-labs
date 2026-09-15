@@ -1,4 +1,7 @@
-import { CONTINUITY_CASES, type DeskTool } from "@sonata/desks";
+// `@sonata/desks/cases`, not the barrel: the agent bundle must not carry a
+// SQLite driver, and the barrel re-exports the store.
+import { CONTINUITY_CASES } from "@sonata/desks/cases";
+import type { DeskTool } from "@sonata/desks/types";
 import type { TwinHttp } from "../http";
 import { fn, type EngineTool } from "./types";
 

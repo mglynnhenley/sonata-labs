@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 
-const apps = new Set(["gmail", "gmail-ui", "slack", "calendar", "attio", "google-docs", "google-ads", "linkedin", "excel"]);
+const apps = new Set(["gmail", "gmail-ui", "slack", "calendar", "attio", "google-docs", "google-ads", "linkedin", "excel", "desk"]);
 const app = process.argv[2];
 if (!apps.has(app)) throw new Error("Choose a supported Sonata app.");
 const cwd = `/opt/sonata/apps/${app}`;
@@ -20,7 +20,8 @@ const run = (args) => new Promise((resolve, reject) => {
   child.once("error", reject);
   child.once("exit", (code, signal) => resolve(code ?? (signal ? 1 : 0)));
 });
-const initialized = app === "gmail-ui" ? 0 : await run(["/opt/sonata/node_modules/tsx/dist/cli.mjs", "src/cli/db-init.ts"]);
+const initializer = `${cwd}/src/cli/db-init.ts`;
+const initialized = existsSync(initializer) ? await run(["/opt/sonata/node_modules/tsx/dist/cli.mjs", "src/cli/db-init.ts"]) : 0;
 process.exitCode = initialized || (stopping ? 1 : await run([
   "/opt/sonata/node_modules/next/dist/bin/next", "dev", "--port", "3000", "--hostname", "0.0.0.0",
 ]));
