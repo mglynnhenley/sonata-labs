@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
-import { copyWorkplaceBaseline, bindWorkplaceUrls, awaitedWithAbort } from "../src/lib/engine/workplace";
+import { copyWorkplaceBaseline, bindWorkplaceUrls, awaitedWithAbort, prepareWorkplace } from "../src/lib/engine/workplace";
 
 describe("waiting for a shared image build", () => {
   it("cancels one run immediately while another waiter receives the completed build", async () => {
@@ -66,5 +66,18 @@ describe("workplace baselines", () => {
     const root = mkdtempSync(path.join(os.tmpdir(), "sonata-baseline-"));
     mkdirSync(path.join(root, "source"));
     expect(() => copyWorkplaceBaseline(path.join(root, "source"), path.join(root, "target"), true)).toThrow("No saved baseline");
+  });
+});
+
+describe("a workplace that serves a continuity week", () => {
+  it("refuses a desk with no case, and refuses a case id it does not recognise as one", async () => {
+    // Two different silent failures this prevents. A desk with no case serves no
+    // tools, which reads on the report as an agent that chose not to act. A case
+    // id from somewhere else reaches a container env var, so it is shaped-checked
+    // here rather than trusted.
+    await expect(prepareWorkplace("desk-no-case", ["desk"], false))
+      .rejects.toThrow(/must name the continuity case/);
+    await expect(prepareWorkplace("desk-bad-case", ["desk"], false, { deskCase: "../../etc" }))
+      .rejects.toThrow(/looks like E01/);
   });
 });

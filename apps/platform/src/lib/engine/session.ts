@@ -13,7 +13,7 @@ import {
   type TickRecord,
   type TwinName,
 } from "@sonata/core";
-import { createAdapters, createDirector, traceCost } from "@sonata/engine";
+import { createAdapters, createDeskControl, createDirector, traceCost } from "@sonata/engine";
 import {
   createSession,
   realMsPerTick,
@@ -424,6 +424,7 @@ export function startSession(input: StartSessionInput): SessionView {
   const workplace = prepareWorkplace(sessionId, twins, input.seedWorld === false, {
     signal: preparation.signal, maxWallClockMs: spec.termination.maxWallClockMs, scenario: { spec, seed: clone ?? null, timing },
     ...(timing.policy === "provider-operations-v1" ? { timing } : {}),
+    ...(spec.benchmark ? { deskCase: spec.benchmark.caseId } : {}),
   });
   workplace.catch(() => undefined);
   try {
@@ -753,9 +754,17 @@ async function drive(entry: LiveSession): Promise<void> {
       Object.entries(urls).map(([twin, baseUrl]) => [twin, { baseUrl, token: workplace.agentToken, controlToken: workplace.controlToken }]),
     )).filter((adapter) => entry.twins.includes(adapter.name));
 
+    // A continuity week needs its desk's trusted levers as well as its adapter:
+    // the adapter reads the ledger, the control plane moves the week and asks
+    // for the mark. Same service, same workplace, the other credential.
+    const desk = entry.spec.benchmark
+      ? createDeskControl({ baseUrl: urls.desk, token: workplace.agentToken, controlToken: workplace.controlToken })
+      : undefined;
+
     const session = createSession({
       spec: entry.spec,
       adapters,
+      ...(desk ? { desk } : {}),
       compression: entry.compression,
       timing: entry.timing,
       beforeCapture: async () => { await entry.timingController?.close(); },

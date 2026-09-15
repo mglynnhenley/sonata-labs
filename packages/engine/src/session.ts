@@ -41,6 +41,8 @@ import { colleagueHistory, runTimeline } from "./timeline";
 import { auditKey, newTrace, withTrace } from "./trace";
 import { adaptersForSpec, didSomething, specWarnings, type RunResult } from "./run";
 import { errorMessage } from "./http";
+import { aggregateBenchmark } from "@sonata/judge/benchmark";
+import type { DeskControl } from "./adapters/desk";
 
 // A SESSION: the same simulated workday, with the agent on the outside.
 //
@@ -173,6 +175,13 @@ export interface SessionOptions {
   onTick?: (record: TickRecord) => void;
   /** Close external admission and drain admitted requests before final capture. */
   beforeCapture?: () => Promise<void>;
+  /**
+   * The trusted levers of a continuity desk. Required when the spec carries a
+   * `benchmark`, and meaningless otherwise: without it the week's own schedule
+   * never fires, so the agent works a Monday morning that lasts all week and
+   * every deadline it misses is the harness's fault.
+   */
+  desk?: DeskControl;
 }
 
 /**
@@ -354,7 +363,12 @@ const CAVEATS = [
 // ---------------------------------------------------------------------------
 
 export function createSession(opts: SessionOptions): Session {
-  if (opts.spec.benchmark) throw new Error("Continuity prototypes require the managed episode runner and its desk tools; external sessions are not implemented for these cases.");
+  // A continuity week is only a week if something advances it. Refusing here,
+  // rather than running a session whose world never moves, keeps a silent
+  // harness failure from being filed as an agent that did nothing all week.
+  if (opts.spec.benchmark && !opts.desk) {
+    throw new Error(`Case ${opts.spec.benchmark.caseId} needs its desk control plane; a session cannot advance the week without one.`);
+  }
   const { spec, timer } = opts;
   const timing = normalizeSessionTiming(opts.timing);
   const actionDriven = timing.policy === "provider-operations-v1";
@@ -574,6 +588,15 @@ export function createSession(opts: SessionOptions): Session {
     run.ticks.push(tickRecord);
 
     try {
+      // 1b. THE WEEK'S OWN SCHEDULE, before anything else this interval.
+      //
+      // A continuity domain releases its facts and its counterparts' replies on
+      // an authored timetable. Those have to land before the agent's next
+      // opportunity, and they are not beats: nothing was injected, and no
+      // adapter saw them. A failure here is a harness fault, not a quiet
+      // morning, so it is noted and the interval continues.
+      await opts.desk?.advance(simTimeISO, "before");
+
       // 2. BEATS. Injected through the twins' sandbox routes, which are not audited —
       // which is exactly why the delta above is the agent's work and nobody else's.
       //
@@ -620,6 +643,12 @@ export function createSession(opts: SessionOptions): Session {
 
       for (const beat of beatsFired) if (beat.error) notes.push(`beat ${beat.beatId}: ${beat.error}`);
       for (const event of directorEvents) if (event.error) notes.push(`event ${event.id}: ${event.error}`);
+
+      // 4. The week's dispatches, after everyone has acted on this interval. A
+      // message the agent scheduled leaves here, not when it was written — which
+      // is the whole reason cancelling one before it goes is a thing an agent
+      // can get right or wrong.
+      await opts.desk?.advance(simTimeISO, "after");
     } catch (err) {
       tickRecord.harnessError = errorMessage(err);
       notes.push(`tick ${at} failed: ${tickRecord.harnessError}`);
@@ -991,6 +1020,39 @@ export function createSession(opts: SessionOptions): Session {
       const pre = before[name];
       const post = after[name];
       if (pre && post) run.snapshots[name] = { before: pre, after: post };
+    }
+
+    // The week's deterministic mark, taken after the last snapshot so it reads
+    // the same ledger the artifact preserves.
+    //
+    // `completion` is the honest one here. A week is `complete` only when every
+    // authored opportunity was observed and nothing failed; anything shorter is
+    // `partial`, which is how the domain knows to leave unreached criteria
+    // unmeasured rather than scoring them zero. A run that stopped at a spend
+    // guard did not do badly at Friday — it never saw Friday.
+    if (spec.benchmark && opts.desk) {
+      const observed = run.ticks.length;
+      const complete = captureSafe && status === "done" && observed === total;
+      const through = complete
+        ? spec.clock.endISO ?? clock.end()
+        : observed > 0 ? clock.isoAt(observed - 1) : null;
+      try {
+        const assessment = await opts.desk.assess(through);
+        run.benchmark = aggregateBenchmark({
+          caseId: assessment.caseId as "W01" | "E01",
+          criteria: assessment.criteria,
+          incidents: assessment.incidents,
+          limitations: assessment.limitations,
+          completedTicks: observed,
+          plannedTicks: total,
+          completion: status === "done" ? (complete ? "complete" : "partial") : "failed",
+          completedThrough: through,
+          snapshots: { before: "", after: "" },
+        });
+      } catch (err) {
+        // No mark rather than a wrong one: the ledger is still in the artifact.
+        sessionNotes.push(`The desk's assessment could not be read, so this week has no deterministic mark: ${errorMessage(err)}`);
+      }
     }
 
     run.status = status;

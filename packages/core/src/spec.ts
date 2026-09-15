@@ -19,6 +19,12 @@ export function episodeTwins(spec: EpisodeSpec): TwinName[] {
   const used = new Set<TwinName>();
   for (const b of spec.beats) used.add(b.twin);
   for (const c of spec.success.checklist) if (c.twin !== "any") used.add(c.twin);
+  // A continuity week declares its surface by carrying a case rather than by
+  // scripting beats: its world moves on the domain's own timetable and its marks
+  // come from the domain, so both of the lists above are legitimately empty.
+  // Without this a benchmark spec resolves to no twins at all, and the run
+  // provisions nothing for the agent to work in.
+  if (spec.benchmark) used.add("desk");
   return TWIN_NAMES.filter((t) => used.has(t));
 }
 

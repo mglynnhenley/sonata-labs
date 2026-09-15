@@ -205,3 +205,16 @@ describe("the shared cast", () => {
     expect(() => owner({ ...world, mailboxOwner: "ghost" })).toThrow(/mailboxOwner/);
   });
 });
+
+describe("a continuity week's surface", () => {
+  it("resolves to its desk even though it scripts no beats and lists no criteria", () => {
+    const week = spec({
+      beats: [],
+      success: { checklist: [], judgeQuestions: [] },
+      benchmark: { kind: "continuity", caseId: "E01", version: 1 },
+    });
+    // Both of the usual sources are empty by design here, so without the
+    // benchmark marker this run would provision nothing at all.
+    expect(episodeTwins(week)).toEqual(["desk"]);
+  });
+});

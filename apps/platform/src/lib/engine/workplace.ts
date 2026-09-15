@@ -118,8 +118,16 @@ export async function runtimeImages(): Promise<RuntimeImages> {
 /** Docker is the product workplace runtime; no shared-process fallback. */
 export async function prepareWorkplace(runId: string, twins: TwinName[], useSnapshot: boolean,
   options: { signal?: AbortSignal; maxWallClockMs?: number; scenario?: unknown;
-    timing?: { policy: "provider-operations-v1"; workUnitsPerTick: number } } = {}): Promise<Workplace> {
+    timing?: { policy: "provider-operations-v1"; workUnitsPerTick: number };
+    /** Which authored continuity week the desk serves, when the run has one. */
+    deskCase?: string } = {}): Promise<Workplace> {
   if (!/^[\w-]+$/.test(runId)) throw new Error("Invalid workplace identifier.");
+  if (twins.includes("desk") && !options.deskCase) {
+    throw new Error("A workplace with a desk must name the continuity case it serves.");
+  }
+  if (options.deskCase !== undefined && !/^[A-Z]\d{2}$/.test(options.deskCase)) {
+    throw new Error("A continuity case id looks like E01.");
+  }
   const timing = options.timing ? validateTimingPolicy(options.timing) : undefined;
   const root = repositoryRoot();
   const directory = path.join(root, ".context", "workplaces", runId);
@@ -230,10 +238,15 @@ export async function prepareWorkplace(runId: string, twins: TwinName[], useSnap
         SANDBOX_AUTH: "oauth", SANDBOX_PUBLIC_URL: service === "gmail-ui" ? humanUrls.gmail : urls[service as TwinName], NEXT_TELEMETRY_DISABLED: "1", GMAIL_API_URL: "http://gmail:3000", GMAIL_API_PUBLIC_URL: urls.gmail,
         GMAIL_UI_REDIRECT_URI: humanUrls.gmail ? `${humanUrls.gmail}/oauth/callback` : undefined,
         GMAIL_UI_COOKIE_PREFIX: `gm_${runId}`, GMAIL_UI_COOKIE_SECRET: cookieSecret, GMAIL_UI_CLIENT_SECRET: clientSecret,
+        // Which authored week this desk serves. Without it the desk offers no
+        // tools at all, which is the safe failure: an empty toolbox is at least
+        // visibly broken, where a guessed case would score the agent against
+        // rules for a week it was never briefed on.
+        SONATA_DESK_CASE: options.deskCase,
       };
       // Docker receives an explicit env allowlist, never the dashboard's environment.
       const names = ["SANDBOX_TOKEN", "SANDBOX_CONTROL_TOKEN", "SANDBOX_AUTH", "SANDBOX_PUBLIC_URL", "NEXT_TELEMETRY_DISABLED", "GMAIL_API_URL", "GMAIL_API_PUBLIC_URL",
-        "GMAIL_UI_REDIRECT_URI", "GMAIL_UI_COOKIE_PREFIX", "GMAIL_UI_COOKIE_SECRET", "GMAIL_UI_CLIENT_SECRET"];
+        "GMAIL_UI_REDIRECT_URI", "GMAIL_UI_COOKIE_PREFIX", "GMAIL_UI_COOKIE_SECRET", "GMAIL_UI_CLIENT_SECRET", "SONATA_DESK_CASE"];
       await docker(["create", "--name", containers.apps[service], ...security("1536m"), "--network", networks.backend, "--network-alias", service,
         "--mount", `type=bind,source=${path.join(directory, "apps", service, "data")},target=/opt/sonata/apps/${service}/data`,
         "--tmpfs", `/opt/sonata/apps/${service}/.next:rw,nosuid,nodev,size=512m,uid=1000,gid=1000`,
