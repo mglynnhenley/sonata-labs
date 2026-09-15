@@ -3,6 +3,7 @@ import type {
   CalendarSnapshot,
   EpisodeJudgeReport,
   EpisodeRun,
+  DeskSnapshot,
   ExcelSnapshot,
   ExcelChange,
   GmailSnapshot,
@@ -60,6 +61,7 @@ export const TWIN_WORD: Record<TwinName, string> = {
   "google-ads": "Ads",
   linkedin: "LinkedIn",
   excel: "Excel",
+  desk: "Desk",
 };
 
 /** One number about the state at close. */
@@ -608,6 +610,26 @@ function excelEnd(after: ExcelSnapshot): TwinEnd {
   };
 }
 
+function deskEnd(after: DeskSnapshot): TwinEnd {
+  // The desk publishes no loose ends here. Its own domain decides what was left
+  // undone and says so in the benchmark report, with the evidence and the rule
+  // that made it a gap. Guessing at open items from record counts would put a
+  // second, weaker answer next to that one.
+  const byAgent = after.events.filter((event) => event.actor === "agent").length;
+  return {
+    twin: "desk",
+    counts: [
+      { label: agree(after.records.length, "record"), value: after.records.length, flag: false },
+      { label: agree(byAgent, "action by the agent"), value: byAgent, flag: false },
+      { label: agree(after.events.length - byAgent, "scheduled world event"), value: after.events.length - byAgent, flag: false },
+    ],
+    open: [],
+    more: 0,
+    settled: "",
+    scope: "Counts only. What the week left outstanding, and whether each outcome was reached in time, is decided by the case's own deterministic assessment and published in its benchmark report.",
+  };
+}
+
 // ---------------------------------------------------------------------------
 // What the assessor was shown of it
 // ---------------------------------------------------------------------------
@@ -671,6 +693,8 @@ function endOf(after: TwinSnapshot, ctx: Ctx): TwinEnd {
       return linkedInEnd(after);
     case "excel":
       return excelEnd(after);
+    case "desk":
+      return deskEnd(after);
   }
 }
 

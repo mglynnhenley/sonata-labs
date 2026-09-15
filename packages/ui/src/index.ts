@@ -128,6 +128,7 @@ export {
   LogoGoogleCalendar,
   LogoGoogleDocs,
   LogoLinkedIn,
+  LogoDesk,
   LogoExcel,
   LogoSlack,
   IconMessage,

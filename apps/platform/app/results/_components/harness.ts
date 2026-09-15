@@ -560,6 +560,7 @@ const TWIN_WORD: Record<TwinName, string> = {
   "google-ads": "Ads",
   linkedin: "LinkedIn",
   excel: "Excel",
+  desk: "Desk",
 };
 
 /**

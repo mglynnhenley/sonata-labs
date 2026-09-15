@@ -155,6 +155,21 @@ export interface ExcelSnapshot {
   changes: ExcelChange[];
 }
 
+/**
+ * The desk's whole ledger: its records as they stand, and every event that
+ * moved them. The event log is the part that matters for assessment — a desk
+ * week is judged on what happened and when, not only on where it ended up.
+ */
+export interface DeskSnapshot {
+  twin: "desk";
+  capturedAt: number;
+  caseId: string;
+  /** Current state of every record, by id. */
+  records: Array<{ id: string; data: Record<string, unknown> }>;
+  /** Append-only, in order, with the actor that caused each one. */
+  events: Array<{ id: number; at: string; actor: "agent" | "world"; kind: string; data: Record<string, unknown> }>;
+}
+
 export type TwinSnapshot =
   | GmailSnapshot
   | SlackSnapshot
@@ -163,7 +178,8 @@ export type TwinSnapshot =
   | GoogleDocsSnapshot
   | GoogleAdsSnapshot
   | LinkedInSnapshot
-  | ExcelSnapshot;
+  | ExcelSnapshot
+  | DeskSnapshot;
 
 // ---------------------------------------------------------------------------
 // Diffs. Derived from two snapshots by the twin's adapter, and pure — old
@@ -324,6 +340,15 @@ export interface ExcelDiff {
   unchangedCount: number;
 }
 
+/** Records that moved, and the events that moved them. */
+export interface DeskDiff {
+  twin: "desk";
+  records: Array<{ id: string; before?: Record<string, unknown>; after?: Record<string, unknown> }>;
+  /** Only the events the week added, with their actor intact. */
+  events: DeskSnapshot["events"];
+  unchangedCount: number;
+}
+
 export type TwinDiff =
   | GmailDiff
   | SlackDiff
@@ -332,7 +357,8 @@ export type TwinDiff =
   | GoogleDocsDiff
   | GoogleAdsDiff
   | LinkedInDiff
-  | ExcelDiff;
+  | ExcelDiff
+  | DeskDiff;
 
 // ---------------------------------------------------------------------------
 // Final state. The after-snapshot, narrowed — where each twin ENDED UP, as

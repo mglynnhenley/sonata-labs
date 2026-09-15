@@ -44,6 +44,7 @@ const TWIN_LABEL: Record<MissedMoment["twin"], string> = {
   "google-ads": "Ads",
   linkedin: "LinkedIn",
   excel: "Excel",
+  desk: "Desk",
 };
 
 export function HarnessFaults({ report }: { report: HarnessReport }) {

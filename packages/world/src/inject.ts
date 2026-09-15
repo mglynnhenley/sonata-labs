@@ -1032,7 +1032,10 @@ export function resolveLinkedInSeed(
  * is `.map` of undefined, and a user reading the failed seed is told the CRM
  * could not be loaded because of a TypeError.
  */
-const SOURCE_SEED: Record<TwinName, keyof GeneratedWorld> = {
+// Null for a surface a cloned company cannot produce. The desk is the first:
+// its records belong to an authored continuity week, not to anybody's inbox, so
+// no amount of re-cloning a business will write one.
+const SOURCE_SEED: Record<TwinName, keyof GeneratedWorld | null> = {
   gmail: "gmail",
   slack: "slack",
   calendar: "calendar",
@@ -1040,6 +1043,7 @@ const SOURCE_SEED: Record<TwinName, keyof GeneratedWorld> = {
   "google-docs": "googleDocs",
   "google-ads": "googleAds",
   linkedin: "linkedin",
+  desk: null,
   excel: "excel",
 };
 
@@ -1063,13 +1067,25 @@ export function buildSeedRequest(
   promoteToSnapshot = true,
 ): SeedRequest {
   const { world } = generated;
-  if (!generated[SOURCE_SEED[twin]]) {
+  const source = SOURCE_SEED[twin];
+  if (!source) {
+    throw new Error(
+      `The ${twin} twin is not seeded from a cloned company. It is seeded from its own ` +
+        `authored case through that twin's adapter.`,
+    );
+  }
+  if (!generated[source]) {
     throw new Error(
       `"${world.business.name}" was cloned before the ${twin} twin existed, so it has no ` +
         `${twin} history to seed. Clone the business again to write one.`,
     );
   }
   switch (twin) {
+    case "desk":
+      // Unreachable: `source` is null above and the refusal has already thrown.
+      // Spelled out so the switch stays exhaustive and the next twin added to
+      // `TwinName` still fails to compile here rather than falling through.
+      throw new Error("The desk twin is seeded from its authored case, not from a cloned company.");
     case "excel":
       return { twin, seed: { world, nowISO: new Date(nowMs).toISOString(), promoteToSnapshot, workbooks: generated.excel!.workbooks } };
     case "gmail":

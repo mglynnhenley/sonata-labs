@@ -21,6 +21,7 @@ export const TWIN_API_PORTS: Record<TwinName, number> = {
   "google-ads": 3700,
   linkedin: 3800,
   excel: 3950,
+  desk: 3960,
 };
 
 /** Reserved UI ports are API + 800; Excel embeds its UI on its API port. */
@@ -33,6 +34,7 @@ export const TWIN_UI_PORTS: Record<TwinName, number> = {
   "google-ads": 4500,
   linkedin: 4600,
   excel: 3950, // Embedded UI served by the Excel API process.
+  desk: 3960, // Same: the desk has one process, and no separate web client yet.
 };
 
 /**
@@ -68,6 +70,7 @@ export const TWIN_API_URL_ENV: Record<TwinName, readonly string[]> = {
   "google-ads": ["SONATA_GOOGLE_ADS_URL", "GOOGLE_ADS_TWIN_URL"],
   linkedin: ["SONATA_LINKEDIN_URL", "LINKEDIN_TWIN_URL"],
   excel: ["SONATA_EXCEL_URL", "EXCEL_TWIN_URL"],
+  desk: ["SONATA_DESK_URL", "DESK_TWIN_URL"],
 };
 
 export const TWIN_UI_URL_ENV: Record<TwinName, readonly string[]> = {
@@ -79,6 +82,7 @@ export const TWIN_UI_URL_ENV: Record<TwinName, readonly string[]> = {
   "google-ads": ["SONATA_GOOGLE_ADS_UI_URL", "GOOGLE_ADS_UI_URL"],
   linkedin: ["SONATA_LINKEDIN_UI_URL", "LINKEDIN_UI_URL"],
   excel: ["SONATA_EXCEL_UI_URL", "EXCEL_UI_URL"],
+  desk: ["SONATA_DESK_UI_URL", "DESK_UI_URL"],
 };
 
 /**

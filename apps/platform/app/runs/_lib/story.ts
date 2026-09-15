@@ -97,6 +97,10 @@ const BEAT_LABEL: Record<TwinName, { kinds: Record<string, string>; whateverElse
     },
     whateverElse: "Something happened on LinkedIn",
   },
+  // A desk has no scripted beats: its world moves on the authored schedule, and
+  // what lands is a receipt, an approval or an acknowledgement rather than a
+  // message somebody wrote.
+  desk: { kinds: {}, whateverElse: "The desk ledger moved" },
 };
 
 /**

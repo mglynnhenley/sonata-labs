@@ -566,6 +566,11 @@ function renderDiff(d: TwinDiff): string[] {
       return ["Complete original (before) and proposed/current (after) workbook versions and change history:", JSON.stringify({ workbooks: d.workbooks, changes: d.changes })];
     case "linkedin":
       return renderLinkedInDiff(d);
+    case "desk":
+      // The actor stays on every event: a desk ledger holds the world's
+      // scheduled consequences beside the agent's own work, and a judge that
+      // cannot tell them apart will credit a receipt that simply arrived.
+      return ["Complete desk ledger changes, with the actor that caused each event:", JSON.stringify({ records: d.records, events: d.events })];
   }
 }
 
@@ -837,6 +842,8 @@ function blockFor(final: TwinFinalState): FinalStateBlock {
       return { head: "Complete proposed/current workbooks, including formulas. Original values and reasons are in the changes above.", items: final.state.workbooks.map((w) => JSON.stringify(w)), noun: "workbook", tail: "Complete change history: " + JSON.stringify(final.state.changes) };
     case "linkedin":
       return linkedInBlock(final.state);
+    case "desk":
+      return { head: "Complete desk records as the week ended.", items: final.state.records.map((row) => JSON.stringify(row)), noun: "record", tail: "Complete event log: " + JSON.stringify(final.state.events) };
   }
 }
 

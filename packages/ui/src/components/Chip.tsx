@@ -5,6 +5,7 @@ import { cn } from "../cn";
 import { SERVICE_LABELS, type ServiceId } from "../tokens";
 import {
   LogoAttio,
+  LogoDesk,
   LogoExcel,
   LogoGmail,
   LogoGoogleAds,
@@ -28,6 +29,7 @@ const TONES: Record<ChipTone, string> = {
   "google-docs": "border-sn-google-docs-line bg-sn-google-docs-soft text-sn-google-docs-ink",
   "google-ads": "border-sn-google-ads-line bg-sn-google-ads-soft text-sn-google-ads-ink",
   excel: "border-sn-excel-line bg-sn-excel-soft text-sn-excel-ink",
+  desk: "border-sn-desk-line bg-sn-desk-soft text-sn-desk-ink",
   linkedin: "border-sn-linkedin-line bg-sn-linkedin-soft text-sn-linkedin-ink",
 };
 
@@ -45,6 +47,7 @@ const SERVICE_ICONS: Record<ServiceId, (props: IconProps) => ReactNode> = {
   "google-ads": LogoGoogleAds,
   linkedin: LogoLinkedIn,
   excel: LogoExcel,
+  desk: LogoDesk,
 };
 
 export type ChipProps = HTMLAttributes<HTMLElement> & {

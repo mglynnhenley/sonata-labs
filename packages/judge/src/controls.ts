@@ -99,6 +99,9 @@ const REPLY_TOOLS: Record<TwinName, string[]> = {
   attio: [],
   "google-docs": [],
   "google-ads": [],
+  // Same reasoning: a desk submits, commits and records. Nothing it does is a
+  // reply, and the domain names its own verbs per case in any event.
+  desk: [],
 };
 
 /** The argument name each twin's reply tool wants its prose under. */
@@ -111,6 +114,7 @@ const BODY_ARG: Record<TwinName, string> = {
   attio: "content",
   "google-docs": "text",
   "google-ads": "text",
+  desk: "text",
 };
 
 /** What it says every single time, to everyone, about everything. */

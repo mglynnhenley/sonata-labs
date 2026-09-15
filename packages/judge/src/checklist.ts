@@ -1292,6 +1292,25 @@ const BY_TWIN: Record<TwinName | "any", Record<CriterionKind, Route>> = {
     mentions: NOT_ON_THIS_SURFACE,
     "no-escalation": NOT_ON_THIS_SURFACE,
   },
+  // A desk week is not scored by this checklist at all: its own domain assesses
+  // it deterministically and publishes a BenchmarkReport. Everything here is
+  // therefore "not on this surface" rather than an unwritten checker — there is
+  // no debt to file, because no criterion should be routed here in the first
+  // place.
+  desk: {
+    judged: NOT_ON_THIS_SURFACE,
+    replied: NOT_ON_THIS_SURFACE,
+    sent: NOT_ON_THIS_SURFACE,
+    posted: NOT_ON_THIS_SURFACE,
+    labelled: NOT_ON_THIS_SURFACE,
+    archived: NOT_ON_THIS_SURFACE,
+    scheduled: NOT_ON_THIS_SURFACE,
+    moved: NOT_ON_THIS_SURFACE,
+    cancelled: NOT_ON_THIS_SURFACE,
+    untouched: NOT_ON_THIS_SURFACE,
+    mentions: NOT_ON_THIS_SURFACE,
+    "no-escalation": NOT_ON_THIS_SURFACE,
+  },
   linkedin: {
     posted: AWAITING_CHECKER,
     replied: AWAITING_CHECKER,

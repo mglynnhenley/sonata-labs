@@ -3,10 +3,18 @@
 // A WorldSeed is authored (or generated) before anything is seeded, and each
 // twin's adapter reads the SAME seed. That is the whole point — see `Person`.
 
-/** The three surfaces a Sonata world spans. */
-export type TwinName = "gmail" | "slack" | "calendar" | "attio" | "google-docs" | "google-ads" | "linkedin" | "excel";
+/**
+ * The surfaces a Sonata world spans.
+ *
+ * `desk` is not a replica of a consumer product like the others. It is the
+ * line-of-business system a continuity week runs on — the records, receipts and
+ * submissions an infrastructure desk actually works in — and it is a twin for
+ * the same reason the rest are: so one run gets one isolated copy of it, one
+ * audit log, one snapshot pair, and one set of MCP tools.
+ */
+export type TwinName = "gmail" | "slack" | "calendar" | "attio" | "google-docs" | "google-ads" | "linkedin" | "excel" | "desk";
 
-export const TWIN_NAMES: readonly TwinName[] = ["gmail", "slack", "calendar", "attio", "google-docs", "google-ads", "linkedin", "excel"];
+export const TWIN_NAMES: readonly TwinName[] = ["gmail", "slack", "calendar", "attio", "google-docs", "google-ads", "linkedin", "excel", "desk"];
 
 /** Sparse per-twin map. Used everywhere a run may touch only some surfaces. */
 export type ByTwin<T> = Partial<Record<TwinName, T>>;

@@ -18,6 +18,7 @@ export const testConfig: SonataConfig = {
     "google-ads": "http://google-ads.test",
     linkedin: "http://linkedin.test",
     excel: "http://excel.test",
+    desk: "http://desk.test",
   },
 };
 

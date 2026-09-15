@@ -67,6 +67,8 @@ const snapshot = (twin: TwinName): TwinSnapshot => {
       return { twin, capturedAt: 1, posts: [], comments: [] };
     case "excel":
       return { twin, capturedAt: 1, workbooks: [], changes: [] };
+    case "desk":
+      return { twin, capturedAt: 1, caseId: "", records: [], events: [] };
   }
 };
 

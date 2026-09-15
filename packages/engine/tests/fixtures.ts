@@ -124,6 +124,8 @@ const emptySnapshot = (twin: TwinName): TwinSnapshot => {
       return { twin, capturedAt: 0, workbooks: [], changes: [] };
     case "linkedin":
       return { twin, capturedAt: 0, posts: [], comments: [] };
+    case "desk":
+      return { twin, capturedAt: 0, caseId: "", records: [], events: [] };
   }
 };
 

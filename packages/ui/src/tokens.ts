@@ -72,6 +72,9 @@ export const serviceColor = {
   "google-ads": { ink: "#a06a24", soft: "#f7eede", line: "#eaddc4" },
   excel: { ink: "#217346", soft: "#e4f0e9", line: "#c8dfd2" },
   linkedin: { ink: "#2a5f86", soft: "#e4eef5", line: "#ccdfea" },
+  // Slate: the desk is the only surface here that is not somebody's product,
+  // so it takes the one neutral in the set rather than borrowing a brand.
+  desk: { ink: "#4a5568", soft: "#eaecef", line: "#d7dbe0" },
 } as const;
 
 export type ServiceId = keyof typeof serviceColor;
@@ -85,6 +88,7 @@ export const SERVICE_IDS: readonly ServiceId[] = [
   "google-ads",
   "linkedin",
   "excel",
+  "desk",
 ];
 
 export const SERVICE_LABELS: Record<ServiceId, string> = {
@@ -96,6 +100,7 @@ export const SERVICE_LABELS: Record<ServiceId, string> = {
   "google-ads": "Google Ads",
   linkedin: "LinkedIn",
   excel: "Excel",
+  desk: "Desk",
 };
 
 /** Run lifecycle. `running` wears the accent — live is the loudest thing on

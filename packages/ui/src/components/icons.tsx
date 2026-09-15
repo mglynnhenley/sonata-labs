@@ -273,3 +273,13 @@ export const LogoExcel = makeIcon(
     <path d="M3 9h18M3 15h18M9 3v18M15 3v18" />
   </>,
 );
+
+// Not a vendor mark: the desk is a line-of-business system, so it wears a
+// clipboard — a record with entries on it, which is what the surface holds.
+export const LogoDesk = makeIcon(
+  "LogoDesk",
+  <>
+    <path d="M8 4h8a1 1 0 0 1 1 1v1h2a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h2V5a1 1 0 0 1 1-1Z" />
+    <path d="M9 3h6v3H9zM8 11h8M8 15h5" />
+  </>,
+);

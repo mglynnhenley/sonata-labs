@@ -1,7 +1,7 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { TWIN_NAMES } from "@sonata/core";
+import { TWIN_NAMES, type TwinName } from "@sonata/core";
 import { assembleWorld } from "../src/generate";
 import {
   buildSeedRequest,
@@ -274,12 +274,21 @@ describe("buildSeedRequest", () => {
     expect(request.seed).toMatchObject({ world: built.world, workbooks: [workbook], promoteToSnapshot: true });
   });
 
+  // Two surfaces are not projections of a cloned company. Excel's workbooks come
+  // from the scenario; the desk's ledger comes from its authored continuity case.
+  // Named rather than skipped inline, so adding a third is a decision.
+  const NOT_FROM_A_CLONE: TwinName[] = ["excel", "desk"];
+
+  it("refuses, by name, a surface no amount of re-cloning can write", () => {
+    expect(() => buildSeedRequest(built, "desk", NOW)).toThrow(/not seeded from a cloned company/);
+  });
+
   it("is pure: the same world and instant build the same body", () => {
     expect(buildSeedRequest(built, "gmail", NOW)).toEqual(buildSeedRequest(built, "gmail", NOW));
   });
 
   it("labels the body with the twin it is for, so a mis-route is a 400", () => {
-    for (const twin of TWIN_NAMES.filter(t => t !== "excel")) {
+    for (const twin of TWIN_NAMES.filter(t => !NOT_FROM_A_CLONE.includes(t))) {
       const request = buildSeedRequest(built, twin, NOW);
       expect(request.twin).toBe(twin);
       // Every twin gets the whole shared world — that is what stops three twins
@@ -295,7 +304,7 @@ describe("buildSeedRequest", () => {
   // therefore resolves something, and every one of them resolves it from the
   // same cast.
   it("builds a real seed for every twin, out of the one world", () => {
-    for (const twin of TWIN_NAMES.filter(t => t !== "excel")) {
+    for (const twin of TWIN_NAMES.filter(t => !NOT_FROM_A_CLONE.includes(t))) {
       const seed = buildSeedRequest(built, twin, NOW).seed;
       expect(seed.nowISO).toBe(new Date(NOW).toISOString());
       expect(seed.world.cast.map((p) => p.id)).toEqual(["priya", "marcus", "gerald"]);

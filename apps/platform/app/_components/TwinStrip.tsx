@@ -18,6 +18,7 @@ const BLURBS: Record<TwinName, string> = {
   "google-ads": "Campaigns, budgets and spend",
   linkedin: "Posts, comments and reactions",
   excel: "Workbooks, formulas and review history",
+  desk: "Records, receipts and submissions",
 };
 
 type Action = "start" | "stop" | "auth-token" | "auth-oauth";

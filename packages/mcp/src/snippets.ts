@@ -99,6 +99,9 @@ export function restSnippet(input: SnippetInput): string {
     "google-ads": "Google Ads v17      e.g. GET /v17/customers:listAccessibleCustomers",
     excel: "Excel-style replica e.g. GET /api/workbooks",
     linkedin: "LinkedIn /rest      e.g. GET /v2/userinfo",
+    // The only surface here with no vendor to shape it: its verbs come from the
+    // authored week, so the one call that always works is the tool list.
+    desk: "Continuity desk     e.g. GET /api/tools",
   };
   const lines = [
     "# Sonata twins over plain HTTP — the same surface the MCP tools call.",
@@ -175,6 +178,10 @@ function sample(twin: ServedTwin): string {
       return "/api/workbooks";
     case "linkedin":
       return "/v2/userinfo";
+    // Its verbs belong to the authored week, so the read that always works is
+    // the one that asks which verbs this run has.
+    case "desk":
+      return "/api/tools";
   }
 }
 

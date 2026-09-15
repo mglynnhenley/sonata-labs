@@ -231,6 +231,8 @@ function digestPhrase(twin: TwinName, kind: string): string {
       return "a change in a workbook";
     case "linkedin":
       return kind === "reaction" ? "a new reaction on LinkedIn" : "new activity on LinkedIn";
+    case "desk":
+      return "a change in the desk ledger";
   }
 }
 

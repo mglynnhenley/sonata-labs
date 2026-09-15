@@ -30,6 +30,7 @@ import {
   LogoGoogleCalendar,
   LogoGoogleDocs,
   LogoLinkedIn,
+  LogoDesk,
   LogoExcel,
   LogoSlack,
   IconTrend,
@@ -69,6 +70,7 @@ const TWIN_MARKER: Record<TwinName, string> = {
   "google-ads": "border-sn-google-ads-line bg-sn-google-ads-soft text-sn-google-ads-ink",
   linkedin: "border-sn-linkedin-line bg-sn-linkedin-soft text-sn-linkedin-ink",
   excel: "border-sn-excel-line bg-sn-excel-soft text-sn-excel-ink",
+  desk: "border-sn-desk-line bg-sn-desk-soft text-sn-desk-ink",
 };
 
 const TWIN_ICON: Record<TwinName, typeof LogoGmail> = {
@@ -80,6 +82,7 @@ const TWIN_ICON: Record<TwinName, typeof LogoGmail> = {
   "google-ads": LogoGoogleAds,
   linkedin: LogoLinkedIn,
   excel: LogoExcel,
+  desk: LogoDesk,
 };
 
 const SOURCE_LABEL: Record<Moment["source"], string> = {

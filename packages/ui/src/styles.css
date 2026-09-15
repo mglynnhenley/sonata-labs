@@ -95,6 +95,9 @@
   --color-sn-linkedin-ink: #2a5f86;
   --color-sn-linkedin-soft: #e4eef5;
   --color-sn-linkedin-line: #ccdfea;
+  --color-sn-desk-ink: #4a5568;
+  --color-sn-desk-soft: #eaecef;
+  --color-sn-desk-line: #d7dbe0;
 
   /* Status hues. Running wears the accent: live is the loudest thing on any
      page, so nothing else gets to borrow petrol. */

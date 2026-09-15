@@ -1,6 +1,6 @@
 "use client";
 
-import { LogoExcel, Badge, Card, Chip, IconInfo, LogoAttio, LogoGmail, LogoGoogleAds, LogoGoogleCalendar, LogoGoogleDocs, LogoLinkedIn, LogoSlack, SERVICE_LABELS, Timeline, TimelineItem } from "@sonata/ui";
+import { LogoDesk, LogoExcel, Badge, Card, Chip, IconInfo, LogoAttio, LogoGmail, LogoGoogleAds, LogoGoogleCalendar, LogoGoogleDocs, LogoLinkedIn, LogoSlack, SERVICE_LABELS, Timeline, TimelineItem } from "@sonata/ui";
 import type { ReactNode } from "react";
 import type { TwinName } from "@sonata/core";
 import { dayRange } from "@/lib/format";
@@ -30,6 +30,7 @@ const TWIN_ICON: Record<TwinName, ReactNode> = {
   "google-ads": <LogoGoogleAds size={11} />,
   linkedin: <LogoLinkedIn size={11} />,
   excel: <LogoExcel size={11} />,
+  desk: <LogoDesk size={11} />,
 };
 
 export type ScenarioPreviewProps = {

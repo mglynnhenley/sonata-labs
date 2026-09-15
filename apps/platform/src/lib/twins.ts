@@ -36,6 +36,7 @@ export const TWIN_LABELS: Record<TwinName, string> = {
   "google-ads": "Google Ads",
   linkedin: "LinkedIn",
   excel: "Excel",
+  desk: "Desk",
 };
 
 /** What each clone is for, for the settings page and the first-run strip. */
@@ -48,6 +49,7 @@ export const TWIN_BLURBS: Record<TwinName, string> = {
   "google-ads": "Campaigns, budgets and spend, queried with real GAQL.",
   linkedin: "Company posts, comments and reactions, addressed by URN.",
   excel: "Reporting workbooks with editable cells, formulas, original snapshots and review history.",
+  desk: "The line-of-business system a continuity week runs on: records, receipts, submissions and an append-only event log.",
 };
 
 /** Where the twin actually is: env-resolved, same precedence as every other

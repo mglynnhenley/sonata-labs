@@ -1,4 +1,5 @@
 import type { ByTwin, TwinAdapter, TwinName } from "@sonata/core";
+import { createDeskAdapter, type DeskAdapterOptions } from "./desk";
 import { createExcelAdapter, type ExcelAdapterOptions } from "./excel";
 import { createAttioAdapter, type AttioAdapterOptions } from "./attio";
 import { createCalendarAdapter, type CalendarAdapterOptions } from "./calendar";
@@ -9,6 +10,7 @@ import { createLinkedInAdapter, type LinkedInAdapterOptions } from "./linkedin";
 import { createSlackAdapter, type SlackAdapterOptions } from "./slack";
 
 export * from "./gmail";
+export * from "./desk";
 export * from "./excel";
 export * from "./slack";
 export * from "./calendar";
@@ -23,6 +25,7 @@ export { normalizeAudit } from "./shared";
 export interface AdapterSetOptions {
   gmail?: GmailAdapterOptions;
   excel?: ExcelAdapterOptions;
+  desk?: DeskAdapterOptions;
   slack?: SlackAdapterOptions;
   calendar?: CalendarAdapterOptions;
   attio?: AttioAdapterOptions;
@@ -46,6 +49,7 @@ export function createAdapters(opts: AdapterSetOptions = {}): TwinAdapter[] {
     createGoogleAdsAdapter(opts["google-ads"]),
     createLinkedInAdapter(opts.linkedin),
     createExcelAdapter(opts.excel),
+    createDeskAdapter(opts.desk),
   ];
 }
 

@@ -35,6 +35,7 @@ const TWIN_LABEL: Record<TwinName, string> = {
   "google-ads": "Google Ads",
   linkedin: "LinkedIn",
   excel: "Excel",
+  desk: "Desk",
 };
 
 // ---------------------------------------------------------------------------

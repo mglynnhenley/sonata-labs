@@ -50,6 +50,7 @@ export const START_COMMAND: Record<ServedTwin, string> = {
   "google-ads": "npm run dev:google-ads",
   linkedin: "npm run dev:linkedin",
   excel: "npm run dev:excel",
+  desk: "npm run dev:desk",
 };
 
 /** The same default every twin's own auth.ts uses; the token is a seatbelt, not a lock. */
@@ -78,6 +79,7 @@ const URL_ENV: Record<ServedTwin, string> = {
   "google-ads": "SONATA_GOOGLE_ADS_URL",
   linkedin: "SONATA_LINKEDIN_URL",
   excel: "SONATA_EXCEL_URL",
+  desk: "SONATA_DESK_URL",
 };
 
 export function isServedTwin(name: string): name is ServedTwin {

@@ -29,6 +29,7 @@ describe("connection snippets", () => {
         "--env SONATA_GOOGLE_ADS_URL=http://google-ads.test " +
         "--env SONATA_LINKEDIN_URL=http://linkedin.test " +
         "--env SONATA_EXCEL_URL=http://excel.test " +
+        "--env SONATA_DESK_URL=http://desk.test " +
         "-- /repo/sonata/node_modules/.bin/sonata-mcp",
     );
   });
@@ -60,6 +61,7 @@ describe("connection snippets", () => {
             SONATA_GOOGLE_ADS_URL: "http://google-ads.test",
             SONATA_LINKEDIN_URL: "http://linkedin.test",
             SONATA_EXCEL_URL: "http://excel.test",
+            SONATA_DESK_URL: "http://desk.test",
           },
         },
       },

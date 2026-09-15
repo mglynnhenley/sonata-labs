@@ -749,6 +749,9 @@ const UNITS: Record<
   "google-ads": null,
   linkedin: { unit: "posts", of: (c) => c.posts },
   excel: { unit: "workbooks", of: (c) => c.workbooks ?? 0 },
+  // The desk seeds itself from its authored case, not from the world counts a
+  // generated company produces, so there is no number here to be honest about.
+  desk: null,
 };
 
 /**

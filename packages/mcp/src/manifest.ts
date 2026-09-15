@@ -1,6 +1,7 @@
 import { createTwinHttp, TwinHttp } from "@sonata/engine/http";
 import {
   attioTools,
+  deskTools,
   excelTools,
   calendarTools,
   gmailTools,
@@ -103,6 +104,8 @@ export function engineToolsFor(twin: ServedTwin, http: TwinHttp): EngineTool[] {
       return excelTools(http);
     case "linkedin":
       return linkedInTools(http);
+    case "desk":
+      return deskTools(http);
   }
 }
 

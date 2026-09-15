@@ -32,7 +32,8 @@
     "check:twin": "tsx packages/engine/scripts/twin-contract-check.ts",
     "check:seed": "tsx packages/world/scripts/seed-contract-check.ts",
     "dev:excel": "PORT=${PORT:-3950} npm run dev -w apps/excel",
-    "check:continuity": "tsx packages/engine/scripts/check-continuity.ts"
+    "check:continuity": "tsx packages/engine/scripts/check-continuity.ts",
+    "dev:desk": "PORT=${PORT:-3960} npm run dev -w apps/desk"
   },
   "devDependencies": {
     "concurrently": "^10.0.4"
