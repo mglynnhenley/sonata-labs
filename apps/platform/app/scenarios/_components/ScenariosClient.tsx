@@ -32,9 +32,11 @@ export type ScenariosClientProps = {
   initialNow: number;
   /** Ids of the benchmark days that ship with Sonata, so their cards say so. */
   shippedIds: string[];
+  /** Which of these actually have a record; the rest have never been run. */
+  savedIds: string[];
 };
 
-export function ScenariosClient({ initialEpisodes, expectations, environmentFilter, templates, initialNow, shippedIds }: ScenariosClientProps) {
+export function ScenariosClient({ initialEpisodes, expectations, environmentFilter, templates, initialNow, shippedIds, savedIds }: ScenariosClientProps) {
   const router = useRouter();
   const go = useGo();
   const { toast } = useToast();
@@ -157,6 +159,7 @@ export function ScenariosClient({ initialEpisodes, expectations, environmentFilt
                   episode={episode}
                   expectations={expectations[episode.id] ?? []}
                   shipped={shippedIds.includes(episode.id)}
+                  saved={savedIds.includes(episode.id)}
                   now={now}
                   deleting={deleting === episode.id}
                   onDelete={(target) => void onDelete(target)}

@@ -72,3 +72,30 @@ describe("scenario contract", () => {
     expect(bareFacts.groups[0].items).toEqual([`No judge questions are declared. Which facts are fictional instruction and which knowledge is tested is ${NOT_DECLARED}.`]);
   });
 });
+
+describe("the scenario catalogue", () => {
+  it("offers every shipped scenario, including the ones nobody has run here", async () => {
+    const { unregisteredShipped } = await import("../app/scenarios/_lib/shippedSummary");
+    const { SCENARIOS } = await import("@sonata/scenarios");
+
+    // Nothing registered: the catalogue is the whole shipped set, not an empty
+    // page. This was the bug — seven of thirteen were unreachable on a fresh
+    // install, and both continuity weeks were among them.
+    expect(unregisteredShipped([]).map((e) => e.id).sort()).toEqual(SCENARIOS.map((s) => s.id).sort());
+
+    // Registered ones are not offered twice.
+    const one = SCENARIOS[0]!.id;
+    expect(unregisteredShipped([one]).map((e) => e.id)).not.toContain(one);
+  });
+
+  it("describes a continuity week by its own surface, with no environment it has not got", async () => {
+    const { unregisteredShipped } = await import("../app/scenarios/_lib/shippedSummary");
+    const week = unregisteredShipped([]).find((e) => e.id === "electricity-continuity-e01")!;
+    expect(week.twins).toEqual(["desk"]);
+    expect(week.counts.ticks).toBe(180);
+    // No world record exists until something registers it; claiming one would
+    // link the card to an environment page that is not there.
+    expect(week.worldId).toBe("");
+    expect(week.lastRun).toBeNull();
+  });
+});

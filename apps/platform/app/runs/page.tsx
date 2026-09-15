@@ -2,7 +2,9 @@ import { redirect } from "next/navigation";
 import { canCallModels, getSettings } from "@/lib/settings";
 import { getEpisode, listEpisodes } from "../api/_lib/records";
 import { activeRun, listRuns, resumeInterruptedRuns } from "../api/_lib/runner";
+import { getScenario } from "@sonata/scenarios";
 import { RunsClient } from "./_components/RunsClient";
+import { unregisteredShipped } from "../scenarios/_lib/shippedSummary";
 
 // Runs move every second, so nothing here is cached. The server paints the
 // current state; the client polls on from it.
@@ -24,7 +26,12 @@ export default async function RunsPage({
   resumeInterruptedRuns();
 
   const active = activeRun();
-  const episodes = listEpisodes();
+  // Shipped scenarios belong in the picker before their first run, not after it.
+  // Selecting one and pressing Start is what registers it, which is the same
+  // path `resolveScenario` has always taken — it just no longer requires knowing
+  // the id to get there.
+  const registered = listEpisodes();
+  const episodes = [...registered, ...unregisteredShipped(registered.map((episode) => episode.id))];
 
   // Which ticks each scenario has scripted moments on. Read here, off the saved
   // spec, because `EpisodeSummary` carries only a beat COUNT — and a run panel
@@ -32,7 +39,8 @@ export default async function RunsPage({
   // day cuts off, not merely that some might be.
   const beatTicks: Record<string, number[]> = {};
   for (const episode of episodes) {
-    beatTicks[episode.id] = (getEpisode(episode.id)?.spec.beats ?? []).map((beat) => beat.tick);
+    const spec = getEpisode(episode.id)?.spec ?? getScenario(episode.id);
+    beatTicks[episode.id] = (spec?.beats ?? []).map((beat) => beat.tick);
   }
 
   return (

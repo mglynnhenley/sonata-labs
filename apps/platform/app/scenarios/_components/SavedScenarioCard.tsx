@@ -23,13 +23,15 @@ export type SavedScenarioCardProps = {
   /** True for a benchmark day that ships with Sonata — "saved 2 h ago" would
    *  misread as something the user wrote. */
   shipped: boolean;
+  /** False for a shipped scenario nothing has registered yet: nothing to delete. */
+  saved: boolean;
   /** The server's clock, threaded down rather than read during render. */
   now: number;
   deleting: boolean;
   onDelete: (episode: EpisodeSummary) => void;
 };
 
-export function SavedScenarioCard({ episode, expectations, shipped, now, deleting, onDelete }: SavedScenarioCardProps) {
+export function SavedScenarioCard({ episode, expectations, shipped, saved, now, deleting, onDelete }: SavedScenarioCardProps) {
   const lastRun = episode.lastRun;
 
   return (
@@ -92,17 +94,20 @@ export function SavedScenarioCard({ episode, expectations, shipped, now, deletin
         ) : (
           <span className="ml-auto text-sn-sm text-sn-subtle">
             {shipped ? "Included scenario" : `Saved ${ago(episode.createdAt, now)}`}
+            {shipped && !saved ? " · never run here" : ""}
           </span>
         )}
-        <Button
-          size="sm"
-          variant="ghost"
-          loading={deleting}
-          onClick={() => onDelete(episode)}
-          aria-label={`Delete ${episode.title}`}
-        >
-          Delete
-        </Button>
+        {saved ? (
+          <Button
+            size="sm"
+            variant="ghost"
+            loading={deleting}
+            onClick={() => onDelete(episode)}
+            aria-label={`Delete ${episode.title}`}
+          >
+            Delete
+          </Button>
+        ) : null}
       </div>
     </Card>
   );
