@@ -3,7 +3,8 @@ import { readBrief, readRun, readSpec, readTrace, type RunBrief, type SavedRun }
 import { costBreakdown, type CostReport } from "./cost";
 import { buildRunReport } from "./report";
 import { endOfDay, endStateMarkdown, hasEndState } from "../_components/endstate";
-import { harnessMarkdown, harnessReport, hasFaults, withFindings } from "../_components/harness";
+import { harnessMarkdown, harnessReport, hasFaults, specDescribes, withFindings } from "../_components/harness";
+import { getEpisode } from "../../api/_lib/records";
 
 /** One document for the GUI, copy button and download. Evidence warnings must
  * survive exporting just as the assessment does. */
@@ -18,7 +19,7 @@ export function assembleRunDocument(input: {
   const { report, judge } = harnessReport({
     run, spec, capture: run.evidence, offsetMinutes: brief.offsetMinutes,
   });
-  let markdown = buildRunReport(withFindings(run, judge), brief, cost);
+  let markdown = buildRunReport(withFindings(run, judge), brief, cost, spec);
   const closing = endOfDay({
     snapshots: run.snapshots,
     ticks: run.ticks,
@@ -47,6 +48,12 @@ export function assembleRunDocument(input: {
 }
 
 /** Read-only. Loading a report never resumes a run or consults current app data. */
+/** The scenario as written, when it still matches what ran; otherwise what ran. */
+function scheduledSpec(runId: string, run: SavedRun): EpisodeSpec | null {
+  const scenario = getEpisode(run.specId)?.spec ?? null;
+  return scenario && specDescribes(run, scenario) ? scenario : readSpec(runId);
+}
+
 export function loadRunDocument(runId: string): { run: SavedRun; markdown: string } | null {
   const run = readRun(runId);
   if (!run) return null;
@@ -55,7 +62,7 @@ export function loadRunDocument(runId: string): { run: SavedRun; markdown: strin
     markdown: assembleRunDocument({
       run,
       brief: readBrief(runId),
-      spec: readSpec(runId),
+      spec: scheduledSpec(runId, run),
       cost: costBreakdown(readTrace(runId), run.verdict?.cost ?? null),
     }),
   };

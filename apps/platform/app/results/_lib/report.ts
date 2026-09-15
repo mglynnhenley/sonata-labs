@@ -1,3 +1,4 @@
+import type { EpisodeSpec } from "@sonata/core";
 import {
   getFailureMode,
   scoreChecklist,
@@ -8,6 +9,7 @@ import {
   type VerdictOutcome,
 } from "@sonata/core";
 import type { RunBrief } from "./artifacts";
+import { dayShape } from "./shape";
 import { buildMoments, type Moment } from "./moments";
 import { formatDuration, formatPercent, formatSimTime, formatUsd, summarizeRun, UNKNOWN } from "./summary";
 import { judgeSight, sliceSentence } from "../_components/harness";
@@ -332,7 +334,7 @@ function criterionLine(c: CriterionResult): string {
  * a document ready to hand to a design partner — or to turn into a PDF. Safe on
  * an unfinished run: sections without evidence are dropped, never faked.
  */
-export function buildRunReport(run: EpisodeRun, brief: RunBrief, cost?: CostReport): string {
+export function buildRunReport(run: EpisodeRun, brief: RunBrief, cost?: CostReport, spec?: EpisodeSpec | null): string {
   const summary = summarizeRun(run);
   const v = summary.noResult ? null : run.verdict;
   const judge = v?.judge ?? null;
@@ -362,6 +364,19 @@ export function buildRunReport(run: EpisodeRun, brief: RunBrief, cost?: CostRepo
   if (run.error) {
     p();
     p(`**Run interruption:** ${flat(run.error)}. This is not an agent task-failure finding.`);
+  }
+
+  // --- What kind of day this was ---------------------------------------------
+  const shape = dayShape(run, spec);
+  p();
+  p(`## What kind of day this was`);
+  p();
+  p(shape.headline);
+  p();
+  for (const fact of shape.facts) p(`- **${fact.label}:** ${fact.value}`);
+  if (shape.cause === "harness") {
+    p();
+    p(`This shape was our doing, not the agent's. Read anything below that it "never did" against that.`);
   }
 
   // --- Scorecard -------------------------------------------------------------

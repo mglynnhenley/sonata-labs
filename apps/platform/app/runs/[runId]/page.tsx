@@ -10,6 +10,8 @@ import { RunDetail } from "../../results/[runId]/RunDetail";
 import { EndOfDay } from "../../results/_components/EndOfDay";
 import { endOfDay, hasEndState } from "../../results/_components/endstate";
 import { HarnessFaults } from "../../results/_components/HarnessFaults";
+import { DayShapeBand } from "../../results/_components/DayShapeBand";
+import { dayShape } from "../../results/_lib/shape";
 import { harnessReport, hasFaults, specDescribes, withFindings } from "../../results/_components/harness";
 import { LiveEpisode } from "../_components/LiveEpisode";
 
@@ -76,6 +78,7 @@ export default async function RunPage({ params }: { params: Promise<{ runId: str
     });
     return (
       <div className="flex flex-col gap-6">
+        <DayShapeBand shape={dayShape(run, spec)} attributed={hasFaults(report)} />
         {hasFaults(report) ? <HarnessFaults report={report} /> : null}
         <RunDetail run={withFindings(run, judge)} brief={brief} cost={cost} />
         <AssessmentHistory assessments={listAssessments(runId)} />
