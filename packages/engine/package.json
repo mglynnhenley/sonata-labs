@@ -21,13 +21,11 @@
     "openai": "^7.1.0",
     "@sonata/scenarios": "*",
     "ajv": "^8.20.0",
-    "better-sqlite3": "^13.0.3",
     "@sonata/desks": "*"
   },
   "devDependencies": {
     "@types/node": "^22.10.7",
     "typescript": "^5.7.3",
-    "vitest": "^3.0.2",
-    "@types/better-sqlite3": "^7.6.12"
+    "vitest": "^3.0.2"
   }
 }
