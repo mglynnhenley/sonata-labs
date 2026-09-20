@@ -1,9 +1,13 @@
 import { createTwinHttp, TwinHttp } from "@sonata/engine/http";
 import {
   attioTools,
+  deskTools,
+  excelTools,
   calendarTools,
   gmailTools,
+  googleAdsTools,
   googleDocsTools,
+  linkedInTools,
   slackTools,
   type EngineTool,
 } from "@sonata/engine/tools/index";
@@ -74,8 +78,9 @@ export function twinClient(twin: ServedTwin, opts: ClientOptions): TwinClient {
     http: createTwinHttp(twin, {
       baseUrl,
       token: opts.config.token,
+      ...(twin === "gmail" && opts.config.gmailOAuth ? { oauthCredentials: opts.config.gmailOAuth } : {}),
       fetchImpl: opts.fetchImpl,
-      ...(opts.timeoutMs === undefined ? {} : { timeoutMs: opts.timeoutMs }),
+      timeoutMs: opts.timeoutMs ?? opts.config.providerTimeoutMs,
     }),
   };
 }
@@ -93,6 +98,14 @@ export function engineToolsFor(twin: ServedTwin, http: TwinHttp): EngineTool[] {
       return attioTools(http);
     case "google-docs":
       return googleDocsTools(http);
+    case "google-ads":
+      return googleAdsTools(http);
+    case "excel":
+      return excelTools(http);
+    case "linkedin":
+      return linkedInTools(http);
+    case "desk":
+      return deskTools(http);
   }
 }
 

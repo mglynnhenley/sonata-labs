@@ -1,3 +1,4 @@
+import { emailAudience } from "../observations";
 import {
   displayAddress,
   emailOf,
@@ -244,6 +245,17 @@ export function createCalendarAdapter(opts: CalendarAdapterOptions = {}): TwinAd
 
     reset(): Promise<void> {
       return resetViaApi(http, "episode reset");
+    },
+
+    async observe(row, world) {
+      if (!["eventInsert", "eventPatch", "eventUpdate", "eventDelete"].includes(row.actionType ?? "")) return undefined;
+      const calendar = /^\/calendar\/v3\/calendars\/([^/]+)\/events(?:\/|$)/.exec(row.endpoint)?.[1];
+      if (!calendar || !row.targetId) throw new Error("Calendar action has no event address");
+      const event = await http.get<CalendarEventResource>(`${api}/calendars/${calendar}/events/${encodeURIComponent(row.targetId)}`);
+      const identities = [event.organizer?.email ?? "", ...(event.attendees ?? []).map(a => a.email ?? "")];
+      return { audience: emailAudience(world, identities),
+        text: `${event.summary ?? ""}\n${whenOf(event.start)}–${whenOf(event.end)}\n${event.status ?? "confirmed"}\n${event.description ?? ""}\n` +
+          (event.attendees ?? []).map(a => `${a.email}: ${a.responseStatus ?? "unknown"}`).join("\n") };
     },
 
     auditSince(sinceId: number): Promise<TwinAuditRow[]> {

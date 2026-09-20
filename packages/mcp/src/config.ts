@@ -1,4 +1,5 @@
 import { resolveTwinApiUrl, twinApiUrl, TWIN_NAMES, type TwinName } from "@sonata/core";
+import type { OAuthCredentials } from "@sonata/engine/http";
 
 // Where the twins live and what token opens them.
 //
@@ -46,6 +47,10 @@ export const START_COMMAND: Record<ServedTwin, string> = {
   calendar: "npm run dev:calendar",
   attio: "npm run dev:attio",
   "google-docs": "npm run dev:google-docs",
+  "google-ads": "npm run dev:google-ads",
+  linkedin: "npm run dev:linkedin",
+  excel: "npm run dev:excel",
+  desk: "npm run dev:desk",
 };
 
 /** The same default every twin's own auth.ts uses; the token is a seatbelt, not a lock. */
@@ -54,6 +59,8 @@ export const DEFAULT_TOKEN = "sandbox-token";
 export interface SonataConfig {
   token: string;
   urls: Record<ServedTwin, string>;
+  gmailOAuth?: OAuthCredentials;
+  providerTimeoutMs?: number;
 }
 
 /**
@@ -69,6 +76,10 @@ const URL_ENV: Record<ServedTwin, string> = {
   calendar: "SONATA_CALENDAR_URL",
   attio: "SONATA_ATTIO_URL",
   "google-docs": "SONATA_GOOGLE_DOCS_URL",
+  "google-ads": "SONATA_GOOGLE_ADS_URL",
+  linkedin: "SONATA_LINKEDIN_URL",
+  excel: "SONATA_EXCEL_URL",
+  desk: "SONATA_DESK_URL",
 };
 
 export function isServedTwin(name: string): name is ServedTwin {
@@ -85,12 +96,26 @@ export function configFromEnv(env: NodeJS.ProcessEnv = process.env): SonataConfi
   }
   // SANDBOX_TOKEN is accepted too: it is what the twins themselves read, so a
   // shell already set up to curl them needs no second variable.
-  return { token: env.SONATA_TOKEN || env.SANDBOX_TOKEN || DEFAULT_TOKEN, urls };
+  let gmailOAuth: OAuthCredentials | undefined;
+  if (env.SONATA_GMAIL_OAUTH) {
+    const value = JSON.parse(env.SONATA_GMAIL_OAUTH) as Partial<OAuthCredentials>;
+    if (typeof value.accessToken !== "string" || !value.accessToken || typeof value.clientId !== "string" || !value.clientId ||
+        (value.refreshToken !== undefined && typeof value.refreshToken !== "string")) throw new Error("Invalid SONATA_GMAIL_OAUTH grant.");
+    gmailOAuth = value as OAuthCredentials;
+  }
+  const providerTimeoutMs = env.SONATA_PROVIDER_TIMEOUT_MS === undefined ? undefined : Number(env.SONATA_PROVIDER_TIMEOUT_MS);
+  if (providerTimeoutMs !== undefined && (!Number.isInteger(providerTimeoutMs) || providerTimeoutMs < 1000 || providerTimeoutMs > 300_000)) {
+    throw new Error("SONATA_PROVIDER_TIMEOUT_MS must be an integer from 1000 to 300000.");
+  }
+  return { token: env.SONATA_TOKEN || env.SANDBOX_TOKEN || DEFAULT_TOKEN, urls, ...(gmailOAuth ? { gmailOAuth } : {}),
+    ...(providerTimeoutMs === undefined ? {} : { providerTimeoutMs }) };
 }
 
 /** The env a launcher must set to reproduce this config — ordered, so snippets are stable. */
 export function envFor(config: SonataConfig, twins: readonly ServedTwin[] = TWINS): Record<string, string> {
   const out: Record<string, string> = { SONATA_TOKEN: config.token };
+  if (config.providerTimeoutMs !== undefined) out.SONATA_PROVIDER_TIMEOUT_MS = String(config.providerTimeoutMs);
+  if (config.gmailOAuth && twins.includes("gmail")) out.SONATA_GMAIL_OAUTH = JSON.stringify(config.gmailOAuth);
   for (const twin of TWINS) {
     if (!twins.includes(twin)) continue;
     out[URL_ENV[twin]] = config.urls[twin];

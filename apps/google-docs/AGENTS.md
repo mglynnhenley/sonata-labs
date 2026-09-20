@@ -10,16 +10,16 @@ workspace. Every write is local and audit-logged. It is **not** registered as an
 episode twin yet — `TwinName` in `packages/core` is untouched, and registration is
 phase 2. Until then port 3600 lives only in this clone's own scripts and docs.
 
-## Two credentials
+## Provider and control credentials
 
-- `/v1/*` takes the static `SANDBOX_TOKEN` as an OAuth-style bearer, validated in
-  `src/lib/docs/auth.ts`. A failure is the Docs envelope, `{error:{code,message,status}}`.
-- `/api/sandbox/*` takes the same token but through `src/lib/sandbox/auth.ts`,
-  accepts `X-Sandbox-Token` OR a bearer OR `?access_token=`, and answers
-  `{ok:false,error}` rather than the Docs envelope — those routes are machinery
-  an agent must not learn from.
-- `/api/health` needs no credential. `/api/activity` is read-only and ungated: it
-  is the evidence, not a lever.
+Provider APIs retain their `SANDBOX_TOKEN` credential and provider-shaped errors.
+The control plane (`/api/sandbox/*` and `/api/activity`) uses
+`SANDBOX_CONTROL_TOKEN`, falling back to `SANDBOX_TOKEN` and then `sandbox-token`
+for local development. `src/lib/sandbox/auth.ts` delegates to the shared
+`@sonata/core/controlAuth` helper. Control callers may use `X-Sandbox-Token`,
+a bearer, `?access_token=`, or `?token=`; rejection is plain `{ok:false,error}`.
+`/api/health` stays public. A run with distinct credentials must never give its
+control token to the tested agent.
 
 ## Commands
 

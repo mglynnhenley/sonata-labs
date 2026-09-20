@@ -7,6 +7,7 @@ import {
   tickLabel,
   tickRange,
   tickToISO,
+  validateClock,
 } from "../src/clock";
 import type { Clock } from "../src/types/episode";
 
@@ -84,5 +85,47 @@ describe("offsetMinutes", () => {
     expect(offsetMinutes("2026-08-04T09:00:00Z")).toBe(0);
     expect(offsetMinutes("2026-08-04T09:00:00+05:30")).toBe(330);
     expect(offsetMinutes("2026-08-04T09:00:00-0430")).toBe(-270);
+  });
+});
+
+describe("explicit five-day opportunity clock", () => {
+  const week: Clock = {
+    startISO: "2026-09-14T09:00:00+01:00", ticks: 180, simMinutesPerTick: 15,
+    tickISOs: Array.from({ length: 180 }, (_, tick) =>
+      new Date(Date.parse("2026-09-14T09:00:00+01:00") + Math.floor(tick / 36) * 86_400_000 + (tick % 36) * 900_000).toISOString()),
+    endISO: "2026-09-18T18:00:00+01:00",
+  };
+
+  it("runs Monday through Friday, preserving the final close instead of advancing to Monday", () => {
+    expect(tickToISO(week, 35)).toBe("2026-09-14T16:45:00.000Z");
+    expect(tickToISO(week, 36)).toBe("2026-09-15T08:00:00.000Z");
+    expect(tickToISO(week, 179)).toBe("2026-09-18T16:45:00.000Z");
+    expect(endISO(week)).toBe("2026-09-18T17:00:00.000Z");
+    expect(tickLabel(week, 36)).toBe("09:00");
+    for (const tick of tickRange(week)) expect(isoToTick(week, tickToISO(week, tick))).toBe(tick);
+  });
+
+  it("maps off-hours to the previous opportunity; closes and outside scheduling remain explicit", () => {
+    expect(isoToTick(week, "2026-09-14T18:00:00+01:00")).toBe(35);
+    expect(isoToTick(week, "2026-09-15T08:59:59+01:00")).toBe(35);
+    expect(isoToTick(week, week.endISO!)).toBe(180);
+    expect(tickToISO(week, 181)).toBe("2026-09-18T17:15:00.000Z");
+    expect(isoToTick(week, "2026-09-14T08:59:00+01:00")).toBe(-1);
+  });
+
+  it("rejects incomplete schedules, duplicate or reversed instants, first-start drift and premature close", () => {
+    const invalid: Clock[] = [
+      { ...week, tickISOs: week.tickISOs!.slice(1) },
+      { ...week, endISO: undefined },
+      { ...week, tickISOs: undefined },
+      { ...week, tickISOs: week.tickISOs!.map((iso, index) => index === 1 ? week.tickISOs![0] : iso) },
+      { ...week, tickISOs: [...week.tickISOs!].reverse() },
+      { ...week, startISO: "2026-09-14T08:00:00+01:00" },
+      { ...week, endISO: week.tickISOs![179] },
+      { ...week, endISO: "2026-09-18T18:00:00" },
+      { ...week, tickISOs: week.tickISOs!.map((iso, index) => index === 4 ? "not a dateZ" : iso) },
+    ];
+    for (const clock of invalid) expect(() => validateClock(clock)).toThrow();
+    expect(() => tickToISO(week, 1.5)).toThrow(/integer/);
   });
 });

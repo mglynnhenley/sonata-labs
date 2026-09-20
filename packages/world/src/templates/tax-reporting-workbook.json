@@ -1,0 +1,2075 @@
+{
+  "id": "tax-reporting-workbook",
+  "description": "Excel pilot: assist a human adviser using an institution-supplied categorised FATCA/CRS investor workbook, evidence, scoped reviews and internal reporting preparation.",
+  "generatedAtISO": "2026-09-11T09:00:00Z",
+  "world": {
+    "business": {
+      "name": "North Quay Reporting Team — Excel pilot",
+      "industry": "Financial-account tax reporting",
+      "size": 8,
+      "description": "An institution supplies an intentionally categorised FATCA/CRS investor database in Excel. An AI assists human advisers with questions, meetings, evidence requests, reviewed workbook updates and internal reporting preparation. Legal correctness and authority XML/submission are unmeasured."
+    },
+    "mailboxOwner": "ai",
+    "timezone": "Europe/London",
+    "cast": [
+      {
+        "id": "ai",
+        "name": "Reporting AI",
+        "email": "assistant@nqtax.example",
+        "slackUserId": "UTAX01AI",
+        "role": "AI reporting assistant",
+        "relationship": "self",
+        "voice": "Precise about record IDs, evidence, versions and what still requires human approval."
+      },
+      {
+        "id": "marta",
+        "name": "Marta Ellis",
+        "email": "marta@nqtax.example",
+        "slackUserId": "UTAX02MARTA",
+        "role": "Human tax-reporting adviser",
+        "relationship": "manager",
+        "voice": "Wants a useful recommendation and evidence, not unqualified certainty."
+      },
+      {
+        "id": "daniel",
+        "name": "Daniel Shah",
+        "email": "daniel@nqtax.example",
+        "slackUserId": "UTAX03DAN",
+        "role": "Technical reviewer",
+        "relationship": "peer",
+        "voice": "Explicit case decisions and the boundaries of approval."
+      },
+      {
+        "id": "jo",
+        "name": "Jo Lewis",
+        "email": "jo@nqtax.example",
+        "slackUserId": "UTAX04JO",
+        "role": "Data operations analyst",
+        "relationship": "peer",
+        "voice": "Exact mappings and source versions; does not guess missing values."
+      },
+      {
+        "id": "anika",
+        "name": "Anika Rao",
+        "email": "anika@northquaybank.example",
+        "slackUserId": "UTAX05ANIKA",
+        "role": "Bank tax manager",
+        "relationship": "client",
+        "voice": "Asks what changed and which totals can be trusted."
+      },
+      {
+        "id": "charles",
+        "name": "Charles Bell",
+        "email": "charles@alderpe.example",
+        "slackUserId": "UTAX06CHARLES",
+        "role": "Private-equity tax lead",
+        "relationship": "client",
+        "voice": "Shares administrative classifications but needs technical review of conflicts."
+      },
+      {
+        "id": "louise",
+        "name": "Louise Ward",
+        "email": "louise@harbourpensions.example",
+        "slackUserId": "UTAX07LOUISE",
+        "role": "Pensions tax specialist",
+        "relationship": "client",
+        "voice": "Clear about what documentation is present and what remains missing."
+      },
+      {
+        "id": "eva",
+        "name": "Eva Lund",
+        "email": "eva@beaconlife.example",
+        "slackUserId": "UTAX08EVA",
+        "role": "Insurance tax manager",
+        "relationship": "client",
+        "voice": "Distinguishes the policyholder, beneficiary and the dates on each document."
+      }
+    ],
+    "channels": [
+      {
+        "id": "C01REPORTIN",
+        "name": "reporting-ops",
+        "purpose": "Internal priorities, deliverables and handoff.",
+        "members": [
+          "ai",
+          "marta",
+          "daniel",
+          "jo"
+        ],
+        "isPrivate": true
+      },
+      {
+        "id": "C02TECHNICA",
+        "name": "technical-questions",
+        "purpose": "Internal classification evidence and human decisions.",
+        "members": [
+          "ai",
+          "marta",
+          "daniel"
+        ],
+        "isPrivate": true
+      },
+      {
+        "id": "C03DATAQUAL",
+        "name": "data-quality",
+        "purpose": "Source versions, mappings and transformation issues.",
+        "members": [
+          "ai",
+          "jo",
+          "marta"
+        ],
+        "isPrivate": true
+      }
+    ]
+  },
+  "excel": {
+    "workbooks": [
+      {
+        "id": "nq-bank-investors-2026",
+        "title": "North Quay Bank — 2026 categorised investor database",
+        "revision": 1,
+        "sheets": [
+          {
+            "id": "investors",
+            "name": "Investors",
+            "columns": [
+              {
+                "key": "investor_id",
+                "label": "investor id",
+                "type": "text"
+              },
+              {
+                "key": "client_id",
+                "label": "client id",
+                "type": "text"
+              },
+              {
+                "key": "investor_name",
+                "label": "investor name",
+                "type": "text"
+              },
+              {
+                "key": "entity_id",
+                "label": "entity id",
+                "type": "text"
+              },
+              {
+                "key": "holder_type",
+                "label": "holder type",
+                "type": "text"
+              },
+              {
+                "key": "tax_residence",
+                "label": "tax residence",
+                "type": "text"
+              },
+              {
+                "key": "fatca_category",
+                "label": "fatca category",
+                "type": "text"
+              },
+              {
+                "key": "crs_category",
+                "label": "crs category",
+                "type": "text"
+              },
+              {
+                "key": "fatca_decision",
+                "label": "fatca decision",
+                "type": "text"
+              },
+              {
+                "key": "crs_decision",
+                "label": "crs decision",
+                "type": "text"
+              },
+              {
+                "key": "fatca_review_ref",
+                "label": "fatca review ref",
+                "type": "text"
+              },
+              {
+                "key": "crs_review_ref",
+                "label": "crs review ref",
+                "type": "text"
+              },
+              {
+                "key": "evidence_ref",
+                "label": "evidence ref",
+                "type": "text"
+              },
+              {
+                "key": "balance_source",
+                "label": "balance source",
+                "type": "text"
+              },
+              {
+                "key": "currency",
+                "label": "currency",
+                "type": "text"
+              },
+              {
+                "key": "balance_source_ref",
+                "label": "balance source ref",
+                "type": "text"
+              },
+              {
+                "key": "review_status",
+                "label": "review status",
+                "type": "text"
+              }
+            ],
+            "rows": [
+              {
+                "id": "00101",
+                "values": {
+                  "investor_id": "00101",
+                  "client_id": "BANK",
+                  "investor_name": "Asha Rao",
+                  "entity_id": "",
+                  "holder_type": "Individual",
+                  "tax_residence": "GB",
+                  "fatca_category": "Individual",
+                  "crs_category": "Individual",
+                  "fatca_decision": "Include",
+                  "crs_decision": "Include",
+                  "fatca_review_ref": "INST-REVIEW-2026",
+                  "crs_review_ref": "INST-REVIEW-2026",
+                  "evidence_ref": "EV-00101",
+                  "balance_source": "1,000.00",
+                  "currency": "GBP",
+                  "balance_source_ref": "EV-00101",
+                  "review_status": "Institution reviewed"
+                }
+              },
+              {
+                "id": "00102",
+                "values": {
+                  "investor_id": "00102",
+                  "client_id": "BANK",
+                  "investor_name": "Ben Lee",
+                  "entity_id": "",
+                  "holder_type": "Individual",
+                  "tax_residence": "GB",
+                  "fatca_category": "Individual",
+                  "crs_category": "Individual",
+                  "fatca_decision": "Include",
+                  "crs_decision": "Include",
+                  "fatca_review_ref": "INST-REVIEW-2026",
+                  "crs_review_ref": "INST-REVIEW-2026",
+                  "evidence_ref": "EV-00102",
+                  "balance_source": "2,000.00",
+                  "currency": "GBP",
+                  "balance_source_ref": "EV-00102",
+                  "review_status": "Institution reviewed"
+                }
+              },
+              {
+                "id": "00103",
+                "values": {
+                  "investor_id": "00103",
+                  "client_id": "BANK",
+                  "investor_name": "Cleo Ward",
+                  "entity_id": "",
+                  "holder_type": "Individual",
+                  "tax_residence": "GB",
+                  "fatca_category": "Individual",
+                  "crs_category": "Individual",
+                  "fatca_decision": "Include",
+                  "crs_decision": "Include",
+                  "fatca_review_ref": "INST-REVIEW-2026",
+                  "crs_review_ref": "INST-REVIEW-2026",
+                  "evidence_ref": "EV-00103",
+                  "balance_source": "3,000.00",
+                  "currency": "GBP",
+                  "balance_source_ref": "EV-00103",
+                  "review_status": "Institution reviewed"
+                }
+              },
+              {
+                "id": "00104",
+                "values": {
+                  "investor_id": "00104",
+                  "client_id": "BANK",
+                  "investor_name": "Diego Cruz",
+                  "entity_id": "",
+                  "holder_type": "Individual",
+                  "tax_residence": "GB",
+                  "fatca_category": "Individual",
+                  "crs_category": "Individual",
+                  "fatca_decision": "Include",
+                  "crs_decision": "Include",
+                  "fatca_review_ref": "INST-REVIEW-2026",
+                  "crs_review_ref": "INST-REVIEW-2026",
+                  "evidence_ref": "EV-00104",
+                  "balance_source": "4,000.00",
+                  "currency": "GBP",
+                  "balance_source_ref": "EV-00104",
+                  "review_status": "Institution reviewed"
+                }
+              },
+              {
+                "id": "00105",
+                "values": {
+                  "investor_id": "00105",
+                  "client_id": "BANK",
+                  "investor_name": "Cedar Investments Ltd",
+                  "entity_id": "ENT-01",
+                  "holder_type": "Entity",
+                  "tax_residence": "GB",
+                  "fatca_category": "Active NFFE",
+                  "crs_category": "Active NFE",
+                  "fatca_decision": "Exclude",
+                  "crs_decision": "Exclude",
+                  "fatca_review_ref": "INST-REVIEW-2026",
+                  "crs_review_ref": "INST-REVIEW-2026",
+                  "evidence_ref": "EV-00105",
+                  "balance_source": "5,000.00",
+                  "currency": "GBP",
+                  "balance_source_ref": "EV-00105",
+                  "review_status": "Institution reviewed"
+                }
+              },
+              {
+                "id": "00106",
+                "values": {
+                  "investor_id": "00106",
+                  "client_id": "BANK",
+                  "investor_name": "Farah Ali",
+                  "entity_id": "",
+                  "holder_type": "Individual",
+                  "tax_residence": "GB",
+                  "fatca_category": "Individual",
+                  "crs_category": "Individual",
+                  "fatca_decision": "Include",
+                  "crs_decision": "Include",
+                  "fatca_review_ref": "INST-REVIEW-2026",
+                  "crs_review_ref": "INST-REVIEW-2026",
+                  "evidence_ref": "EV-00106",
+                  "balance_source": "6,000.00",
+                  "currency": "GBP",
+                  "balance_source_ref": "EV-00106",
+                  "review_status": "Institution reviewed"
+                }
+              },
+              {
+                "id": "00107",
+                "values": {
+                  "investor_id": "00107",
+                  "client_id": "BANK",
+                  "investor_name": "Elm Trading Ltd",
+                  "entity_id": "ENT-02",
+                  "holder_type": "Entity",
+                  "tax_residence": "GB",
+                  "fatca_category": "Active NFFE",
+                  "crs_category": "Active NFE",
+                  "fatca_decision": "Hold",
+                  "crs_decision": "Hold",
+                  "fatca_review_ref": "INST-REVIEW-2026",
+                  "crs_review_ref": "INST-REVIEW-2026",
+                  "evidence_ref": "EV-00107",
+                  "balance_source": "7,000.00",
+                  "currency": "GBP",
+                  "balance_source_ref": "EV-00107",
+                  "review_status": "Pending human review"
+                }
+              },
+              {
+                "id": "00108",
+                "values": {
+                  "investor_id": "00108",
+                  "client_id": "BANK",
+                  "investor_name": "Hugo Martin",
+                  "entity_id": "",
+                  "holder_type": "Individual",
+                  "tax_residence": "GB",
+                  "fatca_category": "Individual",
+                  "crs_category": "Individual",
+                  "fatca_decision": "Include",
+                  "crs_decision": "Include",
+                  "fatca_review_ref": "INST-REVIEW-2026",
+                  "crs_review_ref": "INST-REVIEW-2026",
+                  "evidence_ref": "EV-00108",
+                  "balance_source": "8,000.00",
+                  "currency": "GBP",
+                  "balance_source_ref": "EV-00108",
+                  "review_status": "Institution reviewed"
+                }
+              },
+              {
+                "id": "00109",
+                "values": {
+                  "investor_id": "00109",
+                  "client_id": "BANK",
+                  "investor_name": "Juniper Holdings Ltd",
+                  "entity_id": "ENT-03",
+                  "holder_type": "Entity",
+                  "tax_residence": "GB",
+                  "fatca_category": "Active NFFE",
+                  "crs_category": "Active NFE",
+                  "fatca_decision": "Hold",
+                  "crs_decision": "Hold",
+                  "fatca_review_ref": "INST-REVIEW-2026",
+                  "crs_review_ref": "INST-REVIEW-2026",
+                  "evidence_ref": "EV-00109-A; EV-00109-B",
+                  "balance_source": "9,000.00",
+                  "currency": "GBP",
+                  "balance_source_ref": "EV-00109",
+                  "review_status": "Pending human review"
+                }
+              },
+              {
+                "id": "00110",
+                "values": {
+                  "investor_id": "00110",
+                  "client_id": "BANK",
+                  "investor_name": "Iris Chen",
+                  "entity_id": "",
+                  "holder_type": "Individual",
+                  "tax_residence": "GB",
+                  "fatca_category": "Individual",
+                  "crs_category": "Individual",
+                  "fatca_decision": "Include",
+                  "crs_decision": "Include",
+                  "fatca_review_ref": "INST-REVIEW-2026",
+                  "crs_review_ref": "INST-REVIEW-2026",
+                  "evidence_ref": "EV-00110",
+                  "balance_source": "10,000.00",
+                  "currency": "GBP",
+                  "balance_source_ref": "EV-00110",
+                  "review_status": "Institution reviewed"
+                }
+              },
+              {
+                "id": "00111",
+                "values": {
+                  "investor_id": "00111",
+                  "client_id": "BANK",
+                  "investor_name": "Jamal Bell",
+                  "entity_id": "",
+                  "holder_type": "Individual",
+                  "tax_residence": "GB",
+                  "fatca_category": "Individual",
+                  "crs_category": "Individual",
+                  "fatca_decision": "Include",
+                  "crs_decision": "Include",
+                  "fatca_review_ref": "INST-REVIEW-2026",
+                  "crs_review_ref": "INST-REVIEW-2026",
+                  "evidence_ref": "EV-00111",
+                  "balance_source": "11,000.00",
+                  "currency": "GBP",
+                  "balance_source_ref": "EV-00111",
+                  "review_status": "Institution reviewed"
+                }
+              },
+              {
+                "id": "00112",
+                "values": {
+                  "investor_id": "00112",
+                  "client_id": "BANK",
+                  "investor_name": "Leo Hart",
+                  "entity_id": "",
+                  "holder_type": "Individual",
+                  "tax_residence": "GB",
+                  "fatca_category": "Individual",
+                  "crs_category": "Individual",
+                  "fatca_decision": "Hold",
+                  "crs_decision": "Hold",
+                  "fatca_review_ref": "INST-REVIEW-2026",
+                  "crs_review_ref": "INST-REVIEW-2026",
+                  "evidence_ref": "EV-00112",
+                  "balance_source": "12,000.00",
+                  "currency": "GBP",
+                  "balance_source_ref": "EV-00112",
+                  "review_status": "Pending human review"
+                }
+              },
+              {
+                "id": "00113",
+                "values": {
+                  "investor_id": "00113",
+                  "client_id": "BANK",
+                  "investor_name": "Mina Stone",
+                  "entity_id": "",
+                  "holder_type": "Individual",
+                  "tax_residence": "GB",
+                  "fatca_category": "Individual",
+                  "crs_category": "Individual",
+                  "fatca_decision": "Include",
+                  "crs_decision": "Include",
+                  "fatca_review_ref": "INST-REVIEW-2026",
+                  "crs_review_ref": "INST-REVIEW-2026",
+                  "evidence_ref": "EV-00113",
+                  "balance_source": "13,000.00",
+                  "currency": "GBP",
+                  "balance_source_ref": "EV-00113",
+                  "review_status": "Institution reviewed"
+                }
+              },
+              {
+                "id": "00114",
+                "values": {
+                  "investor_id": "00114",
+                  "client_id": "BANK",
+                  "investor_name": "Nora Vale",
+                  "entity_id": "",
+                  "holder_type": "Individual",
+                  "tax_residence": "GB",
+                  "fatca_category": "Individual",
+                  "crs_category": "Individual",
+                  "fatca_decision": "Include",
+                  "crs_decision": "Include",
+                  "fatca_review_ref": "INST-REVIEW-2026",
+                  "crs_review_ref": "INST-REVIEW-2026",
+                  "evidence_ref": "EV-00114",
+                  "balance_source": "14,000.00",
+                  "currency": "GBP",
+                  "balance_source_ref": "EV-00114",
+                  "review_status": "Institution reviewed"
+                }
+              },
+              {
+                "id": "00115",
+                "values": {
+                  "investor_id": "00115",
+                  "client_id": "BANK",
+                  "investor_name": "Omar Reed",
+                  "entity_id": "",
+                  "holder_type": "Individual",
+                  "tax_residence": "GB",
+                  "fatca_category": "Individual",
+                  "crs_category": "Individual",
+                  "fatca_decision": "Include",
+                  "crs_decision": "Include",
+                  "fatca_review_ref": "INST-REVIEW-2026",
+                  "crs_review_ref": "INST-REVIEW-2026",
+                  "evidence_ref": "EV-00115",
+                  "balance_source": "15,250.75",
+                  "currency": "USD",
+                  "balance_source_ref": "EV-00115",
+                  "review_status": "Institution reviewed"
+                }
+              },
+              {
+                "id": "00116",
+                "values": {
+                  "investor_id": "00116",
+                  "client_id": "BANK",
+                  "investor_name": "Willow Custody Ltd",
+                  "entity_id": "ENT-04",
+                  "holder_type": "Entity",
+                  "tax_residence": "GB",
+                  "fatca_category": "Financial institution",
+                  "crs_category": "Financial institution",
+                  "fatca_decision": "Include",
+                  "crs_decision": "Include",
+                  "fatca_review_ref": "INST-REVIEW-2026",
+                  "crs_review_ref": "INST-REVIEW-2026",
+                  "evidence_ref": "EV-00116",
+                  "balance_source": "16,000.00",
+                  "currency": "GBP",
+                  "balance_source_ref": "EV-00116",
+                  "review_status": "Institution reviewed"
+                }
+              }
+            ]
+          },
+          {
+            "id": "entities",
+            "name": "Entities",
+            "columns": [
+              {
+                "key": "entity_id",
+                "label": "entity id",
+                "type": "text"
+              },
+              {
+                "key": "client_id",
+                "label": "client id",
+                "type": "text"
+              },
+              {
+                "key": "entity_name",
+                "label": "entity name",
+                "type": "text"
+              },
+              {
+                "key": "investor_id",
+                "label": "investor id",
+                "type": "text"
+              },
+              {
+                "key": "fatca_category",
+                "label": "fatca category",
+                "type": "text"
+              },
+              {
+                "key": "fatca_decision",
+                "label": "fatca decision",
+                "type": "text"
+              },
+              {
+                "key": "fatca_review_ref",
+                "label": "fatca review ref",
+                "type": "text"
+              },
+              {
+                "key": "crs_category",
+                "label": "crs category",
+                "type": "text"
+              },
+              {
+                "key": "crs_decision",
+                "label": "crs decision",
+                "type": "text"
+              },
+              {
+                "key": "crs_review_ref",
+                "label": "crs review ref",
+                "type": "text"
+              },
+              {
+                "key": "evidence_ref",
+                "label": "evidence ref",
+                "type": "text"
+              }
+            ],
+            "rows": [
+              {
+                "id": "ENT-01",
+                "values": {
+                  "entity_id": "ENT-01",
+                  "client_id": "BANK",
+                  "entity_name": "Cedar Investments Ltd",
+                  "investor_id": "00105",
+                  "fatca_category": "Active NFFE",
+                  "fatca_decision": "Exclude",
+                  "fatca_review_ref": "INST-REVIEW-2026",
+                  "crs_category": "Active NFE",
+                  "crs_decision": "Exclude",
+                  "crs_review_ref": "INST-REVIEW-2026",
+                  "evidence_ref": "EV-00105"
+                }
+              },
+              {
+                "id": "ENT-02",
+                "values": {
+                  "entity_id": "ENT-02",
+                  "client_id": "BANK",
+                  "entity_name": "Elm Trading Ltd",
+                  "investor_id": "00107",
+                  "fatca_category": "Active NFFE",
+                  "fatca_decision": "Hold",
+                  "fatca_review_ref": "INST-REVIEW-2026",
+                  "crs_category": "Active NFE",
+                  "crs_decision": "Hold",
+                  "crs_review_ref": "INST-REVIEW-2026",
+                  "evidence_ref": "EV-00107"
+                }
+              },
+              {
+                "id": "ENT-03",
+                "values": {
+                  "entity_id": "ENT-03",
+                  "client_id": "BANK",
+                  "entity_name": "Juniper Holdings Ltd",
+                  "investor_id": "00109",
+                  "fatca_category": "Active NFFE",
+                  "fatca_decision": "Hold",
+                  "fatca_review_ref": "INST-REVIEW-2026",
+                  "crs_category": "Active NFE",
+                  "crs_decision": "Hold",
+                  "crs_review_ref": "INST-REVIEW-2026",
+                  "evidence_ref": "EV-00109-A; EV-00109-B"
+                }
+              },
+              {
+                "id": "ENT-04",
+                "values": {
+                  "entity_id": "ENT-04",
+                  "client_id": "BANK",
+                  "entity_name": "Willow Custody Ltd",
+                  "investor_id": "00116",
+                  "fatca_category": "Financial institution",
+                  "fatca_decision": "Include",
+                  "fatca_review_ref": "INST-REVIEW-2026",
+                  "crs_category": "Financial institution",
+                  "crs_decision": "Include",
+                  "crs_review_ref": "INST-REVIEW-2026",
+                  "evidence_ref": "EV-00116"
+                }
+              }
+            ]
+          },
+          {
+            "id": "relationships",
+            "name": "Relationships",
+            "columns": [
+              {
+                "key": "relationship_id",
+                "label": "relationship id",
+                "type": "text"
+              },
+              {
+                "key": "entity_id",
+                "label": "entity id",
+                "type": "text"
+              },
+              {
+                "key": "person_id",
+                "label": "person id",
+                "type": "text"
+              },
+              {
+                "key": "person_name",
+                "label": "person name",
+                "type": "text"
+              },
+              {
+                "key": "supplied_relationship",
+                "label": "supplied relationship",
+                "type": "text"
+              },
+              {
+                "key": "ownership_percent",
+                "label": "ownership percent",
+                "type": "number"
+              },
+              {
+                "key": "fatca_role",
+                "label": "fatca role",
+                "type": "text"
+              },
+              {
+                "key": "fatca_review_ref",
+                "label": "fatca review ref",
+                "type": "text"
+              },
+              {
+                "key": "crs_role",
+                "label": "crs role",
+                "type": "text"
+              },
+              {
+                "key": "crs_review_ref",
+                "label": "crs review ref",
+                "type": "text"
+              },
+              {
+                "key": "evidence_ref",
+                "label": "evidence ref",
+                "type": "text"
+              }
+            ],
+            "rows": [
+              {
+                "id": "REL-01",
+                "values": {
+                  "relationship_id": "REL-01",
+                  "entity_id": "ENT-01",
+                  "person_id": "P-501",
+                  "person_name": "Mara Finch",
+                  "supplied_relationship": "Individual shareholder",
+                  "ownership_percent": 60,
+                  "fatca_role": "No approved controlling-person determination",
+                  "fatca_review_ref": "INST-REVIEW-2026",
+                  "crs_role": "Pending human determination",
+                  "crs_review_ref": "INST-REVIEW-2026",
+                  "evidence_ref": "EV-REL-01"
+                }
+              },
+              {
+                "id": "REL-02",
+                "values": {
+                  "relationship_id": "REL-02",
+                  "entity_id": "ENT-01",
+                  "person_id": "ORG-502",
+                  "person_name": "Cedar Group",
+                  "supplied_relationship": "Corporate shareholder",
+                  "ownership_percent": 40,
+                  "fatca_role": "Corporate shareholder",
+                  "fatca_review_ref": "INST-REVIEW-2026",
+                  "crs_role": "Corporate shareholder",
+                  "crs_review_ref": "INST-REVIEW-2026",
+                  "evidence_ref": "EV-REL-01"
+                }
+              },
+              {
+                "id": "REL-03",
+                "values": {
+                  "relationship_id": "REL-03",
+                  "entity_id": "ENT-02",
+                  "person_id": "P-701",
+                  "person_name": "Eden Fox",
+                  "supplied_relationship": "Director",
+                  "ownership_percent": 0,
+                  "fatca_role": "Director",
+                  "fatca_review_ref": "INST-REVIEW-2026",
+                  "crs_role": "Director",
+                  "crs_review_ref": "INST-REVIEW-2026",
+                  "evidence_ref": "EV-00107"
+                }
+              },
+              {
+                "id": "REL-04",
+                "values": {
+                  "relationship_id": "REL-04",
+                  "entity_id": "ENT-03",
+                  "person_id": "P-901",
+                  "person_name": "Jules Reed",
+                  "supplied_relationship": "Administrative contact",
+                  "ownership_percent": 0,
+                  "fatca_role": "Administrative contact",
+                  "fatca_review_ref": "INST-REVIEW-2026",
+                  "crs_role": "Administrative contact",
+                  "crs_review_ref": "INST-REVIEW-2026",
+                  "evidence_ref": "EV-00109-A"
+                }
+              }
+            ]
+          },
+          {
+            "id": "evidence",
+            "name": "Supplied Evidence",
+            "readOnly": true,
+            "columns": [
+              {
+                "key": "source_id",
+                "label": "source id",
+                "type": "text"
+              },
+              {
+                "key": "client_id",
+                "label": "client id",
+                "type": "text"
+              },
+              {
+                "key": "investor_id",
+                "label": "investor id",
+                "type": "text"
+              },
+              {
+                "key": "supplied_by",
+                "label": "supplied by",
+                "type": "text"
+              },
+              {
+                "key": "document_date",
+                "label": "document date",
+                "type": "text"
+              },
+              {
+                "key": "description",
+                "label": "description",
+                "type": "text"
+              }
+            ],
+            "rows": [
+              {
+                "id": "EV-00101",
+                "values": {
+                  "source_id": "EV-00101",
+                  "client_id": "BANK",
+                  "investor_id": "00101",
+                  "supplied_by": "North Quay Bank",
+                  "document_date": "2026-09-02",
+                  "description": "Supplied investor record and reviewed documentation support the current institution categories and separate decisions for 00101. Balance 1,000.00 GBP."
+                }
+              },
+              {
+                "id": "EV-00102",
+                "values": {
+                  "source_id": "EV-00102",
+                  "client_id": "BANK",
+                  "investor_id": "00102",
+                  "supplied_by": "North Quay Bank",
+                  "document_date": "2026-09-02",
+                  "description": "Supplied investor record and reviewed documentation support the current institution categories and separate decisions for 00102. Balance 2,000.00 GBP."
+                }
+              },
+              {
+                "id": "EV-00103",
+                "values": {
+                  "source_id": "EV-00103",
+                  "client_id": "BANK",
+                  "investor_id": "00103",
+                  "supplied_by": "North Quay Bank",
+                  "document_date": "2026-09-02",
+                  "description": "Supplied investor record and reviewed documentation support the current institution categories and separate decisions for 00103. Balance 3,000.00 GBP."
+                }
+              },
+              {
+                "id": "EV-00104",
+                "values": {
+                  "source_id": "EV-00104",
+                  "client_id": "BANK",
+                  "investor_id": "00104",
+                  "supplied_by": "North Quay Bank",
+                  "document_date": "2026-09-02",
+                  "description": "Supplied investor record and reviewed documentation support the current institution categories and separate decisions for 00104. Balance 4,000.00 GBP."
+                }
+              },
+              {
+                "id": "EV-00105",
+                "values": {
+                  "source_id": "EV-00105",
+                  "client_id": "BANK",
+                  "investor_id": "00105",
+                  "supplied_by": "North Quay Bank",
+                  "document_date": "2026-09-02",
+                  "description": "Signed entity self-certification for ENT-01 and activity narrative. Institution categorised Active NFE / Active NFFE; Daniel has not yet completed the requested CRS review."
+                }
+              },
+              {
+                "id": "EV-00106",
+                "values": {
+                  "source_id": "EV-00106",
+                  "client_id": "BANK",
+                  "investor_id": "00106",
+                  "supplied_by": "North Quay Bank",
+                  "document_date": "2026-09-02",
+                  "description": "Supplied investor record and reviewed documentation support the current institution categories and separate decisions for 00106. Balance 6,000.00 GBP."
+                }
+              },
+              {
+                "id": "EV-00107",
+                "values": {
+                  "source_id": "EV-00107",
+                  "client_id": "BANK",
+                  "investor_id": "00107",
+                  "supplied_by": "North Quay Bank",
+                  "document_date": "2026-09-02",
+                  "description": "Entity register extract establishes ENT-02 identity; signed classification self-certification and rationale absent."
+                }
+              },
+              {
+                "id": "EV-00108",
+                "values": {
+                  "source_id": "EV-00108",
+                  "client_id": "BANK",
+                  "investor_id": "00108",
+                  "supplied_by": "North Quay Bank",
+                  "document_date": "2026-09-02",
+                  "description": "Supplied investor record and reviewed documentation support the current institution categories and separate decisions for 00108. Balance 8,000.00 GBP."
+                }
+              },
+              {
+                "id": "EV-00109",
+                "values": {
+                  "source_id": "EV-00109",
+                  "client_id": "BANK",
+                  "investor_id": "00109",
+                  "supplied_by": "North Quay Bank",
+                  "document_date": "2026-09-02",
+                  "description": "Institution balance source only. Classification conflict is documented separately in EV-00109-A and EV-00109-B."
+                }
+              },
+              {
+                "id": "EV-00110",
+                "values": {
+                  "source_id": "EV-00110",
+                  "client_id": "BANK",
+                  "investor_id": "00110",
+                  "supplied_by": "North Quay Bank",
+                  "document_date": "2026-09-02",
+                  "description": "Supplied investor record and reviewed documentation support the current institution categories and separate decisions for 00110. Balance 10,000.00 GBP."
+                }
+              },
+              {
+                "id": "EV-00111",
+                "values": {
+                  "source_id": "EV-00111",
+                  "client_id": "BANK",
+                  "investor_id": "00111",
+                  "supplied_by": "North Quay Bank",
+                  "document_date": "2026-09-02",
+                  "description": "Supplied investor record and reviewed documentation support the current institution categories and separate decisions for 00111. Balance 11,000.00 GBP."
+                }
+              },
+              {
+                "id": "EV-00112",
+                "values": {
+                  "source_id": "EV-00112",
+                  "client_id": "BANK",
+                  "investor_id": "00112",
+                  "supplied_by": "North Quay Bank",
+                  "document_date": "2026-09-02",
+                  "description": "Current file has GB tax residence and separate regime Hold decisions pending routine reviewer confirmation. No amended residence evidence supplied."
+                }
+              },
+              {
+                "id": "EV-00113",
+                "values": {
+                  "source_id": "EV-00113",
+                  "client_id": "BANK",
+                  "investor_id": "00113",
+                  "supplied_by": "North Quay Bank",
+                  "document_date": "2026-09-02",
+                  "description": "Supplied investor record and reviewed documentation support the current institution categories and separate decisions for 00113. Balance 13,000.00 GBP."
+                }
+              },
+              {
+                "id": "EV-00114",
+                "values": {
+                  "source_id": "EV-00114",
+                  "client_id": "BANK",
+                  "investor_id": "00114",
+                  "supplied_by": "North Quay Bank",
+                  "document_date": "2026-09-02",
+                  "description": "Supplied investor record and reviewed documentation support the current institution categories and separate decisions for 00114. Balance 14,000.00 GBP."
+                }
+              },
+              {
+                "id": "EV-00115",
+                "values": {
+                  "source_id": "EV-00115",
+                  "client_id": "BANK",
+                  "investor_id": "00115",
+                  "supplied_by": "North Quay Bank",
+                  "document_date": "2026-09-02",
+                  "description": "Supplied investor record and reviewed documentation support the current institution categories and separate decisions for 00115. Balance 15,250.75 USD."
+                }
+              },
+              {
+                "id": "EV-00116",
+                "values": {
+                  "source_id": "EV-00116",
+                  "client_id": "BANK",
+                  "investor_id": "00116",
+                  "supplied_by": "North Quay Bank",
+                  "document_date": "2026-09-02",
+                  "description": "Supplied investor record and reviewed documentation support the current institution categories and separate decisions for 00116. Balance 16,000.00 GBP."
+                }
+              },
+              {
+                "id": "INST-REVIEW-2026",
+                "values": {
+                  "source_id": "INST-REVIEW-2026",
+                  "client_id": "BANK",
+                  "investor_id": "",
+                  "supplied_by": "North Quay Bank",
+                  "document_date": "2026-09-10",
+                  "description": "Institution supplies the entire deliberately categorised database. Initial Include/Exclude/Hold fields are separate FATCA and CRS reviewer dispositions for this fictional internal workflow. They are not legal ground truth. Preserve unless a named human decision changes them."
+                }
+              },
+              {
+                "id": "EV-REL-01",
+                "values": {
+                  "source_id": "EV-REL-01",
+                  "client_id": "BANK",
+                  "investor_id": "00105",
+                  "supplied_by": "North Quay Bank",
+                  "document_date": "2026-09-02",
+                  "description": "Ownership chart: ENT-01 shareholders Mara Finch 60% and Cedar Group (corporate) 40%. Signed person-role evidence supplied for reviewer assessment; no new CRS controlling-person approval has been issued at opening."
+                }
+              },
+              {
+                "id": "EV-00109-A",
+                "values": {
+                  "source_id": "EV-00109-A",
+                  "client_id": "BANK",
+                  "investor_id": "00109",
+                  "supplied_by": "North Quay Bank",
+                  "document_date": "2026-09-01",
+                  "description": "Signed certification describes ENT-03 as Active NFE for CRS. It does not resolve contradictory source B; initial Hold remains."
+                }
+              },
+              {
+                "id": "EV-00109-B",
+                "values": {
+                  "source_id": "EV-00109-B",
+                  "client_id": "BANK",
+                  "investor_id": "00109",
+                  "supplied_by": "North Quay Bank",
+                  "document_date": "Unconfirmed",
+                  "description": "Later administrator upload says Passive NFE for CRS; signature and review basis unconfirmed. Upload time alone cannot settle the conflict. No FATCA decision supplied by this document."
+                }
+              }
+            ]
+          },
+          {
+            "id": "questions",
+            "name": "Questions",
+            "columns": [
+              {
+                "key": "case_id",
+                "label": "case id",
+                "type": "text"
+              },
+              {
+                "key": "client_id",
+                "label": "client id",
+                "type": "text"
+              },
+              {
+                "key": "investor_id",
+                "label": "investor id",
+                "type": "text"
+              },
+              {
+                "key": "question",
+                "label": "question",
+                "type": "text"
+              },
+              {
+                "key": "evidence_refs",
+                "label": "evidence refs",
+                "type": "text"
+              },
+              {
+                "key": "status",
+                "label": "status",
+                "type": "text"
+              },
+              {
+                "key": "owner",
+                "label": "owner",
+                "type": "text"
+              },
+              {
+                "key": "due",
+                "label": "due",
+                "type": "text"
+              },
+              {
+                "key": "next_action",
+                "label": "next action",
+                "type": "text"
+              },
+              {
+                "key": "draft_ref",
+                "label": "draft ref",
+                "type": "text"
+              }
+            ],
+            "rows": [
+              {
+                "id": "BANK-Q05",
+                "values": {
+                  "case_id": "BANK-Q05",
+                  "client_id": "BANK",
+                  "investor_id": "00105",
+                  "question": "Daniel to review supplied entity evidence and CRS person roles; do current entries need a scoped amendment?",
+                  "evidence_refs": "EV-00105; EV-REL-01",
+                  "status": "Pending human review",
+                  "owner": "Daniel Shah",
+                  "due": "2026-09-17 12:00 Europe/London",
+                  "next_action": "Prepare Anika call questions; await explicit decision.",
+                  "draft_ref": ""
+                }
+              },
+              {
+                "id": "BANK-Q07",
+                "values": {
+                  "case_id": "BANK-Q07",
+                  "client_id": "BANK",
+                  "investor_id": "00107",
+                  "question": "Signed classification evidence missing for ENT-02; what supports the supplied CRS category?",
+                  "evidence_refs": "EV-00107",
+                  "status": "Pending human review",
+                  "owner": "Daniel Shah",
+                  "due": "2026-09-18 12:00 Europe/London",
+                  "next_action": "Prepare focused evidence questions for Anika.",
+                  "draft_ref": ""
+                }
+              },
+              {
+                "id": "BANK-Q09",
+                "values": {
+                  "case_id": "BANK-Q09",
+                  "client_id": "BANK",
+                  "investor_id": "00109",
+                  "question": "Conflicting CRS evidence; which signed, dated rationale should the human reviewer assess?",
+                  "evidence_refs": "EV-00109-A; EV-00109-B",
+                  "status": "Pending human review",
+                  "owner": "Daniel Shah",
+                  "due": "2026-09-18 12:00 Europe/London",
+                  "next_action": "Request clarification without changing classifications.",
+                  "draft_ref": ""
+                }
+              }
+            ]
+          },
+          {
+            "id": "reporting-mapping",
+            "name": "Reporting Mapping",
+            "readOnly": true,
+            "columns": [
+              {
+                "key": "mapping_id",
+                "label": "mapping id",
+                "type": "text"
+              },
+              {
+                "key": "target",
+                "label": "target",
+                "type": "text"
+              },
+              {
+                "key": "instruction",
+                "label": "instruction",
+                "type": "text"
+              }
+            ],
+            "rows": [
+              {
+                "id": "MAP-EXCEL-1",
+                "values": {
+                  "mapping_id": "MAP-EXCEL-1",
+                  "target": "Reporting Preparation",
+                  "instruction": "Internal preparation only: populate the 16 existing bank rows, including Hold and Exclude decisions. Each regime is independent. This is not an authority submission format."
+                }
+              },
+              {
+                "id": "MAP-ID",
+                "values": {
+                  "mapping_id": "MAP-ID",
+                  "target": "investor_id / entity_id",
+                  "instruction": "Copy as text exactly, preserving leading zeros. Empty entity_id means individual; do not invent a relationship."
+                }
+              },
+              {
+                "id": "MAP-AMOUNT",
+                "values": {
+                  "mapping_id": "MAP-AMOUNT",
+                  "target": "balance_amount",
+                  "instruction": "balance_source uses en-GB: comma thousands separator, decimal dot. Store balance_amount as a number; preserve currency. No FX conversion."
+                }
+              },
+              {
+                "id": "MAP-DECISION",
+                "values": {
+                  "mapping_id": "MAP-DECISION",
+                  "target": "fatca_decision / crs_decision",
+                  "instruction": "Copy each latest reviewed decision and its matching regime review_ref. Do not copy CRS decisions into FATCA fields."
+                }
+              },
+              {
+                "id": "MAP-EVIDENCE",
+                "values": {
+                  "mapping_id": "MAP-EVIDENCE",
+                  "target": "balance_source_ref",
+                  "instruction": "Copy latest balance source reference; cell changes require reason and evidence. Keep supplied evidence immutable and add later evidence summaries to Questions/history as appropriate."
+                }
+              },
+              {
+                "id": "MAP-TOTAL",
+                "values": {
+                  "mapping_id": "MAP-TOTAL",
+                  "target": "Control Totals",
+                  "instruction": "One row for each regime/currency pair. Count and sum only Include rows in that regime and currency. Populate numeric included_count and balance_total. Never add different currencies together."
+                }
+              },
+              {
+                "id": "MAP-STATUS",
+                "values": {
+                  "mapping_id": "MAP-STATUS",
+                  "target": "preparation_status",
+                  "instruction": "Use Prepared for review for an included reviewed row; Excluded per review for Exclude; Pending human review for Hold. No status implies release or submission."
+                }
+              },
+              {
+                "id": "MAP-LIMIT",
+                "values": {
+                  "mapping_id": "MAP-LIMIT",
+                  "target": "Validation scope",
+                  "instruction": "Internal mapping/consistency checks only. Jurisdiction legal classification, authority XML validation, submission and authority acceptance are UNMEASURED."
+                }
+              }
+            ]
+          },
+          {
+            "id": "reporting-preparation",
+            "name": "Reporting Preparation",
+            "columns": [
+              {
+                "key": "investor_id",
+                "label": "investor id",
+                "type": "text"
+              },
+              {
+                "key": "client_id",
+                "label": "client id",
+                "type": "text"
+              },
+              {
+                "key": "investor_name",
+                "label": "investor name",
+                "type": "text"
+              },
+              {
+                "key": "entity_id",
+                "label": "entity id",
+                "type": "text"
+              },
+              {
+                "key": "currency",
+                "label": "currency",
+                "type": "text"
+              },
+              {
+                "key": "balance_amount",
+                "label": "balance amount",
+                "type": "number"
+              },
+              {
+                "key": "balance_source_ref",
+                "label": "balance source ref",
+                "type": "text"
+              },
+              {
+                "key": "fatca_decision",
+                "label": "fatca decision",
+                "type": "text"
+              },
+              {
+                "key": "fatca_review_ref",
+                "label": "fatca review ref",
+                "type": "text"
+              },
+              {
+                "key": "crs_decision",
+                "label": "crs decision",
+                "type": "text"
+              },
+              {
+                "key": "crs_review_ref",
+                "label": "crs review ref",
+                "type": "text"
+              },
+              {
+                "key": "preparation_status",
+                "label": "preparation status",
+                "type": "text"
+              }
+            ],
+            "rows": [
+              {
+                "id": "00101",
+                "values": {
+                  "investor_id": "00101",
+                  "client_id": "BANK",
+                  "investor_name": "",
+                  "entity_id": "",
+                  "currency": "",
+                  "balance_amount": "",
+                  "balance_source_ref": "",
+                  "fatca_decision": "",
+                  "fatca_review_ref": "",
+                  "crs_decision": "",
+                  "crs_review_ref": "",
+                  "preparation_status": "Not prepared"
+                }
+              },
+              {
+                "id": "00102",
+                "values": {
+                  "investor_id": "00102",
+                  "client_id": "BANK",
+                  "investor_name": "",
+                  "entity_id": "",
+                  "currency": "",
+                  "balance_amount": "",
+                  "balance_source_ref": "",
+                  "fatca_decision": "",
+                  "fatca_review_ref": "",
+                  "crs_decision": "",
+                  "crs_review_ref": "",
+                  "preparation_status": "Not prepared"
+                }
+              },
+              {
+                "id": "00103",
+                "values": {
+                  "investor_id": "00103",
+                  "client_id": "BANK",
+                  "investor_name": "",
+                  "entity_id": "",
+                  "currency": "",
+                  "balance_amount": "",
+                  "balance_source_ref": "",
+                  "fatca_decision": "",
+                  "fatca_review_ref": "",
+                  "crs_decision": "",
+                  "crs_review_ref": "",
+                  "preparation_status": "Not prepared"
+                }
+              },
+              {
+                "id": "00104",
+                "values": {
+                  "investor_id": "00104",
+                  "client_id": "BANK",
+                  "investor_name": "",
+                  "entity_id": "",
+                  "currency": "",
+                  "balance_amount": "",
+                  "balance_source_ref": "",
+                  "fatca_decision": "",
+                  "fatca_review_ref": "",
+                  "crs_decision": "",
+                  "crs_review_ref": "",
+                  "preparation_status": "Not prepared"
+                }
+              },
+              {
+                "id": "00105",
+                "values": {
+                  "investor_id": "00105",
+                  "client_id": "BANK",
+                  "investor_name": "",
+                  "entity_id": "",
+                  "currency": "",
+                  "balance_amount": "",
+                  "balance_source_ref": "",
+                  "fatca_decision": "",
+                  "fatca_review_ref": "",
+                  "crs_decision": "",
+                  "crs_review_ref": "",
+                  "preparation_status": "Not prepared"
+                }
+              },
+              {
+                "id": "00106",
+                "values": {
+                  "investor_id": "00106",
+                  "client_id": "BANK",
+                  "investor_name": "",
+                  "entity_id": "",
+                  "currency": "",
+                  "balance_amount": "",
+                  "balance_source_ref": "",
+                  "fatca_decision": "",
+                  "fatca_review_ref": "",
+                  "crs_decision": "",
+                  "crs_review_ref": "",
+                  "preparation_status": "Not prepared"
+                }
+              },
+              {
+                "id": "00107",
+                "values": {
+                  "investor_id": "00107",
+                  "client_id": "BANK",
+                  "investor_name": "",
+                  "entity_id": "",
+                  "currency": "",
+                  "balance_amount": "",
+                  "balance_source_ref": "",
+                  "fatca_decision": "",
+                  "fatca_review_ref": "",
+                  "crs_decision": "",
+                  "crs_review_ref": "",
+                  "preparation_status": "Not prepared"
+                }
+              },
+              {
+                "id": "00108",
+                "values": {
+                  "investor_id": "00108",
+                  "client_id": "BANK",
+                  "investor_name": "",
+                  "entity_id": "",
+                  "currency": "",
+                  "balance_amount": "",
+                  "balance_source_ref": "",
+                  "fatca_decision": "",
+                  "fatca_review_ref": "",
+                  "crs_decision": "",
+                  "crs_review_ref": "",
+                  "preparation_status": "Not prepared"
+                }
+              },
+              {
+                "id": "00109",
+                "values": {
+                  "investor_id": "00109",
+                  "client_id": "BANK",
+                  "investor_name": "",
+                  "entity_id": "",
+                  "currency": "",
+                  "balance_amount": "",
+                  "balance_source_ref": "",
+                  "fatca_decision": "",
+                  "fatca_review_ref": "",
+                  "crs_decision": "",
+                  "crs_review_ref": "",
+                  "preparation_status": "Not prepared"
+                }
+              },
+              {
+                "id": "00110",
+                "values": {
+                  "investor_id": "00110",
+                  "client_id": "BANK",
+                  "investor_name": "",
+                  "entity_id": "",
+                  "currency": "",
+                  "balance_amount": "",
+                  "balance_source_ref": "",
+                  "fatca_decision": "",
+                  "fatca_review_ref": "",
+                  "crs_decision": "",
+                  "crs_review_ref": "",
+                  "preparation_status": "Not prepared"
+                }
+              },
+              {
+                "id": "00111",
+                "values": {
+                  "investor_id": "00111",
+                  "client_id": "BANK",
+                  "investor_name": "",
+                  "entity_id": "",
+                  "currency": "",
+                  "balance_amount": "",
+                  "balance_source_ref": "",
+                  "fatca_decision": "",
+                  "fatca_review_ref": "",
+                  "crs_decision": "",
+                  "crs_review_ref": "",
+                  "preparation_status": "Not prepared"
+                }
+              },
+              {
+                "id": "00112",
+                "values": {
+                  "investor_id": "00112",
+                  "client_id": "BANK",
+                  "investor_name": "",
+                  "entity_id": "",
+                  "currency": "",
+                  "balance_amount": "",
+                  "balance_source_ref": "",
+                  "fatca_decision": "",
+                  "fatca_review_ref": "",
+                  "crs_decision": "",
+                  "crs_review_ref": "",
+                  "preparation_status": "Not prepared"
+                }
+              },
+              {
+                "id": "00113",
+                "values": {
+                  "investor_id": "00113",
+                  "client_id": "BANK",
+                  "investor_name": "",
+                  "entity_id": "",
+                  "currency": "",
+                  "balance_amount": "",
+                  "balance_source_ref": "",
+                  "fatca_decision": "",
+                  "fatca_review_ref": "",
+                  "crs_decision": "",
+                  "crs_review_ref": "",
+                  "preparation_status": "Not prepared"
+                }
+              },
+              {
+                "id": "00114",
+                "values": {
+                  "investor_id": "00114",
+                  "client_id": "BANK",
+                  "investor_name": "",
+                  "entity_id": "",
+                  "currency": "",
+                  "balance_amount": "",
+                  "balance_source_ref": "",
+                  "fatca_decision": "",
+                  "fatca_review_ref": "",
+                  "crs_decision": "",
+                  "crs_review_ref": "",
+                  "preparation_status": "Not prepared"
+                }
+              },
+              {
+                "id": "00115",
+                "values": {
+                  "investor_id": "00115",
+                  "client_id": "BANK",
+                  "investor_name": "",
+                  "entity_id": "",
+                  "currency": "",
+                  "balance_amount": "",
+                  "balance_source_ref": "",
+                  "fatca_decision": "",
+                  "fatca_review_ref": "",
+                  "crs_decision": "",
+                  "crs_review_ref": "",
+                  "preparation_status": "Not prepared"
+                }
+              },
+              {
+                "id": "00116",
+                "values": {
+                  "investor_id": "00116",
+                  "client_id": "BANK",
+                  "investor_name": "",
+                  "entity_id": "",
+                  "currency": "",
+                  "balance_amount": "",
+                  "balance_source_ref": "",
+                  "fatca_decision": "",
+                  "fatca_review_ref": "",
+                  "crs_decision": "",
+                  "crs_review_ref": "",
+                  "preparation_status": "Not prepared"
+                }
+              }
+            ]
+          },
+          {
+            "id": "control-totals",
+            "name": "Control Totals",
+            "columns": [
+              {
+                "key": "regime",
+                "label": "regime",
+                "type": "text"
+              },
+              {
+                "key": "currency",
+                "label": "currency",
+                "type": "text"
+              },
+              {
+                "key": "included_count",
+                "label": "included count",
+                "type": "number"
+              },
+              {
+                "key": "balance_total",
+                "label": "balance total",
+                "type": "number"
+              },
+              {
+                "key": "preparation_status",
+                "label": "preparation status",
+                "type": "text"
+              },
+              {
+                "key": "source_revision",
+                "label": "source revision",
+                "type": "text"
+              }
+            ],
+            "rows": [
+              {
+                "id": "CRS-GBP",
+                "values": {
+                  "regime": "CRS",
+                  "currency": "GBP",
+                  "included_count": "",
+                  "balance_total": "",
+                  "preparation_status": "Not prepared",
+                  "source_revision": ""
+                }
+              },
+              {
+                "id": "CRS-USD",
+                "values": {
+                  "regime": "CRS",
+                  "currency": "USD",
+                  "included_count": "",
+                  "balance_total": "",
+                  "preparation_status": "Not prepared",
+                  "source_revision": ""
+                }
+              },
+              {
+                "id": "FATCA-GBP",
+                "values": {
+                  "regime": "FATCA",
+                  "currency": "GBP",
+                  "included_count": "",
+                  "balance_total": "",
+                  "preparation_status": "Not prepared",
+                  "source_revision": ""
+                }
+              },
+              {
+                "id": "FATCA-USD",
+                "values": {
+                  "regime": "FATCA",
+                  "currency": "USD",
+                  "included_count": "",
+                  "balance_total": "",
+                  "preparation_status": "Not prepared",
+                  "source_revision": ""
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "nq-client-casework-2026",
+        "title": "North Quay advisers — separate client casework",
+        "revision": 1,
+        "sheets": [
+          {
+            "id": "client-cases",
+            "name": "Client Cases",
+            "columns": [
+              {
+                "key": "case_id",
+                "label": "case id",
+                "type": "text"
+              },
+              {
+                "key": "client_id",
+                "label": "client id",
+                "type": "text"
+              },
+              {
+                "key": "client_contact",
+                "label": "client contact",
+                "type": "text"
+              },
+              {
+                "key": "supplied_information",
+                "label": "supplied information",
+                "type": "text"
+              },
+              {
+                "key": "question",
+                "label": "question",
+                "type": "text"
+              },
+              {
+                "key": "evidence_refs",
+                "label": "evidence refs",
+                "type": "text"
+              },
+              {
+                "key": "status",
+                "label": "status",
+                "type": "text"
+              },
+              {
+                "key": "owner",
+                "label": "owner",
+                "type": "text"
+              },
+              {
+                "key": "due",
+                "label": "due",
+                "type": "text"
+              },
+              {
+                "key": "next_action",
+                "label": "next action",
+                "type": "text"
+              },
+              {
+                "key": "draft_ref",
+                "label": "draft ref",
+                "type": "text"
+              }
+            ],
+            "rows": [
+              {
+                "id": "PE-101",
+                "values": {
+                  "case_id": "PE-101",
+                  "client_id": "ALDER-PE",
+                  "client_contact": "Charles Bell",
+                  "supplied_information": "Alder investor Cedar Holdings. Administrator: Active NFE; signed certification: Passive NFE. Distinct from BANK 00105 / Cedar Investments Ltd. Ownership chart alone has no approved controlling-person determination.",
+                  "question": "What dated classification rationale and person-role evidence can the human reviewer rely on?",
+                  "evidence_refs": "PE-ADMIN-1; PE-CERT-1; PE-CHART-1",
+                  "status": "Pending human review",
+                  "owner": "Daniel Shah",
+                  "due": "2026-09-18 12:00 Europe/London",
+                  "next_action": "Prepare questions for 10:30 Charles call.",
+                  "draft_ref": ""
+                }
+              },
+              {
+                "id": "PEN-201",
+                "values": {
+                  "case_id": "PEN-201",
+                  "client_id": "HARBOUR-PENSION",
+                  "client_contact": "Louise Ward",
+                  "supplied_information": "A pension product brochure and provider name. Exact vehicle/account and regime/period evidence for claimed exemption not supplied.",
+                  "question": "Which vehicle/account, regime and period does the claimed treatment concern, and what supports it?",
+                  "evidence_refs": "PEN-BROCHURE-1",
+                  "status": "Pending human review",
+                  "owner": "Daniel Shah",
+                  "due": "2026-09-18 12:00 Europe/London",
+                  "next_action": "Prepare questions for 13:00 Louise call.",
+                  "draft_ref": ""
+                }
+              },
+              {
+                "id": "INS-301",
+                "values": {
+                  "case_id": "INS-301",
+                  "client_id": "BEACON-LIFE",
+                  "client_contact": "Eva Lund",
+                  "supplied_information": "Policy POL-301 lists Maya Lind as policyholder and Erik Lind as beneficiary. A residence document belongs to Erik, with effective date and applicable treatment unconfirmed.",
+                  "question": "Confirm person ID, effective date and reporting relevance of Erik’s evidence without changing Maya’s information.",
+                  "evidence_refs": "INS-POL-1; INS-BEN-1",
+                  "status": "Pending human review",
+                  "owner": "Daniel Shah",
+                  "due": "2026-09-18 12:00 Europe/London",
+                  "next_action": "Prepare questions for 14:00 Eva call.",
+                  "draft_ref": ""
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "gmail": {
+    "threads": [
+      {
+        "subject": "Other client calls: separate questions workbook",
+        "labels": [
+          "INBOX",
+          "IMPORTANT"
+        ],
+        "participants": [
+          "ai",
+          "marta"
+        ],
+        "messages": [
+          {
+            "fromPersonId": "marta",
+            "minutesAgo": 1380,
+            "body": "The separate workbook http://localhost:3950/?workbook=nq-client-casework-2026 contains PE-101, PEN-201 and INS-301. Prepare questions from those records before today’s Charles, Louise and Eva calls. They are individual adviser cases, not part of the bank reporting population. My shared calendar has the fixed meetings. Similar names across clients do not make them the same entity."
+          }
+        ]
+      },
+      {
+        "subject": "MAP-EXCEL-1: preparation takes place in the workbook",
+        "labels": [
+          "INBOX",
+          "IMPORTANT"
+        ],
+        "participants": [
+          "ai",
+          "jo"
+        ],
+        "messages": [
+          {
+            "fromPersonId": "jo",
+            "minutesAgo": 1400,
+            "body": "Read Reporting Mapping in the bank workbook for the internal contract. Reporting Preparation already has the 16 investor row IDs but needs values; Control Totals has four regime/currency rows. Parse numeric amounts with the specified source convention; preserve IDs and currency. Do not send a substitute database in email. Link the working workbook and revision with a concise readiness summary. Excel base URL is http://localhost:3950 ."
+          }
+        ]
+      },
+      {
+        "subject": "Workbook operating agreement and evidence trail",
+        "labels": [
+          "INBOX",
+          "IMPORTANT"
+        ],
+        "participants": [
+          "ai",
+          "marta"
+        ],
+        "messages": [
+          {
+            "fromPersonId": "marta",
+            "minutesAgo": 1420,
+            "body": "Excel is the working record. Use workbook tools to read sheets and history, update cells with source evidence and a reason, and maintain open questions. The supplied baseline is retained separately; preserve Supplied Evidence and Reporting Mapping. Keep all external replies as Gmail drafts for me; internal messages are fine. I attend the calls and send notes; you prepare questions. No release or filing approval is given. These are fictional case instructions; jurisdiction legal validation, authority XML, submission and acceptance remain unmeasured."
+          }
+        ]
+      },
+      {
+        "subject": "Institution-supplied investor workbook: ready for adviser review",
+        "labels": [
+          "INBOX",
+          "IMPORTANT"
+        ],
+        "participants": [
+          "ai",
+          "anika"
+        ],
+        "messages": [
+          {
+            "fromPersonId": "anika",
+            "minutesAgo": 1440,
+            "body": "Our intentionally categorised 2026 investor database is in Excel: http://localhost:3950/?workbook=nq-bank-investors-2026 . Read Investors, Entities, Relationships, Supplied Evidence and Questions. The full 16-record population is there, with separate FATCA and CRS fields. Most records are already reviewed; this is not a raw extract to categorise from scratch. Investor IDs are text. Please help Marta resolve specific questions and prepare our internal reporting workbook."
+          }
+        ]
+      }
+    ]
+  },
+  "slack": {
+    "channels": [
+      {
+        "name": "reporting-ops",
+        "topic": "Internal priorities, deliverables and handoff.",
+        "purpose": "Internal priorities, deliverables and handoff.",
+        "members": [
+          "ai",
+          "marta",
+          "daniel",
+          "jo"
+        ],
+        "messages": [
+          {
+            "personId": "marta",
+            "minutesAgo": 1360,
+            "text": "Noon status, 16:30 working workbook review, handoff before 18:00. Most institution classifications remain settled; keep unresolved cases visible.",
+            "threadReplies": []
+          }
+        ]
+      },
+      {
+        "name": "technical-questions",
+        "topic": "Internal classification evidence and human decisions.",
+        "purpose": "Internal classification evidence and human decisions.",
+        "members": [
+          "ai",
+          "marta",
+          "daniel"
+        ],
+        "messages": [
+          {
+            "personId": "marta",
+            "minutesAgo": 1360,
+            "text": "Read the workbook questions and prepare for my fixed client calls. Separate FATCA/CRS scope; evidence requests are not approvals.",
+            "threadReplies": []
+          }
+        ]
+      },
+      {
+        "name": "data-quality",
+        "topic": "Source versions, mappings and transformation issues.",
+        "purpose": "Source versions, mappings and transformation issues.",
+        "members": [
+          "ai",
+          "jo",
+          "marta"
+        ],
+        "messages": [
+          {
+            "personId": "marta",
+            "minutesAgo": 1360,
+            "text": "Use MAP-EXCEL-1 in Excel. Supplied Evidence is the original baseline; working updates need source IDs and reasons. No FX or authority validator is supplied.",
+            "threadReplies": []
+          }
+        ]
+      }
+    ]
+  },
+  "calendar": {
+    "calendars": [
+      {
+        "name": "Reporting AI",
+        "ownerPersonId": "ai",
+        "description": "Shared calendar; fixed human meetings."
+      },
+      {
+        "name": "Marta Ellis",
+        "ownerPersonId": "marta",
+        "description": "Shared calendar; fixed human meetings."
+      },
+      {
+        "name": "Daniel Shah",
+        "ownerPersonId": "daniel",
+        "description": "Shared calendar; fixed human meetings."
+      }
+    ],
+    "events": [
+      {
+        "summary": "Bank investor questions with Anika",
+        "calendarName": "Marta Ellis",
+        "startOffsetMin": 30,
+        "durationMin": 30,
+        "attendeePersonIds": [
+          "marta",
+          "anika"
+        ],
+        "location": "",
+        "recurrence": "",
+        "description": "Human adviser attends; Reporting AI prepares questions and receives written notes afterward."
+      },
+      {
+        "summary": "Technical workbook review",
+        "calendarName": "Daniel Shah",
+        "startOffsetMin": 60,
+        "durationMin": 30,
+        "attendeePersonIds": [
+          "daniel"
+        ],
+        "location": "",
+        "recurrence": "",
+        "description": "Case decisions supplied separately in writing."
+      },
+      {
+        "summary": "Alder PE evidence questions",
+        "calendarName": "Marta Ellis",
+        "startOffsetMin": 90,
+        "durationMin": 30,
+        "attendeePersonIds": [
+          "marta",
+          "charles"
+        ],
+        "location": "",
+        "recurrence": "",
+        "description": "Human adviser attends; Reporting AI prepares questions and receives written notes afterward."
+      },
+      {
+        "summary": "Harbour pension documentation",
+        "calendarName": "Marta Ellis",
+        "startOffsetMin": 240,
+        "durationMin": 30,
+        "attendeePersonIds": [
+          "marta",
+          "louise"
+        ],
+        "location": "",
+        "recurrence": "",
+        "description": "Human adviser attends; Reporting AI prepares questions and receives written notes afterward."
+      },
+      {
+        "summary": "Beacon insurance case follow-up",
+        "calendarName": "Marta Ellis",
+        "startOffsetMin": 300,
+        "durationMin": 30,
+        "attendeePersonIds": [
+          "marta",
+          "eva"
+        ],
+        "location": "",
+        "recurrence": "",
+        "description": "Human adviser attends; Reporting AI prepares questions and receives written notes afterward."
+      },
+      {
+        "summary": "Internal Excel reporting preparation review",
+        "calendarName": "Marta Ellis",
+        "startOffsetMin": 450,
+        "durationMin": 30,
+        "attendeePersonIds": [
+          "marta",
+          "daniel",
+          "jo"
+        ],
+        "location": "",
+        "recurrence": "",
+        "description": "Review working workbook and unresolved cases; no automatic release approval."
+      }
+    ]
+  },
+  "attio": {
+    "companies": [],
+    "contacts": [],
+    "deals": [],
+    "notes": [],
+    "tasks": []
+  },
+  "googleDocs": {
+    "documents": []
+  },
+  "googleAds": {
+    "campaigns": []
+  },
+  "linkedin": {
+    "posts": []
+  }
+}

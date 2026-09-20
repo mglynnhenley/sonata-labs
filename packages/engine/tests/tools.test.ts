@@ -86,6 +86,13 @@ describe("freeWindows", () => {
 });
 
 describe("the calendar tools", () => {
+  it.each([undefined, { errors: [{ reason: "notFound" }], busy: [] }, {}])("refuses to call unknown attendee availability free: %j", async (unknown) => {
+    const fake = fetchFake({ ...CALENDARS, "/freeBusy": { calendars: {
+      "priya@northwind.test": { busy: [] }, ...(unknown ? { "dana@acme.test": unknown } : {}),
+    } } });
+    await expect(tool("find_free_time", fake).run({ timeMin: "2026-08-04T09:00:00Z", timeMax: "2026-08-04T12:00:00Z", attendees: ["dana@acme.test"] }))
+      .rejects.toThrow("Availability is unknown for dana@acme.test");
+  });
   it("expands recurrence and orders by start when listing a window", async () => {
     const fake = fetchFake({
       ...CALENDARS,

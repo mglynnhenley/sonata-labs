@@ -88,6 +88,7 @@ export interface SimulationInput {
   audit?: readonly TwinAuditRow[];
   snapshots?: EpisodeRun["snapshots"] | null;
   verdict?: { cost?: { llmCalls?: number } | null } | null;
+  benchmark?: EpisodeRun["benchmark"];
 }
 
 function countHandles(ticks: TickRecord[]): { fabricated: number; cloned: number } {
@@ -124,7 +125,9 @@ export function runSimulation(run: SimulationInput): RunSimulation {
   const auditRows = run.audit?.length ?? 0;
   const snapshots = Object.keys(run.snapshots ?? {}).length;
 
+  const domainEvidence = !!run.benchmark?.snapshots.before && !!run.benchmark?.snapshots.after && run.benchmark.completedTicks > 0;
   const nothingReal =
+    !domainEvidence &&
     agentToolCalls(run.ticks) > 0 &&
     cloned === 0 &&
     auditRows === 0 &&

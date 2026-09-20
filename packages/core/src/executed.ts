@@ -1,6 +1,7 @@
 import type { Clock } from "./types/episode";
 import type { CriterionStatus, EpisodeRun, RunStatus, TickRecord } from "./types/run";
 import type { TwinName } from "./types/world";
+import { worldFailures } from "./worldFailures";
 
 // WHETHER A RUN IS SCOREABLE AT ALL.
 //
@@ -40,8 +41,8 @@ export const NO_RESULT = "No result";
 /**
  * Did this run execute?
  *
- * Three ways to have not, and each is read off the artifact rather than
- * inferred: the day never finished, it finished with no ticks, or it ticked
+ * The reasons are read off the artifact rather than
+ * inferred: the day never finished, a provider failed, it finished with no ticks, or it ticked
  * through with the agent never touching a twin. A day stopped or crashed halfway
  * counts as unexecuted too — the afternoon's criteria never got their chance, so
  * scoring it against the whole checklist would measure the interruption.
@@ -53,13 +54,27 @@ export const NO_RESULT = "No result";
 export function runExecution(run: { status: RunStatus; ticks: TickRecord[] }): RunExecution {
   const ticks = run.ticks.length;
   const toolCalls = agentToolCalls(run.ticks);
-  const executed = run.status === "done" && ticks > 0 && toolCalls > 0;
+  // Older engines filed idle/budget interruptions as "done" and provider errors
+  // as agent thoughts. Read their recorded evidence without rewriting artifacts.
+  const interrupted = run.ticks.flatMap(t => t.notes).find(note =>
+    /^run stopped early: (the agent did nothing|the wall-clock budget|the spend budget)/.test(note),
+  );
+  const providerFailure = run.ticks.some(t => t.harnessError || t.agentSteps.some(s =>
+    s.kind === "thought" && s.text.startsWith("the model call failed:"),
+  ));
+  const worldFailed = worldFailures(run.ticks).length > 0;
+  const invalid = worldFailed
+    ? "A simulated colleague response failed. The saved work is available, but this run is unmeasured because later work may depend on that response."
+    : interrupted
+    ? `This day ended early (${interrupted.replace("run stopped early: ", "")}). Partial work is available, but this is not a complete benchmark result.`
+    : providerFailure ? "A model-provider error interrupted the agent's opportunity to work. Partial work is available, but this is not a complete benchmark result." : null;
+  const executed = run.status === "done" && ticks > 0 && toolCalls > 0 && invalid === null;
 
   return {
     executed,
     ticks,
     toolCalls,
-    reason: executed ? null : unscoredReason(run.status, ticks, toolCalls),
+    reason: executed ? null : run.status === "done" && invalid ? invalid : unscoredReason(run.status, ticks, toolCalls),
   };
 }
 
@@ -71,7 +86,9 @@ function unscoredReason(status: RunStatus, ticks: number, toolCalls: number): st
     return "The day was stopped before it finished, so it was never scored.";
   }
   if (status === "failed") {
-    return "The run errored before the day finished — the agent never ran, so there is no result.";
+    return ticks === 0
+      ? "The run errored before the day started — the agent never ran, so there is no result."
+      : "The run errored before the day finished. Any partial work is preserved, but there is no complete result.";
   }
   if (ticks === 0) return "The day never started — the agent never ran, so there is no result.";
   if (toolCalls === 0) {

@@ -1,0 +1,72 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "workspaces": {
+    ".": {
+      "entry": [
+        "integrations/runtime/build.mjs",
+        "integrations/runtime/apps-entrypoint.mjs",
+        "integrations/runtime/agent-entrypoint.ts",
+        "integrations/runtime/gateway.mjs",
+        "integrations/runtime/gateway-timing.mjs",
+        "integrations/runtime/operator-proxy.mjs",
+        "integrations/runtime/smoke.mjs",
+        "integrations/runtime/test-boundary.mjs",
+        "integrations/runtime/source.mjs",
+        "integrations/runtime/*.test.mjs",
+        ".design-sync/**"
+      ],
+      "project": [
+        "**/*.{ts,tsx,mjs}"
+      ]
+    },
+    "apps/platform": {
+      "entry": [
+        "app/**/page.tsx",
+        "app/**/layout.tsx",
+        "app/**/route.ts",
+        "instrumentation-client.ts",
+        "src/cli/sonata.ts",
+        "scripts/*.{mjs,ts,mts}",
+        "tests/**/*.test.ts"
+      ]
+    },
+    "apps/*": {
+      "entry": [
+        "app/**/page.tsx",
+        "app/**/layout.tsx",
+        "app/**/route.ts",
+        "src/cli/*.ts",
+        "scripts/*.ts",
+        "tests/**/*.test.ts"
+      ]
+    },
+    "packages/*": {
+      "entry": [
+        "src/index.ts",
+        "bin/*.mjs",
+        "scripts/*.ts",
+        "tests/**/*.test.ts"
+      ]
+    },
+    "packages/cli": {
+      "entry": [
+        "src/index.ts",
+        "bin/*.mjs"
+      ],
+      "ignoreDependencies": [
+        "tsx"
+      ]
+    }
+  },
+  "ignore": [
+    "**/.next/**",
+    "**/data/**"
+  ],
+  "ignoreBinaries": [
+    "tsc",
+    "tsx"
+  ],
+  "ignoreDependencies": [
+    "@sonata/.*"
+  ]
+}

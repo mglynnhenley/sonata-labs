@@ -1,3 +1,4 @@
+import { emailAudience } from "../observations";
 import {
   displayAddress,
   resolveTwinApiUrl,
@@ -250,6 +251,19 @@ export function createGmailAdapter(opts: GmailAdapterOptions = {}): TwinAdapter 
 
     reset(): Promise<void> {
       return resetViaApi(http, "episode reset");
+    },
+
+    async observe(row, world) {
+      if (row.actionType !== "send" && row.actionType !== "draftSend") return undefined;
+      if (!row.targetId) throw new Error("Sent message has no id");
+      const message = await http.get<GmailMessage>(`${api}/messages/${encodeURIComponent(row.targetId)}`, { format: "full" });
+      const headers = headerMap(message.payload);
+      if (!headers.get("from") || !(headers.get("to") || headers.get("cc") || headers.get("bcc"))) throw new Error("Sent message has no audience");
+      return {
+        audience: emailAudience(world, [headers.get("from")!, headers.get("to") ?? "", headers.get("cc") ?? "", headers.get("bcc") ?? ""]),
+        actor: emailAudience(world, [headers.get("from")!])[0],
+        text: `${headers.get("subject") ?? ""}\n${extractBodyText(message.payload)}`,
+      };
     },
 
     auditSince(sinceId: number): Promise<TwinAuditRow[]> {

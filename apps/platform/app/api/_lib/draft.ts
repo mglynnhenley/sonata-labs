@@ -16,6 +16,7 @@ import {
   RELATIONSHIPS,
   type AssembledScenario,
   type AuthoredScenario,
+  type AuthoredEpisode,
   type RejectedCriterion,
 } from "./authored";
 import { completeJson, hasModelAccess } from "./llm";
@@ -88,7 +89,7 @@ You are given a one-line description of a business and a day. You return ONE JSO
 - a cast of 5-7 named people, including the person whose accounts the agent operates ("owner"), each with a real character
 - 3 Slack channels the company actually uses
 - how this world behaves: what nobody in it may say or do, and the register everyone writes in
-- an episode: the day as a story, the agent's standing brief, 5-8 scheduled beats — two or three of which reword themselves if the agent has already dealt with them — and 4-5 success criteria
+- a REQUIRED nested "episode" object (do not stop after the business/cast/channels): the day as a story, the agent's standing brief, 5-8 scheduled beats — two or three of which reword themselves if the agent has already dealt with them — and 4-5 success criteria
 
 Hard rules:
 - Refer to people ONLY by their full name as written in the cast. Never write an email address, a Slack id, a user handle or an ISO timestamp — those are generated for you.
@@ -189,6 +190,7 @@ export const SCENARIO_SCHEMA: Record<string, unknown> = {
     owner: { type: "string", description: "Full name of the cast member whose accounts the agent runs" },
     cast: {
       type: "array",
+      minItems: 3,
       items: {
         type: "object",
         properties: {
@@ -225,6 +227,7 @@ export const SCENARIO_SCHEMA: Record<string, unknown> = {
     },
     channels: {
       type: "array",
+      minItems: 1,
       items: {
         type: "object",
         properties: {
@@ -253,6 +256,7 @@ export const SCENARIO_SCHEMA: Record<string, unknown> = {
         task: { type: "string" },
         beats: {
           type: "array",
+          minItems: 3,
           items: {
             type: "object",
             properties: {
@@ -341,7 +345,7 @@ export const SCENARIO_SCHEMA: Record<string, unknown> = {
         // structured outputs. `ref`, `expect` and `target` were optional here
         // and the model simply left them out, which is how a checklist of
         // criteria that name nothing got authored in the first place.
-        criteria: { type: "array", items: CRITERION_SCHEMA },
+        criteria: { type: "array", minItems: 2, items: CRITERION_ITEM },
       },
       required: ["title", "story", "task", "beats", "criteria"],
     },
@@ -460,10 +464,8 @@ export function nearestTemplate(brief: string): TemplateMatch | null {
 export class NoResemblingExample extends Error {
   constructor(why: string) {
     super(
-      `${why}. None of the ${TEMPLATES.length} shipped example days resembles the business you ` +
-        `described, so none was substituted for it — an unrelated company presented as yours is ` +
-        `worse than no company at all. Restore model access and preview again, or pick one of the ` +
-        `shipped days knowing it is not your business.`,
+      `${why}. No starter example resembles the business you described, so none was substituted. ` +
+        `Retry generation, open a saved scenario, or pick one of the shipped days as a separate example.`,
     );
     this.name = "NoResemblingExample";
   }
@@ -491,13 +493,41 @@ export function templateStandIn(brief: string, ticks: number, why: string): Asse
   });
 }
 
-function looksUsable(scenario: AuthoredScenario): boolean {
-  return (
-    scenario.cast?.length >= 3 &&
-    scenario.channels?.length >= 1 &&
-    scenario.episode?.beats?.length >= 3 &&
-    scenario.episode?.criteria?.length >= 2
-  );
+function hasBusinessOutline(scenario: AuthoredScenario | null | undefined): scenario is AuthoredScenario {
+  return Boolean(scenario?.business?.name && scenario.owner &&
+    Array.isArray(scenario.cast) && scenario.cast.length >= 3 &&
+    Array.isArray(scenario.channels) && scenario.channels.length >= 1);
+}
+
+function looksUsable(scenario: AuthoredScenario | null | undefined): boolean {
+  return hasBusinessOutline(scenario) &&
+    Array.isArray(scenario.episode?.beats) && scenario.episode.beats.length >= 3 &&
+    Array.isArray(scenario.episode?.criteria) && scenario.episode.criteria.length >= 2;
+}
+
+function outlineDescription(scenario: AuthoredScenario | null | undefined): string {
+  const count = (rows: unknown) => Array.isArray(rows) ? rows.length : 0;
+  return `${count(scenario?.cast)} people, ${count(scenario?.channels)} channels, ` +
+    `${count(scenario?.episode?.beats)} events, ${count(scenario?.episode?.criteria)} grading criteria`;
+}
+
+/** Repair only the missing day, once. The business and cast remain unchanged. */
+async function completeMissingDay(authored: AuthoredScenario, brief: string, ticks: number): Promise<AuthoredScenario> {
+  const { episode, ...outline } = authored;
+  const repaired = await completeJson<AuthoredEpisode>({
+    system: SYSTEM + "\n\nThis is a repair of an incomplete response. Return ONLY the episode object " +
+      "with title, story, task, beats and criteria, not a new business or an outer episode wrapper. " +
+      "Keep the supplied business, people and channels fixed. Complete any existing workday content " +
+      "consistently with the user's brief. Include 5–8 scheduled events and 4–5 explicit success criteria.",
+    user: `Original request:\n${brief}\n\nFixed business outline:\n${JSON.stringify(outline)}\n\n` +
+      `Incomplete episode:\n${JSON.stringify(episode ?? null)}\n\n` +
+      `The day has ${ticks} ticks (0–${ticks - 1}). Use only the supplied cast and channels. ` +
+      `An outline alone is not a runnable scenario. Every criterion must refer to the workday you return.`,
+    schema: (SCENARIO_SCHEMA.properties as Record<string, Record<string, unknown>>).episode!,
+    schemaName: "sonata_episode_repair",
+    maxTokens: 12000,
+  });
+  return { ...outline, episode: repaired };
 }
 
 export interface DraftDoc {
@@ -724,7 +754,7 @@ async function authorFromModel(brief: string, ticks: number): Promise<Authored> 
   if (!hasModelAccess()) return { why: "OPENROUTER_API_KEY is not set, so no model could be asked" };
 
   try {
-    const authored = await completeJson<AuthoredScenario>({
+    let authored = await completeJson<AuthoredScenario>({
       system: SYSTEM,
       user: `Business and day to simulate:\n\n${brief}\n\nThe day runs for ${ticks} ticks, so ticks 0 to ${ticks - 1}.`,
       schema: SCENARIO_SCHEMA,
@@ -732,12 +762,22 @@ async function authorFromModel(brief: string, ticks: number): Promise<Authored> 
       maxTokens: 16000,
     });
     if (!looksUsable(authored)) {
-      return {
-        why:
-          `the model answered with too thin a business (${authored.cast?.length ?? 0} people, ` +
-          `${authored.channels?.length ?? 0} channels, ${authored.episode?.beats?.length ?? 0} beats, ` +
-          `${authored.episode?.criteria?.length ?? 0} criteria)`,
-      };
+      const initial = outlineDescription(authored);
+      if (!hasBusinessOutline(authored)) {
+        return { why: `The model returned an incomplete business outline (${initial})` };
+      }
+      // Model access worked. Asking users to restore it cannot fix a response
+      // which omitted the episode; ask once for that missing work instead.
+      try {
+        authored = await completeMissingDay(authored, brief, ticks);
+      } catch (err) {
+        return { why: `The model returned an incomplete scenario (${initial}). ` +
+          `The automatic completion attempt failed: ${err instanceof Error ? err.message : String(err)}` };
+      }
+      if (!looksUsable(authored)) {
+        return { why: `The model returned an incomplete scenario (${initial}). ` +
+          `After one automatic completion attempt it still had ${outlineDescription(authored)}` };
+      }
     }
 
     const day = await assembleWithBoundCriteria(authored, brief, ticks);

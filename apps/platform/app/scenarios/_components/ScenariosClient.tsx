@@ -12,11 +12,11 @@ import {
   useToast,
 } from "@sonata/ui";
 import { useGo } from "../../_components/useGo";
-import { apiGet, apiSend } from "../../api/_lib/client";
+import { apiSend } from "../../api/_lib/client";
 import type { EpisodeSummary, TemplateSummary, WorldSummary } from "../../api/_lib/types";
 import { episodeFromTemplate } from "../_lib/shipped";
 import { SavedScenarioCard } from "./SavedScenarioCard";
-import { TemplateCard, type TemplateAction } from "./TemplateCard";
+import { TemplateCard, type TemplateAction, type ScenarioTemplate } from "./TemplateCard";
 
 // Scenarios: what you have saved, and what ships in the box. Templates are the
 // answer to an empty page — the spec's rule is that no page is ever blank, and
@@ -24,69 +24,50 @@ import { TemplateCard, type TemplateAction } from "./TemplateCard";
 
 export type ScenariosClientProps = {
   initialEpisodes: EpisodeSummary[];
-  templates: TemplateSummary[];
+  templates: ScenarioTemplate[];
+  expectations: Record<string, string[]>;
+  environmentFilter?: { id: string; name: string };
   /** The server's clock at paint. Every "3 d ago" on a card is measured against
    *  it, so the server HTML and the hydrated render agree. */
   initialNow: number;
+  /** Ids of the benchmark days that ship with Sonata, so their cards say so. */
+  shippedIds: string[];
+  /** Which of these actually have a record; the rest have never been run. */
+  savedIds: string[];
 };
 
-export function ScenariosClient({ initialEpisodes, templates, initialNow }: ScenariosClientProps) {
+export function ScenariosClient({ initialEpisodes, expectations, environmentFilter, templates, initialNow, shippedIds, savedIds }: ScenariosClientProps) {
   const router = useRouter();
   const go = useGo();
   const { toast } = useToast();
 
   const [episodes, setEpisodes] = useState(initialEpisodes);
-  const [now, setNow] = useState(initialNow);
+  const now = initialNow;
+  const visibleEpisodes = environmentFilter
+    ? episodes.filter((episode) => episode.worldId === environmentFilter.id)
+    : episodes;
   const [busy, setBusy] = useState<{ id: string; action: TemplateAction } | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
-
-  async function reload() {
-    try {
-      const { episodes: next, at } = await apiGet<{ episodes: EpisodeSummary[]; at: number }>(
-        "/api/episodes",
-      );
-      setEpisodes(next);
-      setNow(at);
-    } catch {
-      // The list is already on screen and still true; a failed refresh is not
-      // worth a dialog. The next navigation re-reads it from the server anyway.
-    }
-  }
 
   async function onTemplateAction(template: TemplateSummary, action: TemplateAction) {
     setBusy({ id: template.id, action });
     try {
       if (action === "environment") {
-        // This route saves the company; it does not touch the clones. Saying
-        // "the same cast in all three clones" here — and offering to open an
-        // inbox still holding whatever was seeded last — was two promises this
-        // click does not keep. The cast and the channels are what exists now;
-        // the inbox, the backlog and the calendar are written by seeding.
         const { world } = await apiSend<{ world: WorldSummary }>("/api/worlds", "POST", {
           templateId: template.id,
         });
         toast({
           title: `${world.name} is saved`,
-          description: `${world.counts.people} people and ${world.counts.channels} channels. Seed it from Companies to write its inbox, Slack and calendar into the clones.`,
+          description: `${world.counts.people} people and ${world.counts.channels} channels saved. Open Environments to review and load the company into its apps.`,
           tone: "success",
-          action: { label: "Go to Companies", onClick: () => router.push("/companies") },
+          action: { label: "View environments", onClick: () => router.push("/companies") },
         });
         return;
       }
 
       const episode = await episodeFromTemplate(template.id);
 
-      if (action === "use") {
-        router.push(`/runs?scenario=${encodeURIComponent(episode.id)}`);
-        return;
-      }
-
-      await reload();
-      toast({
-        title: "Saved a copy",
-        description: `"${episode.title}" is yours now — edit it by describing what you want changed, or run it as it is.`,
-        tone: "success",
-      });
+      router.push(`/scenarios/${encodeURIComponent(episode.id)}`);
     } catch (err) {
       toast({ title: "That didn't work", description: (err as Error).message, tone: "error" });
     } finally {
@@ -115,7 +96,7 @@ export function ScenariosClient({ initialEpisodes, templates, initialNow }: Scen
       <PageHeader
         eyebrow="Workspace"
         title="Scenarios"
-        subtitle="Start a run from a day you have saved, or build one from a template."
+        subtitle="Choose what the agent will face, then review what good behavior looks like."
         actions={
           // A real anchor, so the page's main exit can be opened in a new tab.
           <a
@@ -129,29 +110,36 @@ export function ScenariosClient({ initialEpisodes, templates, initialNow }: Scen
         }
       />
 
+      <div className="grid gap-4 text-sn-base text-sn-muted sm:grid-cols-3">
+        <p><strong className="font-medium text-sn-ink">Environment</strong><br />The company, its people, history and apps.</p>
+        <p><strong className="font-medium text-sn-ink">Scenario</strong><br />The situation the agent must handle.</p>
+        <p><strong className="font-medium text-sn-ink">Rubric</strong><br />The expected outcomes used to assess its work.</p>
+      </div>
+
       <Card
         padding="lg"
         title="Saved scenarios"
-        subtitle="Days you have written or kept, each with its own success criteria"
+        subtitle={environmentFilter
+          ? `Scenarios in ${environmentFilter.name}`
+          : "Review the environment, events and rubric before choosing an agent."}
         actions={
-          episodes.length > 0 ? (
-            <span className="text-sn-sm text-sn-subtle">
-              {episodes.length} saved on this machine
-            </span>
+          environmentFilter ? (
+            <a href="/scenarios" onClick={(e) => go(e, "/scenarios")} className={buttonClasses("ghost", "sm")}>
+              Show all scenarios
+            </a>
+          ) : episodes.length > 0 ? (
+            <span className="text-sn-sm text-sn-subtle">{episodes.length} saved</span>
           ) : undefined
         }
       >
         <div className="pt-1">
-          {episodes.length === 0 ? (
+          {visibleEpisodes.length === 0 ? (
             <EmptyState
               icon={<IconLayers size="lg" />}
-              title="Nothing saved yet"
-              description="Create one from scratch, or save a template below as a starting point. Either way you get a whole fake company — an inbox, Slack channels and a calendar, with the same people in all three."
-              hints={[
-                "Describe the business in a sentence and watch it become a working day",
-                "Every scenario carries its own success criteria, so a run always has a score",
-                "Nothing leaves this machine and no real account is ever touched",
-              ]}
+              title={environmentFilter ? "No scenarios in this environment yet" : "Nothing saved yet"}
+              description={environmentFilter
+                ? "This environment has no saved scenarios. You can browse all scenarios, or create a new scenario with its own environment."
+                : "Describe a business and a situation, or save a starting point below. Review the generated rubric before your first run."}
               action={
                 <a
                   href="/scenarios/new"
@@ -159,16 +147,19 @@ export function ScenariosClient({ initialEpisodes, templates, initialNow }: Scen
                   className={buttonClasses("primary", "md")}
                 >
                   <IconSpark size="sm" />
-                  Describe a business
+                  Create a scenario
                 </a>
               }
             />
           ) : (
             <div className="grid gap-4 lg:grid-cols-2">
-              {episodes.map((episode) => (
+              {visibleEpisodes.map((episode) => (
                 <SavedScenarioCard
                   key={episode.id}
                   episode={episode}
+                  expectations={expectations[episode.id] ?? []}
+                  shipped={shippedIds.includes(episode.id)}
+                  saved={savedIds.includes(episode.id)}
                   now={now}
                   deleting={deleting === episode.id}
                   onDelete={(target) => void onDelete(target)}
@@ -181,8 +172,8 @@ export function ScenariosClient({ initialEpisodes, templates, initialNow }: Scen
 
       <Card
         padding="lg"
-        title="Templates"
-        subtitle="The five days the benchmark runs — each needs a fact from a surface other than the one it is asked on."
+        title="Start from an example"
+        subtitle="Save a scenario and its environment, then review the rubric. Saving an example does not start a run."
       >
         <div className="grid gap-4 pt-1 lg:grid-cols-2">
           {templates.map((template) => (

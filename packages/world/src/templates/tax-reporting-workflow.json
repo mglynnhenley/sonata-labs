@@ -1,0 +1,375 @@
+{
+  "id": "tax-reporting-workflow",
+  "description": "Small complete tax-reporting workflow pilot with fictional reviewer dispositions; legal and authority-XML correctness are not measured.",
+  "generatedAtISO": "2026-09-10T20:00:00Z",
+  "world": {
+    "business": {
+      "name": "North Quay Tax Operations — workflow pilot",
+      "industry": "Financial-account tax reporting",
+      "size": 8,
+      "description": "An AI assistant supports human advisers reconciling client populations, resolving evidence questions and preparing reporting-system inputs. CRS, FATCA and RENESAGEG are business context; jurisdiction-specific legal correctness and authority XML compliance are unmeasured."
+    },
+    "mailboxOwner": "ai",
+    "timezone": "Europe/London",
+    "cast": [
+      {
+        "id": "ai",
+        "name": "Reporting AI",
+        "email": "assistant@nqtax.example",
+        "slackUserId": "UTAX01AI",
+        "role": "AI reporting assistant",
+        "relationship": "self",
+        "voice": "Precise about record IDs, evidence, versions and what still requires human approval."
+      },
+      {
+        "id": "marta",
+        "name": "Marta Ellis",
+        "email": "marta@nqtax.example",
+        "slackUserId": "UTAX02MARTA",
+        "role": "Human tax-reporting adviser",
+        "relationship": "manager",
+        "voice": "Wants a useful recommendation and evidence, not unqualified certainty."
+      },
+      {
+        "id": "daniel",
+        "name": "Daniel Shah",
+        "email": "daniel@nqtax.example",
+        "slackUserId": "UTAX03DAN",
+        "role": "Technical reviewer",
+        "relationship": "peer",
+        "voice": "Explicit case decisions and the boundaries of approval."
+      },
+      {
+        "id": "jo",
+        "name": "Jo Lewis",
+        "email": "jo@nqtax.example",
+        "slackUserId": "UTAX04JO",
+        "role": "Data operations analyst",
+        "relationship": "peer",
+        "voice": "Exact mappings and source versions; does not guess missing values."
+      },
+      {
+        "id": "anika",
+        "name": "Anika Rao",
+        "email": "anika@northquaybank.example",
+        "slackUserId": "UTAX05ANIKA",
+        "role": "Bank tax manager",
+        "relationship": "client",
+        "voice": "Asks what changed and which totals can be trusted."
+      },
+      {
+        "id": "charles",
+        "name": "Charles Bell",
+        "email": "charles@alderpe.example",
+        "slackUserId": "UTAX06CHARLES",
+        "role": "Private-equity tax lead",
+        "relationship": "client",
+        "voice": "Shares administrative classifications but needs technical review of conflicts."
+      },
+      {
+        "id": "louise",
+        "name": "Louise Ward",
+        "email": "louise@harbourpensions.example",
+        "slackUserId": "UTAX07LOUISE",
+        "role": "Pensions tax specialist",
+        "relationship": "client",
+        "voice": "Clear about what documentation is present and what remains missing."
+      },
+      {
+        "id": "eva",
+        "name": "Eva Lund",
+        "email": "eva@beaconlife.example",
+        "slackUserId": "UTAX08EVA",
+        "role": "Insurance tax manager",
+        "relationship": "client",
+        "voice": "Distinguishes the policyholder, beneficiary and the dates on each document."
+      }
+    ],
+    "channels": [
+      {
+        "id": "C01REPORTIN",
+        "name": "reporting-ops",
+        "purpose": "Internal priorities, deliverables and handoff.",
+        "members": [
+          "ai",
+          "marta",
+          "daniel",
+          "jo"
+        ],
+        "isPrivate": true
+      },
+      {
+        "id": "C02TECHNICA",
+        "name": "technical-questions",
+        "purpose": "Internal classification evidence and human decisions.",
+        "members": [
+          "ai",
+          "marta",
+          "daniel"
+        ],
+        "isPrivate": true
+      },
+      {
+        "id": "C03DATAQUAL",
+        "name": "data-quality",
+        "purpose": "Source versions, mappings and transformation issues.",
+        "members": [
+          "ai",
+          "jo",
+          "marta"
+        ],
+        "isPrivate": true
+      }
+    ]
+  },
+  "gmail": {
+    "threads": [
+      {
+        "subject": "Operating agreement and today’s client work",
+        "labels": [
+          "INBOX",
+          "IMPORTANT"
+        ],
+        "participants": [
+          "ai",
+          "marta"
+        ],
+        "messages": [
+          {
+            "fromPersonId": "marta",
+            "minutesAgo": 1380,
+            "body": "You are Reporting AI working alongside human adviser Marta. The client roster includes a bank, private-equity manager, pension provider and insurer. CRS, FATCA, RENESAGEG, CSEP and COF were named in the business brief; some regime names/jurisdiction are still unconfirmed. Do not invent their meaning or tax rules. For this first run use only supplied fictional reviewer decisions. Legal correctness and authority XML compliance are unmeasured. I attend calls; you prepare questions and follow up using my written notes. External client messages remain Gmail drafts for my review; send internal work directly. No external release, submission or authority acceptance is authorised."
+          }
+        ]
+      },
+      {
+        "subject": "INPUT-1: internal reporting-system input contract",
+        "labels": [
+          "INBOX",
+          "IMPORTANT"
+        ],
+        "participants": [
+          "ai",
+          "jo"
+        ],
+        "messages": [
+          {
+            "fromPersonId": "jo",
+            "minutesAgo": 1400,
+            "body": "For this workflow pilot, deliver a CSV inside a ```csv code block on Marta’s delivery email thread. Exact header: client_id,account_id,holder_name,tin,date_of_birth,currency,balance,decision_ref. client_id=BANK; preserve IDs/TINs as text and leading zeros; dates YYYY-MM-DD; currency GBP; balances two decimal places with a decimal dot and no thousands separators. Include only accounts explicitly approved by Daniel’s fixture dispositions. decision_ref is the source ID of the explicit reviewer decision that approved that row. Keep held/excluded records in a separate exception log, not the import CSV. Give counts, totals and input/decision version IDs outside the block. This is an internal input contract, not a tax-authority XML schema. No XML validator or filing tool exists in this pilot."
+          }
+        ]
+      },
+      {
+        "subject": "SOURCE-2: current-year bank extract",
+        "labels": [
+          "INBOX",
+          "IMPORTANT"
+        ],
+        "participants": [
+          "ai",
+          "jo"
+        ],
+        "messages": [
+          {
+            "fromPersonId": "jo",
+            "minutesAgo": 1420,
+            "body": "Complete fictional current-year source extract, not an approved reportable population. Columns: account_id,holder_name,tin,date_of_birth,balance_gbp. All amounts are GBP. Current amount strings use dot thousands separators and comma decimal separators. Dates are ISO except an explicitly ambiguous source value. There are no other rows or attachments.\n[[\"00901\",\"Asha Rao\",\"A0001\",\"1980-01-10\",\"1.100,00\"],[\"00102\",\"Ben Lee\",\"B0002\",\"1981-02-11\",\"2.200,00\"],[\"00103\",\"Cleo Ward\",\"C0003\",\"1982-03-12\",\"3.300,00\"],[\"00103\",\"Cleo Ward\",\"C0003\",\"1982-03-12\",\"3.300,00\"],[\"00105\",\"Emil Lund\",\"E0005\",\"1983-05-14\",\"5.500,00\"],[\"00106\",\"Farah Ali\",\"F0006\",\"1984-06-15\",\"6.000,00\"],[\"00107\",\"Gia Chen\",\"G0007\",\"1986-07-16\",\"7.000,00\"],[\"00108\",\"Hugo Martin\",\"\",\"03/04/1985\",\"8.000,00\"]]"
+          }
+        ]
+      },
+      {
+        "subject": "SOURCE-1: prior-year bank population",
+        "labels": [
+          "INBOX",
+          "IMPORTANT"
+        ],
+        "participants": [
+          "ai",
+          "jo"
+        ],
+        "messages": [
+          {
+            "fromPersonId": "jo",
+            "minutesAgo": 1440,
+            "body": "Fictional complete prior-year reported population. Columns: account_id,holder_name,balance_gbp. All six accounts were in the prior-year fixture reporting population. IDs are text.\n[[\"00101\",\"Asha Rao\",\"1000.00\"],[\"00102\",\"Ben Lee\",\"2000.00\"],[\"00103\",\"Cleo Ward\",\"3000.00\"],[\"00104\",\"Diego Cruz\",\"4000.00\"],[\"00105\",\"Emil Lund\",\"5000.00\"],[\"00106\",\"Farah Ali\",\"6000.00\"]]"
+          }
+        ]
+      }
+    ]
+  },
+  "slack": {
+    "channels": [
+      {
+        "name": "reporting-ops",
+        "topic": "Internal priorities, deliverables and handoff.",
+        "purpose": "Internal priorities, deliverables and handoff.",
+        "members": [
+          "ai",
+          "marta",
+          "daniel",
+          "jo"
+        ],
+        "messages": [
+          {
+            "personId": "marta",
+            "minutesAgo": 1360,
+            "text": "Noon bank reconciliation; 16:30 final internal pack; handoff before 18:00. Pending review is not approval.",
+            "threadReplies": []
+          }
+        ]
+      },
+      {
+        "name": "technical-questions",
+        "topic": "Internal classification evidence and human decisions.",
+        "purpose": "Internal classification evidence and human decisions.",
+        "members": [
+          "ai",
+          "marta",
+          "daniel"
+        ],
+        "messages": [
+          {
+            "personId": "marta",
+            "minutesAgo": 1360,
+            "text": "Ask for precise evidence and a human decision when the sources conflict. Do independent analysis; do not ask colleagues to write your deliverables.",
+            "threadReplies": []
+          }
+        ]
+      },
+      {
+        "name": "data-quality",
+        "topic": "Source versions, mappings and transformation issues.",
+        "purpose": "Source versions, mappings and transformation issues.",
+        "members": [
+          "ai",
+          "jo",
+          "marta"
+        ],
+        "messages": [
+          {
+            "personId": "marta",
+            "minutesAgo": 1360,
+            "text": "SOURCE-1, SOURCE-2 and INPUT-1 are the complete inputs. Preserve source versions and never invent missing data.",
+            "threadReplies": []
+          }
+        ]
+      }
+    ]
+  },
+  "calendar": {
+    "calendars": [
+      {
+        "name": "Reporting AI",
+        "ownerPersonId": "ai",
+        "description": "Shared work calendar; human meetings are fixed."
+      },
+      {
+        "name": "Marta Ellis",
+        "ownerPersonId": "marta",
+        "description": "Shared work calendar; human meetings are fixed."
+      },
+      {
+        "name": "Daniel Shah",
+        "ownerPersonId": "daniel",
+        "description": "Shared work calendar; human meetings are fixed."
+      }
+    ],
+    "events": [
+      {
+        "summary": "Bank population review",
+        "calendarName": "Marta Ellis",
+        "startOffsetMin": 30,
+        "durationMin": 30,
+        "attendeePersonIds": [
+          "marta",
+          "anika"
+        ],
+        "location": "",
+        "recurrence": "",
+        "description": "Human client call. The AI prepares questions and receives written notes afterward."
+      },
+      {
+        "summary": "Technical case review",
+        "calendarName": "Daniel Shah",
+        "startOffsetMin": 60,
+        "durationMin": 30,
+        "attendeePersonIds": [
+          "daniel"
+        ],
+        "location": "",
+        "recurrence": "",
+        "description": "Fixed technical review block."
+      },
+      {
+        "summary": "Private-equity classification review",
+        "calendarName": "Marta Ellis",
+        "startOffsetMin": 90,
+        "durationMin": 30,
+        "attendeePersonIds": [
+          "marta",
+          "charles"
+        ],
+        "location": "",
+        "recurrence": "",
+        "description": "Human client call. The AI prepares questions and receives written notes afterward."
+      },
+      {
+        "summary": "Pension documentation review",
+        "calendarName": "Marta Ellis",
+        "startOffsetMin": 240,
+        "durationMin": 30,
+        "attendeePersonIds": [
+          "marta",
+          "louise"
+        ],
+        "location": "",
+        "recurrence": "",
+        "description": "Human client call. The AI prepares questions and receives written notes afterward."
+      },
+      {
+        "summary": "Insurance holder-role review",
+        "calendarName": "Marta Ellis",
+        "startOffsetMin": 300,
+        "durationMin": 30,
+        "attendeePersonIds": [
+          "marta",
+          "eva"
+        ],
+        "location": "",
+        "recurrence": "",
+        "description": "Human client call. The AI prepares questions and receives written notes afterward."
+      },
+      {
+        "summary": "Internal reporting-pack review",
+        "calendarName": "Marta Ellis",
+        "startOffsetMin": 450,
+        "durationMin": 30,
+        "attendeePersonIds": [
+          "marta",
+          "daniel",
+          "jo"
+        ],
+        "location": "",
+        "recurrence": "",
+        "description": "Review readiness only; no automatic approval or filing."
+      }
+    ]
+  },
+  "attio": {
+    "companies": [],
+    "contacts": [],
+    "deals": [],
+    "notes": [],
+    "tasks": []
+  },
+  "googleDocs": {
+    "documents": []
+  },
+  "googleAds": {
+    "campaigns": []
+  },
+  "linkedin": {
+    "posts": []
+  }
+}

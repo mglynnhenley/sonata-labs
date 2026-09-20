@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { EpisodeRun, Person, TickRecord, TwinSnapshot } from "@sonata/core";
-import { endOfDay, type EndStateInput } from "../app/results/_components/endstate";
+import { endOfDay, endStateMarkdown, type EndStateInput } from "../app/results/_components/endstate";
 
-// WHERE THE DAY ENDED UP, on the two surfaces that landed after the first three.
+// WHERE THE DAY ENDED UP, on the four surfaces that landed after the first three.
 //
 // The rule this section keeps to is that every number is read off the closing
 // snapshot's own list and every omission is admitted. These tests hold it to
@@ -59,6 +59,47 @@ function report(after: TwinSnapshot) {
   if (!twin) throw new Error(`no end state for ${after.twin}`);
   return twin;
 }
+
+describe("workbooks at close", () => {
+  it("reports revisions and complete attributed history without classifying changes as outstanding work", () => {
+    const change = {
+      id: 1, workbookId: "report", revision: 4, actor: "human reviewer", at: "2026-08-06T10:00:00Z",
+      sheetId: "review", rowId: "row-1", column: "amount", before: 50, after: 65,
+      reason: "Corrected the source amount", evidence: "Signed statement, line 7",
+    };
+    const end = report({
+      twin: "excel", capturedAt: 2000,
+      workbooks: [{ id: "report", title: "Quarterly reporting", revision: 4, sheets: [] }],
+      changes: [change],
+    });
+    expect(end.counts).toEqual([
+      { label: "workbook", value: 1, flag: false },
+      { label: "recorded change", value: 1, flag: false },
+    ]);
+    expect(end.workbooks).toEqual([{ id: "report", title: "Quarterly reporting", revision: 4, sheets: 0 }]);
+    expect(end.reviewHistory).toEqual([change]);
+    expect(end.open).toEqual([]);
+    expect(end.settled).toBe("");
+    expect(end.scope).toContain("not a count of the agent's actions");
+    expect(end.scope).toContain("do not establish");
+
+    const markdown = endStateMarkdown({ closedAt: "10:00", twins: [end], unseen: [], sight: null });
+    expect(markdown).toContain("Quarterly reporting — revision 4");
+    expect(markdown).toContain("human reviewer");
+    expect(markdown).toContain("50 → 65");
+    expect(markdown).toContain(change.reason);
+    expect(markdown).toContain(change.evidence);
+  });
+
+  it("does not turn an empty workbook capture into a clean verdict", () => {
+    const end = report({ twin: "excel", capturedAt: 2000, workbooks: [], changes: [] });
+    expect(end.counts.every((count) => count.value === 0 && !count.flag)).toBe(true);
+    expect(end.settled).toBe("");
+    const markdown = endStateMarkdown({ closedAt: "10:00", twins: [end], unseen: [], sight: null });
+    expect(markdown).toContain("No changes are recorded in the closing snapshot.");
+    expect(markdown).toContain("do not establish");
+  });
+});
 
 describe("the CRM at close", () => {
   it("counts the follow-ups nobody closed, and never calls a record itself open", () => {
@@ -142,5 +183,90 @@ describe("the workspace at close", () => {
         why: "started, never written",
       },
     ]);
+  });
+});
+
+describe("the ad account at close", () => {
+  it("stops the reader at money switched off and at a campaign that cannot spend", () => {
+    const end = report({
+      twin: "google-ads",
+      capturedAt: 2000,
+      campaigns: [
+        {
+          campaignId: "c1",
+          name: "Retargeting",
+          status: "PAUSED",
+          budgetId: "b1",
+          budgetMicros: 15_000_000,
+          costMicros: 0,
+        },
+        {
+          campaignId: "c2",
+          name: "Brand",
+          status: "ENABLED",
+          budgetId: "",
+          budgetMicros: 0,
+          costMicros: 318_940_000,
+        },
+      ],
+    });
+
+    expect(end.counts).toEqual([
+      { label: "campaigns", value: 2, flag: false },
+      { label: "left paused", value: 1, flag: true },
+    ]);
+    expect(end.open.map((o) => o.why)).toEqual([
+      "paused when the day ended",
+      "no budget attached, so it cannot spend",
+    ]);
+    // Spend is in the snapshot and covers a window several days wide, so it is
+    // owned up to rather than printed under a heading about one day.
+    expect(end.scope).toContain("a window several days wide");
+  });
+});
+
+describe("the feed at close", () => {
+  it("flags a post written and never published, and admits what it cannot know", () => {
+    const end = report({
+      twin: "linkedin",
+      capturedAt: 2000,
+      posts: [
+        {
+          postUrn: "urn:li:activity:1",
+          author: "urn:li:person:chris",
+          commentary: "We are hiring",
+          lifecycleState: "PUBLISHED",
+          commentCount: 1,
+          reactionCount: 3,
+        },
+        {
+          postUrn: "urn:li:activity:2",
+          author: "urn:li:person:chris",
+          commentary: "Draft about the new berth",
+          lifecycleState: "DRAFT",
+          commentCount: 0,
+          reactionCount: 0,
+        },
+      ],
+      comments: [
+        {
+          commentUrn: "urn:li:comment:9",
+          postUrn: "urn:li:activity:1",
+          actor: "urn:li:person:dana",
+          text: "Is this remote?",
+          isReply: false,
+        },
+      ],
+    });
+
+    expect(end.counts).toEqual([
+      { label: "posts", value: 2, flag: false },
+      { label: "comment", value: 1, flag: false },
+      { label: "post left in draft", value: 1, flag: true },
+    ]);
+    expect(end.open.map((o) => o.what)).toEqual(["Draft about the new berth"]);
+    // "Nobody answered this customer" is not a claim the capture can support: a
+    // comment names its post, never the comment it replies to.
+    expect(end.scope).toContain("never the comment it replies to");
   });
 });

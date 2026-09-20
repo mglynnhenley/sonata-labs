@@ -1,3 +1,4 @@
+import { controlToken } from "@sonata/core/controlAuth";
 // A minimal Events API receiver — the shape a real event-driven agent has.
 // Run it, then do things in the sandbox UI (or run `npm run demo`) and watch
 // events arrive.
@@ -97,14 +98,14 @@ server.listen(LISTEN_PORT, async () => {
 
   // Fetch the sandbox's signing secret, then subscribe.
   try {
-    const info = (await fetch(`${SANDBOX}/api/sandbox/events`).then((r) => r.json())) as {
+    const info = (await fetch(`${SANDBOX}/api/sandbox/events`, { headers: { "x-sandbox-token": controlToken() } }).then((r) => r.json())) as {
       signing_secret: string;
     };
     if (info.signing_secret) secret = info.signing_secret;
 
     const res = (await fetch(`${SANDBOX}/api/sandbox/events`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "x-sandbox-token": controlToken(), "content-type": "application/json" },
       body: JSON.stringify({ url }),
     }).then((r) => r.json())) as {
       ok: boolean;

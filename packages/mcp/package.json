@@ -23,7 +23,8 @@
     "@modelcontextprotocol/sdk": "1.30.0",
     "@sonata/core": "*",
     "@sonata/engine": "*",
-    "tsx": "^4.19.2"
+    "tsx": "^4.19.2",
+    "@sonata/desks": "*"
   },
   "devDependencies": {
     "@types/node": "^22.10.7",

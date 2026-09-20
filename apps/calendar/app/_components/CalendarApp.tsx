@@ -10,7 +10,7 @@ import { ActivityPanel } from "./ActivityPanel";
 
 const DAY_MS = 86_400_000;
 
-export function CalendarApp() {
+export function CalendarApp({ activityToken }: { activityToken: string | null }) {
   // `anchorMs` is any instant inside the displayed week. It starts null and is
   // seeded from /api/ui/anchor — the week containing the most recent event —
   // because the sim runs on backdated/future dates, so anchoring on wall-clock
@@ -19,7 +19,7 @@ export function CalendarApp() {
   const [timeZone, setTimeZone] = useState("UTC");
   const [view, setView] = useState<WeekView | null>(null);
   const [activity, setActivity] = useState<ActivityData | null>(null);
-  const [showActivity, setShowActivity] = useState(true);
+  const [showActivity, setShowActivity] = useState(activityToken !== null);
   const [hidden, setHidden] = useState<ReadonlySet<string>>(new Set());
   const [selected, setSelected] = useState<EventClick | null>(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
@@ -52,9 +52,13 @@ export function CalendarApp() {
   }, [days]);
 
   const refreshActivity = useCallback(async () => {
-    const r = (await fetch("/api/activity?limit=100").then((r) => r.json())) as ActivityData;
-    setActivity(r);
-  }, []);
+    if (!activityToken) return;
+    const response = await fetch("/api/activity?limit=100", {
+      headers: { authorization: `Bearer ${activityToken}` },
+    });
+    if (!response.ok) return;
+    setActivity(await response.json() as ActivityData);
+  }, [activityToken]);
 
   useEffect(() => {
     refreshWeek();
@@ -129,8 +133,9 @@ export function CalendarApp() {
 
         <div className="ml-auto flex items-center gap-1">
           <button
+            disabled={!activityToken}
             onClick={() => setShowActivity((s) => !s)}
-            title="Live agent action feed"
+            title={activityToken ? "Live agent action feed" : "View activity in the Sonata run report"}
             className={`flex items-center gap-1.5 rounded-full px-3 py-2 text-sm font-medium ${
               showActivity ? "bg-gc-active text-[#041e49]" : "text-gc-muted hover:bg-gc-hover"
             }`}

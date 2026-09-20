@@ -1,6 +1,12 @@
+import { randomUUID } from "node:crypto";
+import { AssessmentBusyError, evidenceHash, preserveLegacyReport, writeAssessment, type Assessment } from "./assessments";
+import path from "node:path";
+import { acquireResourceLease, ResourceBusyError } from "./cloneLease";
 import {
   checklistScore,
+  episodeTwins,
   runExecution,
+  runTruncation,
   verdictOutcome,
   type CriterionResult,
   type EpisodeJudgeReport,
@@ -17,6 +23,7 @@ import {
   refsFromTicks,
   runChecklist,
   tickIndexer,
+  checklistWithUnjudged,
   writtenFromTicks,
 } from "@sonata/judge";
 import {
@@ -25,7 +32,7 @@ import {
   type JudgeSpend,
 } from "../../../app/api/results/_lib/judgeAttempt";
 import { judgeModelFor, rejudgeRun } from "../../../app/api/results/_lib/rejudge";
-import { readRun, readSpec, updateRunJudge } from "../../../app/results/_lib/artifacts";
+import { readRun, readSpec, updateRunJudge, runsDir } from "../../../app/results/_lib/artifacts";
 import { finishRun, getRun } from "../db";
 
 // What a finished day is worth.
@@ -60,11 +67,18 @@ export interface ScoredRun {
  * Score a finished run against its own checklist.
  *
  * The deterministic half, and the whole of it: refs the beats minted, what each
- * twin's log says the agent actually did, both snapshots, and the prose it
- * wrote. `runChecklist` decides; nothing here interprets. `judged` criteria are
- * deliberately absent from the result — a criterion no checker could decide must
- * not drag a score that claims to report what was verified. They reach the judge
- * as questions instead.
+ * twin's log says the agent actually did, both snapshots, the prose it wrote, and
+ * how much of the declared day actually ran. `runChecklist` decides; nothing here
+ * interprets. `judged` criteria carry no verdict here — a criterion no checker
+ * could decide must not drag a score that claims to report what was verified.
+ * They reach the judge as questions instead.
+ *
+ * But they may not vanish. While no judge report exists for the run — disabled,
+ * failed, or not yet run — each of them is a `notApplicable` row saying so, in
+ * the judge's absence rather than the agent's fault. The rows come from the same
+ * `deferred` list the judge is asked from, so the two can never disagree about
+ * which criteria those are. Once a report exists the judge owns those criteria
+ * and the rows are not minted.
  *
  * A run that never executed is not scored at all — see `runExecution`. It returns
  * an empty checklist with it, because the criteria such a run "passes" are the
@@ -73,12 +87,19 @@ export interface ScoredRun {
  */
 export function scoreRun(run: EpisodeRun, spec: EpisodeSpec, input: ScoreInput = {}): ScoredRun {
   const execution = runExecution(run);
+  // Domain rubrics carry per-unit partial credit and explicit unknowns. An empty
+  // legacy checklist cannot substitute for that separate report.
+  if (spec.benchmark) return { checklist: [], verdict: null, execution };
   if (!execution.executed) return { checklist: [], verdict: null, execution };
 
   const existing = run.verdict;
-  const checklist =
-    existing && existing.checklist.length > 0
-      ? existing.checklist
+  const judge = existing?.judge ?? null;
+  const stored = existing && existing.checklist.length > 0 ? existing.checklist : null;
+  // Pure and offline, so re-running it over stored rows costs nothing and changes
+  // nothing: the stored rows stay the record, and only the deferred list is read.
+  const outcome =
+    stored && judge
+      ? null
       : runChecklist({
           criteria: spec.success.checklist,
           world: spec.world,
@@ -88,8 +109,20 @@ export function scoreRun(run: EpisodeRun, spec: EpisodeSpec, input: ScoreInput =
           audit: input.audit ?? [],
           escalations: escalationsFromTicks(run.ticks),
           written: writtenFromTicks(run.ticks),
+          // Which ticks ran, so a deadline the day never reached is reported as
+          // unmeasured rather than as the agent's failure, and a beat that never
+          // fired says which tick it was scheduled for.
+          truncation: runTruncation(run, spec),
           tickOf: tickIndexer(run.ticks),
-        }).results;
+        });
+  const checked = stored ?? outcome?.results ?? [];
+  const checklist =
+    outcome && !judge
+      ? checklistWithUnjudged(
+          { results: checked, deferred: outcome.deferred },
+          spec.success.checklist,
+        )
+      : checked;
 
   return {
     checklist,
@@ -104,13 +137,14 @@ export function scoreRun(run: EpisodeRun, spec: EpisodeSpec, input: ScoreInput =
       // can move it.
       autonomy: autonomy(checklist, run.ticks).score,
       checklist,
-      judge: existing?.judge ?? null,
+      judge,
       cost: input.cost ?? existing?.cost ?? ZERO_COST,
     },
   };
 }
 
 export interface JudgeResult {
+  assessment: Assessment;
   report: EpisodeJudgeReport;
   /** The run's own autonomy, re-read off the artifact the report was written to. */
   autonomy: number;
@@ -128,21 +162,9 @@ export interface JudgeResult {
 const JUDGE_FAILED_NOTE = "The day finished, but the judge did not";
 
 /**
- * Judge a day, write the report to `<runId>.judge.json`, and fold it back into
- * the run's verdict.
- *
- * Both writes go through `updateRunJudge`. The separate judge artifact is the
- * point of the split — `sonata judge <runId> --model X` overwrites one small
- * file and the day never re-runs — and the run file is read-modify-written
- * rather than rebuilt, because the engine owns it and may have put fields in it
- * this dashboard does not model.
- *
- * EVERY judge pass in the product comes through here: the engine at the close of
- * a run, a session settling, `sonata judge`, and the Re-judge button. So this is
- * the one place that has to open and close the attempt record — the file that
- * lets a page distinguish "reading it now" from "it answered and was cut off"
- * from "nobody ever asked". A trigger of its own for the dashboard would have
- * been a second way to judge, and this product has exactly one.
+ * Every initial assessment and rejudge uses this path. Inspect runs the judge;
+ * immutable assessment records preserve history, while updateRunJudge refreshes
+ * the latest display copy and the dashboard row. The recorded day is not replayed.
  */
 export async function judgeRun(
   run: EpisodeRun,
@@ -153,62 +175,80 @@ export async function judgeRun(
   // would write a diagnosis of nothing, and that diagnosis would then be quoted
   // as a finding about a model. Nothing is recorded for it either: a day with no
   // work in it was never a candidate, so it has no failed attempt to explain.
+  if (spec?.benchmark) throw new Error("Continuity cases use their persisted domain rubric. Free-text judge calibration is not implemented.");
   const execution = runExecution(run);
   if (!execution.executed) {
-    throw new Error(`There is nothing for a judge to read. ${execution.reason ?? ""}`.trim());
+    throw new Error(`This run cannot be assessed. ${execution.reason ?? ""}`.trim());
   }
 
-  const attempt = beginJudgeAttempt({
-    runId: run.runId,
-    model: judgeModelFor(opts.model),
-    // The default is automatic because the callers that pass nothing are the
-    // engine and the CLI finishing a day. Only the button says otherwise.
-    automatic: opts.manual !== true,
-  });
-  // Held outside the try: a pass that answered and then failed to parse was paid
-  // for, and the bill is part of what the failure has to be able to say.
-  let spend: JudgeSpend | null = null;
-
-  let report: EpisodeJudgeReport;
+  let release: () => void;
+  try { release = acquireResourceLease([`assessment:${path.resolve(runsDir(), run.runId)}`], `assessment of ${run.runId}`); }
+  catch (error) { if (error instanceof ResourceBusyError) throw new AssessmentBusyError(); throw error; }
   try {
-    report = await rejudgeRun(run, spec, {
-      ...(opts.model ? { model: opts.model } : {}),
-      ...(opts.signal ? { signal: opts.signal } : {}),
-      onSpend: (s) => (spend = s),
-    });
-  } catch (err) {
-    finishJudgeAttempt(attempt, {
-      state: "failed",
-      reason: err instanceof Error ? err.message : String(err),
-      spend,
-    });
-    throw err;
+    preserveLegacyReport(run.runId, run.verdict?.judge ?? null);
+    const truncation = spec ? runTruncation(run, spec) : null;
+    const numericScoreEligible = Boolean(spec && truncation && !truncation.truncated && !truncation.unfired.length &&
+      episodeTwins(spec).every(twin => run.snapshots[twin]?.before && run.snapshots[twin]?.after));
+    const assessment: Assessment = {
+      id: randomUUID(), runId: run.runId, ownerPid: process.pid, model: judgeModelFor(opts.model), runner: "inspect",
+      startedAt: Date.now(), endedAt: null, status: "judging", automatic: opts.manual !== true,
+      report: null, spend: null, error: null, log: null,
+      provenance: { numericScoreEligible, sourceRunId: run.runId, sourceInspectLog: run.inspect?.log ?? null,
+        evidenceSha256: evidenceHash({ ticks: run.ticks, snapshots: run.snapshots, audit: run.audit, spec }),
+        gradingVersion: "sonata-inspect-judge-v1" },
+    };
+    writeAssessment(assessment);
+    const attempt = beginJudgeAttempt({ runId: run.runId, model: assessment.model, automatic: assessment.automatic });
+    let spend: JudgeSpend | null = null;
+    let report: EpisodeJudgeReport;
+    let verdict: EpisodeVerdict | null;
+    try {
+      report = await rejudgeRun(run, spec, {
+        assessment, model: assessment.model, signal: opts.signal, onSpend: s => { spend = s; },
+      });
+      assessment.report = report;
+      assessment.spend = spend;
+      assessment.status = "judged";
+      assessment.endedAt = Date.now();
+      // Immutable history is the record. The old locations are the latest display copy.
+      writeAssessment(assessment);
+      verdict = updateRunJudge(run.runId, report);
+      if (!verdict) throw new Error("Assessment saved, but its run artifact could not be updated.");
+      finishJudgeAttempt(attempt, { state: "judged", spend });
+    } catch (err) {
+      assessment.status = "failed";
+      assessment.error = err instanceof Error ? err.message : String(err);
+      assessment.spend = spend;
+      assessment.endedAt = Date.now();
+      writeAssessment(assessment);
+      finishJudgeAttempt(attempt, { state: "failed", reason: assessment.error, spend });
+      throw err;
+    }
+    const headline = verdict.autonomy;
+
+    // The runs list reads the relational row, not the file, so the headline number
+    // has to move in both places or the two pages disagree about the same run.
+    const row = getRun(run.runId);
+    if (row) {
+      // A note saying the judge did not finish, on a run that has just been
+      // judged, is the runs list flagging a day whose diagnosis is on screen. Only
+      // that note is dropped; any other error belongs to the day itself.
+      const keepError = row.error && !row.error.startsWith(JUDGE_FAILED_NOTE) ? row.error : null;
+      finishRun({
+        id: run.runId,
+        status: row.status === "judging" ? "done" : row.status,
+        ...(row.outcome ? { outcome: row.outcome } : {}),
+        ...(row.score === null ? {} : { score: row.score }),
+        autonomy: headline,
+        ...(keepError ? { error: keepError } : {}),
+        endedAt: row.endedAt ?? Date.now(),
+      });
+    }
+
+    return { assessment, report, autonomy: headline, spend };
+  } finally {
+    release();
   }
-  finishJudgeAttempt(attempt, { state: "judged", spend });
-
-  const verdict = updateRunJudge(run.runId, report);
-  const headline = verdict?.autonomy ?? autonomy(run.verdict?.checklist ?? [], run.ticks).score;
-
-  // The runs list reads the relational row, not the file, so the headline number
-  // has to move in both places or the two pages disagree about the same run.
-  const row = getRun(run.runId);
-  if (row) {
-    // A note saying the judge did not finish, on a run that has just been
-    // judged, is the runs list flagging a day whose diagnosis is on screen. Only
-    // that note is dropped; any other error belongs to the day itself.
-    const keepError = row.error && !row.error.startsWith(JUDGE_FAILED_NOTE) ? row.error : null;
-    finishRun({
-      id: run.runId,
-      status: row.status === "judging" ? "done" : row.status,
-      ...(row.outcome ? { outcome: row.outcome } : {}),
-      ...(row.score === null ? {} : { score: row.score }),
-      autonomy: headline,
-      ...(keepError ? { error: keepError } : {}),
-      endedAt: row.endedAt ?? Date.now(),
-    });
-  }
-
-  return { report, autonomy: headline, spend };
 }
 
 /**

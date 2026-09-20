@@ -50,14 +50,13 @@ const STATUS_LABEL: Record<RunStatus, string> = {
 
 export type LiveEpisodeProps = {
   initial: RunDetail;
-  /** Where the three clones are, so every row and the header open the world. */
-  twinLinks: readonly { twin: TwinName; url: string }[];
 };
 
-export function LiveEpisode({ initial, twinLinks }: LiveEpisodeProps) {
+export function LiveEpisode({ initial }: LiveEpisodeProps) {
   const go = useGo();
   const { run, ticks, live, error, command, pending } = useRunStream(initial);
 
+  const twinLinks = run.twinLinks ?? [];
   const rows = useMemo(() => buildStory(ticks), [ticks]);
   const counts = useMemo(() => tally(rows), [rows]);
 

@@ -118,6 +118,14 @@ const emptySnapshot = (twin: TwinName): TwinSnapshot => {
       return { twin, capturedAt: 0, records: [], notes: [], tasks: [] };
     case "google-docs":
       return { twin, capturedAt: 0, documents: [] };
+    case "google-ads":
+      return { twin, capturedAt: 0, campaigns: [] };
+    case "excel":
+      return { twin, capturedAt: 0, workbooks: [], changes: [] };
+    case "linkedin":
+      return { twin, capturedAt: 0, posts: [], comments: [] };
+    case "desk":
+      return { twin, capturedAt: 0, caseId: "", records: [], events: [] };
   }
 };
 
@@ -158,6 +166,7 @@ export function auditRow(over: Partial<TwinAuditRow> & Pick<TwinAuditRow, "id" |
     targetType: "message",
     targetId: `t-${over.id}`,
     summary: "did a thing",
+    observation: over.summary ? fixtureObservation(over.twin, over.summary) : undefined,
     ...over,
   };
 }
@@ -206,4 +215,13 @@ export function fetchFake(routes: Record<string, unknown>): FetchFake {
     calls,
     find: (needle) => [...calls].reverse().find((c) => c.url.includes(needle)),
   };
+}
+
+/** Explicit test delivery fixture; runtime observations come from clone message records. */
+export function fixtureObservation(twin: TwinName | null, text: string) {
+  const audience = world.cast.filter(p => [p.id, p.name, p.email, p.slackUserId ?? "!"].some(v => text.toLowerCase().includes(v.toLowerCase()))).map(p => p.id);
+  const channel = world.channels.find(c => new RegExp(`#${c.name}(?:[^a-zA-Z0-9_-]|$)`).test(text));
+  if (channel) audience.push(...channel.members);
+  return { audience: [...new Set(audience)], actor: twin === "slack" ? "priya" : "priya", text,
+    ...(channel ? { channelId: channel.id } : {}) };
 }

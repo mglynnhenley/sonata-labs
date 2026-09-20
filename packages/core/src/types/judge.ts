@@ -1,3 +1,4 @@
+import type { ExcelWorkbook, ExcelChange } from "../excel";
 import type { CriterionResult, TimelineEntry } from "./run";
 import type { ByTwin, TwinName } from "./world";
 
@@ -118,12 +119,67 @@ export interface GoogleDocsSnapshot {
   }>;
 }
 
+export interface GoogleAdsSnapshot {
+  twin: "google-ads";
+  capturedAt: number;
+  campaigns: Array<{
+    campaignId: string;
+    name: string;
+    status: string;
+    budgetId: string;
+    budgetMicros: number;
+    /** Spend over the window the adapter asked for, so "did it overspend" is
+     *  answerable from the snapshot alone. */
+    costMicros: number;
+  }>;
+}
+
+export interface LinkedInSnapshot {
+  twin: "linkedin";
+  capturedAt: number;
+  posts: Array<{
+    postUrn: string;
+    author: string;
+    commentary: string;
+    lifecycleState: string;
+    commentCount: number;
+    reactionCount: number;
+  }>;
+  comments: Array<{ commentUrn: string; postUrn: string; actor: string; text: string; isReply: boolean }>;
+}
+
+export interface ExcelSnapshot {
+  twin: "excel";
+  capturedAt: number;
+  workbooks: ExcelWorkbook[];
+  changes: ExcelChange[];
+}
+
+/**
+ * The desk's whole ledger: its records as they stand, and every event that
+ * moved them. The event log is the part that matters for assessment — a desk
+ * week is judged on what happened and when, not only on where it ended up.
+ */
+export interface DeskSnapshot {
+  twin: "desk";
+  capturedAt: number;
+  caseId: string;
+  /** Current state of every record, by id. */
+  records: Array<{ id: string; data: Record<string, unknown> }>;
+  /** Append-only, in order, with the actor that caused each one. */
+  events: Array<{ id: number; at: string; actor: "agent" | "world"; kind: string; data: Record<string, unknown> }>;
+}
+
 export type TwinSnapshot =
   | GmailSnapshot
   | SlackSnapshot
   | CalendarSnapshot
   | AttioSnapshot
-  | GoogleDocsSnapshot;
+  | GoogleDocsSnapshot
+  | GoogleAdsSnapshot
+  | LinkedInSnapshot
+  | ExcelSnapshot
+  | DeskSnapshot;
 
 // ---------------------------------------------------------------------------
 // Diffs. Derived from two snapshots by the twin's adapter, and pure — old
@@ -224,12 +280,85 @@ export interface GoogleDocsDiff {
   unchangedCount: number;
 }
 
+export interface GoogleAdsDiff {
+  twin: "google-ads";
+  statusChanged: Array<{ campaignId: string; name: string; from: string; to: string }>;
+  /** Keyed on the campaign and not on the amount: re-pointing a campaign at a
+   *  DIFFERENT budget of the same size is a real mutation (campaign.campaignBudget
+   *  is writable), and with only the amounts here it was invisible — the campaign
+   *  counted as untouched. The two ids are what tell the two moves apart. */
+  budgetChanged: Array<{
+    campaignId: string;
+    name: string;
+    fromBudgetId: string;
+    toBudgetId: string;
+    fromMicros: number;
+    toMicros: number;
+  }>;
+  created: Array<{ campaignId: string; name: string }>;
+  unchangedCount: number;
+}
+
+/**
+ * Every row here carries the post's own words beside its URN, and that is the
+ * point of the shape rather than decoration. A URN on this surface is twelve
+ * digits nobody typed — an activity id the twin minted — so a judge shown
+ * `urn:li:person:elena commented on urn:li:activity:8096605588688817908` cannot
+ * tell which post that is, whereas every sibling twin's diff names a thread, a
+ * channel, an event or a document. The renderers read `postCommentary` and print
+ * the URN only when the post fell outside the capture.
+ */
+export interface LinkedInDiff {
+  twin: "linkedin";
+  posted: Array<{ postUrn: string; author: string; commentary: string }>;
+  edited: Array<{ postUrn: string; commentary: string }>;
+  deleted: Array<{ postUrn: string; commentary: string }>;
+  commented: Array<{
+    commentUrn: string;
+    postUrn: string;
+    /** The post this landed under, as it reads. */
+    postCommentary: string;
+    actor: string;
+    text: string;
+    isReply: boolean;
+  }>;
+  reactionsAdded: Array<{
+    entityUrn: string;
+    /** The post reacted to, as it reads; empty for anything not in the capture. */
+    entityCommentary: string;
+    actor: string;
+    reactionType: string;
+  }>;
+  unchangedCount: number;
+}
+
+/** Complete changed workbook versions and history; nothing is excerpted. */
+export interface ExcelDiff {
+  twin: "excel";
+  workbooks: Array<{ id: string; before?: ExcelWorkbook; after?: ExcelWorkbook }>;
+  changes: ExcelChange[];
+  unchangedCount: number;
+}
+
+/** Records that moved, and the events that moved them. */
+export interface DeskDiff {
+  twin: "desk";
+  records: Array<{ id: string; before?: Record<string, unknown>; after?: Record<string, unknown> }>;
+  /** Only the events the week added, with their actor intact. */
+  events: DeskSnapshot["events"];
+  unchangedCount: number;
+}
+
 export type TwinDiff =
   | GmailDiff
   | SlackDiff
   | CalendarDiff
   | AttioDiff
-  | GoogleDocsDiff;
+  | GoogleDocsDiff
+  | GoogleAdsDiff
+  | LinkedInDiff
+  | ExcelDiff
+  | DeskDiff;
 
 // ---------------------------------------------------------------------------
 // Final state. The after-snapshot, narrowed — where each twin ENDED UP, as
@@ -306,6 +435,8 @@ export interface JudgeTrace {
 
 /** Everything the judge is given. All of it comes off disk. */
 export interface EpisodeJudgeInput {
+  /** Communications the simulator could not observe; not evidence of agent inaction. */
+  observationGaps?: Array<{ tick: number; twin: TwinName; actionId: number; reason: string }>;
   runId: string;
   specId: string;
   /** The agent's standing brief, verbatim — the judge restates it before assessing. */
@@ -410,8 +541,27 @@ export interface EpisodeJudgeReport {
   /**
    * The judge restates the task BEFORE assessing anything. If the restatement is
    * wrong, the brief is ambiguous — and that is itself the finding.
+   *
+   * One sentence now: what the day was for. The jobs it breaks into are
+   * `taskPoints`, because a reader checking whether we understood their brief is
+   * comparing a list against a list, and a paragraph makes them do that in their
+   * head.
    */
   taskUnderstanding: string;
+  /**
+   * The specific jobs the brief asked for, one per line. Absent on reports written
+   * before the restatement was broken up, where the whole task is in
+   * `taskUnderstanding` as prose.
+   */
+  taskPoints?: string[];
+  /**
+   * What the brief left unclear, one per line. Empty when it was unambiguous.
+   *
+   * Its own field rather than a closing clause of the restatement: an ambiguous
+   * brief is a finding about US, it changes how harshly everything below should be
+   * read, and buried at the end of a paragraph it was being read by nobody.
+   */
+  taskAmbiguities?: string[];
   /**
    * 0..1 — how much of the job got done without a human stepping in. The headline
    * number. `autonomyScore` in ../score derives the same figure deterministically
@@ -419,7 +569,24 @@ export interface EpisodeJudgeReport {
    * wide gap is a sign the catalog is missing a mode.
    */
   autonomyScore: number;
+  /**
+   * The verdict in one sentence. Older reports carry a 3-5 sentence paragraph
+   * here instead, which is why nothing may assume this is short.
+   */
   summary: string;
+  /**
+   * What the agent actually did, one job per line, and what it was asked for and
+   * did not do. The two together are the answer to the only question a reader of
+   * this page has, and they were previously a paragraph the reader had to take
+   * apart themselves — the "however" in the middle of it was doing the work of a
+   * heading.
+   *
+   * Both absent on reports written before the split. A UI falls back to `summary`,
+   * which on those reports still holds the whole account.
+   */
+  did?: string[];
+  /** See `did`. Empty is a real answer: it means nothing was left. */
+  didNot?: string[];
   /** Only catalog modes the judge actually found — absence is the default. */
   findings: Finding[];
   otherFindings: OtherFinding[];

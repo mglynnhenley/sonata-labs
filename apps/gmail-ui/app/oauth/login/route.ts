@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import {
-  API_URL,
+  API_PUBLIC_URL,
   UI_CLIENT_ID,
   UI_REDIRECT_URI,
   UI_SCOPES,
@@ -24,7 +24,7 @@ export async function GET(req: Request) {
   const next = safeNextPath(new URL(req.url).searchParams.get("next"));
   await setFlow({ state, verifier, next });
 
-  const authorize = new URL(`${API_URL}/oauth/authorize`);
+  const authorize = new URL(`${API_PUBLIC_URL}/oauth/authorize`);
   authorize.searchParams.set("response_type", "code");
   authorize.searchParams.set("client_id", UI_CLIENT_ID);
   authorize.searchParams.set("redirect_uri", UI_REDIRECT_URI);

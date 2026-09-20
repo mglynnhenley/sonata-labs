@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { API_URL, ADMIN_TOKEN } from "./oauth-config";
+import { authorizedControlRequest, controlToken } from "@sonata/core/controlAuth";
+import { API_URL } from "./oauth-config";
 
 // Same-origin proxy for the API's CONTROL-PLANE routes (activity feed, eval runs,
 // reset) that the operator panels in the UI use. These are not part of the OAuth
@@ -8,15 +9,20 @@ import { API_URL, ADMIN_TOKEN } from "./oauth-config";
 // CORS-free, matching real providers (whose APIs are called server-side).
 
 export async function proxyToApi(
+  req: Request,
   path: string,
   init: { method: string; body?: BodyInit | null; search?: string } = { method: "GET" },
 ): Promise<NextResponse> {
+  if (process.env.SANDBOX_CONTROL_TOKEN && !authorizedControlRequest(req)) {
+    return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
+  }
+  const adminToken = controlToken();
   const url = `${API_URL}${path}${init.search ?? ""}`;
   const res = await fetch(url, {
     method: init.method,
     headers: {
-      Authorization: `Bearer ${ADMIN_TOKEN}`,
-      "X-Sandbox-Token": ADMIN_TOKEN,
+      Authorization: `Bearer ${adminToken}`,
+      "X-Sandbox-Token": adminToken,
       ...(init.body ? { "Content-Type": "application/json" } : {}),
     },
     body: init.body ?? undefined,

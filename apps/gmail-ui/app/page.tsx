@@ -40,5 +40,5 @@ export default async function Home({
     const next = thread ? `/?thread=${encodeURIComponent(thread)}` : "/";
     redirect(`/oauth/login?next=${encodeURIComponent(next)}`);
   }
-  return <GmailApp />;
+  return <GmailApp controlsAvailable={!process.env.SANDBOX_CONTROL_TOKEN} />;
 }

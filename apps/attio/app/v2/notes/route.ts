@@ -70,7 +70,7 @@ export function POST(req: Request) {
     // Attio lets a caller backdate a note; anything unparseable falls back to now
     // rather than failing, because a bad timestamp is not worth losing the note.
     const createdAt = data.created_at ? Date.parse(data.created_at) : NaN;
-    const createdAtMs = Number.isNaN(createdAt) ? Date.now() : createdAt;
+    const createdAtMs = Number.isNaN(createdAt) ? ctx.writeTimeMs : createdAt;
     const parentName = recordDisplayName(db, object.id, data.parent_record_id);
     const endpoint = new URL(req.url).pathname;
     const content = data.content;

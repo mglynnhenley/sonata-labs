@@ -1,5 +1,5 @@
 import {
-  ADMIN_TOKEN,
+  PROVIDER_TOKEN,
   API_URL,
   UI_CLIENT_ID,
   UI_CLIENT_SECRET,
@@ -67,7 +67,7 @@ async function call(path: string, init: RequestInit, token: string): Promise<Res
  *  the API answers 401 — it stays the single source of truth by refusing. */
 export async function apiRequest(path: string, init: RequestInit = {}): Promise<Response> {
   let session = await getSession();
-  if (!session) return call(path, init, ADMIN_TOKEN);
+  if (!session) return call(path, init, PROVIDER_TOKEN);
 
   // Proactively refresh a token that is expired or about to expire.
   if (session.refresh_token && Date.now() > session.expires_at - 5000) {
@@ -91,7 +91,7 @@ export async function apiRequest(path: string, init: RequestInit = {}): Promise<
   // the cookie lived on — is the same as no session: fall back to the static
   // token. In `oauth` mode this earns the same 401, so nothing is granted that
   // a sessionless request would not get.
-  if (res.status === 401) res = await call(path, init, ADMIN_TOKEN);
+  if (res.status === 401) res = await call(path, init, PROVIDER_TOKEN);
   return res;
 }
 

@@ -17,7 +17,11 @@
     "baseUrl": ".",
     "paths": {
       "@sonata/core": ["../core/src/index.ts"],
-      "@sonata/core/*": ["../core/src/*.ts"]
+      "@sonata/core/*": ["../core/src/*.ts"],
+      "@sonata/desks": ["../desks/src/index.ts"],
+      "@sonata/desks/*": ["../desks/src/*.ts"],
+      "@sonata/scenarios": ["../scenarios/src/index.ts"],
+      "@sonata/scenarios/*": ["../scenarios/src/*.ts"]
     }
   },
   "include": ["src/**/*.ts", "tests/**/*.ts"],

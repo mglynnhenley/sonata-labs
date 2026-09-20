@@ -1,12 +1,15 @@
-import { existsSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import {
   agentToolCalls,
   asVerdictOutcome,
   checklistScore,
   episodeTwins,
+  normalizeSessionTiming,
   runExecution,
+  runTruncation,
   verdictOutcome,
+  TWIN_NAMES,
   type AgentTrace,
   type CoverageSlice,
   type Criterion,
@@ -25,7 +28,10 @@ import {
   type TwinName,
 } from "@sonata/core";
 import {
+  aggregateBenchmark,
+  normalizeBenchmarkReport,
   autonomy,
+  checklistWithUnjudged,
   escalationsFromTicks,
   JUDGE_SUFFIX,
   readJudgeReport,
@@ -107,6 +113,12 @@ function list<T>(value: unknown): T[] {
   return Array.isArray(value) ? (value as T[]) : [];
 }
 
+/** One of the judge report's bulleted lists, off an artifact of any age. */
+function lines(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((x): x is string => typeof x === "string" && x.trim().length > 0);
+}
+
 const RUN_STATUSES: readonly RunStatus[] = [
   "queued",
   "running",
@@ -171,7 +183,7 @@ export interface SavedRun extends EpisodeRun {
 }
 
 /** Stable order, so two artifacts of the same run read the same way. */
-const TWIN_ORDER: readonly TwinName[] = ["gmail", "slack", "calendar"];
+const TWIN_ORDER = TWIN_NAMES;
 
 function clockTime(ms: number): string {
   return new Date(ms).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
@@ -424,8 +436,16 @@ function normalizeJudge(raw: unknown, runId: string): EpisodeJudgeReport | null 
     model: str(j.model, "unknown model"),
     ...(coverage ? { coverage } : {}),
     taskUnderstanding: str(j.taskUnderstanding, ""),
+    // Absent on every report written before the account was broken into lists.
+    // Empty arrays rather than undefined: the UI's test is `.length > 0`, and a
+    // report with no points is the same to a reader as a report from before
+    // there were points.
+    taskPoints: lines(j.taskPoints),
+    taskAmbiguities: lines(j.taskAmbiguities),
     autonomyScore: num(j.autonomyScore, 0),
     summary: str(j.summary, ""),
+    did: lines(j.did),
+    didNot: lines(j.didNot),
     findings: list(j.findings),
     otherFindings: list(j.otherFindings),
     answers: list(j.answers),
@@ -495,11 +515,12 @@ function normalizeCriterion(raw: unknown): CriterionResult | null {
 function rederiveChecklist(
   spec: EpisodeSpec | null,
   run: { ticks: TickRecord[]; snapshots: EpisodeRun["snapshots"]; audit: TwinAuditRow[] },
+  judged: boolean,
 ): CriterionResult[] | null {
   const criteria = list<Criterion>(spec?.success?.checklist);
   if (!spec?.world || criteria.length === 0) return null;
   try {
-    return runChecklist({
+    const outcome = runChecklist({
       criteria,
       world: spec.world,
       beats: spec.beats,
@@ -510,7 +531,9 @@ function rederiveChecklist(
       written: writtenFromTicks(run.ticks),
       agentActed: agentToolCalls(run.ticks) > 0,
       tickOf: tickIndexer(run.ticks),
-    }).results;
+      truncation: runTruncation(run, spec),
+    });
+    return judged ? outcome.results : checklistWithUnjudged(outcome, criteria);
   } catch {
     // A malformed spec must not 500 the page it is being read for.
     return null;
@@ -549,7 +572,7 @@ function checklistFrom(raw: Record<string, unknown>): CriterionResult[] | null {
   const snapshots = (asRecord(raw.snapshots) ?? {}) as EpisodeRun["snapshots"];
   const spec = (asRecord(raw.spec) as unknown as EpisodeSpec | null) ?? null;
   const audit = list<TwinAuditRow>(raw.audit);
-  const derived = rederiveChecklist(spec, { ticks, snapshots, audit });
+  const derived = rederiveChecklist(spec, { ticks, snapshots, audit }, Boolean(asRecord(raw.verdict)?.judge));
   if (!derived) return null;
   if (audit.length > 0) return derived;
   const stored = storedChecklist(raw);
@@ -678,12 +701,25 @@ function normalizeRun(raw: unknown, fallbackId: string): SavedRun | null {
   const snapshots = (asRecord(r.snapshots) ?? {}) as EpisodeRun["snapshots"];
   const spec = (asRecord(r.spec) as unknown as EpisodeSpec | null) ?? null;
   const audit = list<TwinAuditRow>(r.audit);
-  const saved = normalizeVerdict(r.verdict, runId, ticks, checklistFrom(r));
+  let benchmark = normalizeBenchmarkReport(r.benchmark);
   const status = RUN_STATUSES.find((s) => s === r.status);
+  if (benchmark && (!spec?.benchmark || spec.benchmark.caseId !== benchmark.caseId || spec.id !== r.specId)) benchmark = null;
+  if (benchmark && spec) {
+    const full = status === "done" && benchmark.completion === "complete" && ticks.length === spec.clock.ticks &&
+      benchmark.completedTicks === ticks.length && benchmark.plannedTicks === spec.clock.ticks &&
+      benchmark.completedThrough !== null && Date.parse(benchmark.completedThrough) === Date.parse(spec.clock.endISO ?? "") &&
+      ticks.every((tick, index) => tick.tick === index && Date.parse(tick.simTimeISO) === Date.parse(spec.clock.tickISOs?.[index] ?? ""));
+    const available = { before: existsSync(benchmark.snapshots.before) ? benchmark.snapshots.before : "", after: existsSync(benchmark.snapshots.after) ? benchmark.snapshots.after : "" };
+    benchmark = aggregateBenchmark({ ...benchmark, snapshots: available, completedTicks: Math.min(ticks.length, spec.clock.ticks), plannedTicks: spec.clock.ticks,
+      completion: full ? "complete" : status === "failed" || status === "aborted" ? "failed" : "partial",
+      limitations: [...benchmark.limitations, ...(!full ? ["Stored report reconciled against the actual run status and observed tick sequence; complete-horizon credit is withheld."] : [])],
+    });
+  }
+  const saved = spec?.benchmark || benchmark ? null : normalizeVerdict(r.verdict, runId, ticks, checklistFrom(r));
   // Asked here, where the raw verdict is still in hand, because `cost.llmCalls`
   // is one of its inputs and the next line is about to throw the verdict away.
   const simulation = status
-    ? runSimulation({ status, ticks, audit, snapshots, verdict: saved })
+    ? runSimulation({ status, ticks, audit, snapshots, verdict: saved, ...(benchmark ? { benchmark } : {}) })
     : { simulated: false };
   // A verdict is only read back for a run that was in a state to have earned
   // one. Artifacts written before scoring learned to refuse still carry numbers
@@ -710,11 +746,35 @@ function normalizeRun(raw: unknown, fallbackId: string): SavedRun | null {
     ticks,
     snapshots,
     ...(audit.length > 0 ? { audit } : {}),
+    ...(benchmark ? { benchmark } : {}),
     evidence: evidenceOf(r, spec, snapshots, audit),
     simulated: simulation.simulated,
+    ...(["per-run-local-processes", "docker-per-run-v1"].includes(String(asRecord(r.workplace)?.isolation)) ? { workplace: r.workplace as EpisodeRun["workplace"] } : {}),
+    ...(asRecord(r.inspect)?.runner === "inspect" ? { inspect: r.inspect as EpisodeRun["inspect"] } : {}),
+    // Only when the file actually recorded one. Runs from before the timing
+    // experiment all ran on the compressed clock, but they did not say so, and
+    // a report should not put a claim on screen that its artifact cannot back.
+    ...timingOf(r),
     verdict,
     ...(typeof r.error === "string" ? { error: r.error } : {}),
   };
+}
+
+/**
+ * The clock the day ran on, as the run's own file recorded it.
+ *
+ * Validated rather than cast: two runs on different policies are different
+ * experiments, and the report says which one this was. A hand-edited or
+ * truncated artifact must therefore say nothing here rather than something
+ * plausible — a wrong allowance on screen is worse than a missing one.
+ */
+function timingOf(r: Record<string, unknown>): Pick<EpisodeRun, "timing"> {
+  if (r.timing === undefined) return {};
+  try {
+    return { timing: normalizeSessionTiming(r.timing) };
+  } catch {
+    return {};
+  }
 }
 
 /** Newest first. Ids are timestamps, so a lexical sort is a chronological one. */
@@ -741,23 +801,35 @@ export function listRuns(): SavedRun[] {
 export function readRun(runId: string): SavedRun | null {
   const file = resolveArtifact(runId, ".json");
   if (!file) return null;
-  const run = normalizeRun(readJson(file), runId);
+  let raw = asRecord(readJson(file));
+  // Resolve a separately saved judge before deriving checklist coverage, too.
+  // Otherwise the page can show a report beside rows claiming it never ran.
+  if (raw && !asRecord(raw.verdict)?.judge) {
+    const judge = readJudgeReport(runsDir(), runId);
+    if (judge) raw = { ...raw, verdict: { ...asRecord(raw.verdict), judge } };
+  }
+  const run = normalizeRun(raw, runId);
   if (!run) return null;
 
-  // The judge report is its own artifact — that is what lets `sonata judge` read
-  // a finished day back cheaply. The copy embedded in the verdict is a
-  // convenience, so when the run file has none the sibling is the record.
-  if (run.verdict && !run.verdict.judge) {
-    run.verdict.judge = readJudgeReport(runsDir(), runId);
-  }
   return run;
 }
 
-/**
- * The trace, which the engine may embed or write beside the run. It is the only
- * artifact that carries verbatim provider bodies, so it is read on demand and
- * never as part of the list.
- */
+/** Shared by built-in runs and external sessions; null means capture succeeded. */
+export function writeTrace(runId: string, trace: AgentTrace): string | null {
+  try {
+    const file = resolveArtifact(runId, TRACE_SUFFIX);
+    if (!file) throw new Error("Invalid run id");
+    mkdirSync(path.dirname(file), { recursive: true });
+    writeFileSync(file, `${JSON.stringify(trace)}\n`, "utf8");
+    return null;
+  } catch (err) {
+    const reason = `Could not save the model trace for ${runId}: ${(err as Error).message}`;
+    console.warn(`[sonata] ${reason}`);
+    return reason;
+  }
+}
+
+/** Read provider bodies on demand, from a sibling trace or an older embedded one. */
 export function readTrace(runId: string): AgentTrace | null {
   const sibling = resolveArtifact(runId, TRACE_SUFFIX);
   const embedded = resolveArtifact(runId, ".json");
@@ -918,12 +990,13 @@ export function updateRunJudge(runId: string, report: EpisodeJudgeReport): Episo
   const snapshots = (asRecord(raw.snapshots) ?? {}) as EpisodeRun["snapshots"];
   const spec = (asRecord(raw.spec) as unknown as EpisodeSpec | null) ?? null;
   const verdict = asRecord(raw.verdict) ?? {};
+  verdict.judge = report;
+  raw.verdict = verdict;
   // The same checklist the pages will read — today's checker over the artifact,
   // falling back to the stored rows normalized. Not the raw rows: the scorers
   // read `status`, and an older row carrying only `passed` would otherwise weigh
   // nothing and write a zero over a real headline.
   const checklist = checklistFrom(raw) ?? storedChecklist(raw);
-  verdict.judge = report;
   // Autonomy is derived from the checklist and the shape of the day, not from the
   // findings, so re-judging deliberately leaves it where it was. Recomputed
   // anyway, because an older artifact may carry a number from a formula since

@@ -15,17 +15,12 @@ import {
 } from "@sonata/ui";
 import {
   COMPRESSIONS,
-  DEFAULT_COMPRESSION_FACTOR,
   type SessionScenario,
   type StartSessionInput,
 } from "../../api/sessions/_lib/types";
 import { realDuration } from "../_lib/pulse";
 
-// Two choices and a button: which day, and how fast it plays.
-//
-// There is no model to pick — that is the whole difference between this and a
-// run. The agent is already alive somewhere else, and the only thing Sonata
-// decides about it is what to call it on the record.
+// Browser sessions are manual tests. Model runs connect through Inspect on /runs.
 
 const CONTROL =
   "h-9 w-full rounded-sn-md border border-sn-line bg-sn-surface px-2.5 text-sn-base text-sn-ink " +
@@ -35,12 +30,22 @@ export type StartSessionPanelProps = {
   scenarios: readonly SessionScenario[];
   starting: boolean;
   onStart: (input: StartSessionInput) => void;
+  /** URL presets make `/sessions?mode=manual&scenario=…` a ready-to-use test page. */
+  initialEpisodeId?: string;
 };
 
-export function StartSessionPanel({ scenarios, starting, onStart }: StartSessionPanelProps) {
-  const [episodeId, setEpisodeId] = useState(scenarios[0]?.id ?? "");
-  const [compression, setCompression] = useState(DEFAULT_COMPRESSION_FACTOR);
-  const [agentLabel, setAgentLabel] = useState("");
+export function StartSessionPanel({
+  scenarios,
+  starting,
+  onStart,
+  initialEpisodeId,
+}: StartSessionPanelProps) {
+  const selected = scenarios.some((scenario) => scenario.id === initialEpisodeId)
+    ? initialEpisodeId!
+    : scenarios[0]?.id ?? "";
+  const [episodeId, setEpisodeId] = useState(selected);
+  const [compression, setCompression] = useState(12);
+  const [testerName, setTesterName] = useState("");
 
   const scenario = useMemo(
     () => scenarios.find((s) => s.id === episodeId),
@@ -68,15 +73,33 @@ export function StartSessionPanel({ scenarios, starting, onStart }: StartSession
   }
 
   const duration = scenario?.realMs.find((r) => r.factor === compression)?.ms ?? 0;
-  const perTick = scenario ? duration / Math.max(1, scenario.ticks) : 0;
 
   return (
     <Card
       padding="lg"
-      title="Start a session"
-      subtitle="The scenario decides what happens and what counts as done. Nobody plays the agent — that is the seat your own is sitting in."
+      title="Start a manual test"
+      subtitle="You work directly in the browser apps. Scripted events still arrive and every saved change goes into the report."
     >
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div>
+        <p className="text-sn-base font-medium text-sn-ink">Who is doing the work?</p>
+        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+          <div
+            className="rounded-sn-md border border-sn-primary bg-sn-primary-soft px-3.5 py-3 text-left text-sn-primary-ink"
+          >
+            <span className="block text-sn-base font-medium">Me, in the browser</span>
+            <span className="mt-1 block text-sn-sm">No model calls or model cost. You use the linked Gmail, Slack, Calendar and Excel screens.</span>
+          </div>
+          <a
+            href={`/runs?scenario=${encodeURIComponent(episodeId)}`}
+            className="rounded-sn-md border border-sn-line bg-sn-surface px-3.5 py-3 text-left text-sn-muted transition-colors duration-150 ease-sn hover:border-sn-line-strong"
+          >
+            <span className="block text-sn-base font-medium">AI with Inspect</span>
+            <span className="mt-1 block text-sn-sm">Choose a model and review its run settings. Inspect connects the agent to its private apps.</span>
+          </a>
+        </div>
+      </div>
+
+      <div className="mt-6 grid gap-6 lg:grid-cols-2">
         <div>
           <label htmlFor="session-scenario" className="text-sn-base font-medium text-sn-ink">
             The day to play
@@ -109,18 +132,17 @@ export function StartSessionPanel({ scenarios, starting, onStart }: StartSession
 
         <div>
           <label htmlFor="session-agent" className="text-sn-base font-medium text-sn-ink">
-            What to call your agent
+            Who is testing
           </label>
           <input
             id="session-agent"
             className={cn(CONTROL, "mt-2")}
-            value={agentLabel}
-            placeholder="openclaw@laptop"
-            onChange={(e) => setAgentLabel(e.target.value)}
+            value={testerName}
+            placeholder="Your name (optional)"
+            onChange={(e) => setTesterName(e.target.value)}
           />
           <p className="mt-2 text-sn-sm text-sn-muted">
-            A label, not a model. Sonata never calls your agent and cannot know what it runs on, so
-            this is whatever you say it is — and it is what the result is filed under.
+            This appears on the session and report so the manual run is easy to recognise.
           </p>
         </div>
       </div>
@@ -128,8 +150,8 @@ export function StartSessionPanel({ scenarios, starting, onStart }: StartSession
       <div className="mt-6">
         <p className="text-sn-base font-medium text-sn-ink">How fast the world plays</p>
         <p className="mt-1 max-w-[70ch] text-sn-sm text-sn-muted">
-          The day runs on a wall clock at this rate whether or not your agent is looking. Faster is a
-          shorter wait and less time between beats for the agent to notice anything.
+          The day keeps moving at this rate while you work. Faster settings leave less time
+          between incoming events.
         </p>
         <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
           {COMPRESSIONS.map((option) => {
@@ -182,15 +204,17 @@ export function StartSessionPanel({ scenarios, starting, onStart }: StartSession
             onStart({
               episodeId,
               compression,
-              ...(agentLabel.trim() ? { agentLabel: agentLabel.trim() } : {}),
+              agentLabel: `Manual browser test${testerName.trim() ? ` · ${testerName.trim()}` : ""}`,
+              director: false,
+              judge: false,
             })
           }
         >
-          Start the world
+          Start manual test
         </Button>
         <p className="max-w-[54ch] text-sn-sm text-sn-subtle">
           {scenario
-            ? `${scenario.ticks} intervals of ${scenario.simMinutesPerTick} simulated minutes — about ${realDuration(duration)} of real time, a beat every ${realDuration(perTick)}. The clones are reset and reloaded first, so connect your agent once the day is running.`
+            ? `${scenario.ticks} intervals of ${scenario.simMinutesPerTick} simulated minutes — about ${realDuration(duration)} of real time. A private workplace is prepared when you start, then its apps open from the live session page. Model colleagues and the narrative judge stay off.`
             : "Pick a day to see how long it takes."}
         </p>
       </div>

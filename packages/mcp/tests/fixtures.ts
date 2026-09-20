@@ -15,6 +15,10 @@ export const testConfig: SonataConfig = {
     calendar: "http://calendar.test",
     attio: "http://attio.test",
     "google-docs": "http://google-docs.test",
+    "google-ads": "http://google-ads.test",
+    linkedin: "http://linkedin.test",
+    excel: "http://excel.test",
+    desk: "http://desk.test",
   },
 };
 

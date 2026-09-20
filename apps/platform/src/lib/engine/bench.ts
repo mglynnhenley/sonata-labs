@@ -15,7 +15,7 @@ import {
 } from "@sonata/benchmark";
 import { MODEL_CATALOG } from "../models";
 import { getSettings } from "../settings";
-import { cancel, startEpisode, whenDone } from "./episode";
+import { cancelRemote, startRemoteEpisode, waitRemote } from "./remote";
 import { describeScenario, shippedIds } from "./scenarios";
 
 // The matrix, wired to the same run path as the dashboard's Start button.
@@ -133,7 +133,7 @@ async function runCell(
   ctx: { signal?: AbortSignal },
   opts: BenchOptions,
 ): Promise<EpisodeOutcome> {
-  const view = startEpisode({
+  const view = await startRemoteEpisode({
     episodeId: cell.scenarioId,
     model: cell.model,
     seed: cell.seed,
@@ -143,10 +143,10 @@ async function runCell(
     ...(opts.judge === undefined ? {} : { judge: opts.judge }),
   });
 
-  const stop = () => void cancel(view.runId);
+  const stop = () => void cancelRemote(view.runId);
   ctx.signal?.addEventListener("abort", stop, { once: true });
   try {
-    const done = whenDone(view.runId);
+    const done = waitRemote(view.runId);
     if (!done) throw new Error(`run ${view.runId} was dropped before it started`);
     const run = await done;
     // A run that died before a verdict still spent money, and a budget that

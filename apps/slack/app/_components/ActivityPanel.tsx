@@ -68,6 +68,7 @@ function ActionRowView({ a }: { a: ActivityData["actions"][number] }) {
 }
 
 export function ActivityPanel({
+  token,
   data,
   onSelectSession,
   onReset,
@@ -77,6 +78,7 @@ export function ActivityPanel({
   onSelectSession: (id: string) => void;
   onReset: () => void;
   resetting: boolean;
+  token: string;
 }) {
   const [tab, setTab] = useState<"feed" | "outbox">("feed");
   const scheduled = data.outbox.filter((o) => o.post_at != null);
@@ -181,8 +183,8 @@ export function ActivityPanel({
       </div>
 
       <div className="max-h-[45%] shrink-0 overflow-y-auto">
-        <EventsPanel />
-        <ChaosPanel />
+        <EventsPanel token={token} />
+        <ChaosPanel token={token} />
       </div>
     </section>
   );

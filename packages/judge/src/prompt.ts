@@ -9,9 +9,11 @@ import {
   type CriterionResult,
   type EpisodeJudgeInput,
   type GmailSnapshot,
+  type GoogleAdsSnapshot,
   type GoogleDocsSnapshot,
   type JudgeCoverage,
   type JudgeTrace,
+  type LinkedInSnapshot,
   type SlackSnapshot,
   type TimelineEntry,
   type TwinDiff,
@@ -467,6 +469,85 @@ function renderGoogleDocsDiff(d: Extract<TwinDiff, { twin: "google-docs" }>): st
   return lines;
 }
 
+/** Micros as whole currency units. The snapshot carries no currency code, so the
+ *  figure goes out unsymbolled and the micros follow it for an exact match. */
+function money(micros: number): string {
+  return (micros / 1_000_000).toFixed(2);
+}
+
+function renderGoogleAdsDiff(d: Extract<TwinDiff, { twin: "google-ads" }>): string[] {
+  const lines: string[] = [];
+  for (const c of d.created) lines.push(`+ new campaign "${c.name}"`);
+  for (const c of d.statusChanged) {
+    if (c.to === "PAUSED") lines.push(`~ paused "${c.name}" (was ${c.from})`);
+    else if (c.to === "ENABLED") lines.push(`~ resumed "${c.name}" (was ${c.from})`);
+    else if (c.to === "REMOVED") lines.push(`- removed "${c.name}" (was ${c.from})`);
+    else lines.push(`~ "${c.name}" ${c.from} → ${c.to}`);
+  }
+  for (const c of d.budgetChanged) {
+    const moved =
+      c.fromBudgetId !== c.toBudgetId ? ` (budget ${c.fromBudgetId} → ${c.toBudgetId})` : "";
+    lines.push(
+      c.fromMicros === c.toMicros
+        ? `~ "${c.name}" moved onto another budget of the same ${money(c.toMicros)} a day${moved}`
+        : `~ "${c.name}" daily budget ${money(c.fromMicros)} → ${money(c.toMicros)} ` +
+            `(${c.fromMicros} → ${c.toMicros} micros)${moved}`,
+    );
+  }
+  // Spend is captured but never diffed: it rises because the day happened, not
+  // because the agent acted, and a row here would read as the agent's doing.
+  return lines;
+}
+
+/**
+ * An actor URN as a reader knows the person, and the one company page as the
+ * page. Identical to `linkedInActorName` in @sonata/engine's linkedin adapter,
+ * because this file is a second copy of that renderer and a judge shown
+ * different prose from the results page is being asked about a different day.
+ */
+function linkedInActorName(urn: string): string {
+  if (urn.startsWith("urn:li:organization:")) return "the company page";
+  if (urn.startsWith("urn:li:person:")) return urn.slice("urn:li:person:".length);
+  return urn || "somebody the API will not name";
+}
+
+/** A post as a reader recognises it: its own words, or the URN if it has none. */
+function linkedInPostName(commentary: string, postUrn: string): string {
+  return commentary ? `"${commentary}"` : postUrn;
+}
+
+function renderLinkedInDiff(d: Extract<TwinDiff, { twin: "linkedin" }>): string[] {
+  const lines: string[] = [];
+  for (const p of d.posted) {
+    lines.push(`+ published as ${linkedInActorName(p.author)}: "${p.commentary}"`);
+  }
+  for (const p of d.edited) lines.push(`~ edited a post, now: "${p.commentary}"`);
+  for (const c of d.commented) {
+    const where = linkedInPostName(c.postCommentary, c.postUrn);
+    lines.push(
+      c.isReply
+        ? `+ ${linkedInActorName(c.actor)} replied under ${where}: "${c.text}"`
+        : `+ ${linkedInActorName(c.actor)} commented on ${where}: "${c.text}"`,
+    );
+  }
+  // Counted back up, never printed one line each. The diff holds a row per
+  // reaction because the length is the only fact the capture holds — there is no
+  // reactions finder on this surface, so `actor` and `reactionType` are blank on
+  // every row — and four identical anonymous lines would read as four names the
+  // renderer failed to print.
+  const perEntity = new Map<string, number>();
+  const names = new Map(d.reactionsAdded.map((r) => [r.entityUrn, r.entityCommentary]));
+  for (const r of d.reactionsAdded) perEntity.set(r.entityUrn, (perEntity.get(r.entityUrn) ?? 0) + 1);
+  for (const [entityUrn, n] of perEntity) {
+    const where = linkedInPostName(names.get(entityUrn) ?? "", entityUrn);
+    lines.push(`~ ${n} reaction(s) arrived on ${where}, from nobody this API will name`);
+  }
+  for (const p of d.deleted) {
+    lines.push(`- deleted ${linkedInPostName(p.commentary, p.postUrn)}`);
+  }
+  return lines;
+}
+
 function renderDiff(d: TwinDiff): string[] {
   switch (d.twin) {
     case "gmail":
@@ -479,6 +560,17 @@ function renderDiff(d: TwinDiff): string[] {
       return renderAttioDiff(d);
     case "google-docs":
       return renderGoogleDocsDiff(d);
+    case "google-ads":
+      return renderGoogleAdsDiff(d);
+    case "excel":
+      return ["Complete original (before) and proposed/current (after) workbook versions and change history:", JSON.stringify({ workbooks: d.workbooks, changes: d.changes })];
+    case "linkedin":
+      return renderLinkedInDiff(d);
+    case "desk":
+      // The actor stays on every event: a desk ledger holds the world's
+      // scheduled consequences beside the agent's own work, and a judge that
+      // cannot tell them apart will credit a receipt that simply arrived.
+      return ["Complete desk ledger changes, with the actor that caused each event:", JSON.stringify({ records: d.records, events: d.events })];
   }
 }
 
@@ -617,7 +709,7 @@ function calendarBlock(s: CalendarSnapshot): FinalStateBlock {
   };
 }
 
-/** Alphabetical by a printable key, for the two surfaces that carry no clock. */
+/** Alphabetical by a printable key, for the four surfaces that carry no clock. */
 function byText<T>(xs: T[], key: (x: T) => string): T[] {
   return [...xs].sort((a, b) => {
     const ka = key(a);
@@ -679,6 +771,59 @@ function googleDocsBlock(s: GoogleDocsSnapshot): FinalStateBlock {
   };
 }
 
+function googleAdsBlock(s: GoogleAdsSnapshot): FinalStateBlock {
+  const daily = s.campaigns.reduce((sum, c) => sum + c.budgetMicros, 0);
+  const spent = s.campaigns.reduce((sum, c) => sum + c.costMicros, 0);
+  return {
+    head:
+      `${s.campaigns.length} campaign(s), ${money(daily)} a day of budget between them and ` +
+      `${money(spent)} spent. The spend is the window the capture asked for and covers more ` +
+      "than the day that just ran, so read it as the level the account is running at rather " +
+      "than as today's bill. Amounts are unsymbolled: the account's currency is not in this " +
+      "capture.",
+    items: byText(s.campaigns, (c) => c.name).map((c) =>
+      oneLine(
+        `"${c.name}" [${c.status}] — ${money(c.budgetMicros)} a day` +
+          `${c.budgetId ? ` from budget ${c.budgetId}` : " with no budget attached"}, ` +
+          `${money(c.costMicros)} spent`,
+      ),
+    ),
+    noun: "campaign",
+    tail: "",
+  };
+}
+
+function linkedInBlock(s: LinkedInSnapshot): FinalStateBlock {
+  const drafts = s.posts.filter((p) => p.lifecycleState === "DRAFT");
+  const head =
+    (drafts.length === 0
+      ? "Nothing is left sitting in draft."
+      : `${drafts.length} post(s) still in DRAFT — written and never published.`) +
+    " Reaction counts are totals, not names: this API does not say who reacted.";
+
+  const items = byText(s.posts, (p) => p.postUrn).map((p) =>
+    oneLine(
+      `${p.lifecycleState} by ${p.author} — "${p.commentary}" ` +
+        `[${p.commentCount} comment(s), ${p.reactionCount} reaction(s)] (${p.postUrn})`,
+    ),
+  );
+
+  // The comments are where a loose end lives on this surface: a customer asking
+  // something under a post is exactly the thing an agent can leave unanswered,
+  // and it has no other place in this section.
+  const tail =
+    s.comments.length === 0
+      ? ""
+      : `${s.comments.length} comment(s) under these posts:\n` +
+        s.comments
+          .map((c) =>
+            oneLine(`  ${c.actor}${c.isReply ? " (a reply)" : ""} on ${c.postUrn}: ${c.text}`),
+          )
+          .join("\n");
+
+  return { head, items, noun: "post", tail };
+}
+
 function blockFor(final: TwinFinalState): FinalStateBlock {
   switch (final.state.twin) {
     case "gmail":
@@ -691,6 +836,14 @@ function blockFor(final: TwinFinalState): FinalStateBlock {
       return attioBlock(final.state);
     case "google-docs":
       return googleDocsBlock(final.state);
+    case "google-ads":
+      return googleAdsBlock(final.state);
+    case "excel":
+      return { head: "Complete proposed/current workbooks, including formulas. Original values and reasons are in the changes above.", items: final.state.workbooks.map((w) => JSON.stringify(w)), noun: "workbook", tail: "Complete change history: " + JSON.stringify(final.state.changes) };
+    case "linkedin":
+      return linkedInBlock(final.state);
+    case "desk":
+      return { head: "Complete desk records as the week ended.", items: final.state.records.map((row) => JSON.stringify(row)), noun: "record", tail: "Complete event log: " + JSON.stringify(final.state.events) };
   }
 }
 
@@ -715,7 +868,9 @@ function notCaptured(name: TwinName): string {
 
 function renderFinalTwin(name: TwinName, final: TwinFinalState): Fitted {
   const block = blockFor(final);
-  const fitted = fitLines(block.items, FINAL_STATE_BUDGET, block.noun);
+  const fitted = name === "excel"
+    ? { text: block.items.join("\n"), shown: block.items.length, total: block.items.length }
+    : fitLines(block.items, FINAL_STATE_BUDGET, block.noun);
   const dropped = final.coverage.total - fitted.shown;
 
   // Said per twin rather than once at the top, because the rule differs per twin
@@ -803,6 +958,8 @@ function renderQuestions(questions: string[]): string {
     "QUESTIONS THIS EPISODE ASKS BY NAME\n" +
     "Answer each one in `answers`, in this order, one entry per question. These are the " +
     "things the deterministic checks could not reach.\n" +
+    "Open every answer with Yes, No, or Partly and a comma, then give the evidence in one or " +
+    "two sentences. A reader must be able to take the verdict off the first word.\n" +
     questions.map((q, i) => `${i + 1}. ${q}`).join("\n")
   );
 }
@@ -830,8 +987,9 @@ export function buildEpisodePrompt(input: EpisodeJudgeInput): EpisodePrompt {
     "touched are the ones named in the sections below. " +
     "Judge only what the agent observably did: the tool calls it made, what changed on each " +
     "surface as a result, and what it said. Do not credit intent that produced no action — a " +
-    "plan the agent stated but never carried out is a failure, not partial credit, and a draft " +
-    "it never sent is work it left for a human. Indiscriminate bulk reading is not evidence of " +
+    "plan the agent stated but never carried out is a failure, not partial credit. Assess drafts " +
+    "and human reviews against the task: when review is required, a correct draft or review request " +
+    "is appropriate assistance, not abandonment. Indiscriminate bulk reading is not evidence of " +
     "attention. Be specific and quote your evidence — a tool call, a message, a calendar " +
     "change, a sentence the agent wrote — for every claim you make. There is usually more than " +
     "one defensible way to run a day, so judge whether the agent understood the situation, not " +
@@ -843,14 +1001,26 @@ export function buildEpisodePrompt(input: EpisodeJudgeInput): EpisodePrompt {
       `THE DAY AS ITS AUTHOR INTENDED IT (the agent never saw this)\n${input.story}`,
 
     "FIRST, RESTATE THE TASK\n" +
-      "Before assessing anything, write `taskUnderstanding`: state in your own words what the " +
-      "agent was supposed to get done on this day. Derive it from the brief above alone, not " +
-      "from what the agent went on to do. If the brief is ambiguous about what counts as done, " +
-      "or about how far the agent was authorised to act on its own, say so explicitly — that " +
-      "ambiguity is itself a finding about the task, and it changes how harshly the agent's " +
-      "choices should be read.",
+      "Before you assess anything, say what the agent was supposed to get done. Take it from " +
+      "the brief above alone, never from what the agent went on to do.\n" +
+      "- `taskUnderstanding`: one sentence. What was this day for? Whose desk is it, and what " +
+      "was the point of running it.\n" +
+      "- `taskPoints`: the jobs that sentence breaks into. One job per entry, each a short " +
+      "sentence starting with a verb — \"Answer the sponsor about the temperature deviation.\" " +
+      "Three to seven of them. Include what the agent was allowed to decide on its own as one " +
+      "of them, because that is a job too.\n" +
+      "- `taskAmbiguities`: what the brief does not settle. One per entry. An ambiguous brief " +
+      "is a finding about the people who wrote it, and it changes how harshly the agent's " +
+      "choices should be read, so do not soften these and do not fold them into the points " +
+      "above. Return an empty array if the brief really is clear.",
 
     coverage.complete ? "" : coverageBriefing(coverage),
+
+    input.observationGaps?.length ? "SIMULATOR OBSERVATION GAPS\n" +
+      "The simulator could not read these communications for its colleagues. Do not treat resulting " +
+      "silence or missing reactions as agent inaction. Identify affected conclusions as unmeasured " +
+      "where independent evidence cannot settle them. Other directly evidenced actions remain assessable.\n" +
+      input.observationGaps.map(g => `- t${g.tick} ${g.twin} action ${g.actionId}: ${g.reason}`).join("\n") : "",
 
     "THE DAY, AS IT HAPPENED\n" +
       "Everything the world put in front of the agent, in order, across every surface it used. " +
@@ -919,8 +1089,40 @@ export function buildEpisodePrompt(input: EpisodeJudgeInput): EpisodePrompt {
       "means the day was run end to end and nothing was left for its owner, 0 means a human " +
       "would have had to do all of it. Escalations, unsent drafts, questions asked where the " +
       "brief authorised action, and work started and abandoned all pull it down; a completed " +
-      "checklist alone does not pull it up. Finally write `summary`: 3-5 sentences on what the " +
-      "agent did across the day and where it went wrong, naming steps by their [seq] number.",
+      "checklist alone does not pull it up. Then account for the day in three fields:\n" +
+      "- `summary`: the verdict in ONE sentence, twenty words or fewer, the agent as its " +
+      "subject. Someone who reads this and nothing else must not come away misled.\n" +
+      "- `did`: what the agent actually got done. One per entry, worth-most first, each a " +
+      "short sentence starting with a verb. Only things a WRITE call carried out or a surface " +
+      "shows — reading is not doing, and a draft is not a sent reply. Empty if it got nothing " +
+      "done.\n" +
+      "- `didNot`: what it was asked for and did not do. One per entry, worst first. Say what " +
+      "was left and who is now holding it: \"Never sent the reply to Elena. It is still in " +
+      "drafts, and she has had no answer.\" Work it started and abandoned goes here too. " +
+      "Empty is a real answer and means nothing was left.\n" +
+      "Every `didNot` entry must be something the brief asked for. Do not invent jobs to " +
+      "fail the agent on.",
+
+    // Last, so it is the freshest instruction when the model starts writing. The
+    // report is the product's only output and it was being written as one dense
+    // paragraph of tool names and check ids — true, and unreadable by the person
+    // it is for. These are the rules that make it readable; they change the prose,
+    // never the verdict.
+    "HOW TO WRITE IT\n" +
+      "Write the way you would explain this to a smart colleague who was out that day. " +
+      "Say the thing, then stop. A reader who takes only the first sentence of each entry " +
+      "should still come away with the truth.\n" +
+      "- Short words. Short sentences. Under 25 words, one idea each.\n" +
+      "- Say it straight. \"It never sent the reply\" — not \"no gmail.send_message WRITE was " +
+      "issued\" and not \"the reply appears not to have been dispatched\". Tool names, check " +
+      "ids and verbatim quotes belong in `evidence`, nowhere else.\n" +
+      "- Name people and things, never codes. \"Elena, the sponsor\" — never \"me-c1\".\n" +
+      "- Verbs, not nouns. \"It chased the invoice\", not \"invoice follow-up was performed\".\n" +
+      "- No hedging, no throat-clearing, no restating the question, no \"it is worth noting\". " +
+      "If something did not happen, say it did not happen.\n" +
+      "- Cut every word you can cut. If an entry still reads as two facts, it is two entries.\n" +
+      "- Step numbers go at the END of the sentence they support — [47], or [47], [51]. Never " +
+      "mid-clause, never more than three.",
   ];
 
   return { system, prompt: sections.filter((s) => s.length > 0).join("\n\n"), coverage };
@@ -948,7 +1150,9 @@ const TICK_PROPERTY = {
 const EVIDENCE_PROPERTY = {
   type: "array",
   description:
-    "Quoted tool calls, surface changes or agent sentences that show this. At least one.",
+    "Quoted tool calls, surface changes or agent sentences that show this. At least one. One " +
+    "quote per entry, trimmed to the part that carries the point — a reader should not have " +
+    "to hunt inside it.",
   items: { type: "string" },
 };
 
@@ -967,8 +1171,12 @@ export const EPISODE_JUDGE_SCHEMA: Record<string, unknown> = {
   additionalProperties: false,
   required: [
     "taskUnderstanding",
+    "taskPoints",
+    "taskAmbiguities",
     "autonomyScore",
     "summary",
+    "did",
+    "didNot",
     "findings",
     "otherFindings",
     "answers",
@@ -977,8 +1185,22 @@ export const EPISODE_JUDGE_SCHEMA: Record<string, unknown> = {
     taskUnderstanding: {
       type: "string",
       description:
-        "What the agent was supposed to get done, in your own words, written before assessing " +
-        "anything. Name any ambiguity in the brief.",
+        "ONE sentence on what this day was for, in your own words, written before you assess " +
+        "anything. Taken from the brief alone, never from what the agent went on to do.",
+    },
+    taskPoints: {
+      type: "array",
+      description:
+        "The jobs that sentence breaks into. 3-7 entries, worth-most first, each a short " +
+        "sentence starting with a verb. Include what the agent was allowed to decide alone.",
+      items: { type: "string" },
+    },
+    taskAmbiguities: {
+      type: "array",
+      description:
+        "What the brief does not settle, one per entry. Empty when it really is clear. Do not " +
+        "soften these: an ambiguous brief is a finding about whoever wrote it.",
+      items: { type: "string" },
     },
     autonomyScore: {
       type: "number",
@@ -989,8 +1211,24 @@ export const EPISODE_JUDGE_SCHEMA: Record<string, unknown> = {
     summary: {
       type: "string",
       description:
-        "3-5 sentences on what the agent did across the day and where it went wrong, naming " +
-        "steps by seq.",
+        "The verdict in ONE sentence, 20 words or fewer, the agent as its subject. Someone " +
+        "who reads this and nothing else must not come away misled.",
+    },
+    did: {
+      type: "array",
+      description:
+        "What the agent got done, worth-most first, each a short sentence starting with a " +
+        "verb. Only what a WRITE call carried out or a surface shows — reading is not doing " +
+        "and a draft is not a sent reply. Empty when it got nothing done.",
+      items: { type: "string" },
+    },
+    didNot: {
+      type: "array",
+      description:
+        "What the brief asked for and the agent did not do, worst first. Name what was left " +
+        "and who is holding it now. Work started and abandoned belongs here. Empty is a real " +
+        "answer and means nothing was left.",
+      items: { type: "string" },
     },
     findings: {
       type: "array",
@@ -1029,7 +1267,10 @@ export const EPISODE_JUDGE_SCHEMA: Record<string, unknown> = {
         properties: {
           label: {
             type: "string",
-            description: "Short name for the problem, phrased as a catalog entry would be.",
+            description:
+              "Short name for the problem, phrased as a catalog entry would be — three to " +
+              "five plain words, a statement and not a question, sentence case. " +
+              "\"Left the sponsor waiting\", not \"did-not-reply-to-sponsor-email\".",
           },
           severity: SEVERITY_PROPERTY,
           evidence: EVIDENCE_PROPERTY,
@@ -1048,7 +1289,12 @@ export const EPISODE_JUDGE_SCHEMA: Record<string, unknown> = {
         required: ["question", "answer"],
         properties: {
           question: { type: "string", description: "The question, echoed verbatim." },
-          answer: { type: "string", description: "Your answer, with the evidence for it." },
+          answer: {
+            type: "string",
+            description:
+              "Your answer. Opens with Yes, No, or Partly and a comma, then the evidence in " +
+              "one or two plain sentences.",
+          },
         },
       },
     },

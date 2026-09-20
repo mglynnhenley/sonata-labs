@@ -18,7 +18,10 @@
   "dependencies": {
     "@sonata/core": "*",
     "@sonata/judge": "*",
-    "openai": "^7.1.0"
+    "openai": "^7.1.0",
+    "@sonata/scenarios": "*",
+    "ajv": "^8.20.0",
+    "@sonata/desks": "*"
   },
   "devDependencies": {
     "@types/node": "^22.10.7",

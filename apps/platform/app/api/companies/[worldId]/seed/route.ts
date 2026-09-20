@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { ClonesDownError, UnknownCompanyError, seedCompany } from "@/lib/engine/clone";
+import { CloneBusyError } from "@/lib/engine/cloneLease";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -26,7 +27,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ worldI
     if (err instanceof ClonesDownError) {
       return NextResponse.json({ error: err.message, down: err.down }, { status: 409 });
     }
-    const status = err instanceof UnknownCompanyError ? 404 : 500;
+    const status = err instanceof UnknownCompanyError ? 404 : err instanceof CloneBusyError ? 409 : 500;
     return NextResponse.json({ error: (err as Error).message }, { status });
   }
 }

@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "The Sonata Labs dashboard \u2014 the control room for the twins.",
+  "description": "The Sonata Labs dashboard — the control room for the twins.",
   "scripts": {
     "dev": "next dev --port 3000",
     "build": "next build",
@@ -21,6 +21,7 @@
     "@sonata/world": "*",
     "better-sqlite3": "^13.0.3",
     "next": "^16.3.0",
+    "posthog-js": "^1.430.2",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { danglingRefs, type DirectorPersona } from "@sonata/core";
-import { directorSystemPrompt } from "@sonata/engine";
+import { danglingRefs, resolvePerson, type DirectorPersona } from "@sonata/core";
+import { directorSystemPrompt, personSystemPrompt } from "@sonata/engine";
 import { checklistShortfall } from "@sonata/world";
 import {
   assembleScenario,
@@ -161,12 +161,27 @@ describe("authored characters", () => {
     );
     expect(persona(spec.director.personas, "moira-kelb").brief).toContain("embargo clock");
 
-    // The whole point of the field is that it reaches the model that writes these
-    // people. Asserting on the spec alone would pass just as happily if the
-    // engine had never rendered it.
-    const prompt = directorSystemPrompt(spec);
-    expect(prompt).toContain("Never proposes a slot himself");
-    expect(prompt).toContain("Agency register");
+    // The whole point of the field is that it reaches the model that writes this
+    // person. Asserting on the spec alone would pass just as happily if the
+    // engine had never rendered it. It must reach only this person, though: a
+    // brief is private knowledge, so the shared prompt every colleague reads and
+    // the prompt for anyone else must not carry it.
+    const shared = directorSystemPrompt(spec);
+    expect(shared).toContain("Agency register");
+    expect(shared).not.toContain("Never proposes a slot himself");
+
+    const own = personSystemPrompt(spec, {
+      person: resolvePerson(spec.world, "clive-mercer")!,
+      persona: persona(spec.director.personas, "clive-mercer"),
+    });
+    expect(own).toContain("Never proposes a slot himself");
+    expect(own).toContain("Agency register");
+
+    const someoneElse = personSystemPrompt(spec, {
+      person: resolvePerson(spec.world, "bea-voss")!,
+      persona: persona(spec.director.personas, "bea-voss"),
+    });
+    expect(someoneElse).not.toContain("Never proposes a slot himself");
   });
 
   it("uses the authored numbers rather than the two ternaries", () => {

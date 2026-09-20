@@ -21,12 +21,52 @@ export const DEFAULT_SANDBOX_TOKEN = process.env.SANDBOX_TOKEN || "sandbox-token
 /** Twins whose provider API is behind the sandbox's own OAuth2 server. */
 const OAUTH_TWINS: readonly TwinName[] = ["gmail"];
 
+/**
+ * Headers a twin's provider API demands on top of the bearer.
+ *
+ * Two twins want one. Google Ads asks for a second credential: every `/v*` call
+ * carries a `developer-token`, and the twin checks that it is present (never
+ * what it says) precisely because that requirement is the one thing that makes
+ * Ads' auth different from every other Google API. Without it every read and
+ * every mutation comes back 400 DEVELOPER_TOKEN_PARAMETER_MISSING. LinkedIn asks
+ * for a version instead: `/rest/*` refuses any request with no `LinkedIn-Version`
+ * at all, so a client that does not send one cannot read a single post.
+ *
+ * Both belong here, next to the OAuth table, for the same reason that one does:
+ * an agent driven by the engine and an agent connected over MCP have to
+ * authenticate identically, and both build their client through `createTwinHttp`.
+ */
+const PROVIDER_HEADERS: Partial<Record<TwinName, Record<string, string>>> = {
+  "google-ads": {
+    "developer-token": process.env.GOOGLE_ADS_DEVELOPER_TOKEN || "sandbox-dev-token",
+  },
+  linkedin: {
+    // The floor apps/linkedin's auth.ts answers; anything older is a 426, and
+    // LinkedIn retires versions on a rolling one-year window.
+    "LinkedIn-Version": "202506",
+    // The clone speaks Rest.li 2.0.0 and refuses any other value. Sending it is
+    // what LinkedIn's own clients do, and it is documented as required on the
+    // finders this adapter reads.
+    "X-Restli-Protocol-Version": "2.0.0",
+  },
+};
+
 export interface TwinHttpOptions {
   baseUrl: string;
   token?: string;
+  /** Harness credential. Omit on agent clients; provider requests never receive it. */
+  controlToken?: string;
+  /** An operator-issued OAuth grant: refresh uses OAuth, never the admin bridge. */
+  oauthCredentials?: OAuthCredentials;
   fetchImpl?: typeof globalThis.fetch;
   /** Guard against a hung twin taking the whole run's wall-clock budget. */
   timeoutMs?: number;
+  /**
+   * Extra headers for provider-API calls, never for the control plane — those
+   * routes are machinery and deliberately not provider-shaped. `createTwinHttp`
+   * fills this from `PROVIDER_HEADERS`; pass it only to override that table.
+   */
+  providerHeaders?: Record<string, string>;
   /**
    * When true, provider-API calls use a real OAuth2 access token minted via
    * POST /api/sandbox/token (admin-gated) instead of the static token, with a
@@ -36,6 +76,12 @@ export interface TwinHttpOptions {
   oauth?: boolean;
   /** Optional scope for the minted provider token; defaults to full mailbox access. */
   oauthScope?: string;
+}
+
+export interface OAuthCredentials {
+  accessToken: string;
+  refreshToken?: string;
+  clientId: string;
 }
 
 export class TwinHttpError extends Error {
@@ -69,20 +115,29 @@ const DEFAULT_TIMEOUT_MS = 30_000;
 export class TwinHttp {
   readonly baseUrl: string;
   private readonly token: string;
+  private readonly controlToken: string;
   private readonly fetchImpl: typeof globalThis.fetch;
   private readonly timeoutMs: number;
   private readonly oauth: boolean;
   private readonly oauthScope?: string;
+  private readonly providerHeaders: Record<string, string>;
   /** Lazily-minted provider access token (only used when `oauth` is set). */
   private oauthToken?: string;
+  private oauthCredentials?: OAuthCredentials;
+  private readonly suppliedGrant: boolean;
 
   constructor(opts: TwinHttpOptions) {
     this.baseUrl = opts.baseUrl.replace(/\/+$/, "");
     this.token = opts.token ?? DEFAULT_SANDBOX_TOKEN;
+    this.controlToken = opts.controlToken ?? this.token;
+    this.oauthCredentials = opts.oauthCredentials;
+    this.oauthToken = opts.oauthCredentials?.accessToken;
+    this.suppliedGrant = opts.oauthCredentials !== undefined;
     this.fetchImpl = opts.fetchImpl ?? globalThis.fetch;
     this.timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     this.oauth = opts.oauth ?? false;
     this.oauthScope = opts.oauthScope;
+    this.providerHeaders = opts.providerHeaders ?? {};
   }
 
   /** Control-plane routes stay on the admin token; everything else is provider API. */
@@ -97,12 +152,13 @@ export class TwinHttp {
 
   /** Mint (or re-mint) a provider access token via the admin-gated bridge. */
   private async mintProviderToken(): Promise<string> {
+    if (this.suppliedGrant) return this.refreshProviderToken();
     const url = `${this.baseUrl}/api/sandbox/token`;
     const res = await this.fetchImpl(url, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${this.token}`,
-        "X-Sandbox-Token": this.token,
+        Authorization: `Bearer ${this.controlToken}`,
+        "X-Sandbox-Token": this.controlToken,
         "Content-Type": "application/json",
         Accept: "application/json",
       },
@@ -111,10 +167,36 @@ export class TwinHttp {
     });
     const text = await res.text();
     if (!res.ok) throw new TwinHttpError(res.status, url, text);
-    const json = JSON.parse(text) as { access_token?: string };
+    const json = JSON.parse(text) as { access_token?: string; refresh_token?: string };
     if (!json.access_token) throw new Error(`mint endpoint returned no access_token: ${text.slice(0, 200)}`);
     this.oauthToken = json.access_token;
+    this.oauthCredentials = { accessToken: json.access_token, refreshToken: json.refresh_token, clientId: "sonata-harness" };
     return this.oauthToken;
+  }
+
+  /** Called by the operator when handing an agent provider access without admin access. */
+  async providerCredentials(): Promise<OAuthCredentials> {
+    if (!this.oauth) throw new Error("This provider does not use OAuth.");
+    if (!this.oauthCredentials) await this.mintProviderToken();
+    return { ...this.oauthCredentials! };
+  }
+
+  private async refreshProviderToken(): Promise<string> {
+    const grant = this.oauthCredentials!;
+    if (!grant.refreshToken) throw new Error("The supplied provider token expired and has no refresh grant.");
+    const url = `${this.baseUrl}/oauth/token`;
+    const res = await this.fetchImpl(url, {
+      method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ grant_type: "refresh_token", refresh_token: grant.refreshToken, client_id: grant.clientId }).toString(),
+      signal: AbortSignal.timeout(this.timeoutMs),
+    });
+    const text = await res.text();
+    if (!res.ok) throw new TwinHttpError(res.status, url, text);
+    const next = JSON.parse(text) as { access_token?: string; refresh_token?: string };
+    if (!next.access_token) throw new Error("OAuth refresh returned no access token.");
+    this.oauthToken = next.access_token;
+    this.oauthCredentials = { ...grant, accessToken: next.access_token, refreshToken: next.refresh_token ?? grant.refreshToken };
+    return next.access_token;
   }
 
   private async request<T>(
@@ -134,7 +216,8 @@ export class TwinHttp {
       // The sandbox control routes accept either header; sending X-Sandbox-Token
       // for them means one client works against a twin that gates /api/sandbox/*
       // and one that does not. Provider (OAuth) calls send only the bearer.
-      if (!useOAuth) headers["X-Sandbox-Token"] = this.token;
+      if (!isProvider) headers["X-Sandbox-Token"] = this.controlToken;
+      if (isProvider) Object.assign(headers, this.providerHeaders);
       let body: string | undefined;
       if (init.json !== undefined) {
         headers["Content-Type"] = "application/json";
@@ -151,7 +234,7 @@ export class TwinHttp {
       });
     };
 
-    let bearer = useOAuth ? this.oauthToken ?? (await this.mintProviderToken()) : this.token;
+    let bearer = useOAuth ? this.oauthToken ?? (await this.mintProviderToken()) : isProvider ? this.token : this.controlToken;
     let res = await send(bearer);
     // A 401 on a provider call means the token expired/was revoked or a reset
     // wiped it — re-mint once and retry before giving up.
@@ -201,6 +284,7 @@ export function createTwinHttp(twin: TwinName, opts: TwinHttpOptions): TwinHttp 
   return new TwinHttp({
     ...opts,
     oauth: opts.oauth ?? OAUTH_TWINS.includes(twin),
+    providerHeaders: opts.providerHeaders ?? PROVIDER_HEADERS[twin] ?? {},
   });
 }
 

@@ -1,3 +1,4 @@
+import { controlToken } from "@sonata/core/controlAuth";
 // Acceptance harness: drive the sandbox with the OFFICIAL googleapis SDK, the
 // same way a real agent would — only rootUrl is overridden. If this passes, an
 // agent using googleapis works against the sandbox unchanged.
@@ -16,6 +17,7 @@ const OAuth2Client = google.auth.OAuth2;
 const PORT = process.env.PORT || "3600";
 const ROOT_URL = process.env.SANDBOX_ROOT_URL || `http://localhost:${PORT}`;
 const TOKEN = process.env.SANDBOX_TOKEN || "sandbox-token";
+const CONTROL_TOKEN = controlToken();
 
 // Pass an OAuth2Client with setCredentials — a string `auth` becomes a `key=`
 // query param, NOT a bearer header (a classic footgun).
@@ -62,18 +64,41 @@ function bodyText(doc: docs_v1.Schema$Document): string {
  * way the control plane does, not the way a Drive-shaped clone would let you. */
 async function seededDocuments(): Promise<Array<{ documentId: string; title: string }>> {
   const res = await fetch(`${ROOT_URL}/api/sandbox/snapshot`, {
-    headers: { "x-sandbox-token": TOKEN },
+    headers: { "x-sandbox-token": CONTROL_TOKEN },
   });
   const body = (await res.json()) as { documents?: Array<{ documentId: string; title: string }> };
   return body.documents ?? [];
 }
 
 async function main(): Promise<void> {
+  // Prove the control boundary over HTTP before the harness mutates this world.
+  const controlRoutes = [
+    ["GET", "/api/activity"],
+    ["POST", "/api/sandbox/reset"],
+    ["POST", "/api/sandbox/seed"],
+    ["POST", "/api/sandbox/inject"],
+    ["GET", "/api/sandbox/snapshot"],
+  ];
+  for (const [method, path] of controlRoutes) {
+    const denied = await fetch(`${ROOT_URL}${path}`, { method });
+    check(`${method} ${path} rejects missing control credential`, denied.status === 401);
+    if (CONTROL_TOKEN !== TOKEN) {
+      const providerDenied = await fetch(`${ROOT_URL}${path}`, {
+        method, headers: { authorization: `Bearer ${TOKEN}` },
+      });
+      check(`${method} ${path} rejects provider credential`, providerDenied.status === 401);
+    }
+  }
+  const evidence = await fetch(`${ROOT_URL}/api/activity`, {
+    headers: { "x-sandbox-token": CONTROL_TOKEN },
+  });
+  check("control credential can read audit evidence", evidence.status === 200);
+
   console.log(`\n\x1b[1mGoogle Docs sandbox smoke — ${ROOT_URL}\x1b[0m`);
 
   const reset = await fetch(`${ROOT_URL}/api/sandbox/reset`, {
     method: "POST",
-    headers: { "content-type": "application/json", "x-sandbox-token": TOKEN },
+    headers: { "content-type": "application/json", "x-sandbox-token": CONTROL_TOKEN },
     body: JSON.stringify({ note: "smoke" }),
   });
   check("reset to the pristine snapshot", reset.ok, reset.status);

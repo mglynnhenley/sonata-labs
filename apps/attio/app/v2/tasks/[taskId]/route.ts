@@ -78,7 +78,7 @@ export async function PATCH(
 
     runMutation(
       db,
-      () => updateTask(db, taskId, patch, Date.now()),
+      () => updateTask(db, taskId, patch, ctx.writeTimeMs),
       () => ({
         method: "PATCH",
         endpoint,

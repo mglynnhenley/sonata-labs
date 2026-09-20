@@ -8,8 +8,8 @@ import { CompaniesClient } from "./_components/CompaniesClient";
 export const dynamic = "force-dynamic";
 
 export const metadata = {
-  title: "Companies",
-  description: "The fake companies you've cloned, and the button that puts one into the clones.",
+  title: "Environments",
+  description: "The companies, people, history and apps where your scenarios take place.",
 };
 
 export default async function CompaniesPage() {

@@ -16,7 +16,6 @@ import { buildStory, type StoryRow } from "../../app/runs/_lib/story";
 import { countEpisodes, countWorlds, getDb, listRuns, runStats } from "../lib/db";
 import {
   benchDir,
-  cancel,
   createWorldFromBrief,
   createWorldFromTemplate,
   judgeSavedRun,
@@ -26,10 +25,8 @@ import {
   planBench,
   resolveScenario,
   runBench,
-  startEpisode,
-  status,
-  whenDone,
 } from "../lib/engine";
+import { startRemoteEpisode, remoteStatus, cancelRemote, waitRemote } from "../lib/engine/remote";
 import { ago, elapsed, money, percent } from "../lib/format";
 import { getApiKeyView, getSettings } from "../lib/settings";
 import { TWIN_LABELS, allTwinStatuses, twinUrl } from "../lib/twins";
@@ -251,6 +248,8 @@ function printVerdict(runId: string, fallback: EpisodeRun): void {
     say();
     say("  What the judge found");
     say(`  ${judge.summary}`);
+    for (const item of judge.did ?? []) say(`    done  ${item}`);
+    for (const item of judge.didNot ?? []) say(`    left  ${item}`);
     for (const f of judge.findings) {
       say(`    ${f.severity.padEnd(8)} ${f.mode}${f.tick === undefined ? "" : ` (t${f.tick})`}`);
       if (f.evidence[0]) say(`             ${f.evidence[0]}`);
@@ -285,7 +284,7 @@ async function worldCommand(args: Args): Promise<void> {
       say(`  ${s.worldName} · ${s.twins.join(", ")} · ${s.counts.ticks} ticks · ${ago(s.createdAt)}`);
     }
     say();
-    say("The five days that ship with Sonata — run one by id:");
+    say("The six days that ship with Sonata — run one by id:");
     for (const s of listShipped()) say(`  ${s.id.padEnd(22)} ${s.title}`);
     say();
     say("Templates to clone a business from:");
@@ -344,7 +343,7 @@ async function runCommand(args: Args): Promise<void> {
   const offset = safeOffsetMinutes(episode.spec.clock.startISO);
   const termination = terminationFlags(args);
 
-  const view = startEpisode({
+  const view = await startRemoteEpisode({
     episodeId: episode.id,
     ...(termination ? { termination } : {}),
     ...(flag(args, "model") ? { model: flag(args, "model") as string } : {}),
@@ -367,17 +366,17 @@ async function runCommand(args: Args): Promise<void> {
   // Ctrl-C stops the day at the next tick boundary rather than orphaning it:
   // the artifact still gets written, and the row stops claiming to be running.
   const stop = () => {
-    say("\nStopping at the next tick …");
-    cancel(view.runId);
+    say("\nStopping Inspect and saving the day …");
+    void cancelRemote(view.runId).catch(err => say((err as Error).message));
   };
   process.once("SIGINT", stop);
 
-  const done = whenDone(view.runId);
+  const done = waitRemote(view.runId);
   let since = 0;
   let announcedJudging = false;
 
   for (;;) {
-    const poll = status(view.runId, since);
+    const poll = await remoteStatus(view.runId, since);
     if (!poll) break;
     for (const row of buildStory(poll.ticks)) say(storyLine(row, offset));
     since = poll.nextSinceTick;
@@ -415,6 +414,8 @@ async function judgeCommand(args: Args): Promise<void> {
   say(`  ${report.model} · autonomy ${percent(autonomy)}`);
   say();
   say(`  ${report.summary}`);
+  for (const item of report.did ?? []) say(`    done  ${item}`);
+  for (const item of report.didNot ?? []) say(`    left  ${item}`);
   for (const f of report.findings) {
     say(`    ${f.severity.padEnd(8)} ${f.mode}${f.tick === undefined ? "" : ` (t${f.tick})`}`);
     if (f.evidence[0]) say(`             ${f.evidence[0]}`);

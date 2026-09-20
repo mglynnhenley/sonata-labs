@@ -2,7 +2,7 @@ import { TWIN_NAMES, type TwinName } from "./types/world";
 
 // Where every service lives, in one place.
 //
-// Each twin is two deployables: an API service (the provider-shaped surface an
+// Most twins reserve two deployables: an API service (the provider-shaped surface an
 // agent calls, behind OAuth) and a UI service (a web client that authenticates
 // to that API as a real third-party OAuth client). The API ports are the ones
 // that have always been used, so every existing env fallback keeps working.
@@ -18,15 +18,23 @@ export const TWIN_API_PORTS: Record<TwinName, number> = {
   calendar: 3400,
   attio: 3500,
   "google-docs": 3600,
+  "google-ads": 3700,
+  linkedin: 3800,
+  excel: 3950,
+  desk: 3960,
 };
 
-/** The web UI for each twin: API port + 800, so the pairing is guessable. */
+/** Reserved UI ports are API + 800; Excel embeds its UI on its API port. */
 export const TWIN_UI_PORTS: Record<TwinName, number> = {
   gmail: 3901,
   slack: 4000,
   calendar: 4200,
   attio: 4300,
   "google-docs": 4400,
+  "google-ads": 4500,
+  linkedin: 4600,
+  excel: 3950, // Embedded UI served by the Excel API process.
+  desk: 3960, // Same: the desk has one process, and no separate web client yet.
 };
 
 /**
@@ -53,12 +61,16 @@ export const TWIN_API_URL_ENV: Record<TwinName, readonly string[]> = {
   gmail: ["SONATA_GMAIL_URL", "GMAIL_TWIN_URL"],
   slack: ["SONATA_SLACK_URL", "SLACK_TWIN_URL"],
   calendar: ["SONATA_CALENDAR_URL", "CALENDAR_TWIN_URL"],
-  // The newer two get both spellings from the start, so no consumer has to know
+  // The newer four get both spellings from the start, so no consumer has to know
   // which generation of twin it is talking to. An underscore stands in for the
   // hyphen: `SONATA_GOOGLE-DOCS_URL` is not a legal shell identifier and could
   // not be exported.
   attio: ["SONATA_ATTIO_URL", "ATTIO_TWIN_URL"],
   "google-docs": ["SONATA_GOOGLE_DOCS_URL", "GOOGLE_DOCS_TWIN_URL"],
+  "google-ads": ["SONATA_GOOGLE_ADS_URL", "GOOGLE_ADS_TWIN_URL"],
+  linkedin: ["SONATA_LINKEDIN_URL", "LINKEDIN_TWIN_URL"],
+  excel: ["SONATA_EXCEL_URL", "EXCEL_TWIN_URL"],
+  desk: ["SONATA_DESK_URL", "DESK_TWIN_URL"],
 };
 
 export const TWIN_UI_URL_ENV: Record<TwinName, readonly string[]> = {
@@ -67,6 +79,10 @@ export const TWIN_UI_URL_ENV: Record<TwinName, readonly string[]> = {
   calendar: ["SONATA_CALENDAR_UI_URL", "CALENDAR_UI_URL"],
   attio: ["SONATA_ATTIO_UI_URL", "ATTIO_UI_URL"],
   "google-docs": ["SONATA_GOOGLE_DOCS_UI_URL", "GOOGLE_DOCS_UI_URL"],
+  "google-ads": ["SONATA_GOOGLE_ADS_UI_URL", "GOOGLE_ADS_UI_URL"],
+  linkedin: ["SONATA_LINKEDIN_UI_URL", "LINKEDIN_UI_URL"],
+  excel: ["SONATA_EXCEL_UI_URL", "EXCEL_UI_URL"],
+  desk: ["SONATA_DESK_UI_URL", "DESK_UI_URL"],
 };
 
 /**
@@ -117,7 +133,7 @@ export function resolveTwinUiUrl(
   return trimSlashes(opts?.override ?? fromEnv(TWIN_UI_URL_ENV[twin], env) ?? twinUiUrl(twin, opts));
 }
 
-/** Every API URL at once, for callers that fan out over every twin. */
+/** Every API URL at once, for callers that fan out over all three twins. */
 export function allTwinApiUrls(
   env: Record<string, string | undefined> = {},
   opts?: UrlOptions,

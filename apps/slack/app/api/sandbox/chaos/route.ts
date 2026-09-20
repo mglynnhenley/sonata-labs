@@ -1,3 +1,4 @@
+import { requireSandboxToken } from "@/lib/sandbox/auth";
 import { NextResponse } from "next/server";
 import { getChaos, setChaos, resetChaos, recentFaults, type ChaosConfig } from "@/lib/slack/chaos";
 
@@ -12,11 +13,15 @@ export const dynamic = "force-dynamic";
 // Deliberately NOT under /api/<method>: this is sandbox machinery, not part of
 // the Slack API surface an agent should see.
 
-export async function GET() {
+export async function GET(req: Request) {
+  const authErr = requireSandboxToken(req);
+  if (authErr) return authErr;
   return NextResponse.json({ config: getChaos(), faults: recentFaults() });
 }
 
 export async function POST(req: Request) {
+  const authErr = requireSandboxToken(req);
+  if (authErr) return authErr;
   let patch: Partial<ChaosConfig>;
   try {
     patch = (await req.json()) as Partial<ChaosConfig>;
@@ -35,6 +40,8 @@ export async function POST(req: Request) {
   return NextResponse.json({ ok: true, config: setChaos(patch) });
 }
 
-export async function DELETE() {
+export async function DELETE(req: Request) {
+  const authErr = requireSandboxToken(req);
+  if (authErr) return authErr;
   return NextResponse.json({ ok: true, config: resetChaos() });
 }

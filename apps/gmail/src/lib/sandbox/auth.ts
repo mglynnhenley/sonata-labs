@@ -1,17 +1,9 @@
 import { NextResponse } from "next/server";
-import { SANDBOX_TOKEN } from "../gmail/auth";
+import { authorizedControlRequest } from "@sonata/core/controlAuth";
 
-// Token gate for /api/sandbox/*. Same static token as /gmail/v1/*, so the engine
-// carries one credential per twin — but the failure is a plain sandbox error and
-// not a Gmail API error: these routes are machinery, and dressing them up as
-// Gmail would teach an agent that stumbled onto them the wrong thing.
-
-/** Returns null when authorized, or a 401 to return as-is. */
+/** Control authority is separate from the agent's provider credentials. */
 export function requireSandboxToken(req: Request): NextResponse | null {
-  const header = req.headers.get("authorization") || "";
-  const m = header.match(/^Bearer\s+(.+)$/i);
-  const token = m?.[1] ?? new URL(req.url).searchParams.get("access_token");
-  if (token !== SANDBOX_TOKEN) {
+  if (!authorizedControlRequest(req)) {
     return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
   }
   return null;

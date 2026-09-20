@@ -37,6 +37,7 @@ process.chdir(sandbox);
 const { mirrorRunFinish } = await import("../app/api/_lib/mirror");
 const { describeEvidence } = await import("../app/results/_lib/artifacts");
 const { explainUnpaired } = await import("../src/lib/engine/episode");
+const { buildJudgeInput } = await import("../app/api/results/_lib/rejudge");
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -60,6 +61,14 @@ const snapshot = (twin: TwinName): TwinSnapshot => {
       return { twin, capturedAt: 1, records: [], notes: [], tasks: [] };
     case "google-docs":
       return { twin, capturedAt: 1, documents: [] };
+    case "google-ads":
+      return { twin, capturedAt: 1, campaigns: [] };
+    case "linkedin":
+      return { twin, capturedAt: 1, posts: [], comments: [] };
+    case "excel":
+      return { twin, capturedAt: 1, workbooks: [], changes: [] };
+    case "desk":
+      return { twin, capturedAt: 1, caseId: "", records: [], events: [] };
   }
 };
 
@@ -146,6 +155,31 @@ function run(over: Partial<EpisodeRun> = {}): EpisodeRun {
     ...over,
   };
 }
+
+describe("saved workbook evidence", () => {
+  it("rebuilds the real Excel diff when preparing a saved run for rejudging", () => {
+    const before = {
+      twin: "excel" as const, capturedAt: 1,
+      workbooks: [{ id: "report", title: "Reporting", revision: 1, sheets: [] }],
+      changes: [],
+    };
+    const change = {
+      id: 1, workbookId: "report", revision: 2, actor: "agent", at: "2026-08-06T10:00:00Z",
+      sheetId: "working", rowId: "r1", column: "amount", before: 1, after: 2,
+      reason: "Reconciled", evidence: "Source statement",
+    };
+    const after = {
+      ...before, capturedAt: 2,
+      workbooks: [{ ...before.workbooks[0]!, revision: 2 }],
+      changes: [change],
+    };
+    const input = buildJudgeInput(run({ snapshots: { excel: { before, after } } }), spec());
+    expect(input.diffs.excel).toMatchObject({
+      twin: "excel", changes: [change],
+      workbooks: [{ id: "report", before: before.workbooks[0], after: after.workbooks[0] }],
+    });
+  });
+});
 
 /** File a run the way every producer does, and read back what landed on disk. */
 function file(input: Parameters<typeof mirrorRunFinish>[0]): EpisodeRun & { evidence: RunEvidence } {

@@ -1,13 +1,15 @@
 import { NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { listActions, listSessions } from "@/lib/audit";
+import { checkSandboxToken } from "@/lib/calendar/auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// The audit trail, for the activity panel and the run replay. Read-only, so no
-// token gate — it is the evidence, not a lever.
+// The harness's audit trail is separate from the provider calendar API.
 export function GET(req: Request) {
+  const denied = checkSandboxToken(req);
+  if (denied) return denied;
   const db = getDb();
   const sp = new URL(req.url).searchParams;
   const num = (key: string): number | undefined => {

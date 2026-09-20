@@ -9,7 +9,7 @@ import {
   stopReason,
   type RunOptions,
 } from "../src/run";
-import type { Agent, AgentContext } from "../src/agent";
+import { AgentCallError, type Agent, type AgentContext } from "../src/agent";
 import { createDirector, type Director } from "../src/director";
 import type { CompleteJSONOptions } from "../src/llm";
 import { auditRow, beat, fakeAdapter, spec, type FakeAdapter } from "./fixtures";
@@ -205,6 +205,7 @@ describe("the artifact", () => {
       "directorEvents",
       "endedAt",
       "notes",
+      "observedActions",
       "simTimeISO",
       "startedAt",
       "tick",
@@ -279,17 +280,44 @@ describe("the artifact", () => {
 });
 
 describe("termination", () => {
-  it("stops early once the agent has been idle for the declared number of ticks", async () => {
+  it("preserves partial work and snapshots, but fails a provider outage without advancing the day", async () => {
+    const h = harness();
+    h.agent.act = async () => { throw new AgentCallError("provider unavailable", [toolStep(0)]); };
+    const { run } = await runEpisode(options(h));
+    expect(run.status).toBe("failed");
+    expect(run.error).toContain("provider unavailable");
+    expect(run.ticks).toHaveLength(1);
+    expect(run.ticks[0].harnessError).toContain("provider unavailable");
+    expect(run.ticks[0].agentSteps).toEqual([toolStep(0)]);
+    expect(run.snapshots.gmail?.after).toBeDefined();
+    expect(h.order).not.toContain("wrapUp");
+  });
+
+  it("marks a budget-limited day aborted and skips the extra summary call", async () => {
+    const h = harness();
+    const { run } = await runEpisode(options(h, {
+      spec: spec({ beats: [beat({ id: "later", tick: 3 })], termination: { stopWhenAllMustPass: false, idleTicks: 0, maxWallClockMs: 1 } }),
+    }));
+    expect(run.status).toBe("aborted");
+    expect(run.ticks).toHaveLength(1);
+    expect(run.ticks[0].notes.join(" ")).toContain("wall-clock budget");
+    expect(run.snapshots.gmail?.after).toBeDefined();
+    expect(h.order).not.toContain("wrapUp");
+  });
+
+  it("continues the day after a quiet spell so later events still wake the agent", async () => {
     const h = harness();
     const idle = spec({
-      beats: [],
+      beats: [beat({ id: "late", tick: 3 })],
       termination: { stopWhenAllMustPass: false, idleTicks: 2, maxWallClockMs: 0 },
     });
     const { run } = await runEpisode(options(h, { spec: idle }));
-    expect(run.ticks).toHaveLength(2);
+    expect(run.ticks).toHaveLength(4);
     expect(run.ticks[1].notes).toContain(
-      "run stopped early: the agent did nothing for 2 consecutive interval(s)",
+      "No tool activity for 2 consecutive intervals; the scheduled day continues.",
     );
+    expect(run.ticks[3].beatsFired[0].beatId).toBe("late");
+    expect(h.seen[3].digest).toBe("new mail in the inbox");
   });
 
   it("does not count a tick in which the agent acted", async () => {
@@ -348,8 +376,8 @@ describe("termination", () => {
         { ...base, idle: 3 },
         false,
       ),
-    ).toMatch(/did nothing for 3/);
-    // idleTicks 0 means "never stop for idling", not "stop immediately".
+    ).toBeUndefined();
+    // Quiet intervals are diagnostic, never a reason to discard the afternoon.
     expect(stopReason(s({}), { ...base, idle: 9 }, false)).toBeUndefined();
 
     expect(
@@ -439,7 +467,7 @@ describe("the world reads what the agent wrote", () => {
   /** The agent sending an email: a step in the record, a row in the twin's log. */
   function sends(gmail: FakeAdapter, seq: number, id: number, body: string): AgentStep {
     gmail.rows.push(
-      auditRow({ id, twin: "gmail", ts: 5_000, summary: 'Sent "Re: SLA" to dana@acme.test' }),
+      auditRow({ id, twin: "gmail", ts: 5_000, summary: 'Sent "Re: SLA" to dana@acme.test', observation: { audience: ['dana', 'priya'], actor: 'priya', text: body } }),
     );
     return {
       kind: "tool",
@@ -575,7 +603,7 @@ describe("the world reads what the agent wrote", () => {
       act: (c: AgentContext) => {
         if (c.tick !== 0) return Promise.resolve([]);
         const email = sends(gmail, 0, 1, "The £40k credit is approved.");
-        slack.rows.push(auditRow({ id: 1, twin: "slack", ts: 5_000, summary: "Posted in #ops" }));
+        slack.rows.push(auditRow({ id: 1, twin: "slack", ts: 5_000, summary: "Posted in #ops", observation: { audience: ["dana", "sam", "priya"], actor: "priya", channelId: "C01OPS", text: "looking into it" } }));
         const post: AgentStep = {
           kind: "tool",
           seq: 1,

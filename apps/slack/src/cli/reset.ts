@@ -1,3 +1,4 @@
+import { controlToken } from "@sonata/core/controlAuth";
 // Reset working.db to the pristine snapshot.
 //
 //   PORT=3200 npm run reset
@@ -15,7 +16,7 @@ async function main() {
   try {
     const res = await fetch(`${URL_}/api/sandbox/reset`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "x-sandbox-token": controlToken(), "content-type": "application/json" },
       body: JSON.stringify({ note }),
       signal: AbortSignal.timeout(5000),
     });

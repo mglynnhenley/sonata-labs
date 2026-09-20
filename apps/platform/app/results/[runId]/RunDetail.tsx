@@ -1,15 +1,18 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import type { EpisodeRun, TwinName } from "@sonata/core";
 import { Badge, buttonClasses, Chip, IconArrowRight, PageHeader } from "@sonata/ui";
 import { scrollBehavior } from "../../_components/scrollBehavior";
+import { track } from "@/lib/track";
 import type { RunBrief } from "../_lib/artifacts";
 import { headlineUsd, type CostReport } from "../_lib/cost";
 import { buildMoments, findMomentIndex, replayStats } from "../_lib/moments";
 import { badgeStatus, outcomeLabel, summarizeRun } from "../_lib/summary";
+import { ContinuityResults } from "../_components/ContinuityResults";
 import { CostBreakdown } from "../_components/CostBreakdown";
+import { DayFailureMap } from "../_components/DayFailureMap";
 import { DayReplay } from "../_components/DayReplay";
 import { FailureModes } from "../_components/FailureModes";
 import { JudgeUnderstanding } from "../_components/JudgeUnderstanding";
@@ -38,6 +41,17 @@ export function RunDetail({
   cost: CostReport;
 }) {
   const summary = useMemo(() => summarizeRun(run), [run]);
+
+  // One "report opened" per visit, with the status it was opened in. The page
+  // polls while a day is still playing, so the guard keeps a re-render from
+  // counting as a second visit.
+  const reported = useRef<string | null>(null);
+  const outcome = run.verdict?.outcome ?? null;
+  useEffect(() => {
+    if (reported.current === run.runId) return;
+    reported.current = run.runId;
+    track("report_viewed", { run_id: run.runId, status: run.status, outcome });
+  }, [run.runId, run.status, outcome]);
   const moments = useMemo(() => buildMoments(run, brief.people), [run, brief.people]);
   const stats = useMemo(() => replayStats(moments), [moments]);
 
@@ -94,7 +108,7 @@ export function RunDetail({
    */
   const settled = run.status !== "queued" && run.status !== "running";
   const rejudge = (variant: "primary" | "secondary") =>
-    settled ? (
+    settled && !run.benchmark ? (
       <RejudgeButton
         variant={variant}
         runId={run.runId}
@@ -120,6 +134,20 @@ export function RunDetail({
             <Chip size="sm" icon={false} className="font-mono">
               {run.model}
             </Chip>
+            {/* Only when the day did NOT run on the default clock. Two runs on
+                different clocks are different experiments, and the one thing a
+                reader must not do is compare them without noticing. On the
+                default this chip would be on every report and read as decoration. */}
+            {run.timing?.policy === "provider-operations-v1" ? (
+              <Chip
+                size="sm"
+                tone="gold"
+                icon={false}
+                title={`Experimental clock: business time advanced on the agent's own app requests at ${run.timing.workUnitsPerTick} work units per interval, not on elapsed real time. Not comparable with a run on the default clock.`}
+              >
+                Experimental clock — {run.timing.workUnitsPerTick} units/interval
+              </Chip>
+            ) : null}
             {twins.map((twin) => (
               <Chip key={twin} size="sm" service={twin} />
             ))}
@@ -127,9 +155,14 @@ export function RunDetail({
         }
         actions={
           <>
+            {run.inspect ? (
+              <a href={`/api/runs/${encodeURIComponent(run.runId)}/inspect`} className={buttonClasses("secondary", "sm")}>
+                Download Inspect log
+              </a>
+            ) : null}
             {/* The report is worth handing over once the day is scored; before
                 that it is a page of dashes, so it waits with the rejudge action. */}
-            {settled ? (
+            {settled && !run.benchmark ? (
               <Link
                 href={`/runs/${encodeURIComponent(run.runId)}/report`}
                 className={buttonClasses("secondary", "md")}
@@ -143,6 +176,7 @@ export function RunDetail({
         }
       />
 
+      {run.benchmark ? <ContinuityResults report={run.benchmark} /> : <>
       <VerdictHeader
         summary={summary}
         stats={stats}
@@ -150,6 +184,17 @@ export function RunDetail({
         judgeAutonomy={run.verdict?.judge?.autonomyScore ?? null}
         {...(run.error ? { error: run.error } : {})}
         onOpen={openSection}
+      />
+
+      {/* Above the words, because "where" is the question a reader arrives with
+          and a shape answers it before a sentence can. Every column is a door
+          into the replay, so the chart is navigation as well as a picture. */}
+      <DayFailureMap
+        moments={moments}
+        judge={run.verdict?.judge ?? null}
+        checklist={run.verdict?.checklist ?? []}
+        offsetMinutes={brief.offsetMinutes}
+        onJump={jump}
       />
 
       <JudgeUnderstanding
@@ -170,6 +215,7 @@ export function RunDetail({
         <FailureModes judge={run.verdict?.judge ?? null} onJump={jump} />
       </div>
 
+      </>}
       <div id="replay" ref={replayRef}>
         <DayReplay
           moments={moments}

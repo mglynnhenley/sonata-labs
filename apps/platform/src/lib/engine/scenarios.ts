@@ -1,6 +1,6 @@
 import { plannedTicks, type EpisodeSpec, type Termination } from "@sonata/core";
 import { SCENARIOS, getScenario } from "@sonata/scenarios";
-import type { GeneratedWorld } from "@sonata/world";
+import { templateById, type GeneratedWorld } from "@sonata/world";
 import { actualCounts, growBacklog } from "./clone";
 import { plannedCounts } from "../../../app/api/_lib/authored";
 import { draftScenario } from "../../../app/api/_lib/draft";
@@ -41,6 +41,40 @@ export interface CreatedScenario {
 }
 
 /**
+ * Shipped days that open on a full backlog: scenario id -> @sonata/world
+ * template id. Explicit and opt-in, because attaching a backlog changes the
+ * measured surface of a day — the first five ship without one and stay that
+ * way, and adding an entry here is a decision about a benchmark, not a default.
+ */
+const SHIPPED_BACKLOGS: Readonly<Record<string, string>> = {
+  "tax-reporting-workbook-day": "tax-reporting-workbook",
+  "tax-reporting-workflow-day": "tax-reporting-workflow",
+  "meridian-excursion": "meridian-clinical-supply",
+  "vc-ai-assistant-day": "alderbridge-ai-assistant",
+  "vc-investment-day": "alderbridge-ventures",
+  "vc-busy-investment-day": "alderbridge-busy-day",
+};
+
+/** The backlog a shipped spec opens on, or undefined for the empty-company days. */
+function shippedClone(spec: EpisodeSpec): GeneratedWorld | undefined {
+  const templateId = SHIPPED_BACKLOGS[spec.id];
+  if (!templateId) return undefined;
+  const template = templateById(templateId);
+  if (!template) {
+    throw new Error(
+      `scenario "${spec.id}" declares backlog template "${templateId}", which @sonata/world does not ship`,
+    );
+  }
+  if (template.world.business.name !== spec.world.business.name) {
+    throw new Error(
+      `scenario "${spec.id}" pins the world "${spec.world.business.name}" but its backlog template ` +
+        `"${templateId}" is set in "${template.world.business.name}" — the two would seed different companies`,
+    );
+  }
+  return template;
+}
+
+/**
  * Register a shipped day into the store, so it is a scenario like any other.
  *
  * Its world is reused when one with the same business is already there: two of
@@ -49,12 +83,17 @@ export interface CreatedScenario {
  */
 function registerShipped(spec: EpisodeSpec): EpisodeRecord {
   const existing = listWorlds().find((w) => w.name === spec.world.business.name);
+  const clone = existing ? undefined : shippedClone(spec);
   const world =
     existing ??
     saveWorld(
       spec.world,
       spec.world.business.description,
-      plannedCounts(spec.world, spec.beats),
+      // A world with a backlog is counted by its backlog — the card says what
+      // the company holds, and counting only the day's scripted beats would
+      // make a three-week inbox read as six threads.
+      clone ? actualCounts(clone) : plannedCounts(spec.world, spec.beats),
+      clone,
     );
   return saveEpisode(spec, { id: world.id, name: world.name }, null);
 }
@@ -147,7 +186,7 @@ export function listShipped(): Array<{ id: string; title: string; story: string 
 
 /** Ids of the shipped suite, in run order — the benchmark's default columns. */
 export function shippedIds(): string[] {
-  return SCENARIOS.map((s) => s.id);
+  return SCENARIOS.filter((s) => !s.benchmark).map((s) => s.id);
 }
 
 export function listTemplates(): ReturnType<typeof templateSummaries> {
@@ -235,6 +274,13 @@ export function specForRun(
   termination?: Partial<Termination>,
 ): EpisodeSpec {
   let out = spec;
+  // A continuity smoke run observes a prefix of the same authored week. Its
+  // denominator and future clock must survive the cap.
+  if (spec.benchmark) {
+    const guard = { ...spec.termination, ...termination };
+    if (ticks !== undefined) guard.maxTicks = Math.min(spec.clock.ticks, Math.max(1, Math.round(ticks)), guard.maxTicks ?? Infinity);
+    return { ...spec, termination: guard };
+  }
   if (ticks !== undefined) {
     const wanted = Math.max(1, Math.min(Math.round(ticks), 200));
     if (wanted !== spec.clock.ticks) out = { ...out, clock: { ...out.clock, ticks: wanted } };

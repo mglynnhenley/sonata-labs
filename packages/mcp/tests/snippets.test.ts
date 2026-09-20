@@ -26,6 +26,10 @@ describe("connection snippets", () => {
         "--env SONATA_CALENDAR_URL=http://calendar.test " +
         "--env SONATA_ATTIO_URL=http://attio.test " +
         "--env SONATA_GOOGLE_DOCS_URL=http://google-docs.test " +
+        "--env SONATA_GOOGLE_ADS_URL=http://google-ads.test " +
+        "--env SONATA_LINKEDIN_URL=http://linkedin.test " +
+        "--env SONATA_EXCEL_URL=http://excel.test " +
+        "--env SONATA_DESK_URL=http://desk.test " +
         "-- /repo/sonata/node_modules/.bin/sonata-mcp",
     );
   });
@@ -54,6 +58,10 @@ describe("connection snippets", () => {
             SONATA_CALENDAR_URL: "http://calendar.test",
             SONATA_ATTIO_URL: "http://attio.test",
             SONATA_GOOGLE_DOCS_URL: "http://google-docs.test",
+            SONATA_GOOGLE_ADS_URL: "http://google-ads.test",
+            SONATA_LINKEDIN_URL: "http://linkedin.test",
+            SONATA_EXCEL_URL: "http://excel.test",
+            SONATA_DESK_URL: "http://desk.test",
           },
         },
       },
@@ -67,10 +75,27 @@ describe("connection snippets", () => {
     expect(text).toContain("calendar     http://calendar.test");
     expect(text).toContain("attio        http://attio.test");
     expect(text).toContain("google-docs  http://google-docs.test");
+    expect(text).toContain("google-ads   http://google-ads.test");
+    expect(text).toContain("linkedin     http://linkedin.test");
     expect(text).toContain(
       'curl -s -H "Authorization: Bearer test-token" \\\n' +
         '  "http://slack.test/api/conversations.list"',
     );
+  });
+
+  // Both of these are refusals that read as a broken twin: a bare bearer earns a
+  // 400 DEVELOPER_TOKEN_PARAMETER_MISSING from one and a 426 from the other, and
+  // the header that fixes it appears nowhere else in the product.
+  it("names the extra header the two twins that demand one will not work without", () => {
+    const text = restSnippet({ config: testConfig, launch });
+    expect(text).toContain('-H "developer-token: sandbox-dev-token"');
+    expect(text).toContain('-H "LinkedIn-Version: 202506"');
+  });
+
+  it("leaves those notes out when neither twin is served", () => {
+    const text = restSnippet({ config: testConfig, twins: ["gmail", "slack"], launch });
+    expect(text).not.toContain("developer-token");
+    expect(text).not.toContain("LinkedIn-Version");
   });
 
   // The printed curl is the first thing anyone runs. Pointed at /gmail/v1/* with
@@ -125,9 +150,9 @@ describe("cli", () => {
     expect(parseArgv(["gmail"]).twins).toEqual(["gmail"]);
     expect(parseArgv(["slack", "calendar"]).twins).toEqual(["slack", "calendar"]);
     expect(parseArgv(["gmail", "gmail"]).twins).toEqual(["gmail"]);
-    // The one whose name carries a hyphen, since an arg parser that split on one
+    // The two whose names carry a hyphen, since an arg parser that split on one
     // would silently serve nothing and report a typo.
-    expect(parseArgv(["google-docs"]).twins).toEqual(["google-docs"]);
+    expect(parseArgv(["google-docs", "google-ads"]).twins).toEqual(["google-docs", "google-ads"]);
   });
 
   it("reports a typo instead of silently serving everything", () => {

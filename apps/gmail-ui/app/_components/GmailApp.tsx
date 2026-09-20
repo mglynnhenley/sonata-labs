@@ -24,7 +24,7 @@ const NAV: Array<{ id: string; name: string; icon: string }> = [
   { id: "TRASH", name: "Trash", icon: "delete" },
 ];
 
-export function GmailApp() {
+export function GmailApp({ controlsAvailable }: { controlsAvailable: boolean }) {
   const [labels, setLabels] = useState<RailLabel[]>([]);
   const [email, setEmail] = useState("");
   const [view, setView] = useState<View>(DEFAULT_VIEW);
@@ -33,7 +33,7 @@ export function GmailApp() {
   const [query, setQuery] = useState("");
   const [searchInput, setSearchInput] = useState("");
   const [activity, setActivity] = useState<ActivityData | null>(null);
-  const [panel, setPanel] = useState<Panel>("activity");
+  const [panel, setPanel] = useState<Panel>(controlsAvailable ? "activity" : null);
   const [page, setPage] = useState(0);
 
   const refreshLabels = useCallback(async () => {
@@ -75,9 +75,10 @@ export function GmailApp() {
   }, [openThread]);
 
   const refreshActivity = useCallback(async () => {
-    const r = await fetch("/api/activity").then((r) => r.json());
-    setActivity(r);
-  }, []);
+    if (!controlsAvailable) return;
+    const res = await fetch("/api/activity");
+    if (res.ok) setActivity(await res.json());
+  }, [controlsAvailable]);
 
   // Initial + polling every 3s so agent writes appear live.
   useEffect(() => {
@@ -252,7 +253,10 @@ export function GmailApp() {
           </div>
         </main>
 
-        {panel === "activity" && (
+        {panel === "activity" && !controlsAvailable && (
+          <aside className="w-[340px] shrink-0 border-l border-[#e0e3e7] bg-white p-4 text-sm">Activity and workplace controls are available in the Sonata dashboard.</aside>
+        )}
+        {panel === "activity" && controlsAvailable && (
           <ActivityPanel data={activity} onReset={async () => {
             await fetch("/api/sandbox/reset", { method: "POST" });
             refreshLabels(); refreshActivity(); refreshList();

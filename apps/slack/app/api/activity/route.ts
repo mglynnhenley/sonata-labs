@@ -1,3 +1,4 @@
+import { requireSandboxToken } from "@/lib/sandbox/auth";
 import { NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { listSessions, listActions, getCurrentSessionId } from "@/lib/audit";
@@ -10,6 +11,8 @@ export const dynamic = "force-dynamic";
 // current), and the outbox. `since` enables cheap polling; `all=1` returns
 // every session's actions.
 export async function GET(req: Request) {
+  const authErr = requireSandboxToken(req);
+  if (authErr) return authErr;
   try {
     const db = getDb();
     const url = new URL(req.url);

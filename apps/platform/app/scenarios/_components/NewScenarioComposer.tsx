@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import {
   Button,
   buttonClasses,
@@ -18,6 +19,7 @@ import {
 import { scrollBehavior } from "../../_components/scrollBehavior";
 import { useGo } from "../../_components/useGo";
 import { apiSend } from "../../api/_lib/client";
+import { track } from "@/lib/track";
 import {
   DAY_LENGTHS,
   type EpisodeRecord,
@@ -28,12 +30,8 @@ import { BRIEF_EXAMPLES } from "../_lib/examples";
 import { episodeFromTemplate } from "../_lib/shipped";
 import { ScenarioPreview } from "./ScenarioPreview";
 
-// The product's first promise: one description in, a whole fake company out.
-//
-// Three steps and no forms: describe it, look at what will be built, create it.
-// The preview is generated once and parked as a draft, so Create commits exactly
-// what was on screen — the preview and the thing that gets built can never
-// disagree, and looking twice never costs twice.
+// Keep one generation path: the description and optional expectations form a
+// single brief. Save commits the exact draft the user reviewed.
 
 /**
  * The one way a failed generation is reported, on either step.
@@ -58,15 +56,15 @@ function PreviewFailure({
     <div className="sn-stack-block">
       <div className="flex items-start gap-2.5 rounded-sn-lg border border-sn-failed-line bg-sn-failed-soft px-4 py-3">
         <IconAlert size="md" className="mt-0.5 shrink-0 text-sn-danger" />
-        <p className="text-sn-base text-sn-failed-ink">{message}</p>
+        <div><p className="text-sn-base text-sn-failed-ink" role="alert">{message}</p>
+          <Link href="/scenarios" className="mt-2 inline-block text-sn-sm underline">Open saved scenarios</Link></div>
       </div>
 
       <Card padding="lg">
-        <h3 className="font-display text-sn-xl text-sn-ink">Run one of the shipped days instead</h3>
+        <h3 className="font-display text-sn-xl text-sn-ink">Choose a ready-made scenario</h3>
         <p className="mt-1.5 max-w-[70ch] text-sn-base text-sn-muted">
-          Each is a whole company with its own day. None of them is the business you described, and
-          choosing one is choosing to run that company — which is a perfectly good way to see what
-          Sonata does, as long as it is your decision and not ours.
+          These examples have their own business, events and rubric. Choosing one saves that
+          example for review; it does not generate the business you described.
         </p>
         <ul className="mt-4 flex flex-col divide-y divide-sn-line">
           {templates.map((template) => (
@@ -88,7 +86,7 @@ function PreviewFailure({
                 iconRight={<IconArrowRight size="sm" />}
                 onClick={() => onUse(template)}
               >
-                Run this day
+                Use this example
               </Button>
             </li>
           ))}
@@ -97,15 +95,6 @@ function PreviewFailure({
     </div>
   );
 }
-
-/** Shown in order while the company is being written. The wait is real work. */
-const WORKING_LINES = [
-  "Reading your description…",
-  "Hiring the cast, and giving everyone a voice…",
-  "Opening the Slack channels they actually use…",
-  "Writing the day, beat by beat…",
-  "Deciding what counts as having done the job…",
-];
 
 export type NewScenarioComposerProps = {
   /** The shipped days, offered as a choice when a description cannot be answered. */
@@ -118,39 +107,25 @@ export function NewScenarioComposer({ templates }: NewScenarioComposerProps) {
   const { toast } = useToast();
 
   const [brief, setBrief] = useState("");
+  const [expectations, setExpectations] = useState("");
   const [ticks, setTicks] = useState<number>(DAY_LENGTHS[1]?.ticks ?? 24);
   const [draft, setDraft] = useState<ScenarioDraft | null>(null);
   const [working, setWorking] = useState(false);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [usingShipped, setUsingShipped] = useState<string | null>(null);
-  const [line, setLine] = useState(0);
 
   const box = useRef<HTMLTextAreaElement | null>(null);
 
-  // Focus the brief on desktop only. `autoFocus` did it everywhere, and on a
-  // phone that opens the keyboard the instant the page loads: half the viewport
-  // goes, the page scrolls itself, and the five starter chips below the box —
-  // the thing someone unsure what to type actually needs — are pushed off
-  // screen. A fine pointer means a real keyboard is already there.
+  // From main: focus the brief on desktop only. `autoFocus` did it everywhere,
+  // and on a phone that opens the keyboard the instant the page loads — half the
+  // viewport goes, the page scrolls itself, and the starter chips below the box,
+  // the thing someone unsure what to type actually needs, are pushed off screen.
+  // A fine pointer means a real keyboard is already there.
   useEffect(() => {
     if (!window.matchMedia("(pointer: fine)").matches) return;
     box.current?.focus();
   }, []);
-
-  useEffect(() => {
-    if (!working) {
-      setLine(0);
-      return;
-    }
-    // The last line stays put rather than looping: a cycling list reads as a
-    // fake progress bar, and this one is telling the truth about the order.
-    const timer = setInterval(
-      () => setLine((current) => Math.min(current + 1, WORKING_LINES.length - 1)),
-      1800,
-    );
-    return () => clearInterval(timer);
-  }, [working]);
 
   const tooShort = brief.trim().length < 12;
 
@@ -161,11 +136,21 @@ export function NewScenarioComposer({ templates }: NewScenarioComposerProps) {
       const { draft: next } = await apiSend<{ draft: ScenarioDraft }>(
         "/api/worlds/preview",
         "POST",
-        { brief: brief.trim(), ticks },
+        {
+          brief: [
+            brief.trim(),
+            expectations.trim()
+              ? `What the agent should achieve or avoid (use this to shape the scenario and its success criteria):\n${expectations.trim()}`
+              : null,
+          ].filter(Boolean).join("\n\n"),
+          ticks,
+        },
       );
       setDraft(next);
+      track("scenario_previewed", { ticks, input_chars: brief.trim().length, with_expectations: expectations.trim().length > 0, ok: true });
       window.scrollTo({ top: 0, behavior: scrollBehavior() });
     } catch (err) {
+      track("scenario_previewed", { ticks, input_chars: brief.trim().length, with_expectations: expectations.trim().length > 0, ok: false });
       setError((err as Error).message);
     } finally {
       setWorking(false);
@@ -180,14 +165,15 @@ export function NewScenarioComposer({ templates }: NewScenarioComposerProps) {
         draftId: draft.draftId,
       });
       toast({
-        title: `"${episode.title}" is ready`,
-        description: `${draft.business.name} now exists in all three clones. Pick a model and start the day.`,
+        title: `"${episode.title}" saved`,
+        description: "Review the rubric before choosing a model and running the scenario.",
         tone: "success",
       });
-      router.push(`/runs?scenario=${encodeURIComponent(episode.id)}`);
+      track("scenario_saved", { episode_id: episode.id, ticks });
+      router.push(`/scenarios/${encodeURIComponent(episode.id)}`);
     } catch (err) {
       setCreating(false);
-      toast({ title: "Could not create it", description: (err as Error).message, tone: "error" });
+      toast({ title: "Could not save scenario", description: (err as Error).message, tone: "error" });
     }
   }
 
@@ -195,15 +181,17 @@ export function NewScenarioComposer({ templates }: NewScenarioComposerProps) {
     setUsingShipped(template.id);
     try {
       const episode = await episodeFromTemplate(template.id);
-      router.push(`/runs?scenario=${encodeURIComponent(episode.id)}`);
+      track("scenario_from_template", { template_id: template.id });
+      router.push(`/scenarios/${encodeURIComponent(episode.id)}`);
     } catch (err) {
       setUsingShipped(null);
       toast({ title: "That didn't work", description: (err as Error).message, tone: "error" });
     }
   }
 
-  function useExample(text: string) {
+  function useExample(text: string, expectedBehavior: string) {
     setBrief(text);
+    setExpectations(expectedBehavior);
     box.current?.focus();
   }
 
@@ -211,25 +199,26 @@ export function NewScenarioComposer({ templates }: NewScenarioComposerProps) {
     return (
       <div className="sn-stack-section">
         <PageHeader
-          eyebrow="Step 2 of 2 · Preview"
-          title="Here is what will be built"
-          subtitle="Nothing has been written yet. Look it over — the people, the channels and every beat below are exactly what gets built. The company's history is written when you seed it, and counted from the clones then."
+          eyebrow="New scenario · Preview"
+          title="Does this test what you intended?"
+          subtitle="Review the environment, the situation and what success looks like. Save this draft to edit its rubric before running an agent."
           actions={
             <>
-              <Button variant="ghost" onClick={() => setDraft(null)}>
+              <Button variant="ghost" disabled={working || creating} onClick={() => setDraft(null)}>
                 Change the description
               </Button>
-              <Button variant="secondary" loading={working} onClick={() => void preview()}>
-                Try again
+              <Button variant="secondary" loading={working} disabled={creating} onClick={() => void preview()}>
+                Generate another draft
               </Button>
               <Button
                 variant="primary"
                 size="lg"
                 iconRight={<IconArrowRight size="md" />}
                 loading={creating}
+                disabled={working}
                 onClick={() => void create()}
               >
-                Create scenario
+                Save and review rubric
               </Button>
             </>
           }
@@ -247,21 +236,28 @@ export function NewScenarioComposer({ templates }: NewScenarioComposerProps) {
           />
         ) : null}
 
+        {working ? (
+          <p role="status" className="flex items-center gap-2.5 text-sn-base text-sn-muted">
+            <Spinner size="sm" /> Generating another scenario and rubric…
+          </p>
+        ) : null}
+
         <ScenarioPreview draft={draft} />
 
         <div className="flex flex-wrap items-center justify-end gap-3 border-t border-sn-line pt-6">
           <p className="mr-auto max-w-[52ch] text-sn-base text-sn-muted">
-            Creating it saves the company and the day. You can run it straight away, and run it
-            again later on a different model to compare.
+            Saving keeps this scenario and its rubric. Review the grading details next, then
+            choose a model when you are ready to run.
           </p>
           <Button
             variant="primary"
             size="lg"
             iconRight={<IconArrowRight size="md" />}
             loading={creating}
+            disabled={working}
             onClick={() => void create()}
           >
-            Create scenario
+            Save and review rubric
           </Button>
         </div>
       </div>
@@ -271,9 +267,9 @@ export function NewScenarioComposer({ templates }: NewScenarioComposerProps) {
   return (
     <div className="sn-stack-section mx-auto w-full max-w-[820px]">
       <PageHeader
-        eyebrow="Step 1 of 2 · Describe"
-        title="New scenario"
-        subtitle="Say what the business is and what happens today, in plain language. Sonata writes the people, their inbox, their channels and their calendar — and the day that unfolds inside them."
+        eyebrow="New scenario · Describe"
+        title="What do you want to test?"
+        subtitle="Describe a business and a situation for an agent to handle. Sonata proposes the environment, the scenario and a rubric you can review."
         actions={
           <a href="/scenarios" onClick={(e) => go(e, "/scenarios")} className={buttonClasses("ghost", "md")}>
             Cancel
@@ -283,7 +279,7 @@ export function NewScenarioComposer({ templates }: NewScenarioComposerProps) {
 
       <Card padding="lg">
         <label htmlFor="brief" className="text-sn-base font-medium text-sn-ink">
-          Describe the business and what happens today
+          What is the business, and what happens?
         </label>
         <textarea
           id="brief"
@@ -292,7 +288,8 @@ export function NewScenarioComposer({ templates }: NewScenarioComposerProps) {
           onChange={(e) => setBrief(e.target.value)}
           rows={6}
           disabled={working}
-          placeholder="A 12-person fintech, the week before an audit. This morning the biggest client escalates about a missed SLA, and the answer is buried in a Slack thread nobody has read."
+          aria-describedby="brief-hint"
+          placeholder="A support team at a software company. An outage looks resolved in the morning, but returns after lunch while the agent is handling other customer requests."
           className={cn(
             "mt-2.5 w-full resize-y rounded-sn-lg border border-sn-line bg-sn-surface px-4 py-3.5",
             "text-sn-md leading-[24px] text-sn-ink shadow-sn-xs placeholder:text-sn-subtle",
@@ -300,15 +297,38 @@ export function NewScenarioComposer({ templates }: NewScenarioComposerProps) {
           )}
         />
 
-        <div className="mt-4">
-          <p className="text-sn-sm text-sn-subtle">Or start from one of these:</p>
+        <p id="brief-hint" className="mt-2 text-sn-sm text-sn-subtle">
+          The environment is the company, people and apps. The scenario is the situation that unfolds inside it.
+        </p>
+
+        <div className="mt-5">
+          <label htmlFor="expectations" className="text-sn-base font-medium text-sn-ink">
+            What should the agent achieve or avoid? <span className="font-normal text-sn-subtle">Optional</span>
+          </label>
+          <textarea
+            id="expectations"
+            value={expectations}
+            onChange={(e) => setExpectations(e.target.value)}
+            rows={3}
+            disabled={working}
+            aria-describedby="expectations-hint"
+            placeholder="Recheck the incident, update affected customers and keep routine requests moving. Never claim recovery without evidence."
+            className="mt-2.5 w-full resize-y rounded-sn-lg border border-sn-line bg-sn-surface px-4 py-3 text-sn-base text-sn-ink placeholder:text-sn-subtle disabled:opacity-60"
+          />
+          <p id="expectations-hint" className="mt-2 text-sn-sm text-sn-subtle">
+            Mention outcomes, deadlines or boundaries. Leave this blank to have Sonata suggest them.
+          </p>
+        </div>
+
+        <div className="mt-5">
+          <p className="text-sn-sm text-sn-subtle">Or try an example:</p>
           <div className="mt-2 flex flex-wrap gap-2">
             {BRIEF_EXAMPLES.map((example) => (
               <Chip
                 key={example.label}
                 tone="gold"
                 icon={<IconSpark size="xs" />}
-                onClick={() => useExample(example.text)}
+                onClick={() => { if (!working) useExample(example.text, example.expectations); }}
               >
                 {example.label}
               </Chip>
@@ -317,12 +337,13 @@ export function NewScenarioComposer({ templates }: NewScenarioComposerProps) {
         </div>
 
         <div className="mt-6 border-t border-sn-line pt-5">
-          <p className="text-sn-base font-medium text-sn-ink">How long the day should run</p>
+          <p className="text-sn-base font-medium text-sn-ink">How much simulated time?</p>
           <div className="mt-2.5 flex flex-wrap gap-2">
             {DAY_LENGTHS.map((length) => (
               <button
                 key={length.ticks}
                 type="button"
+                disabled={working}
                 aria-pressed={ticks === length.ticks}
                 onClick={() => setTicks(length.ticks)}
                 className={cn(
@@ -368,18 +389,18 @@ export function NewScenarioComposer({ templates }: NewScenarioComposerProps) {
             disabled={tooShort}
             onClick={() => void preview()}
           >
-            Preview what gets built
+            Generate scenario and rubric
           </Button>
           {working ? (
-            <span className="flex items-center gap-2.5 text-sn-base text-sn-muted">
+            <span role="status" className="flex items-center gap-2.5 text-sn-base text-sn-muted">
               <Spinner size="sm" />
-              {WORKING_LINES[line]}
+              Generating your scenario and rubric…
             </span>
           ) : (
             <p className="text-sn-sm text-sn-subtle">
               {tooShort
-                ? "A sentence or two is enough — who the company is, and what goes wrong today."
-                : "Nothing is written until you have seen the preview and pressed Create."}
+                ? "A sentence or two is enough to begin."
+                : "Uses your configured model. Review the draft before saving; no agent run starts here."}
             </p>
           )}
         </div>

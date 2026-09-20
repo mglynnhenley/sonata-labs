@@ -33,6 +33,33 @@ export function simClock(iso: string | null): string {
   return hhmm(ms, shiftOf(iso));
 }
 
+/**
+ * The same instant, re-spelled in the offset `refISO` declares.
+ *
+ * The engine's tick records carry UTC ("…Z") instants; shown raw, a 09:15 New
+ * York morning reads as 13:15 and five minutes into the day looks like
+ * mid-afternoon. Re-spelling at the platform boundary keeps the engine's
+ * artifacts canonical while every clock the user sees reads company-local.
+ */
+export function respellInOffsetOf(iso: string, refISO: string): string {
+  const ms = Date.parse(iso);
+  if (Number.isNaN(ms)) return iso;
+  let shift: number;
+  try {
+    shift = offsetMinutes(refISO);
+  } catch {
+    return iso;
+  }
+  const d = new Date(ms + shift * MS_PER_MINUTE);
+  const p = (n: number) => String(n).padStart(2, "0");
+  const abs = Math.abs(shift);
+  const suffix = shift === 0 ? "Z" : `${shift < 0 ? "-" : "+"}${p(Math.floor(abs / 60))}:${p(abs % 60)}`;
+  return (
+    `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())}` +
+    `T${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:${p(d.getUTCSeconds())}${suffix}`
+  );
+}
+
 // A value and its unit are one word. These sit in narrow table columns, where an
 // ordinary space let "20m 13s" break into "20m" over "13s" and read as two
 // numbers — so every gap inside a single measurement is non-breaking.

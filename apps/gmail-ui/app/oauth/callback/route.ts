@@ -16,17 +16,19 @@ export const dynamic = "force-dynamic";
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const params = url.searchParams;
+  // Next dev may normalize req.url to localhost; cookies belong to the registered UI host.
+  const origin = new URL(UI_REDIRECT_URI).origin;
   const flow = await takeFlow();
 
   const error = params.get("error");
-  if (error) return fail(url.origin, `Authorization was ${error}.`);
-  if (!flow) return fail(url.origin, "No in-flight authorization request (the login link expired).");
+  if (error) return fail(origin, `Authorization was ${error}.`);
+  if (!flow) return fail(origin, "No in-flight authorization request (the login link expired).");
 
   const state = params.get("state");
-  if (!state || state !== flow.state) return fail(url.origin, "State mismatch — possible CSRF, request rejected.");
+  if (!state || state !== flow.state) return fail(origin, "State mismatch — possible CSRF, request rejected.");
 
   const code = params.get("code");
-  if (!code) return fail(url.origin, "Authorization response had no code.");
+  if (!code) return fail(origin, "Authorization response had no code.");
 
   const res = await fetch(`${API_URL}/oauth/token`, {
     method: "POST",
@@ -40,7 +42,7 @@ export async function GET(req: Request) {
       code_verifier: flow.verifier,
     }).toString(),
   });
-  if (!res.ok) return fail(url.origin, `Token exchange failed (${res.status}).`);
+  if (!res.ok) return fail(origin, `Token exchange failed (${res.status}).`);
 
   const tok = (await res.json()) as {
     access_token: string;
@@ -57,7 +59,7 @@ export async function GET(req: Request) {
 
   // Re-validate on the way out: the cookie is sealed, but the destination is
   // still user-supplied input and this is the redirect that actually fires.
-  return NextResponse.redirect(new URL(safeNextPath(flow.next) ?? "/", url.origin), 302);
+  return NextResponse.redirect(new URL(safeNextPath(flow.next) ?? "/", origin), 302);
 }
 
 function fail(origin: string, message: string): NextResponse {

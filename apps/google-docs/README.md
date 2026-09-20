@@ -60,9 +60,10 @@ against a twin mid-episode), then creates a document and edits a seeded one. Run
 
 ## Credentials
 
-One static token, `SANDBOX_TOKEN` (default `sandbox-token`), gates both surfaces.
-The Docs API takes it as an OAuth-style bearer; the control plane also accepts
-`X-Sandbox-Token`.
+The Docs API takes `SANDBOX_TOKEN` (default `sandbox-token`) as an OAuth-style
+bearer. `/api/sandbox/*` and `/api/activity` use `SANDBOX_CONTROL_TOKEN`, falling
+back to `SANDBOX_TOKEN` and then `sandbox-token` for development. Send the
+control token as `X-Sandbox-Token` or a bearer. `/api/health` stays public.
 
 ```bash
 # documents.get

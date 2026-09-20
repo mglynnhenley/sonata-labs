@@ -51,7 +51,9 @@ export function getSettings(): PlatformSettings {
  * fallback is what lets the twins' existing .env keep working with no re-entry.
  */
 export function getApiKey(): string | null {
-  return readSetting(KEY.apiKey) ?? process.env.OPENROUTER_API_KEY ?? null;
+  // A blank value is no value — `.env` templates ship `OPENROUTER_API_KEY=`.
+  const key = readSetting(KEY.apiKey) ?? process.env.OPENROUTER_API_KEY ?? null;
+  return key && key.trim() ? key : null;
 }
 
 export type ApiKeySource = "stored" | "env" | "none";
@@ -64,6 +66,16 @@ export interface ApiKeyView {
 
 function mask(key: string): string {
   return key.length <= 10 ? "•".repeat(key.length) : `${key.slice(0, 6)}…${key.slice(-4)}`;
+}
+
+/**
+ * Whether model calls can happen at all: a key is saved, or OPENROUTER_BASE_URL
+ * points at a local server (Ollama, LM Studio, vLLM) that needs none.
+ */
+export function canCallModels(): boolean {
+  if (getApiKey() !== null) return true;
+  const base = process.env.OPENROUTER_BASE_URL;
+  return Boolean(base && !base.includes("openrouter.ai"));
 }
 
 export function getApiKeyView(): ApiKeyView {

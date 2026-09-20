@@ -1,3 +1,4 @@
+import { requireSandboxToken } from "@/lib/sandbox/auth";
 import { NextResponse } from "next/server";
 import { resetWorking } from "@/lib/reset";
 
@@ -7,6 +8,8 @@ export const dynamic = "force-dynamic";
 // In-process reset: the server holds the working SQLite handle, so only it can
 // safely close → swap files → reopen. The CLI `reset` curls this endpoint.
 export async function POST(req: Request) {
+  const authErr = requireSandboxToken(req);
+  if (authErr) return authErr;
   try {
     const body = (await req.json().catch(() => ({}))) as { note?: string };
     const result = resetWorking(body.note || "reset via API");

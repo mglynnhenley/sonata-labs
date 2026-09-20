@@ -14,8 +14,10 @@ import { putDoc } from "../../../app/api/_lib/store";
 import type { WorldCounts, WorldRecord } from "../../../app/api/_lib/types";
 import { listWorlds as listWorldRows, markWorldSeeded } from "../db";
 import { getApiKey } from "../settings";
-import { TWIN_LABELS, twinStatus, twinUrl } from "../twins";
-import { loadClone } from "./preflight";
+import { twinHumanUrl } from "../../../app/api/_lib/twins";
+import { TWIN_LABELS, twinStatus } from "../twins";
+import { loadClone, twinUrlMap } from "./preflight";
+import { acquireCloneLease } from "./cloneLease";
 
 // Growing the company's PAST, once the day has been written.
 //
@@ -70,6 +72,7 @@ function withEveryChannel(slack: SlackSeed, seed: WorldSeed): SlackSeed {
 /** What the clone actually contains, counted off the seeds rather than guessed. */
 export function actualCounts(clone: GeneratedWorld): WorldCounts {
   return {
+    ...(clone.excel ? { workbooks: clone.excel.workbooks.length } : {}),
     people: clone.world.cast.length,
     threads: clone.gmail.threads.length,
     messages: clone.gmail.threads.reduce((n, t) => n + t.messages.length, 0),
@@ -87,6 +90,8 @@ export function actualCounts(clone: GeneratedWorld): WorldCounts {
     records:
       clone.attio.companies.length + clone.attio.contacts.length + clone.attio.deals.length,
     documents: clone.googleDocs.documents.length,
+    campaigns: clone.googleAds.campaigns.length,
+    posts: clone.linkedin.posts.length,
   };
 }
 
@@ -143,10 +148,12 @@ export async function growBacklog(
     slack: withEveryChannel(seeds.slack, seed),
     calendar: seeds.calendar,
     // The business-systems pass rides behind the storyline writers, so a backlog
-    // grown for an existing world fills the CRM and the documents from the same
-    // story as the inbox.
+    // grown for an existing world fills the CRM, the documents, the ad account
+    // and the page from the same story as the inbox.
     attio: seeds.attio,
     googleDocs: seeds.googleDocs,
+    googleAds: seeds.googleAds,
+    linkedin: seeds.linkedin,
     // Carried, not dropped. These are the harness's own gaps — a storyline that
     // never got written, a fact two writers spelled differently — and this
     // repo's rule is that what we could not guarantee stays visible rather than
@@ -172,7 +179,7 @@ export async function growBacklog(
  * Keyed by the noun the TWIN sends back in its `counts`, not by anything this
  * app decides, because the receipt is meant to be the clone's own account of
  * what it now holds. A key with no entry here still prints — as the raw word,
- * which is why "1 documents" is what the two later surfaces read like until
+ * which is why "1 documents" is what the four later surfaces read like until
  * they are listed. The headline noun of each twin sorts first.
  */
 const LANDED_NOUNS: Record<string, { one: string; many: string; order: number }> = {
@@ -192,6 +199,17 @@ const LANDED_NOUNS: Record<string, { one: string; many: string; order: number }>
   // google-docs
   documents: { one: "document", many: "documents", order: 0 },
   paragraphs: { one: "paragraph", many: "paragraphs", order: 1 },
+  // google-ads
+  campaigns: { one: "campaign", many: "campaigns", order: 0 },
+  adGroups: { one: "ad group", many: "ad groups", order: 1 },
+  budgets: { one: "budget", many: "budgets", order: 2 },
+  statRows: { one: "day of stats", many: "days of stats", order: 3 },
+  // linkedin
+  posts: { one: "post", many: "posts", order: 0 },
+  comments: { one: "comment", many: "comments", order: 1 },
+  reactions: { one: "reaction", many: "reactions", order: 2 },
+  organizations: { one: "page", many: "pages", order: 3 },
+  members: { one: "member", many: "members", order: 4 },
 };
 
 export interface LandedItem {
@@ -268,7 +286,9 @@ function landingsFrom(counts: Record<string, number>, twins: readonly TwinName[]
         const word = noun ? (count === 1 ? noun.one : noun.many) : what;
         return { label: `${count} ${word}`, count };
       });
-    return { twin, label: TWIN_LABELS[twin], url: twinUrl(twin), items };
+    // A person reads this card and clicks through, so it points at the
+    // twin's UI rather than its API. See `twinHumanUrl`.
+    return { twin, label: TWIN_LABELS[twin], url: twinHumanUrl(twin), items };
   });
 }
 
@@ -343,30 +363,34 @@ export async function seedCompany(
   const record = getWorld(worldId);
   if (!record) throw new UnknownCompanyError(worldId);
 
-  // Checked before the backlog is written: a minute of narration followed by
-  // "Slack isn't running" is a minute nobody gets back.
   const twins = [...TWIN_NAMES];
-  const health = await Promise.all(twins.map((twin) => twinStatus(twin, true)));
-  const down = health.filter((h) => !h.ok);
-  if (down.length > 0) {
-    throw new ClonesDownError(
-      down.map((h) => ({ twin: h.twin, label: h.label, url: h.url, detail: h.detail })),
-    );
+  const release = acquireCloneLease(Object.values(twinUrlMap(twins)), `loading environment ${record.name}`);
+  try {
+    // Refuse contention before health checks or paid backlog generation.
+    const health = await Promise.all(twins.map((twin) => twinStatus(twin, true)));
+    const down = health.filter((h) => !h.ok);
+    if (down.length > 0) {
+      throw new ClonesDownError(
+        down.map((h) => ({ twin: h.twin, label: h.label, url: h.url, detail: h.detail })),
+      );
+    }
+
+    const existing = record.clone;
+    const clone = existing ?? (await writeBacklog(record, opts));
+    const counts = await loadClone(clone, twins, opts.say ?? (() => {}));
+
+    const seededAt = Date.now();
+    markWorldSeeded(worldId, seededAt);
+    return {
+      worldId,
+      worldName: clone.world.business.name,
+      seededAt,
+      wroteBacklog: existing === undefined,
+      landed: landingsFrom(counts, twins),
+    };
+  } finally {
+    release();
   }
-
-  const existing = record.clone;
-  const clone = existing ?? (await writeBacklog(record, opts));
-  const counts = await loadClone(clone, twins, opts.say ?? (() => {}));
-
-  const seededAt = Date.now();
-  markWorldSeeded(worldId, seededAt);
-  return {
-    worldId,
-    worldName: clone.world.business.name,
-    seededAt,
-    wroteBacklog: existing === undefined,
-    landed: landingsFrom(counts, twins),
-  };
 }
 
 // ---------------------------------------------------------------------------

@@ -21,6 +21,8 @@
     "dev:calendar": "PORT=${PORT:-3400} npm run dev -w apps/calendar",
     "dev:attio": "PORT=${PORT:-3500} npm run dev -w apps/attio",
     "dev:google-docs": "PORT=${PORT:-3600} npm run dev -w apps/google-docs",
+    "dev:google-ads": "PORT=${PORT:-3700} npm run dev -w apps/google-ads",
+    "dev:linkedin": "PORT=${PORT:-3800} npm run dev -w apps/linkedin",
     "sonata": "node packages/cli/bin/sonata.mjs",
     "test": "npm run test --workspaces --if-present",
     "test:gmail": "npm run test -w apps/gmail",
@@ -28,9 +30,13 @@
     "test:calendar": "npm run test -w apps/calendar",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "check:twin": "tsx packages/engine/scripts/twin-contract-check.ts",
-    "check:seed": "tsx packages/world/scripts/seed-contract-check.ts"
+    "check:seed": "tsx packages/world/scripts/seed-contract-check.ts",
+    "dev:excel": "PORT=${PORT:-3950} npm run dev -w apps/excel",
+    "check:continuity": "tsx packages/engine/scripts/check-continuity.ts",
+    "dev:desk": "PORT=${PORT:-3960} npm run dev -w apps/desk"
   },
   "devDependencies": {
-    "concurrently": "^10.0.4"
+    "concurrently": "^10.0.4",
+    "esbuild": "^0.28.2"
   }
 }

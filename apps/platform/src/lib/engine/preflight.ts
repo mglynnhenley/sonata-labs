@@ -83,17 +83,28 @@ export function twinUrlMap(twins: readonly TwinName[]): Partial<Record<TwinName,
  *
  * Throws on a twin that would not take it: a run against a half-loaded company
  * scores the agent for the seeder's mistake.
+ *
+ * `nowMs` is the instant the backlog's relative offsets resolve against. An
+ * episode passes its own `clock.startISO`, so "three weeks ago" in the seed is
+ * three weeks before the simulated day rather than before whenever the run
+ * happened to start — without it, a day dated in September and seeded in
+ * November opens on a backlog written after its own beats.
  */
 export async function loadClone(
   clone: GeneratedWorld,
   twins: readonly TwinName[],
   say: (msg: string) => void = () => {},
+  nowMs?: number,
+  urls = twinUrlMap(twins),
+  token?: string,
 ): Promise<Record<string, number>> {
   const report = await injectWorld(clone, {
     twins: [...twins],
-    baseUrls: twinUrlMap(twins),
+    baseUrls: urls,
+    ...(token ? { token } : {}),
     promoteToSnapshot: true,
     say,
+    ...(nowMs !== undefined && Number.isFinite(nowMs) ? { now: nowMs } : {}),
   });
   if (!report.ok) {
     const bad = report.results.filter((r) => !r.ok);

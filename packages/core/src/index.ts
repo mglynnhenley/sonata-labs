@@ -6,6 +6,7 @@
 export * from "./types/world";
 export * from "./types/episode";
 export * from "./types/run";
+export * from "./types/benchmark";
 export * from "./types/judge";
 export * from "./failureModes";
 export * from "./twin";
@@ -13,5 +14,8 @@ export * from "./ports";
 export * from "./clock";
 export * from "./score";
 export * from "./executed";
+export * from "./worldFailures";
 export * from "./cast";
 export * from "./spec";
+export * from "./timing";
+export * from "./excel";

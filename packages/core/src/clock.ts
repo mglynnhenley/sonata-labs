@@ -42,6 +42,33 @@ function startMs(clock: Clock): number {
   return ms;
 }
 
+/** Validate an authored clock before any world state is changed. */
+export function validateClock(clock: Clock): void {
+  const start = startMs(clock);
+  if (!Number.isInteger(clock.ticks) || clock.ticks < 0) {
+    throw new RangeError("clock.ticks must be a non-negative integer");
+  }
+  if (clock.tickISOs === undefined && clock.endISO === undefined) return;
+  if (!clock.tickISOs || clock.endISO === undefined) {
+    throw new RangeError("clock.tickISOs and clock.endISO must be supplied together");
+  }
+  if (clock.tickISOs.length !== clock.ticks) throw new RangeError("clock.tickISOs length must equal clock.ticks");
+  let previous = -Infinity;
+  for (const [index, iso] of clock.tickISOs.entries()) {
+    offsetMinutes(iso);
+    const ms = Date.parse(iso);
+    if (!Number.isFinite(ms)) throw new RangeError(`clock.tickISOs[${index}] is not a date`);
+    if (index === 0 && ms !== start) throw new RangeError("clock.tickISOs first instant must equal clock.startISO");
+    if (ms <= previous) throw new RangeError("clock.tickISOs must be strictly increasing");
+    previous = ms;
+  }
+  offsetMinutes(clock.endISO);
+  const end = Date.parse(clock.endISO);
+  if (!Number.isFinite(end) || end < start || end <= previous) {
+    throw new RangeError("clock.endISO must be a date after the last opportunity and no earlier than startISO");
+  }
+}
+
 /**
  * Absolute instant at the start of `tick`, as UTC ISO. Ticks past the end of the
  * day are allowed: the engine routinely computes `tick + replyDelayTicks` and
@@ -49,6 +76,16 @@ function startMs(clock: Clock): number {
  */
 export function tickToISO(clock: Clock, tick: number): string {
   if (!Number.isFinite(tick)) throw new RangeError(`tick must be finite, got ${tick}`);
+  if (clock.tickISOs !== undefined || clock.endISO !== undefined) {
+    validateClock(clock);
+    if (!Number.isInteger(tick)) throw new RangeError("explicit clock tick must be an integer");
+    if (tick >= 0 && tick < clock.ticks) return new Date(clock.tickISOs![tick]).toISOString();
+    // Scheduling beyond the authored horizon stays possible, but cannot invent
+    // another working day. The runtime still rejects events outside the horizon.
+    const origin = tick < 0 ? startMs(clock) : Date.parse(clock.endISO!);
+    const delta = tick < 0 ? tick : tick - clock.ticks;
+    return new Date(origin + delta * clock.simMinutesPerTick * MS_PER_MINUTE).toISOString();
+  }
   return new Date(startMs(clock) + tick * clock.simMinutesPerTick * MS_PER_MINUTE).toISOString();
 }
 
@@ -60,6 +97,24 @@ export function tickToISO(clock: Clock, tick: number): string {
 export function isoToTick(clock: Clock, iso: string): number {
   const ms = Date.parse(iso);
   if (Number.isNaN(ms)) throw new RangeError(`not a date: "${iso}"`);
+  if (clock.tickISOs !== undefined || clock.endISO !== undefined) {
+    validateClock(clock);
+    offsetMinutes(iso);
+    const start = startMs(clock);
+    const end = Date.parse(clock.endISO!);
+    if (ms < start) return Math.floor((ms - start) / (clock.simMinutesPerTick * MS_PER_MINUTE));
+    if (ms >= end) return clock.ticks + Math.floor((ms - end) / (clock.simMinutesPerTick * MS_PER_MINUTE));
+    // Off-hours map to the most recent opportunity, never to a future action.
+    // Deadline checkers must compare receipt instants, not this lossy index.
+    let lo = 0;
+    let hi = clock.ticks;
+    while (lo < hi) {
+      const mid = Math.floor((lo + hi) / 2);
+      if (Date.parse(clock.tickISOs![mid]) <= ms) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo - 1;
+  }
   return Math.floor((ms - startMs(clock)) / (clock.simMinutesPerTick * MS_PER_MINUTE));
 }
 

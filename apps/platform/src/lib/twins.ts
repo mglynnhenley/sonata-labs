@@ -33,6 +33,10 @@ export const TWIN_LABELS: Record<TwinName, string> = {
   calendar: "Calendar",
   attio: "Attio",
   "google-docs": "Google Docs",
+  "google-ads": "Google Ads",
+  linkedin: "LinkedIn",
+  excel: "Excel",
+  desk: "Desk",
 };
 
 /** What each clone is for, for the settings page and the first-run strip. */
@@ -42,6 +46,10 @@ export const TWIN_BLURBS: Record<TwinName, string> = {
   calendar: "Events, invites, RSVPs and free/busy across the whole cast.",
   attio: "Records, deals, notes and tasks, with every value versioned the way Attio does it.",
   "google-docs": "Documents an agent can read, revise and create, over a real index space.",
+  "google-ads": "Campaigns, budgets and spend, queried with real GAQL.",
+  linkedin: "Company posts, comments and reactions, addressed by URN.",
+  excel: "Reporting workbooks with editable cells, formulas, original snapshots and review history.",
+  desk: "The line-of-business system a continuity week runs on: records, receipts, submissions and an append-only event log.",
 };
 
 /** Where the twin actually is: env-resolved, same precedence as every other
@@ -183,6 +191,9 @@ function describe(twin: TwinName, body: unknown): { ok: boolean; detail: string 
   if (typeof b.calendars === "number") counts.push(`${b.calendars} calendars`);
   if (typeof b.records === "number") counts.push(`${b.records} records`);
   if (typeof b.documents === "number") counts.push(`${b.documents} documents`);
+  if (typeof b.campaigns === "number") counts.push(`${b.campaigns} campaigns`);
+  if (typeof b.posts === "number") counts.push(`${b.posts} posts`);
+  if (typeof b.workbooks === "number") counts.push(`${b.workbooks} workbooks`);
   return { ok: true, detail: counts.length > 0 ? counts.join(" · ") : `${TWIN_LABELS[twin]} is up` };
 }
 
@@ -359,7 +370,10 @@ export async function startTwin(twin: TwinName): Promise<TwinStatus> {
     cwd: findRepoRoot(),
     detached: true,
     stdio: ["ignore", log, log],
-    env: process.env,
+    // PORT is blanked for the same reason the aggregate dev scripts blank it:
+    // this dashboard's own PORT (3000) would otherwise fan out into the twin's
+    // `PORT=${PORT:-3101}` default and bind the child onto its parent's port.
+    env: { ...process.env, PORT: "" },
   });
 
   const reg = registry();

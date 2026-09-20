@@ -1,4 +1,5 @@
 import type { CriterionResult, RunStatus, VerdictOutcome } from "@sonata/core";
+import { runExecution } from "@sonata/core";
 import {
   cancel,
   reconcileRuns,
@@ -6,31 +7,18 @@ import {
   status as engineStatus,
   type RunPoll as EnginePoll,
 } from "@/lib/engine/episode";
+import { listLiveRuns } from "@/lib/db";
+import { liveSessionFor, sessionTwinLinks } from "@/lib/engine/session";
 import { readRun } from "../../results/_lib/artifacts";
 import { getEpisode } from "./records";
 import { getDoc, listDocs, putDoc } from "./store";
 import type { RunDetail, RunSummary, StartRunInput } from "./types";
 
-// THE DASHBOARD'S VIEW OF A RUN.
-//
-// An adapter, and nothing else. Starting a day, playing it, stopping it and
-// scoring it all live in src/lib/engine/episode.ts — the same path `sonata run`
-// takes — so a day started from the Start button and a day started from the
-// terminal are the same day, driven by the same code, costing the same money.
-// What used to be here was a scripted stand-in with a seeded coin flip where the
-// agent should have been; it is gone, and there is no flag that brings it back.
-//
-// This file translates. The engine speaks `RunView`; the dashboard's routes and
-// components speak `RunDoc`/`RunSummary`/`RunDetail`, which are unchanged. The
-// document store is kept as an INDEX of the runs this dashboard started — it is
-// what the runs list and the scenario cards read — and it is refreshed from the
-// engine on read, never written ahead of it.
-//
-// Two things the engine cannot do, said out loud rather than faked:
-//   - PAUSE. A day is a chain of live model calls; the engine's tick callback is
-//     synchronous, so there is no seam to hold one open at. `pauseRun` says so.
-//   - LIVE SPEND. Cost is summed from the run's trace when the day ends, so
-//     `cost` is null while it plays rather than a running $0.00.
+// Dashboard projection of the shared Inspect launcher. The document store is
+// an index for list/live views; the session and saved artifact hold the evidence.
+// Agent calls live in Inspect, while Sonata owns the clock, colleagues and judge.
+// Pause is unsupported. Stop finalizes the workplace and cancels the worker.
+// Cost remains unknown until the captured agent/world/judge traces are joined.
 
 /** The run as this dashboard stores it. No bookkeeping of its own any more. */
 export type RunDoc = RunDetail;
@@ -48,7 +36,7 @@ function isLive(status: RunStatus): boolean {
 
 export function toSummary(doc: RunDoc): RunSummary {
   const { ticks: _ticks, story: _s, task: _k, clock: _cl, ...summary } = doc;
-  return summary;
+  return { ...summary, twinLinks: sessionTwinLinks(doc.runId) };
 }
 
 /**
@@ -57,7 +45,7 @@ export function toSummary(doc: RunDoc): RunSummary {
  * the two shapes diverge again there is one place to put the difference.
  */
 export function toDetail(doc: RunDoc): RunDetail {
-  return doc;
+  return { ...doc, twinLinks: sessionTwinLinks(doc.runId) };
 }
 
 function project(stored: RunDoc, poll: EnginePoll): RunDoc {
@@ -91,7 +79,13 @@ function project(stored: RunDoc, poll: EnginePoll): RunDoc {
  * to say the wall clock advanced.
  */
 function refresh(stored: RunDoc): RunDoc {
-  if (!isLive(stored.status)) return stored;
+  if (!isLive(stored.status)) {
+    const execution = runExecution(stored);
+    return execution.executed ? stored : {
+      ...stored, score: null, autonomy: null,
+      ...(execution.reason ? { error: stored.error ?? execution.reason } : {}),
+    };
+  }
 
   // `engineStatus` reconciles as it reads: a run whose OWNER has gone away comes
   // back terminal, with the tick it reached and the last thing it said.
@@ -149,6 +143,33 @@ export function activeRun(): RunDoc | undefined {
   return undefined;
 }
 
+/** A day still being played against a scenario, and which kind of day it is. */
+export interface LiveWork {
+  kind: "run" | "session";
+  id: string;
+}
+
+/**
+ * Whatever is mid-flight against this scenario right now, or undefined.
+ *
+ * Exists so an edit to a scenario's rubric can refuse while a day is being
+ * graded against it — a run embeds the spec it plays, but a session reads it
+ * back at scoring time, and either way a benchmark whose criteria moved
+ * halfway through is not a benchmark.
+ *
+ * Reads the ROWS, not this dashboard's run documents: `sonata run` and the
+ * benchmark runner drive days this index has never heard of, and their rubric
+ * is just as much in play. Both reads reconcile as they go, so a day whose
+ * driver died does not keep its scenario locked until someone opens Home.
+ */
+export function liveWorkFor(episodeId: string): LiveWork | undefined {
+  const run = listLiveRuns().find((r) => r.episodeId === episodeId);
+  if (run) return { kind: "run", id: run.id };
+
+  const session = liveSessionFor(episodeId);
+  return session ? { kind: "session", id: session.sessionId } : undefined;
+}
+
 // ---------------------------------------------------------------------------
 // Starting
 // ---------------------------------------------------------------------------
@@ -162,6 +183,7 @@ export function activeRun(): RunDoc | undefined {
  */
 export function startRun(input: StartRunInput): RunDoc {
   const view = startEpisode({
+    ...input,
     episodeId: input.episodeId,
     model: input.model,
     ticks: input.ticks,

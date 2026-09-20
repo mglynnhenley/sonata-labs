@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { buildTools, callTool } from "../src/server";
 import { fetchFake, gmailMessage, testConfig } from "./fixtures";
 import type { Call } from "./fixtures";
+import { configFromEnv, envFor } from "../src/config";
 
 // What actually goes on the wire. The connector's promise is that a tool call
 // from an outside agent hits the same twin route the benchmark hits, with the
@@ -28,6 +29,18 @@ function text(result: Awaited<ReturnType<typeof callTool>>): string {
 }
 
 describe("tool execution", () => {
+  it("uses the session's supplied Gmail grant without asking for a control token", async () => {
+    const config = configFromEnv({ SONATA_TOKEN: "employee", SONATA_GMAIL_URL: "http://gmail.test",
+      SONATA_GMAIL_OAUTH: JSON.stringify({ accessToken: "issued-mailbox-access", refreshToken: "issued-refresh", clientId: "sonata-harness" }) });
+    const fake = fetchFake({ "/messages": { messages: [] } });
+    const { entries } = buildTools({ config, twins: ["gmail"], fetchImpl: fake.fetch });
+    const result = await callTool(entries, "gmail_list_messages", {}, twin => config.urls[twin]);
+    expect(result.isError).toBeUndefined();
+    expect(fake.find("/api/sandbox/token")).toBeUndefined();
+    expect(fake.find("/messages")?.headers.Authorization).toBe("Bearer issued-mailbox-access");
+    expect(envFor(config, ["gmail"]).SONATA_GMAIL_OAUTH).toBe(JSON.stringify(config.gmailOAuth));
+  });
+
   it("mints an access token before reading Gmail, and never sends the admin token there", async () => {
     const { fake, call } = harness({
       "/messages": { messages: [{ id: "m1", threadId: "t1" }], resultSizeEstimate: 1 },

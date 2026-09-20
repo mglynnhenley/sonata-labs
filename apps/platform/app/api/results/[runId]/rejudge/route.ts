@@ -1,18 +1,14 @@
+import { AssessmentBusyError } from "@/lib/engine/assessments";
+import { CloneBusyError } from "@/lib/engine/cloneLease";
 import { NextResponse } from "next/server";
 import { runExecution } from "@sonata/core";
 import { judgeRun } from "@/lib/engine/verdict";
 import { isModelId } from "@/lib/models";
 import { readRun, readSpec } from "../../../../results/_lib/artifacts";
+import { getRun as liveRun } from "../../../_lib/runner";
 
-// Re-judge a saved run with a different model. Nothing is re-run: the day on
-// disk is read again, so the only thing that can change is the judge's half of
-// the verdict — the findings and the diagnosis, not the deterministic score.
-//
-// The work is `judgeRun`, the same function the engine judges a day with when it
-// ends. It writes `<runId>.judge.json`, folds the report into the run artifact
-// AND moves the relational row Home reads. Calling the judge from here and
-// writing back by hand is how this button used to leave the two pages quoting
-// different numbers for the same run.
+// Assess the saved day through the same Inspect scorer used at run completion.
+// Each attempt has its own record; only the latest successful display copy moves.
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -36,7 +32,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ runId: 
 
   // Judging a day that is still being written would score a fragment at full
   // price, and the write-back would race the engine still appending ticks.
-  if (run.status === "queued" || run.status === "running") {
+  if (["queued", "running", "judging"].includes(liveRun(runId)?.status ?? run.status)) {
     return NextResponse.json(
       { error: "This run is still going. Let the day finish, then judge it." },
       { status: 409 },
@@ -49,23 +45,23 @@ export async function POST(req: Request, { params }: { params: Promise<{ runId: 
   const execution = runExecution(run);
   if (!execution.executed) {
     return NextResponse.json(
-      { error: `There is nothing for a judge to read. ${execution.reason ?? ""}`.trim() },
+      { error: `This run cannot be assessed. ${execution.reason ?? ""}`.trim() },
       { status: 400 },
     );
   }
 
   try {
-    const { report, autonomy, spend } = await judgeRun(run, readSpec(runId), {
+    const { assessment, report, autonomy, spend } = await judgeRun(run, readSpec(runId), {
       ...(model ? { model } : {}),
       signal: req.signal,
       // Somebody pressed a button. Every other caller of `judgeRun` is a day
       // ending, and the page says which of the two it is looking at.
       manual: true,
     });
-    return NextResponse.json({ report, autonomy, spend });
+    return NextResponse.json({ assessmentId: assessment.id, report, autonomy, spend });
   } catch (err) {
     // The message is shown verbatim in the dialog, so it has to say what to do
     // next: a missing key, a bad slug and a timeout are all recoverable.
-    return NextResponse.json({ error: (err as Error).message }, { status: 502 });
+    return NextResponse.json({ error: (err as Error).message }, { status: err instanceof AssessmentBusyError || err instanceof CloneBusyError ? 409 : 502 });
   }
 }

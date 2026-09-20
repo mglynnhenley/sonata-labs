@@ -9,6 +9,7 @@ import {
   getWorkspaceId,
   getWorkspaceName,
   getWorkspaceSlug,
+  crmWriteTime,
 } from "../store/meta";
 import { listAttributes, resolveObject, statusesByAttribute } from "../store/objects";
 import { activeValuesFor, getRecordRow } from "../store/records";
@@ -30,6 +31,8 @@ import {
 
 export interface AttioCtx extends ShapeCtx {
   db: Database;
+  /** Version-safe timestamp; audit logging still uses wall time. */
+  readonly writeTimeMs: number;
   /** Who a write made through this API is attributed to. */
   actor: Actor;
 }
@@ -48,6 +51,7 @@ export async function handleAttio(
     const db = liveDb();
     return await fn({
       db,
+      get writeTimeMs() { return crmWriteTime(db); },
       workspaceId: getWorkspaceId(db),
       workspaceSlug: getWorkspaceSlug(db),
       workspaceName: getWorkspaceName(db),

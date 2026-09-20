@@ -7,8 +7,10 @@ import { COOKIE_SECRET, IS_PROD } from "./oauth-config";
 // `state` + PKCE `verifier` between the login redirect and the callback. Both are
 // AES-256-GCM sealed so the browser can neither read nor forge them.
 
-const SESSION_COOKIE = "gm_session";
-const FLOW_COOKIE = "gm_oauth_flow";
+// Cookies are host-wide, so concurrent workplaces on different ports need distinct names.
+const COOKIE_PREFIX = process.env.GMAIL_UI_COOKIE_PREFIX || "gm";
+const SESSION_COOKIE = `${COOKIE_PREFIX}_session`;
+const FLOW_COOKIE = `${COOKIE_PREFIX}_oauth_flow`;
 
 export interface Session {
   access_token: string;

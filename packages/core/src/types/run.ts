@@ -1,9 +1,12 @@
+import type { WorldObservation } from "../twin";
+import type { SessionActionRecord, SessionTimingPolicy } from "../timing";
 // Type-only, so the cycle with `twin.ts` (which imports this file for
 // `AgentTrace`) is erased at compile time and costs nothing at runtime.
 import type { TwinAuditRow } from "../twin";
 import type { BeatBody, Criterion } from "./episode";
 import type { EpisodeJudgeReport, TwinSnapshot } from "./judge";
 import type { ByTwin, PersonRef, TwinName } from "./world";
+import type { BenchmarkReport } from "./benchmark";
 
 // The artifact a run leaves behind. It is written once and read forever: the
 // live dashboard, the step-by-step replay, the judge and the benchmark table all
@@ -115,6 +118,7 @@ export interface WorldAssessment {
 }
 
 export interface BeatFired {
+  observation?: WorldObservation;
   beatId: string;
   /** `BeatMeta.ref`, carried through so criteria can resolve it to `handle`. */
   ref?: string;
@@ -139,6 +143,7 @@ export interface BeatFired {
  * go through one injector — the only difference is who wrote it.
  */
 export type DirectorEvent = BeatBody & {
+  observation?: WorldObservation;
   id: string;
   /** The persona who acted, by `Person.id`. */
   personId: PersonRef;
@@ -178,6 +183,8 @@ export type AgentStep =
   | { kind: "escalation"; seq: number; at: number; text: string };
 
 export interface TickRecord {
+  /** Delivered actions observed at this tick, separate from the agent step timeline. */
+  observedActions?: TwinAuditRow[];
   tick: number;
   /** Simulated time at the start of the tick, from `tickToISO`. */
   simTimeISO: string;
@@ -188,10 +195,13 @@ export interface TickRecord {
   agentSteps: AgentStep[];
   /** Engine notes: why the director stayed quiet, a twin that returned 500. */
   notes: string[];
+  /** A failed harness/provider turn. Partial agent actions remain in agentSteps. */
+  harnessError?: string;
 }
 
 /** One row of the run's story, flattened across sources for the judge and the UI. */
 export interface TimelineEntry {
+  observation?: WorldObservation;
   tick: number;
   simTimeISO: string;
   /** `world` = scripted beat, `director` = a person reacting, `agent` = the agent. */
@@ -279,6 +289,34 @@ export interface EpisodeVerdict {
 export type RunStatus = "queued" | "running" | "judging" | "done" | "failed" | "aborted";
 
 export interface EpisodeRun {
+  timing?: SessionTimingPolicy;
+  /** Admitted/rejected operation reservations, including reads and failed calls. */
+  actionLedger?: SessionActionRecord[];
+  /** Present when Inspect drove the tested agent. The original transcript is retained. */
+  workplace?: {
+    isolation: "per-run-local-processes" | "docker-per-run-v1";
+    directory: string;
+    urls: Partial<Record<TwinName, string>>;
+    snapshotHashes: Partial<Record<TwinName, string>>;
+    agentUrls?: Partial<Record<TwinName, string>>;
+    scenarioSha256?: string;
+    scriptHashes?: Record<string, string>;
+    images?: { version: number; sourceSha256: string; apps: { image: string; id: string }; agent: { image: string; id: string } };
+  };
+  inspect?: {
+    runner: "inspect";
+    log: string | null;
+    transcriptUrl: string;
+    sessionId: string;
+    status: string;
+    agentCallsCaptured: number;
+    modelGateway?: { usd: number; calls: number; unpriced: number };
+    timingPolicy: SessionTimingPolicy["policy"];
+  };
+  /** Colleague context semantics; absent in historical artifacts. */
+  worldContextVersion?: "recipient-observations-v1";
+  /** Deterministic domain evidence and coverage, independent of the model judge. */
+  benchmark?: BenchmarkReport;
   runId: string;
   specId: string;
   /** Denormalized so a runs list renders without loading every spec. */

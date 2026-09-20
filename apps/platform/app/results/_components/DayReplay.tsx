@@ -5,7 +5,9 @@ import type {
   AttioBeatBody,
   AttioWriteValue,
   BeatBody,
+  GoogleAdsBeatBody,
   GoogleDocsBeatBody,
+  LinkedInBeatBody,
   TwinName,
 } from "@sonata/core";
 import {
@@ -19,8 +21,19 @@ import {
   IconBolt,
   IconCalendar,
   IconDoc,
+  IconFeed,
   IconInfo,
   IconMail,
+  LogoAttio,
+  LogoGmail,
+  LogoGoogleAds,
+  LogoGoogleCalendar,
+  LogoGoogleDocs,
+  LogoLinkedIn,
+  LogoDesk,
+  LogoExcel,
+  LogoSlack,
+  IconTrend,
   IconUsers,
   IconMessage,
   IconSearch,
@@ -54,14 +67,22 @@ const TWIN_MARKER: Record<TwinName, string> = {
   calendar: "border-sn-calendar-line bg-sn-calendar-soft text-sn-calendar-ink",
   attio: "border-sn-attio-line bg-sn-attio-soft text-sn-attio-ink",
   "google-docs": "border-sn-google-docs-line bg-sn-google-docs-soft text-sn-google-docs-ink",
+  "google-ads": "border-sn-google-ads-line bg-sn-google-ads-soft text-sn-google-ads-ink",
+  linkedin: "border-sn-linkedin-line bg-sn-linkedin-soft text-sn-linkedin-ink",
+  excel: "border-sn-excel-line bg-sn-excel-soft text-sn-excel-ink",
+  desk: "border-sn-desk-line bg-sn-desk-soft text-sn-desk-ink",
 };
 
-const TWIN_ICON: Record<TwinName, typeof IconMail> = {
-  gmail: IconMail,
-  slack: IconMessage,
-  calendar: IconCalendar,
-  attio: IconUsers,
-  "google-docs": IconDoc,
+const TWIN_ICON: Record<TwinName, typeof LogoGmail> = {
+  gmail: LogoGmail,
+  slack: LogoSlack,
+  calendar: LogoGoogleCalendar,
+  attio: LogoAttio,
+  "google-docs": LogoGoogleDocs,
+  "google-ads": LogoGoogleAds,
+  linkedin: LogoLinkedIn,
+  excel: LogoExcel,
+  desk: LogoDesk,
 };
 
 const SOURCE_LABEL: Record<Moment["source"], string> = {
@@ -348,7 +369,9 @@ function payloadLines(body: BeatBody, people: People): Array<{ label: string; va
     ];
   }
   if (body.twin === "attio") return crmLines(body, who);
-  return documentLines(body, who);
+  if (body.twin === "google-docs") return documentLines(body, who);
+  if (body.twin === "google-ads") return campaignLines(body);
+  return feedLines(body, who);
 }
 
 /** A CRM attribute bag, one row per attribute — the way the record reads it back. */
@@ -410,6 +433,57 @@ function documentLines(
     { label: "Document", value: body.payload.documentRef },
     { label: "Found", value: body.payload.find },
     { label: "Replaced with", value: body.payload.replaceWith },
+  ];
+}
+
+function campaignLines(body: GoogleAdsBeatBody): Array<{ label: string; value: string }> {
+  if (body.kind === "spend") {
+    const p = body.payload;
+    return [
+      { label: "Ad group", value: p.adGroup },
+      ...(p.date ? [{ label: "Day", value: p.date }] : []),
+      { label: "Traffic", value: `${p.impressions} impressions, ${p.clicks} clicks` },
+      { label: "Cost", value: `${(p.costMicros / 1_000_000).toFixed(2)}` },
+    ];
+  }
+  // Either half is legitimate: a name for a campaign the world was seeded with,
+  // a ref for the second half of a pair.
+  const campaign = body.payload.campaign ?? body.payload.campaignRef ?? "unnamed";
+  return body.kind === "status"
+    ? [
+        { label: "Campaign", value: campaign },
+        { label: "Status", value: body.payload.status },
+      ]
+    : [
+        { label: "Campaign", value: campaign },
+        { label: "Daily budget", value: `${(body.payload.amountMicros / 1_000_000).toFixed(2)}` },
+      ];
+}
+
+function feedLines(
+  body: LinkedInBeatBody,
+  who: (ref: string) => string,
+): Array<{ label: string; value: string }> {
+  // No `from` is the company page acting, which is an actor and not a gap.
+  const actor = body.payload.from ? who(body.payload.from) : "the company page";
+  if (body.kind === "post") {
+    return [
+      { label: "Posted by", value: actor },
+      { label: "Post", value: body.payload.commentary },
+      ...(body.payload.visibility ? [{ label: "Visible to", value: body.payload.visibility }] : []),
+    ];
+  }
+  if (body.kind === "comment") {
+    const p = body.payload;
+    return [
+      { label: p.parentRef ? "Replying to" : "On", value: p.parentRef ?? p.postRef ?? "the feed" },
+      { label: "From", value: actor },
+      { label: "Comment", value: p.text },
+    ];
+  }
+  return [
+    { label: "From", value: actor },
+    { label: "Reacted", value: `${body.payload.reactionType ?? "LIKE"} on ${body.payload.entityRef}` },
   ];
 }
 

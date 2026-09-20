@@ -1,7 +1,7 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { TWIN_NAMES } from "@sonata/core";
+import { TWIN_NAMES, type TwinName } from "@sonata/core";
 import { assembleWorld } from "../src/generate";
 import {
   buildSeedRequest,
@@ -9,7 +9,9 @@ import {
   resolveAttioSeed,
   resolveCalendarSeed,
   resolveGmailSeed,
+  resolveGoogleAdsSeed,
   resolveGoogleDocsSeed,
+  resolveLinkedInSeed,
   resolveSlackSeed,
   twinBaseUrl,
   type SeedRequest,
@@ -85,6 +87,19 @@ describe("resolveSlackSeed", () => {
 
 describe("resolveCalendarSeed", () => {
   const wire = resolveCalendarSeed(built.world, built.calendar, NOW);
+
+  it("addresses shared personal calendars by colleague email without duplicating the owner's primary id", () => {
+    const [me, colleague] = built.world.cast;
+    const seeded = resolveCalendarSeed(built.world, { calendars: [
+      { name: "Main", ownerPersonId: me.id, description: "" },
+      { name: me.name, ownerPersonId: me.id, description: "Extra" },
+      { name: colleague.name, ownerPersonId: colleague.id, description: "Personal" },
+      { name: "Hiring", ownerPersonId: colleague.id, description: "Shared" },
+    ], events: [] }, NOW);
+    expect(seeded.calendars[0].id).toBe(me.email);
+    expect(seeded.calendars[2].id).toBe(colleague.email);
+    expect(new Set(seeded.calendars.map(c => c.id)).size).toBe(4);
+  });
 
   it("addresses the owner's primary calendar by their email, as Google does", () => {
     expect(wire.ownerEmail).toBe("priya.raman@northwindledger.com");
@@ -165,13 +180,115 @@ describe("resolveGoogleDocsSeed", () => {
   });
 });
 
+describe("resolveGoogleAdsSeed", () => {
+  const wire = resolveGoogleAdsSeed(built.world, built.googleAds, NOW);
+
+  it("mints decimal ids and funds every campaign, because a budget is required", () => {
+    expect(wire.customer.id).toMatch(/^[1-9]\d{9}$/);
+    expect(wire.customer.timezone).toBe("America/New_York");
+    expect(wire.budgets).toHaveLength(wire.campaigns.length);
+    expect(wire.budgets[0].amountMicros).toBe(250_000_000);
+    expect(wire.campaigns[0].budgetId).toBe(wire.budgets[0].id);
+    expect(wire.campaigns[0].advertisingChannelType).toBe("SEARCH");
+    expect(wire.adGroups[0].type).toBe("SEARCH_STANDARD");
+  });
+
+  it("expands one typical day into a month of dated rows, yesterday backwards", () => {
+    const rows = wire.dailyStats.filter((r) => r.adGroupId === wire.adGroups[0].id);
+    expect(rows).toHaveLength(30);
+    expect(new Set(rows.map((r) => r.date)).size).toBe(30);
+    // LAST_7_DAYS does not include today, so history stops at yesterday.
+    const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(
+      new Date(NOW),
+    );
+    expect(rows.some((r) => r.date === today)).toBe(false);
+    // The normalizer already capped clicks at impressions; the wobble keeps it.
+    expect(rows.every((r) => r.clicks <= r.impressions)).toBe(true);
+    expect(rows.every((r) => r.costMicros % 1_000_000 === 0)).toBe(true);
+  });
+
+  it("is deterministic, so a report run twice returns the same numbers", () => {
+    expect(resolveGoogleAdsSeed(built.world, built.googleAds, NOW)).toEqual(wire);
+  });
+
+  it("still funds an account for a company that advertises nothing", () => {
+    // The twin refuses a seed carrying no budget at all, so a world with no
+    // campaigns has to arrive with an empty account rather than a broken one.
+    const quiet = resolveGoogleAdsSeed(built.world, { campaigns: [] }, NOW);
+    expect(quiet.campaigns).toEqual([]);
+    expect(quiet.dailyStats).toEqual([]);
+    expect(quiet.budgets).toHaveLength(1);
+    expect(quiet.budgets[0].amountMicros).toBe(100_000_000);
+  });
+});
+
+describe("resolveLinkedInSeed", () => {
+  const wire = resolveLinkedInSeed(built.world, built.linkedin, NOW);
+
+  it("gives every cast member an identity and the owner the page", () => {
+    expect(wire.members.map((m) => m.personId)).toEqual(["priya", "marcus", "gerald"]);
+    expect(wire.members.find((m) => m.personId === "priya")!.pageAdmin).toBe(true);
+    expect(wire.organization.vanityName).toBe("northwind-ledger");
+  });
+
+  it("posts as the page when nobody in the cast wrote it", () => {
+    const [post] = wire.posts;
+    expect(post.authorKind).toBe("organization");
+    expect(post.authorEmail).toBeUndefined();
+    expect(post.id).toMatch(/^[1-9]\d{11}$/);
+    expect(post.publishedISO).toBe(new Date(NOW - 2000 * 60_000).toISOString());
+  });
+
+  it("keeps a thread one level deep and dates every reply after its parent", () => {
+    const [comment] = wire.posts[0].comments;
+    expect(comment.actorEmail).toBe("gerald.pike@halloranpike.com");
+    // Depth two was flattened up beside its parent, and the reply that claimed
+    // to predate the comment it answers was pulled back to it.
+    expect(comment.replies).toHaveLength(2);
+    expect(comment.replies!.every((r) => !r.replies)).toBe(true);
+    expect(comment.replies![0].createdISO).toBe(new Date(NOW - 1000 * 60_000).toISOString());
+    const ids = wire.posts.flatMap((p) => p.comments.flatMap((c) => [c.id, ...(c.replies ?? []).map((r) => r.id)]));
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it("leaves a draft unpublished and unengaged, which is the only state it can be in", () => {
+    const draft = wire.posts.find((p) => p.lifecycleState === "DRAFT")!;
+    expect(draft.comments).toEqual([]);
+    expect(draft.reactions).toEqual([]);
+  });
+
+  it("reacts once per person, and only for people the page has heard of", () => {
+    expect(wire.posts[0].reactions.map((r) => r.actorEmail)).toEqual([
+      "marcus.bell@northwindledger.com",
+    ]);
+    expect(wire.posts[0].reactions[0].reactionType).toBe("LIKE");
+  });
+});
+
 describe("buildSeedRequest", () => {
+  it("requires an explicit workbook seed and preserves its records", () => {
+    expect(() => buildSeedRequest(built, "excel", NOW)).toThrow(/no excel history/);
+    const workbook = { id: "review", title: "Institution workbook", revision: 1, sheets: [{ id: "investors", name: "Investors", columns: [{ key: "id", label: "Investor ID", type: "text" as const }], rows: [{ id: "00101", values: { id: "00101" } }] }] };
+    const request = buildSeedRequest({ ...built, excel: { workbooks: [workbook] } }, "excel", NOW);
+    expect(request.twin).toBe("excel");
+    expect(request.seed).toMatchObject({ world: built.world, workbooks: [workbook], promoteToSnapshot: true });
+  });
+
+  // Two surfaces are not projections of a cloned company. Excel's workbooks come
+  // from the scenario; the desk's ledger comes from its authored continuity case.
+  // Named rather than skipped inline, so adding a third is a decision.
+  const NOT_FROM_A_CLONE: TwinName[] = ["excel", "desk"];
+
+  it("refuses, by name, a surface no amount of re-cloning can write", () => {
+    expect(() => buildSeedRequest(built, "desk", NOW)).toThrow(/not seeded from a cloned company/);
+  });
+
   it("is pure: the same world and instant build the same body", () => {
     expect(buildSeedRequest(built, "gmail", NOW)).toEqual(buildSeedRequest(built, "gmail", NOW));
   });
 
   it("labels the body with the twin it is for, so a mis-route is a 400", () => {
-    for (const twin of TWIN_NAMES) {
+    for (const twin of TWIN_NAMES.filter(t => !NOT_FROM_A_CLONE.includes(t))) {
       const request = buildSeedRequest(built, twin, NOW);
       expect(request.twin).toBe(twin);
       // Every twin gets the whole shared world — that is what stops three twins
@@ -187,7 +304,7 @@ describe("buildSeedRequest", () => {
   // therefore resolves something, and every one of them resolves it from the
   // same cast.
   it("builds a real seed for every twin, out of the one world", () => {
-    for (const twin of TWIN_NAMES) {
+    for (const twin of TWIN_NAMES.filter(t => !NOT_FROM_A_CLONE.includes(t))) {
       const seed = buildSeedRequest(built, twin, NOW).seed;
       expect(seed.nowISO).toBe(new Date(NOW).toISOString());
       expect(seed.world.cast.map((p) => p.id)).toEqual(["priya", "marcus", "gerald"]);
@@ -320,21 +437,21 @@ describe("injectWorld over HTTP", () => {
 
   it("reports a world that cannot be resolved at all, and still seeds the rest", async () => {
     seen.length = 0;
-    // A world stored before the CRM existed. Its attio seed cannot be built —
-    // and that is a line in the report rather than a stack trace out of the
-    // whole load, with every other surface seeded regardless.
-    const { attio: _attio, ...legacy } = built;
-    const report = await injectWorld(legacy as typeof built, {
-      twins: ["gmail", "attio"],
-      baseUrls: { gmail: base, attio: base },
+    // A time zone that is not a zone. Every ads date is resolved in it, so the
+    // ads seed cannot be built — and that is a line in the report rather than a
+    // stack trace out of the whole load.
+    const broken = { ...built, world: { ...built.world, timezone: "Mars/Phobos" } };
+    const report = await injectWorld(broken, {
+      twins: ["gmail", "google-ads"],
+      baseUrls: { gmail: base, "google-ads": base },
       now: NOW,
     });
 
     expect(seen.map((s) => s.body.twin)).toEqual(["gmail"]);
     expect(report.ok).toBe(false);
-    const crm = report.results.find((r) => r.twin === "attio")!;
-    expect(crm.status).toBe(0);
-    expect(crm.error).toContain("cloned before the attio twin existed");
+    const ads = report.results.find((r) => r.twin === "google-ads")!;
+    expect(ads.status).toBe(0);
+    expect(ads.error).toContain("Mars/Phobos");
     expect(report.results.find((r) => r.twin === "gmail")!.ok).toBe(true);
   });
 

@@ -31,6 +31,45 @@ function bearer(headers: Record<string, string> | undefined): string | undefined
 }
 
 describe("the credential each twin's provider API gets", () => {
+  it("keeps a distinct control credential out of provider calls", async () => {
+    const fake = fetchFake({ "/api/conversations.list": { ok: true }, "/api/sandbox/reset": { ok: true } });
+    const http = createTwinHttp("slack", { baseUrl: "http://slack.test", token: "employee", controlToken: "operator", fetchImpl: fake.fetch });
+    await http.get("/api/conversations.list");
+    await http.post("/api/sandbox/reset");
+    expect(bearer(fake.find("/api/conversations.list")?.headers)).toBe("employee");
+    expect(fake.find("/api/conversations.list")?.headers["X-Sandbox-Token"]).toBeUndefined();
+    expect(bearer(fake.find("/api/sandbox/reset")?.headers)).toBe("operator");
+  });
+
+  it("refreshes a supplied Gmail grant through OAuth without using the admin bridge", async () => {
+    const calls: Array<{ path: string; headers: Headers; body: string }> = [];
+    const http = createTwinHttp("gmail", { baseUrl: "http://gmail.test", token: "employee",
+      oauthCredentials: { accessToken: "expired", refreshToken: "refresh", clientId: "sonata-harness" },
+      fetchImpl: (async (url, init) => {
+        const path = new URL(String(url)).pathname;
+        const headers = new Headers(init?.headers);
+        calls.push({ path, headers, body: String(init?.body ?? "") });
+        if (path === "/oauth/token") return Response.json({ access_token: "renewed" });
+        return headers.get("authorization") === "Bearer renewed" ? Response.json({ messages: [] }) : new Response("expired", { status: 401 });
+      }) as typeof fetch,
+    });
+    await expect(http.get("/gmail/v1/users/me/messages")).resolves.toEqual({ messages: [] });
+    expect(calls.map(c => c.path)).toEqual(["/gmail/v1/users/me/messages", "/oauth/token", "/gmail/v1/users/me/messages"]);
+    expect(calls[1].headers.has("authorization")).toBe(false);
+    expect(new URLSearchParams(calls[1].body).get("refresh_token")).toBe("refresh");
+    expect(calls.every(c => !c.headers.has("x-sandbox-token"))).toBe(true);
+  });
+
+  it("does not fall back to admin minting when the supplied refresh grant is rejected", async () => {
+    const paths: string[] = [];
+    const http = createTwinHttp("gmail", { baseUrl: "http://gmail.test", token: "employee",
+      oauthCredentials: { accessToken: "expired", refreshToken: "revoked", clientId: "sonata-harness" },
+      fetchImpl: (async url => { paths.push(new URL(String(url)).pathname); return new Response("revoked", { status: 401 }); }) as typeof fetch,
+    });
+    await expect(http.get("/gmail/v1/users/me/messages")).rejects.toThrow("401");
+    expect(paths).toEqual(["/gmail/v1/users/me/messages", "/oauth/token"]);
+  });
+
   it("mints an OAuth access token for gmail and never sends the admin token to /gmail/v1", async () => {
     const { fake, http } = client("gmail", {
       "/api/sandbox/token": { access_token: "ya29.minted" },

@@ -16,10 +16,4 @@ export const ROUTES = {
   settings: "/settings",
   /** The only run URL. Live and finished are states of one page, not two addresses. */
   run: (id: string) => `/runs/${id}`,
-  /**
-   * The first-run button. `/runs` opens with the demo world and the stock
-   * escalation scenario preselected and the day already starting — the spec's
-   * five-minutes-to-magic path, and the one link that must never 404.
-   */
-  guidedDemo: "/runs?demo=1",
 } as const;

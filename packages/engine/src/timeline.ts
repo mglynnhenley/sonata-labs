@@ -4,7 +4,9 @@ import type {
   BeatFired,
   CalendarBeatBody,
   DirectorEvent,
+  GoogleAdsBeatBody,
   GoogleDocsBeatBody,
+  LinkedInBeatBody,
   TickRecord,
   TimelineEntry,
   TwinName,
@@ -68,9 +70,9 @@ export function describeEvent(event: DirectorEvent): string {
 }
 
 function bodyLabel(body: BeatBody & { personId?: string }): string {
-  // A director event names its actor; a beat body reaching here without one is
-  // an actor we genuinely do not know, so the line says so rather than guessing.
-  const who = body.personId ?? "someone";
+  // The company page has no `personId`, and on LinkedIn that is not an unknown
+  // actor but a real one — so "someone" is the fallback everywhere else.
+  const who = body.personId ?? (body.twin === "linkedin" ? "the company page" : "someone");
   switch (body.twin) {
     case "gmail":
       return `${who} emailed: "${body.payload.subject}"`;
@@ -84,6 +86,10 @@ function bodyLabel(body: BeatBody & { personId?: string }): string {
       return attioLabel(body, who);
     case "google-docs":
       return docsLabel(body, who);
+    case "google-ads":
+      return adsLabel(body, who);
+    case "linkedin":
+      return linkedInLabel(body, who);
   }
 }
 
@@ -121,6 +127,32 @@ function docsLabel(body: GoogleDocsBeatBody, who: string): string {
       return `${who} added a section to "${body.payload.documentRef}"`;
     case "replace":
       return `${who} revised "${body.payload.find}" in "${body.payload.documentRef}"`;
+  }
+}
+
+function adsLabel(body: GoogleAdsBeatBody, who: string): string {
+  switch (body.kind) {
+    case "status":
+      return `${who} set a campaign to ${body.payload.status}`;
+    case "budget":
+      return `${who} moved a campaign's daily budget`;
+    case "spend":
+      // Nobody's name on this one: traffic arrives because the day happened,
+      // and putting a person in front of it would invent an actor.
+      return `spend landed on "${body.payload.adGroup}"`;
+  }
+}
+
+function linkedInLabel(body: LinkedInBeatBody, who: string): string {
+  switch (body.kind) {
+    case "post":
+      return `${who} posted on LinkedIn`;
+    case "comment":
+      return body.payload.parentRef
+        ? `${who} replied to a comment: "${body.payload.text}"`
+        : `${who} commented on a post: "${body.payload.text}"`;
+    case "reaction":
+      return `${who} reacted ${body.payload.reactionType ?? "LIKE"} on LinkedIn`;
   }
 }
 
@@ -193,6 +225,14 @@ function digestPhrase(twin: TwinName, kind: string): string {
       return "a change in the CRM";
     case "google-docs":
       return "a change in a document";
+    case "google-ads":
+      return "a change in the ads account";
+    case "excel":
+      return "a change in a workbook";
+    case "linkedin":
+      return kind === "reaction" ? "a new reaction on LinkedIn" : "new activity on LinkedIn";
+    case "desk":
+      return "a change in the desk ledger";
   }
 }
 
@@ -200,4 +240,20 @@ function digestPhrase(twin: TwinName, kind: string): string {
 export function recentHistory(ticks: TickRecord[], max: number): TimelineEntry[] {
   const all = runTimeline(ticks);
   return max >= all.length ? all : all.slice(all.length - max);
+}
+
+/** Colleague context never falls back to the unrestricted report timeline. */
+export function colleagueHistory(ticks: TickRecord[], limit: number): TimelineEntry[] {
+  const rows: TimelineEntry[] = [];
+  for (const tick of ticks) {
+    for (const row of tick.observedActions ?? []) {
+      if (row.observation) rows.push({ tick: tick.tick, simTimeISO: tick.simTimeISO,
+        source: "agent", twin: row.twin, text: `[from ${row.observation.actor ?? "unknown sender"}${row.observation.channelId ? ` in ${row.observation.channelId}` : ""}] ${row.observation.text}`, observation: row.observation });
+    }
+    for (const event of [...tick.beatsFired, ...tick.directorEvents]) {
+      if (event.observation && !event.error) rows.push({ tick: tick.tick, simTimeISO: tick.simTimeISO,
+        source: "world", twin: event.twin, text: `[from ${event.observation.actor ?? "unknown sender"}${event.observation.channelId ? ` in ${event.observation.channelId}` : ""}] ${event.observation.text}`, observation: event.observation });
+    }
+  }
+  return limit > 0 ? rows.slice(-limit) : [];
 }

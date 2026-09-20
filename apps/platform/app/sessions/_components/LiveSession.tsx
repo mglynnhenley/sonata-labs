@@ -71,11 +71,9 @@ const STATUS_LABEL: Record<RunStatus, string> = {
 
 export type LiveSessionProps = {
   initial: SessionPoll;
-  /** Where the clones are, so the agent can be pointed at them from this page. */
-  twinLinks: readonly { twin: TwinName; url: string }[];
 };
 
-export function LiveSession({ initial, twinLinks }: LiveSessionProps) {
+export function LiveSession({ initial }: LiveSessionProps) {
   const go = useGo();
   const { session, ticks, live, error, serverAt, stop, stopping } = useSessionStream(initial);
 
@@ -117,13 +115,16 @@ export function LiveSession({ initial, twinLinks }: LiveSessionProps) {
 
   const behind = rows.length - seen;
   const resultsHref = `/runs/${session.sessionId}`;
+  const manual = session.agentLabel.startsWith("Manual browser test");
 
   return (
     <div className="sn-stack-section">
       <PageHeader
         eyebrow={`Session · ${session.sessionId}`}
         title={session.title}
-        subtitle={`The world plays at ${compressionLabel(session.compression)} whether or not the agent is looking. Nothing here calls it — everything below was read out of the clones.`}
+        subtitle={manual
+          ? `The world plays at ${compressionLabel(session.compression)} while you work in the linked apps. Every saved change below was read out of the clones.`
+          : `The world plays at ${compressionLabel(session.compression)} whether or not the agent is looking. Nothing here calls it — everything below was read out of the clones.`}
         meta={
           <>
             <Badge status={STATUS_BADGE[session.status]} dot={live}>
@@ -172,7 +173,8 @@ export function LiveSession({ initial, twinLinks }: LiveSessionProps) {
         ticks={ticks}
         now={now}
         live={live}
-        twinLinks={twinLinks}
+        twinLinks={session.twinLinks ?? []}
+        manual={manual}
       />
 
       <Card padding="lg">
@@ -301,6 +303,7 @@ function AgentPanel({
   now,
   live,
   twinLinks,
+  manual,
 }: {
   pulse: PulseRead;
   session: SessionView;
@@ -308,6 +311,7 @@ function AgentPanel({
   now: number;
   live: boolean;
   twinLinks: readonly { twin: TwinName; url: string }[];
+  manual: boolean;
 }) {
   const alarm = pulse.tone === "failed";
   return (
@@ -348,7 +352,7 @@ function AgentPanel({
       {live && twinLinks.length > 0 ? (
         <div className="mt-6 flex flex-wrap items-center gap-2 border-t border-sn-line pt-5">
           <span className="text-sn-sm text-sn-subtle">
-            Your agent works here — anything it changes shows up above:
+            {manual ? "Work in these apps — anything you save shows up above:" : "Open this session's apps to review the work:"}
           </span>
           {twinLinks.map((link) => (
             <a key={link.twin} href={link.url} target="_blank" rel="noreferrer">

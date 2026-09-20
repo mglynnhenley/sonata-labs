@@ -161,7 +161,7 @@ export const filesGetUploadURLExternal: MethodHandler = ({ args, self }) => {
   pending.set(id, { id, filename, length });
   const base = process.env.SANDBOX_PUBLIC_URL || `http://localhost:${process.env.PORT || 3200}`;
   void self;
-  return ok({ upload_url: `${base}/api/sandbox/upload/${id}`, file_id: id });
+  return ok({ upload_url: `${base}/api/uploads/${id}`, file_id: id });
 };
 
 export function acceptUploadBytes(fileId: string, data: Buffer): boolean {

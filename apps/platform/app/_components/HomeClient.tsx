@@ -138,6 +138,23 @@ export function HomeClient({ initial }: HomeClientProps) {
         </div>
       ) : null}
 
+      {stats.scored === 0 ? (
+        // The dashboard's whole vocabulary — autonomy, passes, horizon — comes
+        // from scored days, and none exist yet. Without this line the stat row
+        // below is four em-dashes that read as a page that broke.
+        <div className="rounded-sn-md border border-sn-line bg-sn-surface px-4 py-3 text-sn-base text-sn-muted">
+          Nothing has been scored yet — every dash below fills in after your first full run.{" "}
+          <a
+            href={ROUTES.runs}
+            onClick={(e) => go(e, ROUTES.runs)}
+            className="font-medium text-sn-primary underline"
+          >
+            Start one from Runs
+          </a>
+          , or watch it live here while it plays.
+        </div>
+      ) : null}
+
       <section>
         <h2 className="sr-only">Scores so far</h2>
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">

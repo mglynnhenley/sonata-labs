@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Badge,
@@ -10,7 +10,6 @@ import {
   IconArrowRight,
   PageHeader,
   ProgressBar,
-  Spinner,
   useToast,
 } from "@sonata/ui";
 import { elapsed, simClock } from "@/lib/format";
@@ -21,16 +20,14 @@ import { usePoll } from "../../_components/usePoll";
 import { useSimulated } from "../../_components/useSimulated";
 import { useGo } from "../../_components/useGo";
 import { apiSend } from "../../api/_lib/client";
-import type { EpisodeRecord, EpisodeSummary, RunSummary, StartRunInput } from "../../api/_lib/types";
+import { track } from "@/lib/track";
+import type { EpisodeSummary, RunSummary, StartRunInput } from "../../api/_lib/types";
 import { PastRuns } from "./PastRuns";
 import { StartRunPanel } from "./StartRunPanel";
 
 // The Runs page: start a day, watch the one that is playing, browse the ones
 // that already played. The live view itself lives at /runs/[runId] — this page
 // only ever shows the door to it, so the hero is never half-rendered in a list.
-
-/** The stock day the guided demo uses. Written to be the best first run. */
-const DEMO_TEMPLATE = "client-escalation";
 
 export interface RunsFeed {
   runs: RunSummary[];
@@ -47,8 +44,8 @@ export type RunsClientProps = {
   beatTicks: Record<string, number[]>;
   /** From `?scenario=` — the card that sent you here. */
   initialEpisodeId?: string;
-  /** From `?demo=1` — set the demo up and start it, no questions asked. */
-  demo: boolean;
+  /** Whether an OpenRouter key is saved — without one nothing can run. */
+  hasKey: boolean;
 };
 
 export function RunsClient({
@@ -57,7 +54,7 @@ export function RunsClient({
   defaultModel,
   beatTicks,
   initialEpisodeId,
-  demo,
+  hasKey,
 }: RunsClientProps) {
   const router = useRouter();
   const go = useGo();
@@ -70,7 +67,6 @@ export function RunsClient({
   const simulated = useSimulated();
 
   const [starting, setStarting] = useState(false);
-  const [demoing, setDemoing] = useState(demo);
 
   const active = data.runs.find((run) => run.runId === data.activeRunId) ?? null;
 
@@ -78,6 +74,7 @@ export function RunsClient({
     setStarting(true);
     try {
       const { runId } = await apiSend<{ runId: string }>("/api/runs", "POST", input);
+      track("run_started", { episode_id: input.episodeId, model: input.model, twins: input.twins, ticks: input.ticks });
       // Deliberately left true: the button keeps spinning until the live view
       // has actually replaced this page.
       router.push(`/runs/${runId}`);
@@ -91,47 +88,12 @@ export function RunsClient({
     }
   }
 
-  // The guided demo: one link from Home to a day already playing. It has to work
-  // on a machine with nothing saved, so it stands the scenario up first.
-  const demoStarted = useRef(false);
-  useEffect(() => {
-    if (!demo || demoStarted.current) return;
-    demoStarted.current = true;
-
-    void (async () => {
-      try {
-        const saved = episodes.find((e) => e.templateId === DEMO_TEMPLATE);
-        const episodeId =
-          saved?.id ??
-          (
-            await apiSend<{ episode: EpisodeRecord }>("/api/episodes", "POST", {
-              templateId: DEMO_TEMPLATE,
-            })
-          ).episode.id;
-
-        const { runId } = await apiSend<{ runId: string }>("/api/runs", "POST", {
-          episodeId,
-          model: defaultModel,
-          twins: [],
-          ticks: 24,
-        });
-        router.replace(`/runs/${runId}`);
-      } catch (err) {
-        setDemoing(false);
-        toast({
-          title: "Could not set up the demo",
-          description: (err as Error).message,
-          tone: "error",
-        });
-      }
-    })();
-  }, [demo, episodes, defaultModel, router, toast]);
 
   return (
     <div className="sn-stack-section">
       <PageHeader
         title="Runs"
-        subtitle="A run is one simulated workday. Pick a scenario and a model, press start, and watch the day play out — emails arriving, the agent working, people writing back."
+        subtitle="Run models on a reviewed scenario. Compare completed work, mistakes and cost under the same conditions."
         actions={
           active ? (
             // A real anchor, so the live run can be opened in its own tab.
@@ -149,21 +111,6 @@ export function RunsClient({
 
       <StaleNotice poll={poll} what="the run list" />
 
-      {demoing ? (
-        <Card padding="lg" className="animate-sn-rise">
-          <div className="flex items-center gap-4">
-            <Spinner size="md" />
-            <div>
-              <p className="text-sn-md font-medium text-sn-ink">Setting up your first day…</p>
-              <p className="mt-1 text-sn-base text-sn-muted">
-                Cloning Northbeam Capital, then starting the client-escalation day. This takes a
-                couple of seconds.
-              </p>
-            </div>
-          </div>
-        </Card>
-      ) : null}
-
       {active ? <LiveRunBanner run={active} now={data.at} href={`/runs/${active.runId}`} /> : null}
 
       <StartRunPanel
@@ -172,6 +119,7 @@ export function RunsClient({
         beatTicks={beatTicks}
         initialEpisodeId={initialEpisodeId}
         starting={starting}
+        hasKey={hasKey}
         onStart={(input) => void start(input)}
       />
 

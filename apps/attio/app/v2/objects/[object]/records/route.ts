@@ -30,7 +30,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ object:
       throw badRequestError("Request body must carry data.values as an object of attributes.");
     }
     const endpoint = new URL(req.url).pathname;
-    const now = Date.now();
+    const now = ctx.writeTimeMs;
     // The object's first attribute is its display name in Attio's UI, so it is
     // what the audit summary should quote.
     const primarySlug = listAttributes(db, obj.id)[0]?.api_slug;

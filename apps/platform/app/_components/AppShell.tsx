@@ -38,17 +38,17 @@ const NAV_GROUPS = [
     label: "Workspace",
     items: [
       { href: ROUTES.home, label: "Overview", icon: <IconBolt size="md" /> },
-      { href: ROUTES.runs, label: "Runs", icon: <IconLayers size="md" /> },
+      { href: ROUTES.companies, label: "Environments", icon: <IconSpark size="md" /> },
       { href: ROUTES.scenarios, label: "Scenarios", icon: <IconInbox size="md" /> },
-      { href: ROUTES.companies, label: "Clones", icon: <IconSpark size="md" /> },
-      { href: ROUTES.sessions, label: "Sessions", icon: <IconClock size="md" /> },
+      { href: ROUTES.runs, label: "Runs", icon: <IconLayers size="md" /> },
       { href: ROUTES.compare, label: "Results", icon: <IconSearch size="md" /> },
     ],
   },
   {
-    label: "Account",
+    label: "Setup",
     items: [
-      { href: ROUTES.connect, label: "Sources", icon: <IconPlay size="sm" /> },
+      { href: ROUTES.connect, label: "Connect an agent", icon: <IconPlay size="sm" /> },
+      { href: ROUTES.sessions, label: "Agent sessions", icon: <IconClock size="md" /> },
       { href: ROUTES.settings, label: "Settings", icon: <IconGear size="md" /> },
     ],
   },

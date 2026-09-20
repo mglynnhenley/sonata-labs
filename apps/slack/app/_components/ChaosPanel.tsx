@@ -81,14 +81,14 @@ const PRESETS: Array<{ label: string; hint: string; patch: Partial<ChaosConfig> 
   },
 ];
 
-export function ChaosPanel() {
+export function ChaosPanel({ token }: { token: string }) {
   const [config, setConfig] = useState<ChaosConfig | null>(null);
   const [faults, setFaults] = useState<InjectedFault[]>([]);
   const [busy, setBusy] = useState(false);
 
   const load = async () => {
     try {
-      const res = await fetch("/api/sandbox/chaos", { cache: "no-store" });
+      const res = await fetch("/api/sandbox/chaos", { cache: "no-store", headers: { authorization: `Bearer ${token}` } });
       const data = (await res.json()) as { config: ChaosConfig; faults: InjectedFault[] };
       setConfig(data.config);
       setFaults(data.faults);
@@ -101,13 +101,13 @@ export function ChaosPanel() {
     void load();
     const t = setInterval(() => void load(), 3000);
     return () => clearInterval(t);
-  }, []);
+  }, [token]);
 
   const patch = async (body: Partial<ChaosConfig>) => {
     setBusy(true);
     await fetch("/api/sandbox/chaos", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
       body: JSON.stringify(body),
     });
     await load();
@@ -116,7 +116,7 @@ export function ChaosPanel() {
 
   const clear = async () => {
     setBusy(true);
-    await fetch("/api/sandbox/chaos", { method: "DELETE" });
+    await fetch("/api/sandbox/chaos", { method: "DELETE", headers: { authorization: `Bearer ${token}` } });
     await load();
     setBusy(false);
   };

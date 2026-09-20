@@ -1,3 +1,4 @@
+import { controlToken } from "@sonata/core/controlAuth";
 // Part 2 of the acceptance harness: mutations via the OFFICIAL SDK, then the
 // audit trail and reset. Imported by smoke-sdk.ts (which owns the client and
 // the check helpers).
@@ -270,7 +271,7 @@ export async function part2Writes({ client, check, expectSlackError }: Harness):
   );
 
   // --- audit trail ---
-  const activity = await fetch(`${ROOT_URL}/api/activity`).then((r) => r.json() as Promise<{
+  const activity = await fetch(`${ROOT_URL}/api/activity`, { headers: { "x-sandbox-token": controlToken() } }).then((r) => r.json() as Promise<{
     sessions: Array<{ id: string; action_count: number }>;
     actions: Array<{ endpoint: string; summary: string; action_type: string }>;
   }>);
@@ -297,7 +298,7 @@ export async function part2Writes({ client, check, expectSlackError }: Harness):
   const snapshotCounts = await fetch(`${ROOT_URL}/api/health`).then((r) => r.json() as Promise<{ messages: number }>);
   const resetRes = await fetch(`${ROOT_URL}/api/sandbox/reset`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "x-sandbox-token": controlToken(), "content-type": "application/json" },
     body: JSON.stringify({ note: "smoke harness reset" }),
   }).then((r) => r.json() as Promise<{ ok: boolean; messages: number }>);
   check("reset ok", resetRes.ok === true);
@@ -317,7 +318,7 @@ export async function part2Writes({ client, check, expectSlackError }: Harness):
   );
 
   // audit survives the reset (separate file) and gains a new session
-  const activity2 = await fetch(`${ROOT_URL}/api/activity?all=1`).then((r) => r.json() as Promise<{
+  const activity2 = await fetch(`${ROOT_URL}/api/activity?all=1`, { headers: { "x-sandbox-token": controlToken() } }).then((r) => r.json() as Promise<{
     sessions: Array<{ id: string; note: string | null }>;
     actions: Array<unknown>;
   }>);

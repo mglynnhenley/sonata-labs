@@ -1,10 +1,16 @@
 import { canonicalize, type GeneratedWorld } from "../generate";
 import agencyLaunchWeek from "./agency-launch-week.json";
 import fintechPreAudit from "./fintech-pre-audit.json";
+import meridianClinicalSupply from "./meridian-clinical-supply.json";
 import saasSupportWeek from "./saas-support-week.json";
 import smallConsultancy from "./small-consultancy.json";
+import alderbridgeVentures from "./alderbridge-ventures.json";
+import alderbridgeAiAssistant from "./alderbridge-ai-assistant.json";
+import taxReportingWorkbook from "./tax-reporting-workbook.json";
+import taxReportingWorkflow from "./tax-reporting-workflow.json";
+import alderbridgeBusyDay from "./alderbridge-busy-day.json";
 
-// Four worlds a user can clone without spending a model call or thirty seconds
+// Worlds a user can clone without spending a model call or thirty seconds
 // waiting. They are the same shape a generated world is, so the preview, the
 // injector and the episode engine cannot tell them apart — which also makes them
 // the fixtures every test in this package runs against.
@@ -29,10 +35,16 @@ function template(world: GeneratedWorld, label: string): WorldTemplate {
 }
 
 export const TEMPLATES: WorldTemplate[] = [
+  template(taxReportingWorkbook as GeneratedWorld, "Tax reporting — adviser workflow in Excel"),
+  template(taxReportingWorkflow, "Tax reporting — population reconciliation workflow pilot"),
   template(fintechPreAudit, "Fintech, the week before an audit"),
   template(agencyLaunchWeek, "Agency, launch week"),
   template(saasSupportWeek, "B2B SaaS, a bad support week"),
   template(smallConsultancy, "Consultancy, three clients at once"),
+  template(meridianClinicalSupply, "Clinical supply, the morning after a cold-chain excursion"),
+  template(alderbridgeVentures, "VC investment team — synthetic pilot"),
+  template(alderbridgeAiAssistant, "VC AI assistant — human calls to investment memos"),
+  template(alderbridgeBusyDay, "VC busy day — meetings, relationships and Attio"),
 ];
 
 export function templateById(id: string): WorldTemplate | undefined {

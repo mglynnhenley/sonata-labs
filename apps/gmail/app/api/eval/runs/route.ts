@@ -1,3 +1,4 @@
+import { requireSandboxToken } from "@/lib/sandbox/auth";
 import { NextResponse } from "next/server";
 import { listRuns } from "@/lib/eval/runs";
 
@@ -5,7 +6,9 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 // Run list for the trace viewer, newest first.
-export function GET() {
+export function GET(req: Request) {
+  const authErr = requireSandboxToken(req);
+  if (authErr) return authErr;
   try {
     return NextResponse.json({ runs: listRuns() });
   } catch (err) {

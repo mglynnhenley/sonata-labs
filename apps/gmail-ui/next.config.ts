@@ -1,8 +1,11 @@
+import { allowedDevelopmentOrigins } from "@sonata/core/browserOrigin";
 import type { NextConfig } from "next";
 
 // The UI service has ZERO database access. It is a plain Next app whose server
 // routes (BFF + OAuth callback + control-plane proxies) call the API service
 // over HTTP. No native modules, so nothing to keep external.
-const nextConfig: NextConfig = {};
+const nextConfig: NextConfig = {
+  allowedDevOrigins: allowedDevelopmentOrigins(),
+};
 
 export default nextConfig;

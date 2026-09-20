@@ -28,12 +28,14 @@ import type { GeneratedWorld } from "@sonata/world";
  * this and they count different halves of the same word: `plannedCounts` counts
  * what a day's beats will add, `actualCounts` counts what the generated backlog
  * already holds. `threads` has always meant both — threads the day opens, and
- * threads sitting in the inbox — and the two surfaces below follow it.
+ * threads sitting in the inbox — and the four surfaces below follow it.
  *
  * A world record saved before a surface existed carries no number for it, so
  * anything reading one off a stored `WorldCounts` has to treat absent as none.
  */
 export interface WorldCounts {
+  /** Absent for saved worlds created before workbook support. */
+  workbooks?: number;
   people: number;
   threads: number;
   messages: number;
@@ -43,6 +45,14 @@ export interface WorldCounts {
   /** CRM records across companies, contacts and deals — the pipeline's size. */
   records: number;
   documents: number;
+  /**
+   * Ad campaigns. Only ever the backlog's: no beat creates a campaign — the ads
+   * arm of `BeatBody` is status, budget and spend, which all change one that is
+   * already running — so a day's planned count of these is honestly zero.
+   */
+  campaigns: number;
+  /** LinkedIn posts, drafts included: a draft is a post somebody has to decide about. */
+  posts: number;
 }
 
 export interface WorldSummary {
@@ -164,10 +174,14 @@ export interface EpisodeRecord extends EpisodeSummary {
 /** One service chip on a template card: "Gmail · 14 threads". */
 export interface TemplateService {
   twin: TwinName;
-  /** How much of it the day seeds. Every twin can be counted, so this is never absent. */
-  count: number;
+  /**
+   * Absent when nothing seeds this surface yet, and the chip then shows the
+   * service alone. A zero would read as "seeded, and came up empty", which is a
+   * claim about the world rather than about what we can count.
+   */
+  count?: number;
   /** Plural noun for the count: "threads", "channels", "events". */
-  unit: string;
+  unit?: string;
 }
 
 export interface TemplateSummary {
@@ -185,6 +199,7 @@ export interface TemplateSummary {
 // ---------------------------------------------------------------------------
 
 export interface RunSummary {
+  twinLinks?: Array<{ twin: TwinName; url: string }>;
   runId: string;
   specId: string;
   specTitle: string;
@@ -228,6 +243,16 @@ export interface StartRunInput {
   twins: TwinName[];
   /** Length of the simulated day, in ticks. */
   ticks: number;
+  compression?: number;
+  timing?: import("@sonata/core").SessionTimingPolicy;
+  platformUrl?: string;
+  judge?: boolean;
+  director?: boolean;
+  judgeModel?: string;
+  directorModel?: string;
+  seedWorld?: boolean;
+  runId?: string;
+  termination?: Partial<import("@sonata/core").Termination>;
 }
 
 export type RunCommand = "pause" | "resume" | "abort";

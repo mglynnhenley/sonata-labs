@@ -31,6 +31,12 @@
   --color-sn-subtle: #6b716e;
   --color-sn-line: #eceae2;
   --color-sn-line-strong: #dddad0;
+  /* The de-emphasis fill for chart marks — the "this happened and nothing came
+     of it" grey. NOT --color-sn-line-strong, which is a hairline colour and sits
+     at 1.4:1 on white: legible as a 1px rule, invisible as a filled bar. This is
+     the lightest warm grey that clears 3:1 against the surface while staying ΔE
+     21 from petrol under deuteranopia, both measured rather than eyeballed. */
+  --color-sn-chart-idle: #989486;
 
   /* Petrol — the one accent, and it is rationed. See DESIGN.md. */
   --color-sn-primary: #0e5c55;
@@ -80,6 +86,18 @@
   --color-sn-google-docs-ink: #3a5aa8;
   --color-sn-google-docs-soft: #e6eaf7;
   --color-sn-google-docs-line: #d0d8ee;
+  --color-sn-google-ads-ink: #a06a24;
+  --color-sn-google-ads-soft: #f7eede;
+  --color-sn-google-ads-line: #eaddc4;
+  --color-sn-excel-ink: #217346;
+  --color-sn-excel-soft: #e4f0e9;
+  --color-sn-excel-line: #c8dfd2;
+  --color-sn-linkedin-ink: #2a5f86;
+  --color-sn-linkedin-soft: #e4eef5;
+  --color-sn-linkedin-line: #ccdfea;
+  --color-sn-desk-ink: #4a5568;
+  --color-sn-desk-soft: #eaecef;
+  --color-sn-desk-line: #d7dbe0;
 
   /* Status hues. Running wears the accent: live is the loudest thing on any
      page, so nothing else gets to borrow petrol. */

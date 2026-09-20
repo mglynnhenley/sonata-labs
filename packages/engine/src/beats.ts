@@ -1,3 +1,4 @@
+import { bodyObservation } from "./observations";
 import {
   agentToolCalls,
   resolvePerson,
@@ -11,8 +12,10 @@ import {
   type CalendarBeatBody,
   type Criterion,
   type EpisodeSpec,
+  type GoogleAdsBeatBody,
   type GoogleDocsBeatBody,
   type InjectedRef,
+  type LinkedInBeatBody,
   type PersonRef,
   type TickRecord,
   type TwinAdapter,
@@ -111,10 +114,11 @@ function nameOf(world: WorldSeed, ref: string): string {
 }
 
 /**
- * Who acted, on the one surface where naming nobody is legitimate: a document
- * with no owner belongs to whoever owns the workspace, which is the mailbox
- * owner. That is a real answer and not a missing value, so the line says it
- * rather than leaving a blank.
+ * Who acted, on the two surfaces where naming nobody is legitimate — and the two
+ * of them mean different people by it. A LinkedIn beat with no `from` is the
+ * company page speaking; a document with no owner belongs to whoever owns the
+ * workspace, which is the mailbox owner. Neither is a missing value, so each
+ * says which it is.
  */
 function actorOf(world: WorldSeed, ref: string | undefined, whenAbsent: string): string {
   return ref ? nameOf(world, ref) : whenAbsent;
@@ -140,14 +144,28 @@ function valueList(values: Record<string, AttioWriteValue>): string {
 }
 
 /**
+ * The campaign a beat is about, as the author named it. Either half is
+ * legitimate — a name for a campaign the world was seeded with, a ref for the
+ * other end of a pair — and neither is resolved here, because this line is
+ * written before anything has been sent to the twin.
+ */
+function campaignName(payload: { campaign?: string; campaignRef?: string }): string {
+  return payload.campaign ?? payload.campaignRef ?? "a campaign";
+}
+
+/** Micros as whole currency units — the ads twin counts money in millionths. */
+function money(micros: number): string {
+  return (micros / 1_000_000).toFixed(2);
+}
+
+/**
  * One line for the timeline: "Dana Reyes emailed about the missed SLA". Written
  * from the world's point of view, because this is what the run view shows a
  * human and what the agent's tick digest is built from.
  *
- * Split by twin before kind, and by twin into the three functions below, because
- * a `kind` only means anything inside its own twin — `record` in the CRM and
- * `invite` on the diary share nothing but the word "kind" — so one flat switch
- * over kinds could not be written at all.
+ * Split by twin before kind, and by twin into the four functions below, because
+ * `reaction` is no longer one thing: a Slack emoji and a LinkedIn reaction on a
+ * post are different payloads under the same word.
  */
 export function summarizeBody(body: BeatBody, world: WorldSeed): string {
   switch (body.twin) {
@@ -169,6 +187,10 @@ export function summarizeBody(body: BeatBody, world: WorldSeed): string {
       return summarizeAttio(body, world);
     case "google-docs":
       return summarizeDocs(body, world);
+    case "google-ads":
+      return summarizeAds(body);
+    case "linkedin":
+      return summarizeLinkedIn(body, world);
   }
 }
 
@@ -231,6 +253,51 @@ function summarizeDocs(body: GoogleDocsBeatBody, world: WorldSeed): string {
       return (
         `"${body.payload.find}" became "${body.payload.replaceWith}" ` +
         `in "${body.payload.documentRef}"`
+      );
+  }
+}
+
+function summarizeAds(body: GoogleAdsBeatBody): string {
+  switch (body.kind) {
+    case "status": {
+      const which = campaignName(body.payload);
+      if (body.payload.status === "PAUSED") return `campaign "${which}" was paused`;
+      if (body.payload.status === "ENABLED") return `campaign "${which}" was switched back on`;
+      if (body.payload.status === "REMOVED") return `campaign "${which}" was removed`;
+      return `campaign "${which}" is now ${body.payload.status}`;
+    }
+    case "budget":
+      return (
+        `campaign "${campaignName(body.payload)}" now has ` +
+        `${money(body.payload.amountMicros)} a day to spend`
+      );
+    case "spend":
+      // What the day cost, not what it sold: an overspend is the thing an agent
+      // is meant to notice, and it is spend that says so.
+      return (
+        `${body.payload.clicks} click(s) and ${money(body.payload.costMicros)} of spend ` +
+        `landed on "${body.payload.adGroup}"`
+      );
+  }
+}
+
+function summarizeLinkedIn(body: LinkedInBeatBody, world: WorldSeed): string {
+  switch (body.kind) {
+    case "post":
+      return (
+        `${actorOf(world, body.payload.from, "the company page")} ` +
+        `posted on LinkedIn: "${body.payload.commentary}"`
+      );
+    case "comment":
+      return (
+        `${actorOf(world, body.payload.from, "the company page")} ` +
+        `${body.payload.parentRef ? "replied under" : "commented on"} ` +
+        `"${body.payload.parentRef ?? body.payload.postRef ?? "the feed"}": "${body.payload.text}"`
+      );
+    case "reaction":
+      return (
+        `${actorOf(world, body.payload.from, "the company page")} reacted ` +
+        `${body.payload.reactionType ?? "LIKE"} to "${body.payload.entityRef}"`
       );
   }
 }
@@ -645,6 +712,7 @@ async function adaptOne(
     saw: check.evidence,
     sawOn: adapt.when.twin,
     wrote: writtenFromTicks(deps.ticks),
+    observations: deps.audit.flatMap(row => row.observation ? [{ twin: row.twin, observation: row.observation }] : []),
     tick: deps.tick,
     simTimeLabel: deps.simTimeLabel,
   });
@@ -708,6 +776,7 @@ export async function fireBeats(
     if (outcome.handle) deps.refs.record(beat.ref, outcome.handle);
     const assessment = assessments?.get(beat.id);
     fired.push({
+      observation: outcome.error ? undefined : bodyObservation(beat, deps.world),
       beatId: beat.id,
       ...(beat.ref ? { ref: beat.ref } : {}),
       twin: beat.twin,

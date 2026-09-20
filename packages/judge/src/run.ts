@@ -39,6 +39,8 @@ export interface CompleteJSON {
     schemaName?: string;
     model?: string;
     maxTokens?: number;
+    /** Measured prompt coverage for the transport's saved evidence, never model-authored. */
+    coverage?: EpisodeJudgeReport["coverage"];
   }): Promise<T>;
 }
 
@@ -96,6 +98,22 @@ function severityOf(s: unknown): Severity {
 
 function evidenceOf(e: unknown): string[] {
   return Array.isArray(e) ? e.filter((x): x is string => typeof x === "string") : [];
+}
+
+/**
+ * One of the report's bulleted lists, cleaned.
+ *
+ * Models return a leading "- " about a third of the time even when the field is an
+ * array of strings, and the UI renders its own bullet — left in, every line reads
+ * "• - Never sent the reply". Blank entries are dropped rather than rendered as an
+ * empty bullet, which reads as a fact nobody wrote down.
+ */
+function bulletsOf(v: unknown): string[] {
+  if (!Array.isArray(v)) return [];
+  return v
+    .filter((x): x is string => typeof x === "string")
+    .map((s) => s.trim().replace(/^[-*•]\s+/, "").trim())
+    .filter((s) => s.length > 0);
 }
 
 /**
@@ -220,6 +238,7 @@ export async function judge(
       schema: EPISODE_JUDGE_SCHEMA,
       schemaName: "episode_judge_report",
       model,
+      coverage,
     });
 
   const raw = opts.withRole ? await opts.withRole<JudgeResponse>("judge", call) : await call();
@@ -230,8 +249,12 @@ export async function judge(
     model,
     coverage,
     taskUnderstanding: typeof raw.taskUnderstanding === "string" ? raw.taskUnderstanding : "",
+    taskPoints: bulletsOf(raw.taskPoints),
+    taskAmbiguities: bulletsOf(raw.taskAmbiguities),
     autonomyScore: clamp01(raw.autonomyScore),
     summary: typeof raw.summary === "string" ? raw.summary : "",
+    did: bulletsOf(raw.did),
+    didNot: bulletsOf(raw.didNot),
     ...reconcile(raw),
     answers: alignAnswers(input.judgeQuestions, raw.answers),
   };

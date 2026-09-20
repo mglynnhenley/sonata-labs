@@ -22,7 +22,8 @@ Get this wrong and everything 401s or nothing is protected.
 
 - `/gmail/v1/*` — an **OAuth2 access token** minted by this server. `auth.ts`
   validates it against `oauth_tokens` and checks the route's declared scope.
-- `/api/sandbox/*` — the **static `SANDBOX_TOKEN`** (`src/lib/sandbox/auth.ts`).
+- `/api/sandbox/*` — the **control token** (`src/lib/sandbox/auth.ts`):
+  `SANDBOX_CONTROL_TOKEN`, falling back to `SANDBOX_TOKEN` in shared development.
   Control plane only. It is not accepted on `/gmail/v1/*`.
 
 A script or harness needs a real token: `POST /api/sandbox/token` with the admin
@@ -242,8 +243,9 @@ historyId-based sync is deferred — re-run `npm run sync`.
   server code (type-only `gmail_v1.Schema$*` imports are fine; `scripts/`,
   `src/cli/sync.ts` and `src/lib/eval/client.ts` are the deliberate exceptions,
   and none of them can reach Google from the server process).
-- `POST /api/sandbox/reset` takes **no token** today, unlike the rest of
-  `/api/sandbox/*`. Fine on a local port; know it before exposing a twin.
+- All `/api/sandbox/*`, `/api/activity`, and `/api/eval/*` routes require the
+  control token. A scoped workplace provider token cannot reset or inspect the
+  control plane. Health remains public.
 
 <!-- BEGIN:nextjs-agent-rules -->
 
