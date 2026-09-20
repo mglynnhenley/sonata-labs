@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -116,6 +116,16 @@ export function NewScenarioComposer({ templates }: NewScenarioComposerProps) {
   const [usingShipped, setUsingShipped] = useState<string | null>(null);
 
   const box = useRef<HTMLTextAreaElement | null>(null);
+
+  // From main: focus the brief on desktop only. `autoFocus` did it everywhere,
+  // and on a phone that opens the keyboard the instant the page loads — half the
+  // viewport goes, the page scrolls itself, and the starter chips below the box,
+  // the thing someone unsure what to type actually needs, are pushed off screen.
+  // A fine pointer means a real keyboard is already there.
+  useEffect(() => {
+    if (!window.matchMedia("(pointer: fine)").matches) return;
+    box.current?.focus();
+  }, []);
 
   const tooShort = brief.trim().length < 12;
 
@@ -277,7 +287,6 @@ export function NewScenarioComposer({ templates }: NewScenarioComposerProps) {
           value={brief}
           onChange={(e) => setBrief(e.target.value)}
           rows={6}
-          autoFocus
           disabled={working}
           aria-describedby="brief-hint"
           placeholder="A support team at a software company. An outage looks resolved in the morning, but returns after lunch while the agent is handling other customer requests."

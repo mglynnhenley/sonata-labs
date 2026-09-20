@@ -17,16 +17,16 @@ export const BUTTON_BASE =
   // Pills, and bold: at button sizes Satoshi 500 reads soft, 700 reads meant.
   "relative inline-flex select-none items-center justify-center gap-2 rounded-full border font-bold " +
   "transition-[background-color,border-color,color,box-shadow,transform] duration-150 ease-sn " +
-  "active:translate-y-px disabled:pointer-events-none disabled:active:translate-y-0";
+  "active:translate-y-px disabled:cursor-not-allowed disabled:active:translate-y-0";
 
 export const BUTTON_VARIANTS: Record<ButtonVariant, string> = {
   primary:
-    "border-transparent bg-sn-primary text-sn-on-primary shadow-sn-xs hover:bg-sn-primary-hover active:bg-sn-primary-active",
+    "border-transparent bg-sn-primary text-sn-on-primary shadow-sn-xs not-disabled:hover:bg-sn-primary-hover active:bg-sn-primary-active",
   secondary:
-    "border-sn-line bg-sn-surface text-sn-ink shadow-sn-xs hover:border-sn-line-strong hover:bg-sn-surface-hover",
-  ghost: "border-transparent bg-transparent text-sn-muted hover:bg-sn-bg-subtle hover:text-sn-ink",
+    "border-sn-line bg-sn-surface text-sn-ink shadow-sn-xs not-disabled:hover:border-sn-line-strong not-disabled:hover:bg-sn-surface-hover",
+  ghost: "border-transparent bg-transparent text-sn-muted not-disabled:hover:bg-sn-bg-subtle not-disabled:hover:text-sn-ink",
   danger:
-    "border-transparent bg-sn-danger text-white shadow-sn-xs hover:bg-sn-danger-hover active:bg-sn-danger-hover",
+    "border-transparent bg-sn-danger text-white shadow-sn-xs not-disabled:hover:bg-sn-danger-hover active:bg-sn-danger-hover",
 };
 
 /** A pill needs more side-room than a rectangle or the label looks pinched. */

@@ -72,12 +72,15 @@ export function CodeBlock({
     <div
       className={cn(
         "overflow-hidden rounded-sn-xl border border-sn-line bg-sn-bg-subtle",
+        // The label and gutter below are muted, not subtle: this block's own
+        // surface is #f1efe9, and the subtle grey only clears 4.34:1 against
+        // it. Muted measures 5.57:1 on the same background.
         className,
       )}
     >
       {label || copyable ? (
         <div className="flex h-9 items-center justify-between border-b border-sn-line px-3">
-          <span className="font-mono text-sn-xs tracking-[0.04em] text-sn-subtle uppercase">
+          <span className="font-mono text-sn-xs tracking-[0.04em] text-sn-muted uppercase">
             {label}
           </span>
           {copyable ? (
@@ -104,7 +107,7 @@ export function CodeBlock({
             <code>
               {lines.map((line, i) => (
                 <span key={i} className="grid grid-cols-[2.25rem_1fr]">
-                  <span className="select-none text-right text-sn-subtle" aria-hidden="true">
+                  <span className="select-none text-right text-sn-muted" aria-hidden="true">
                     {i + 1}
                     {"  "}
                   </span>
